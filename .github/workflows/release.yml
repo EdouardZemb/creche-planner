@@ -1,0 +1,165 @@
+# AUD-15 (doc 25) — WORKFLOW DE RELEASE.
+#
+# `nx release` (version + changelog + tag par projet) restait 100 % manuel et
+# AUCUN tag ne déclenchait de publication. Ce workflow ferme la boucle : un tag
+# de release poussé produit AUTOMATIQUEMENT l'image versionnée (semver immuable)
+# sur GHCR — avec la même chaîne d'appro que `build-images` (provenance + SBOM +
+# scan Trivy bloquant + signature cosign keyless) — et des notes de release.
+#
+# DÉCLENCHEUR — `nx.json` déclare `releaseTagPattern: "{projectName}@{version}"`
+# et `projectsRelationship: independent` : les tags ressemblent donc à
+# `svc-foyer@1.2.0`, `api-gateway@0.3.0`, `web@1.0.0`. Le maintainer joue
+# `nx release` en local (bump + changelog + tag), pousse le tag, et CE workflow
+# réagit. (ci.yml ne se déclenche QUE sur push de BRANCHE `main` / PR → il
+# n'attrape pas les tags : pas de double publication.)
+#
+# Un tag ne porte qu'UN projet (releases indépendantes) → on construit une seule
+# image, en distinguant `web` (Dockerfile SPA nginx) des services NestJS
+# (Dockerfile racine générique + build-arg APP), exactement comme build-images.
+name: Release
+
+on:
+  push:
+    tags:
+      - '*@*' # {projectName}@{version} (cf. nx.json releaseTagPattern)
+  workflow_dispatch: # re-déclenchement manuel sur un tag de release existant
+
+permissions:
+  contents: read
+
+# Sérialise les releases d'un même tag ; ne jamais annuler une release en cours.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # notes de release (gh release)
+      packages: write # push GHCR
+      id-token: write # OIDC cosign keyless
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0 # historique complet pour --generate-notes
+
+      # Tag `svc-foyer@1.2.0` → project=svc-foyer, version=1.2.0. Les noms de
+      # projet ne contiennent pas de `@` → on coupe sur le DERNIER `@`.
+      - name: Décomposer le tag (projet @ version)
+        id: parse
+        run: |
+          TAG="${{ github.ref_name }}"
+          PROJECT="${TAG%@*}"
+          VERSION="${TAG##*@}"
+          if [ -z "$PROJECT" ] || [ -z "$VERSION" ] || [ "$PROJECT" = "$VERSION" ]; then
+            echo "::error::Tag '$TAG' non conforme au pattern {projectName}@{version}." >&2
+            exit 1
+          fi
+          echo "project=$PROJECT" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Release : projet=$PROJECT version=$VERSION"
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      # GHCR exige un nom d'image en MINUSCULES (le propriétaire peut être casé).
+      - name: Référence d'image (minuscules)
+        id: ref
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${OWNER}/creche-planner/${{ steps.parse.outputs.project }}" >> "$GITHUB_OUTPUT"
+
+      - name: Connexion à GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tags : `<version>` (semver immuable, déployable par tag) + `<sha40>`
+      # (traçabilité commit → image). PAS de `:main` ici (réservé au rolling CI).
+      - name: Métadonnées (tags + labels OCI)
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        with:
+          images: ${{ steps.ref.outputs.image }}
+          tags: |
+            type=raw,value=${{ steps.parse.outputs.version }}
+            type=sha,format=long,prefix=
+          labels: |
+            org.opencontainers.image.title=creche-planner/${{ steps.parse.outputs.project }}
+            org.opencontainers.image.version=${{ steps.parse.outputs.version }}
+
+      # `web` = SPA nginx (Dockerfile dédié, sans build-arg APP).
+      - name: Build + push — web
+        if: steps.parse.outputs.project == 'web'
+        id: build-web
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: true
+          provenance: true
+          sbom: true
+          cache-from: type=gha,scope=${{ steps.parse.outputs.project }}
+          cache-to: type=gha,mode=max,scope=${{ steps.parse.outputs.project }}
+
+      # services NestJS = `Dockerfile` racine générique, ciblé par build-arg APP.
+      - name: Build + push — service
+        if: steps.parse.outputs.project != 'web'
+        id: build-svc
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: Dockerfile
+          build-args: |
+            APP=${{ steps.parse.outputs.project }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: true
+          provenance: true
+          sbom: true
+          cache-from: type=gha,scope=${{ steps.parse.outputs.project }}
+          cache-to: type=gha,mode=max,scope=${{ steps.parse.outputs.project }}
+
+      # AUD-06 — scan CVE bloquant sur l'image versionnée (HIGH/CRITICAL
+      # corrigibles). Pas d'upload SARIF (GHAS indispo) → garde-fou = exit-code.
+      - name: Scan CVE (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}:${{ steps.parse.outputs.version }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      # AUD-07 — signature keyless cosign (OIDC GitHub) du DIGEST poussé.
+      - name: Installer cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Signer l'image (cosign keyless)
+        env:
+          DIGEST: ${{ steps.parse.outputs.project == 'web' && steps.build-web.outputs.digest || steps.build-svc.outputs.digest }}
+        run: cosign sign --yes "${{ steps.ref.outputs.image }}@${DIGEST}"
+
+      # Notes de release auto-générées (commits/PR depuis la précédente). Idempotent :
+      # si `nx release --create-release github` a DÉJÀ créé la release en local, on
+      # ne la recrée pas (sinon `gh release create` échoue « already exists »).
+      - name: Notes de release (GitHub Release)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG déjà existante (probablement créée par nx release) — inchangée."
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag
+          fi
+
+      - name: Récapitulatif
+        run: |
+          echo "Release publiée : ${{ steps.ref.outputs.image }}:${{ steps.parse.outputs.version }}"
+          echo "Tags : ${{ steps.parse.outputs.version }} + ${{ github.sha }} ; signée cosign + provenance/SBOM."

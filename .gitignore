@@ -1,0 +1,80 @@
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+test-output
+
+# Dumps de sauvegarde PostgreSQL — ne JAMAIS versionner (données + volumineux)
+backups
+
+# Playwright (E2E) artefacts
+test-results
+playwright-report
+.playwright
+
+# Baseline de couverture (AQ-06) — téléchargée/produite par la CI, jamais versionnée
+.coverage-baseline
+coverage-baseline
+
+# Mutation testing (AQ-13) — bac à sable Stryker (les rapports vont dans test-output)
+.stryker-tmp
+
+# dependencies
+node_modules
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# System Files
+.DS_Store
+Thumbs.db
+
+.nx/cache
+.nx/workspace-data
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
+
+.claude/worktrees
+.claude/settings.local.json
+.nx/polygraph
+.nx/self-healing
+vite.config.*.timestamp*
+vitest.config.*.timestamp*
+
+# État d'idempotence du seed (lié à l'instance de base ; inclut l'éventuel état hérité)
+scripts/.seed-*-state.json
+# Surcouche locale du seed (override foyer/contrats propre à une instance) — jamais commitée
+scripts/seed.local.json
+
+# Secrets de PRODUCTION (serveur) — ne JAMAIS commiter. Le glob couvre toute
+# variante (.env, .env.server, .env.local, .env.production…) ; seul le modèle
+# sans secret .env.server.example est versionné (négation ci-dessous).
+.env*
+!.env.server.example
+# Certificat racine exporté de Caddy (autorité TLS locale)
+caddy-root.crt

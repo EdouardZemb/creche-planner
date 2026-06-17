@@ -1,0 +1,309 @@
+{
+  "id": "a61f79f6-eb2f-42e0-b639-736a56ee62ab",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.bareme_psu": {
+      "name": "bareme_psu",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "valide_du": {
+          "name": "valide_du",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valide_au": {
+          "name": "valide_au",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "taux": {
+          "name": "taux",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plancher_centimes": {
+          "name": "plancher_centimes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "plafond_centimes": {
+          "name": "plafond_centimes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.frais_fixes_abcm": {
+      "name": "frais_fixes_abcm",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "valide_du": {
+          "name": "valide_du",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valide_au": {
+          "name": "valide_au",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cotisation_1_enfant_centimes": {
+          "name": "cotisation_1_enfant_centimes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "premiere_inscription_centimes": {
+          "name": "premiere_inscription_centimes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.grille_abcm": {
+      "name": "grille_abcm",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tranche": {
+          "name": "tranche",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valide_du": {
+          "name": "valide_du",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valide_au": {
+          "name": "valide_au",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cantine_total_centimes": {
+          "name": "cantine_total_centimes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cantine_part_garde_centimes": {
+          "name": "cantine_part_garde_centimes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "peri_matin_centimes": {
+          "name": "peri_matin_centimes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "peri_soir_centimes": {
+          "name": "peri_soir_centimes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "alsh_journee_complete_centimes": {
+          "name": "alsh_journee_complete_centimes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "alsh_demi_journee_centimes": {
+          "name": "alsh_demi_journee_centimes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "alsh_repas_centimes": {
+          "name": "alsh_repas_centimes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.jour_non_facturable": {
+      "name": "jour_non_facturable",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "jour": {
+          "name": "jour",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "varchar(40)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "libelle": {
+          "name": "libelle",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.outbox": {
+      "name": "outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "trace_id": {
+          "name": "trace_id",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "published_at": {
+          "name": "published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

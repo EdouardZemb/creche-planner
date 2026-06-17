@@ -1,0 +1,252 @@
+{
+  "id": null,
+  "uid": "creche-jetstream-nats",
+  "title": "Creche Planner — JetStream NATS",
+  "description": "Métriques JetStream scraped via nats-exporter (prometheus-nats-exporter). Consumer lag des durables tarification-foyer, tarification-referentiel, tarification-planification. Nécessite que nats-exporter soit démarré (voir docker-compose.yml).",
+  "tags": ["creche-planner", "nats", "jetstream", "lag"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Consumer lag — tarification-foyer",
+      "description": "Nombre de messages en attente d'ACK sur le consumer durable tarification-foyer (stream FOYER). Métrique : gnatsd_consumer_num_pending{consumer_name='tarification-foyer'}. Un lag qui croît signale un blocage du consumer.",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "gnatsd_consumer_num_pending{consumer_name=\"tarification-foyer\"}",
+          "legendFormat": "lag foyer",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Consumer lag — tarification-referentiel",
+      "description": "Nombre de messages en attente d'ACK sur le consumer durable tarification-referentiel (stream REFERENTIEL).",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "gnatsd_consumer_num_pending{consumer_name=\"tarification-referentiel\"}",
+          "legendFormat": "lag referentiel",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Consumer lag — tarification-planification",
+      "description": "Nombre de messages en attente d'ACK sur le consumer durable tarification-planification (stream PLANIFICATION).",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "gnatsd_consumer_num_pending{consumer_name=\"tarification-planification\"}",
+          "legendFormat": "lag planification",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Consumer lag — évolution temporelle (3 consumers)",
+      "description": "Évolution du lag (num_pending) des 3 consumers durables de tarification. Un lag stable ou décroissant est nominal. Un lag croissant déclenche l'alerte JetStreamLagCroissant.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "fillOpacity": 10 }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "gnatsd_consumer_num_pending{consumer_name=~\"tarification-.*\"}",
+          "legendFormat": "{{consumer_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Messages JetStream par stream — débit",
+      "description": "Nombre de messages publiés/s par stream (FOYER, REFERENTIEL, PLANIFICATION). Métrique : gnatsd_stream_msgs (nombre total, rate calculé). Indique l'activité des producteurs.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 1, "fillOpacity": 10 }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "rate(gnatsd_stream_msgs[2m])",
+          "legendFormat": "msgs/s — {{stream_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Messages redelivered (NAK + max_deliver)",
+      "description": "Nombre de re-livraisons par consumer. Un taux élevé de redeliveries signale des erreurs de projection répétées (circuit-breaker utile). Métrique : gnatsd_consumer_num_redelivered.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 1, "fillOpacity": 10 }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "rate(gnatsd_consumer_num_redelivered[2m])",
+          "legendFormat": "redeliveries/s — {{consumer_name}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Connexions NATS actives",
+      "description": "Nombre de connexions clientes actives au serveur NATS. Métrique : gnatsd_varz_connections.",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 1, "fillOpacity": 5 }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "gnatsd_varz_connections",
+          "legendFormat": "Connexions actives",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "NATS — UP",
+      "description": "Disponibilité du scrape nats-exporter. Si absent, les métriques NATS ne sont pas disponibles.",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "up{job=\"nats-exporter\"}",
+          "legendFormat": "nats-exporter UP",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "label": "Prometheus"
+      }
+    ]
+  }
+}

@@ -1,0 +1,175 @@
+# Override de PRODUCTION (serveur Linux dédié, réseau local).
+#
+# S'applique PAR-DESSUS docker-compose.yml (qui reste le profil dev/CI, inchangé) :
+#   docker compose --env-file .env.server \
+#     -f docker-compose.yml -f docker-compose.server.yml pull
+#   docker compose --env-file .env.server \
+#     -f docker-compose.yml -f docker-compose.server.yml up -d --wait
+#
+# CD réel (AUD-05, doc 25) — la prod CONSOMME les images publiées sur GHCR par la
+# CI (`ghcr.io/<owner>/creche-planner/<svc>:${IMAGE_TAG}`), elle ne les RECONSTRUIT
+# plus (`--build` supprimé → parité d'artefact : ce qui tourne = ce que la CI a
+# testé/scanné/signé). `image:` ci-dessous PRIME sur le `build:` du fichier de base
+# au merge Compose. Prérequis serveur : `docker login ghcr.io` (images privées) et
+# `IMAGE_TAG` dans .env.server (cf. .env.server.example). Vérif. signature cosign :
+# voir docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md §5 (porte 1bis).
+#
+# Ce que cet override apporte (cf. docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md) :
+#   - restart: unless-stopped sur TOUS les services (survie au reboot serveur) ;
+#   - secrets réels injectés depuis .env.server (mots de passe BDD, Grafana) ;
+#   - api-gateway durci : CORS restreint à l'origine du serveur, rate-limit prod (120/min) ;
+#   - Grafana : accès anonyme désactivé, mot de passe admin réel ;
+#   - reverse-proxy TLS (Caddy) : SEUL point d'entrée publié vers le LAN (80→443).
+#
+# IMPORTANT — exposition réseau : Compose CONCATÈNE les listes `ports` lors du merge ;
+# on ne peut donc PAS « retirer » ici les ports publiés par le fichier de base.
+# La fermeture de Postgres/NATS/observabilité au LAN est assurée par le PARE-FEU
+# (règles DOCKER-USER via ufw-docker) — voir la doc 24, étape pare-feu.
+# Seuls les ports du conteneur `caddy` (80/443) sont autorisés depuis le LAN.
+
+services:
+  # --- Infrastructure : secrets + redémarrage automatique --------------------
+  postgres-referentiel:
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${PG_REFERENTIEL_PWD:?defini .env.server}
+
+  postgres-foyer:
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${PG_FOYER_PWD:?defini .env.server}
+
+  postgres-planification:
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${PG_PLANIFICATION_PWD:?defini .env.server}
+
+  postgres-tarification:
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${PG_TARIFICATION_PWD:?defini .env.server}
+
+  nats:
+    restart: unless-stopped
+
+  # --- Observabilité ---------------------------------------------------------
+  otel-collector:
+    restart: unless-stopped
+
+  tempo:
+    restart: unless-stopped
+
+  prometheus:
+    restart: unless-stopped
+
+  alertmanager:
+    restart: unless-stopped
+
+  nats-exporter:
+    restart: unless-stopped
+
+  grafana:
+    restart: unless-stopped
+    environment:
+      # Durcissement : plus d'accès anonyme admin (profil dev), login requis.
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_AUTH_DISABLE_LOGIN_FORM: 'false'
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PWD:?defini .env.server}
+
+  # --- Services métier : secrets BDD + redémarrage ---------------------------
+  svc-referentiel:
+    image: ghcr.io/edouardzemb/creche-planner/svc-referentiel:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://referentiel:${PG_REFERENTIEL_PWD:?defini .env.server}@postgres-referentiel:5432/referentiel
+
+  svc-foyer:
+    image: ghcr.io/edouardzemb/creche-planner/svc-foyer:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://foyer:${PG_FOYER_PWD:?defini .env.server}@postgres-foyer:5432/foyer
+
+  svc-planification:
+    image: ghcr.io/edouardzemb/creche-planner/svc-planification:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://planification:${PG_PLANIFICATION_PWD:?defini .env.server}@postgres-planification:5432/planification
+
+  svc-tarification:
+    image: ghcr.io/edouardzemb/creche-planner/svc-tarification:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://tarification:${PG_TARIFICATION_PWD:?defini .env.server}@postgres-tarification:5432/tarification
+
+  # --- Gateway (BFF) : durcissement applicatif -------------------------------
+  api-gateway:
+    image: ghcr.io/edouardzemb/creche-planner/api-gateway:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      # Liste blanche CORS = l'origine publique du serveur (vs '*' en dev).
+      CORS_ORIGINS: ${SERVER_ORIGIN:?defini .env.server}
+      # Retour à la valeur de prod (le 100000 du base est un réglage E2E).
+      RATE_LIMIT_MAX: '120'
+      # Auth par jeton : VOLONTAIREMENT non défini. La gateway n'est pas joignable
+      # depuis le LAN (reverse-proxy + pare-feu) ; un token côté SPA fuiterait dans
+      # le bundle JS sans gain réseau. Décommenter SEULEMENT si la gateway devait
+      # un jour être exposée directement (et alors injecter le header côté nginx).
+      # GATEWAY_TOKEN: ${GATEWAY_TOKEN}
+      #
+      # Échappatoire EXPLICITE du garde-fou de démarrage (AQ-01, doc 27) : les
+      # images tournent avec NODE_ENV=production, et sans cette ligne la gateway
+      # REFUSE de démarrer quand GATEWAY_TOKEN est absent. La poser ici (fichier
+      # versionné) transforme le défaut implicite en décision tracée. La RETIRER
+      # le jour où GATEWAY_TOKEN est activé ci-dessus.
+      GATEWAY_AUTH_DISABLED: '1'
+
+  # --- Front : plus de port LAN direct (servi via Caddy) ---------------------
+  web:
+    image: ghcr.io/edouardzemb/creche-planner/web:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    # NB : le mapping 4200 du base subsiste (merge Compose) mais est BLOQUÉ au LAN
+    # par le pare-feu. Caddy joint `web` par le réseau Docker interne (web:80).
+
+  # --- Reverse-proxy TLS : SEUL point d'entrée du LAN ------------------------
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      # Domaine/host servi (ex. creche.lan ou l'IP du serveur). Voir .env.server.
+      SERVER_DOMAIN: ${SERVER_DOMAIN:?defini .env.server}
+      # Port HTTPS public (pour que la redirection 80->HTTPS vise le bon port même
+      # quand on publie sur un port non standard, ex. 8443).
+      CADDY_PUBLIC_HTTPS_PORT: ${CADDY_HTTPS_PORT:-443}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      # Ports publiés configurables (défaut 80/443). Sur un serveur où 443 est déjà
+      # occupé par un autre reverse-proxy, surcharger dans .env.server :
+      #   CADDY_HTTP_PORT=8080  /  CADDY_HTTPS_PORT=8443
+      - '${CADDY_HTTP_PORT:-80}:80'
+      - '${CADDY_HTTPS_PORT:-443}:443'
+    depends_on:
+      api-gateway:
+        condition: service_started
+
+  # --- Tunnel Cloudflare : exposition PUBLIQUE sans port ouvert --------------
+  # Connexion SORTANTE vers le réseau Cloudflare : aucun port entrant à ouvrir,
+  # IP publique masquée. Le mapping « hostname public -> http://web:80 » ET la
+  # politique d'authentification (Cloudflare Access) se configurent dans le
+  # tableau de bord Zero Trust ; ce conteneur n'a besoin que du jeton du tunnel.
+  # Il atteint le front par le réseau Docker interne (service `web`, port 80).
+  # NB : à épingler par digest pour une pile reproductible (cf. images observa.).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?defini .env.server}
+    depends_on:
+      web:
+        condition: service_started
+
+volumes:
+  caddy-data:
+  caddy-config:

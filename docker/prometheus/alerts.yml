@@ -1,0 +1,155 @@
+groups:
+  # ---------------------------------------------------------------------------
+  # Groupe 1 : Disponibilité des cibles Prometheus
+  # Sources : métriques up{} natives Prometheus (tous jobs scrappés)
+  # ---------------------------------------------------------------------------
+  - name: disponibilite
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Cible Prometheus hors ligne : {{ $labels.job }} / {{ $labels.instance }}'
+          description: >
+            La cible {{ $labels.instance }} (job {{ $labels.job }}) est inaccessible
+            depuis plus d'1 minute (up = 0). Vérifiez que le service est démarré et
+            que le port est accessible depuis le réseau Docker.
+
+  # ---------------------------------------------------------------------------
+  # Groupe 2 : Collecteur OpenTelemetry
+  # Sources : métriques otelcol_* exposées sur otel-collector:8888
+  # ---------------------------------------------------------------------------
+  - name: otel-collector
+    interval: 30s
+    rules:
+      - alert: OtelCollectorSpansDrops
+        expr: >
+          rate(otelcol_exporter_enqueue_failed_spans_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'OTel Collector — spans perdus (queue saturée)'
+          description: >
+            Le collecteur OTel perd des spans (file d'attente de l'exporter pleine).
+            Exporter : {{ $labels.exporter }}. Taux actuel : {{ $value | humanize }}/s.
+            Causes possibles : Tempo indisponible, débit trop élevé, mémoire insuffisante.
+
+      - alert: OtelCollectorReceiverRefusedSpans
+        expr: >
+          rate(otelcol_receiver_refused_spans_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'OTel Collector — spans refusés par le receiver'
+          description: >
+            Le receiver {{ $labels.receiver }} du collecteur OTel refuse des spans.
+            Taux actuel : {{ $value | humanize }}/s. Vérifiez la configuration du receiver
+            et la charge réseau.
+
+  # ---------------------------------------------------------------------------
+  # Groupe 3 : JetStream NATS — Consumer lag
+  # Sources : métriques gnatsd_* exposées via prometheus-nats-exporter (job nats-exporter)
+  # PRÉREQUIS : nats-exporter doit être actif dans docker-compose.yml
+  # ---------------------------------------------------------------------------
+  - name: jetstream-lag
+    interval: 30s
+    rules:
+      - alert: JetStreamLagCroissant
+        expr: >
+          increase(gnatsd_consumer_num_pending{consumer_name=~"tarification-.*"}[5m]) > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'JetStream — lag croissant sur {{ $labels.consumer_name }}'
+          description: >
+            Le consumer durable {{ $labels.consumer_name }} (stream {{ $labels.stream_name }})
+            accumule des messages non traités : {{ $value }} messages supplémentaires en 5 min.
+            Lag actuel : {{ $value }}. Vérifiez que svc-tarification est opérationnel et
+            que la projection ne boucle pas en NAK.
+
+      - alert: JetStreamLagCritique
+        expr: >
+          gnatsd_consumer_num_pending{consumer_name=~"tarification-.*"} > 5000
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'JetStream — lag critique sur {{ $labels.consumer_name }}'
+          description: >
+            Le consumer durable {{ $labels.consumer_name }} dépasse 5000 messages en attente.
+            Cela indique un arrêt prolongé de svc-tarification ou une boucle de re-livraison
+            non résolue. Lag actuel : {{ $value }}.
+
+      - alert: JetStreamRedeliveriesElevees
+        expr: >
+          rate(gnatsd_consumer_num_redelivered{consumer_name=~"tarification-.*"}[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'JetStream — re-livraisons élevées sur {{ $labels.consumer_name }}'
+          description: >
+            Le consumer {{ $labels.consumer_name }} enregistre un taux de re-livraisons
+            élevé ({{ $value | humanize }}/s). Cela suggère des erreurs répétées de projection
+            (ex. contrainte DB, service référentiel manquant). Vérifiez les logs de svc-tarification.
+
+      - alert: NatsExporterDown
+        expr: up{job="nats-exporter"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'nats-exporter hors ligne — métriques JetStream indisponibles'
+          description: >
+            Le prometheus-nats-exporter est inaccessible depuis 2 minutes.
+            Les métriques JetStream (consumer lag, messages) ne sont plus disponibles.
+            Vérifiez le service nats-exporter dans docker-compose.yml.
+
+  # ---------------------------------------------------------------------------
+  # Groupe 4 : Repli synchrone tarif→planif (DEC-05, couplage runtime résiduel)
+  # Source : compteur applicatif tarification_repli_planification_total exporté
+  #          par svc-tarification via OTel Metrics → OTel Collector → Prometheus.
+  # PRÉREQUIS : pipeline métriques OTel câblé (MeterProvider + exporter OTLP côté
+  #             service, pipeline metrics + exporter prometheus côté collecteur,
+  #             et scrape de cet exporter). Voir observabilite.md (besoins d'intégration).
+  # Le repli est un couplage ASSUMÉ (ADR-0004) : il doit rester EXCEPTIONNEL.
+  # ---------------------------------------------------------------------------
+  - name: repli-synchrone
+    interval: 30s
+    rules:
+      - alert: RepliPlanificationFrequent
+        expr: >
+          sum(rate(tarification_repli_planification_total[5m])) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Repli synchrone tarif→planif trop fréquent (read model froid)'
+          description: >
+            svc-tarification interroge svc-planification en HTTP synchrone
+            (repli sur read model froid) à un rythme soutenu :
+            {{ $value | humanize }} repli/s sur 5 min (seuil 0,2/s pendant 10 min).
+            Ce couplage runtime doit rester exceptionnel (ADR-0004 / DEC-05).
+            Causes probables : consumer de projection en retard/bloqué (voir lag JetStream),
+            réindexation incomplète, ou pic de simulations sur des contrats non projetés.
+
+      - alert: RepliPlanificationCritique
+        expr: >
+          sum(rate(tarification_repli_planification_total[5m])) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Repli synchrone tarif→planif massif — read model probablement HS'
+          description: >
+            Le taux de replis synchrones tarif→planif dépasse 1/s sur 5 min
+            ({{ $value | humanize }} repli/s). Le read model de tarification est
+            vraisemblablement froid à grande échelle (consumer arrêté, base purgée).
+            Le couplage runtime résiduel devient un chemin nominal : investiguer en
+            priorité (lag JetStream, santé de svc-tarification, projection.service).

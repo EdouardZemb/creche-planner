@@ -1,0 +1,17 @@
+# ===========================================================================
+# creche-backup.timer — Planifie la sauvegarde quotidienne creche-planner
+# ---------------------------------------------------------------------------
+# Déclenche creche-backup.service chaque jour à 02:00. Persistent=true
+# rattrape une exécution manquée (serveur éteint à l'heure prévue).
+# ===========================================================================
+[Unit]
+Description=Planification quotidienne de la sauvegarde creche-planner
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=creche-backup.service
+
+[Install]
+WantedBy=timers.target

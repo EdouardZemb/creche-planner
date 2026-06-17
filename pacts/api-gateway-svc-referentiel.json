@@ -1,0 +1,81 @@
+{
+  "consumer": {
+    "name": "api-gateway"
+  },
+  "interactions": [
+    {
+      "description": "une lecture de la grille cantine applicable (T3, 2026)",
+      "providerStates": [
+        {
+          "name": "une grille ABCM T3 applicable en 2026 existe"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/grilles/applicable",
+        "query": {
+          "date": [
+            "2026-09-15"
+          ],
+          "mode": [
+            "CANTINE"
+          ],
+          "tranche": [
+            "3"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "mode": "CANTINE",
+          "partGardeCentimes": 801,
+          "totalCentimes": 1268,
+          "tranche": 3,
+          "valideAu": null,
+          "valideDu": "2026-01-01"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.partGardeCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.totalCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-js": {
+      "version": "13.2.0"
+    },
+    "pactRust": {
+      "ffi": "0.4.22",
+      "models": "1.2.3"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "svc-referentiel"
+  }
+}

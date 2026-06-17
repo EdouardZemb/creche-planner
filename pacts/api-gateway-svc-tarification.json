@@ -1,0 +1,191 @@
+{
+  "consumer": {
+    "name": "api-gateway"
+  },
+  "interactions": [
+    {
+      "description": "une lecture du coût consolidé du mois (réel)",
+      "providerStates": [
+        {
+          "name": "un foyer avec des prestations cantine en octobre 2026 existe"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/couts",
+        "query": {
+          "foyer": [
+            "22222222-2222-2222-2222-222222222222"
+          ],
+          "mois": [
+            "2026-10"
+          ],
+          "simule": [
+            "false"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "foyerId": "22222222-2222-2222-2222-222222222222",
+          "lignes": [
+            {
+              "libelle": "Cantine",
+              "montantCentimes": 20288,
+              "sens": "debit"
+            }
+          ],
+          "mois": "2026-10",
+          "prestations": [
+            {
+              "enfant": "Zoé",
+              "lignes": [
+                {
+                  "libelle": "Cantine",
+                  "montantCentimes": 20288,
+                  "sens": "debit"
+                }
+              ],
+              "mode": "CANTINE",
+              "totalCentimes": 20288
+            }
+          ],
+          "simule": false,
+          "totalCentimes": 20288
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.lignes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.lignes[*].libelle": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.lignes[*].montantCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.lignes[*].sens": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.prestations": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.prestations[*].enfant": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.prestations[*].lignes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.prestations[*].lignes[*].libelle": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.prestations[*].lignes[*].montantCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.prestations[*].lignes[*].sens": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.prestations[*].mode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.prestations[*].totalCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.totalCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-js": {
+      "version": "13.2.0"
+    },
+    "pactRust": {
+      "ffi": "0.4.22",
+      "models": "1.2.3"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "svc-tarification"
+  }
+}

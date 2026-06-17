@@ -1,0 +1,165 @@
+{
+  "id": null,
+  "uid": "creche-repli-synchrone",
+  "title": "Creche Planner — Repli synchrone tarif→planif (DEC-05)",
+  "description": "Observabilité du couplage runtime résiduel ASSUMÉ (ADR-0004) : svc-tarification interroge svc-planification en HTTP synchrone quand le read model est froid. Métrique applicative tarification_repli_planification_total (OTel → collecteur → Prometheus). Objectif : vérifier que ce repli reste EXCEPTIONNEL. Nécessite le pipeline métriques OTel câblé (voir observabilite.md).",
+  "tags": ["creche-planner", "decouplage", "repli", "couplage", "dec-05"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Replis tarif→planif — total cumulé",
+      "description": "Nombre total de replis synchrones depuis le démarrage des services. Métrique : tarification_repli_planification_total. Une valeur qui n'augmente plus dans le temps est le régime nominal attendu (read model chaud).",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(tarification_repli_planification_total)",
+          "legendFormat": "replis (total)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Fréquence de repli (5 min)",
+      "description": "Taux de replis par seconde, moyenné sur 5 min : sum(rate(tarification_repli_planification_total[5m])). Vert = exceptionnel. Jaune (>0,2/s) déclenche RepliPlanificationFrequent. Rouge (>1/s) déclenche RepliPlanificationCritique.",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.2 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(tarification_repli_planification_total[5m]))",
+          "legendFormat": "replis/s",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Replis sur la dernière heure",
+      "description": "Nombre de replis effectifs sur 1h : sum(increase(tarification_repli_planification_total[1h])). Indicateur d'usage récent du couplage synchrone.",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 100 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(tarification_repli_planification_total[1h]))",
+          "legendFormat": "replis (1h)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Fréquence de repli — évolution (réel vs simulé)",
+      "description": "Taux de replis/s ventilé par tag simule (true = simulation, false = coût réel). Des pics corrélés au lag JetStream (dashboard 03) indiquent un consumer de projection en retard. Les seuils d'alerte (0,2/s warning, 1/s critique) sont matérialisés.",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.2 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (simule) (rate(tarification_repli_planification_total[5m]))",
+          "legendFormat": "repli/s — simule={{simule}}",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "label": "Prometheus"
+      }
+    ]
+  }
+}

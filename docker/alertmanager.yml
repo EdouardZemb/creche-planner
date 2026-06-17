@@ -1,0 +1,50 @@
+# Configuration Alertmanager (P2-3, doc 18 §8).
+#
+# Reçoit les alertes « firing » de Prometheus (cf. docker/prometheus.yml, section
+# `alerting`) et les groupe / déduplique. En contexte solo, AUCUN canal de
+# notification externe n'est configuré par défaut : les alertes sont visibles dans
+# l'UI Alertmanager (http://localhost:9093) et le pipeline est ainsi OPÉRANT et
+# vérifiable. Pour notifier réellement, décommenter un receiver (Slack/email) et le
+# référencer dans la route.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  # Groupe les alertes par nom + sévérité pour éviter le bruit.
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: 'defaut'
+  routes:
+    # Les alertes critiques sont notifiées plus vite (et pourraient cibler un canal
+    # dédié une fois un receiver réel configuré).
+    - matchers:
+        - severity = critical
+      receiver: 'defaut'
+      group_wait: 10s
+      repeat_interval: 1h
+
+receivers:
+  # Receiver « puits » : sans notifier, les alertes restent visibles dans l'UI
+  # Alertmanager sans être poussées ailleurs. Suffit à rendre le pipeline opérant.
+  - name: 'defaut'
+    # Exemple de notification Slack (à activer en fournissant l'URL du webhook) :
+    # slack_configs:
+    #   - api_url: 'https://hooks.slack.com/services/XXXX/YYYY/ZZZZ'
+    #     channel: '#alertes-creche-planner'
+    #     send_resolved: true
+    # Exemple de notification e-mail (nécessite la section global.smtp_*) :
+    # email_configs:
+    #   - to: 'ops@example.com'
+    #     send_resolved: true
+
+# Inhibition : une alerte critique masque la version « warning » de la même alerte
+# sur la même cible (évite la double notification).
+inhibit_rules:
+  - source_matchers:
+      - severity = critical
+    target_matchers:
+      - severity = warning
+    equal: ['alertname', 'consumer_name', 'instance']

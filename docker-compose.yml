@@ -1,0 +1,299 @@
+# Pile locale complète du walking skeleton (Phase 1).
+# `docker compose up --build` lève : infra (Postgres dédié + NATS JetStream),
+# observabilité (collecteur OTel → Tempo + Prometheus + Grafana) et les 2 services.
+name: creche-planner
+
+services:
+  # --- Infrastructure ------------------------------------------------------
+  postgres-referentiel:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: referentiel
+      POSTGRES_PASSWORD: referentiel
+      POSTGRES_DB: referentiel
+    volumes:
+      - pg-referentiel:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U referentiel -d referentiel']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres-foyer:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: foyer
+      POSTGRES_PASSWORD: foyer
+      POSTGRES_DB: foyer
+    volumes:
+      - pg-foyer:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U foyer -d foyer']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres-planification:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: planification
+      POSTGRES_PASSWORD: planification
+      POSTGRES_DB: planification
+    volumes:
+      - pg-planification:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U planification -d planification']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres-tarification:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tarification
+      POSTGRES_PASSWORD: tarification
+      POSTGRES_DB: tarification
+    volumes:
+      - pg-tarification:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tarification -d tarification']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  nats:
+    image: nats:2.10-alpine
+    command: ['-js', '-m', '8222']
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O- http://127.0.0.1:8222/healthz || exit 1']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # --- Observabilité -------------------------------------------------------
+  otel-collector:
+    # P2-8 (doc 18) — épinglé par digest (= v0.153.0) pour une pile reproductible.
+    image: otel/opentelemetry-collector-contrib@sha256:93aad750175cbf1a973ae1c5886c3371f4d800f61be25cdd26870b8441ffe9fa
+    command: ['--config=/etc/otel/config.yaml']
+    volumes:
+      - ./docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    depends_on:
+      - tempo
+
+  tempo:
+    # P2-8 — épinglé par digest (= tempo v3.0.0) pour une pile reproductible.
+    image: grafana/tempo@sha256:a5b8cc916da6cd934ac12c0569e2cc743b2886243ead6a41e06437ce8c480a8d
+    command: ['-config.file=/etc/tempo/tempo.yaml']
+    volumes:
+      - ./docker/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+
+  prometheus:
+    # P2-8 — épinglé par digest (= v3.12.0) pour une pile reproductible.
+    image: prom/prometheus@sha256:69f5241418838263316593f7274a304b095c40bcf22e57272865da91bd60a8ac
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Règles d'alerte montées dans un sous-dossier dédié.
+      - ./docker/prometheus:/etc/prometheus/alerts:ro
+    depends_on:
+      - otel-collector
+      - nats-exporter
+      - alertmanager
+
+  # Alertmanager (P2-3, doc 18) — reçoit les alertes « firing » de Prometheus,
+  # les groupe/déduplique et (une fois un receiver configuré) les notifie. Rend
+  # OPÉRANT le pipeline d'alerte défini dans docker/prometheus/alerts.yml. UI :9093.
+  alertmanager:
+    # Épinglé par digest (= v0.32.2) pour une pile reproductible (cf. P2-8).
+    image: prom/alertmanager@sha256:b85533a2eb45865835315810315f6951331b2dbc8c93a6cf9a51e156a006a706
+    command: ['--config.file=/etc/alertmanager/alertmanager.yml']
+    volumes:
+      - ./docker/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+
+  # Exporte les métriques NATS/JetStream au format Prometheus.
+  # Scrape l'API monitoring NATS (http://nats:8222) et expose :7777/metrics.
+  # Permet les alertes sur consumer lag et la visualisation dans Grafana.
+  nats-exporter:
+    # P2-8 — épinglé par digest (= v0.20.1) pour une pile reproductible.
+    image: natsio/prometheus-nats-exporter@sha256:4fbf6dacb84780a45a1c3af9b1080c69451a288d20902deae671b80717bb8f61
+    command:
+      - '-connz'
+      - '-varz'
+      - '-jsz=all'
+      - 'http://nats:8222'
+    depends_on:
+      nats:
+        condition: service_healthy
+
+  grafana:
+    # P2-8 — épinglé par digest (= v13.0.2) pour une pile reproductible.
+    image: grafana/grafana@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      # Dashboards JSON provisionnés automatiquement au démarrage.
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - tempo
+      - prometheus
+
+  # --- Services métier -----------------------------------------------------
+  svc-referentiel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP: svc-referentiel
+    environment:
+      PORT: '3001'
+      DATABASE_URL: postgres://referentiel:referentiel@postgres-referentiel:5432/referentiel
+      NATS_URL: nats://nats:4222
+      OTEL_SERVICE_NAME: svc-referentiel
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      postgres-referentiel:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  svc-foyer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP: svc-foyer
+    environment:
+      PORT: '3002'
+      DATABASE_URL: postgres://foyer:foyer@postgres-foyer:5432/foyer
+      NATS_URL: nats://nats:4222
+      OTEL_SERVICE_NAME: svc-foyer
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      postgres-foyer:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  svc-planification:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP: svc-planification
+    environment:
+      PORT: '3004'
+      DATABASE_URL: postgres://planification:planification@postgres-planification:5432/planification
+      NATS_URL: nats://nats:4222
+      REFERENTIEL_URL: http://svc-referentiel:3001
+      OTEL_SERVICE_NAME: svc-planification
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      postgres-planification:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  svc-tarification:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP: svc-tarification
+    environment:
+      PORT: '3005'
+      DATABASE_URL: postgres://tarification:tarification@postgres-tarification:5432/tarification
+      NATS_URL: nats://nats:4222
+      REFERENTIEL_URL: http://svc-referentiel:3001
+      FOYER_URL: http://svc-foyer:3002
+      PLANIFICATION_URL: http://svc-planification:3004
+      OTEL_SERVICE_NAME: svc-tarification
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      postgres-tarification:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP: api-gateway
+    environment:
+      PORT: '3000'
+      REFERENTIEL_URL: http://svc-referentiel:3001
+      FOYER_URL: http://svc-foyer:3002
+      PLANIFICATION_URL: http://svc-planification:3004
+      TARIFICATION_URL: http://svc-tarification:3005
+      # Auth désactivée par défaut dans la pile locale (pas de GATEWAY_TOKEN) ;
+      # CORS reflète toutes les origines tant que CORS_ORIGINS n'est pas défini.
+      # L'image embarque NODE_ENV=production (Dockerfile) : le garde-fou AQ-01
+      # (doc 27) exige donc l'échappatoire EXPLICITE pour démarrer sans jeton,
+      # y compris dans la pile locale/CI. La retirer si un jeton est fourni.
+      GATEWAY_AUTH_DISABLED: '1'
+      # Rate-limit relevé pour la pile locale/E2E : toute la suite tape depuis la
+      # même IP (proxy nginx) en quelques dizaines de secondes et saturerait la
+      # valeur de prod (120/min). N'affecte PAS la prod (déployée hors compose).
+      RATE_LIMIT_MAX: '100000'
+      OTEL_SERVICE_NAME: api-gateway
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    healthcheck:
+      # Liveness HTTP (endpoint /api/health/live, SANS dépendance externe) :
+      # garantit que le serveur gateway SERT réellement avant que `up --wait` (et
+      # `web`) ne le considèrent prêt — corrige la course « curl (52) Empty reply »
+      # du smoke (AUD-01, doc 25). `node` est le runtime de l'image node:24-slim
+      # (fetch global ≥ Node 18 ; ni curl ni wget présents dans l'image).
+      test:
+        - CMD
+        - node
+        - '-e'
+        - "fetch('http://127.0.0.1:3000/api/health/live').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    depends_on:
+      svc-referentiel:
+        condition: service_started
+      svc-foyer:
+        condition: service_started
+      svc-planification:
+        condition: service_started
+      svc-tarification:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+  # --- Front web (Phase 8) -------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    # nginx sert la SPA et proxifie /api vers api-gateway (même origine, pas de CORS).
+    # Base URL par défaut '/api' → aucune variable VITE_ à injecter au build.
+    depends_on:
+      api-gateway:
+        # Attendre que la gateway soit réellement prête (healthcheck liveness)
+        # et pas seulement démarrée, pour ne pas proxifier vers un serveur muet.
+        condition: service_healthy
+
+volumes:
+  pg-referentiel:
+  pg-foyer:
+  pg-planification:
+  pg-tarification:
+  tempo-data:
+  grafana-data:

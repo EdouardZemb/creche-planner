@@ -1,0 +1,36 @@
+{
+  "name": "@creche-planner/nest-commons",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "@creche-planner/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "nx": {
+    "name": "nest-commons",
+    "tags": [
+      "type:infrastructure",
+      "context:shared"
+    ]
+  },
+  "dependencies": {
+    "@creche-planner/shared-kernel": "workspace:*",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/terminus": "^11.0.0",
+    "@opentelemetry/api": "^1.9.0",
+    "drizzle-orm": "^0.45.2",
+    "nats": "^2.29.3",
+    "postgres": "^3.4.9",
+    "reflect-metadata": "^0.1.13",
+    "tslib": "^2.3.0"
+  }
+}

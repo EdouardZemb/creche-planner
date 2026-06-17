@@ -1,0 +1,14 @@
+# Les contrats Pact sont generes par pact-js en LF sans newline final : figer EOL=LF
+# evite que l'autocrlf de Windows ne reporte le fichier comme modifie a chaque test.
+/pacts/** text eol=lf
+
+# Types generes par openapi-typescript (AQ-10) : ecrits en LF par le script et
+# compares a l'octet pres en CI (openapi-types-drift) — figer EOL=LF pour que la
+# regeneration reproduise exactement le fichier suivi, y compris sous Windows.
+*.gen.ts text eol=lf
+
+# Scripts shell et unites systemd : executes sous Linux (serveur de prod).
+# Figer EOL=LF — un CRLF casserait le shebang / les commandes cote serveur.
+*.sh text eol=lf
+scripts/systemd/*.service text eol=lf
+scripts/systemd/*.timer text eol=lf

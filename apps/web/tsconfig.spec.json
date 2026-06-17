@@ -1,0 +1,38 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
+    "noEmit": true,
+    "outDir": "./out-tsc/vitest",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2022",
+    "lib": ["es2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "useDefineForClassFields": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "types": [
+      "vitest/globals",
+      "vitest/importMeta",
+      "vite/client",
+      "node",
+      "@testing-library/jest-dom"
+    ]
+  },
+  // vite.config.mts / vitest.config.mts exclus du typecheck : le store pnpm
+  // contient deux instances de vite@6.4.3 (jeux de peers différents) dont les
+  // types Plugin sont incompatibles entre eux (TS2769) — contrainte
+  // structurelle, ces fichiers sont de toute façon exécutés à chaque run.
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx",
+    "src/test-setup.ts",
+    "src/**/*.d.ts"
+  ]
+}

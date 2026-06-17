@@ -1,0 +1,87 @@
+{
+  "id": null,
+  "uid": "creche-latence-traces",
+  "title": "Creche Planner — Latence & Traces",
+  "description": "Exploration des traces distribuées via Tempo. Permet d'analyser la latence end-to-end et par service (api-gateway, svc-referentiel, svc-foyer, svc-planification, svc-tarification).",
+  "tags": ["creche-planner", "traces", "latence"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Comment utiliser ce dashboard",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "## Traces distribuées — Creche Planner\n\nCe dashboard s'appuie sur **Tempo** (backend de traces) alimenté via le collecteur OTel.\n\n- Utilisez le panneau **Traces par service** pour explorer les spans par `service.name`.\n- Filtrez par `http.route`, `http.status_code`, ou `error=true` pour isoler les erreurs.\n- Les `trace_id` apparaissent dans les logs pino des services (champ `trace_id`) — corrélation logs ↔ traces possible.\n- **Source des données** : spans OTLP envoyés par les services NestJS → collecteur → Tempo.\n\n> Note : les métriques RED (Rate/Errors/Duration) par service nécessitent l'activation du **metrics generator** de Tempo (span-metrics pipeline). Voir les TODO dans `docs/exploitation/observabilite.md`."
+      }
+    },
+    {
+      "id": 2,
+      "type": "traces",
+      "title": "Explorateur de traces — api-gateway",
+      "description": "Traces entrantes sur l'api-gateway. Filtrer par http.status_code >= 500 pour isoler les erreurs.",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 4 },
+      "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
+      "targets": [
+        {
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"api-gateway\" }",
+          "limit": 20,
+          "refId": "A"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 3,
+      "type": "traces",
+      "title": "Explorateur de traces — svc-tarification (consumers JetStream)",
+      "description": "Traces du service tarification, incluant les spans des consumers JetStream (FOYER, REFERENTIEL, PLANIFICATION).",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
+      "targets": [
+        {
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"svc-tarification\" }",
+          "limit": 20,
+          "refId": "A"
+        }
+      ],
+      "options": {}
+    },
+    {
+      "id": 4,
+      "type": "traces",
+      "title": "Explorateur de traces — erreurs toutes opérations",
+      "description": "Toutes les spans marquées error=true, tous services confondus. Point d'entrée pour le triage des incidents.",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 28 },
+      "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
+      "targets": [
+        {
+          "queryType": "traceql",
+          "query": "{ status = error }",
+          "limit": 20,
+          "refId": "A"
+        }
+      ],
+      "options": {}
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_TEMPO",
+        "type": "datasource",
+        "query": "tempo",
+        "current": {},
+        "hide": 0,
+        "label": "Tempo"
+      }
+    ]
+  }
+}

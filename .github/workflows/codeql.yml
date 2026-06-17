@@ -1,0 +1,55 @@
+# CodeQL — analyse statique de sécurité (SAST) du code TS/JS (doc 18 §8, action P1-6).
+# Volet « SAST » de la chaîne sécurité, en complément du SCA (`pnpm audit` dans ci.yml)
+# et de Dependabot.
+#
+# ⚠️ EN PAUSE (2026-06-10, décision plan doc 25). L'analyse s'exécute correctement
+# mais l'UPLOAD des résultats (code scanning) échoue avec « Code scanning is not
+# enabled for this repository » : GitHub Advanced Security est INDISPONIBLE sur un
+# dépôt PRIVÉ en plan GRATUIT. Ce job rougissait donc `main` à chaque push sans
+# apporter de valeur. On retire les déclencheurs automatiques (push/PR/schedule) et
+# on ne garde que `workflow_dispatch` (lancement manuel) pour ne plus bloquer la CI.
+#
+# POUR RÉ-ACTIVER (quand le dépôt devient public OU que GHAS est acquis) : restaurer
+# le bloc `on:` ci-dessous (push main + pull_request + schedule hebdo). La concurrency
+# et le job d'analyse sont conservés intacts, prêts à resservir.
+name: CodeQL
+
+on:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  # pull_request:
+  # schedule:
+  #   - cron: '0 3 * * 1' # lundi 03:00 UTC
+
+# Annule les runs obsolètes sur une même PR (pushes rapprochés). Le `group` inclut
+# `event_name` pour que les runs `pull_request`, `push` et le passage hebdomadaire
+# `schedule` ne s'annulent JAMAIS entre eux ; on ne pré-annule que sur PR.
+concurrency:
+  group: codeql-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyse CodeQL (javascript-typescript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Initialiser CodeQL
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          languages: javascript-typescript
+          # `security-and-quality` ajoute des requêtes de qualité aux requêtes de sécurité.
+          queries: security-and-quality
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          category: '/language:javascript-typescript'

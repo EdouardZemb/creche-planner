@@ -1,0 +1,85 @@
+# Override de DÉVELOPPEMENT — publication des ports sur l'hôte.
+#
+# Chargé AUTOMATIQUEMENT par `docker compose` quand aucun `-f` n'est passé
+# (dev local, e2e/smoke en CI). Il N'EST PAS chargé en production, qui invoque
+# explicitement `-f docker-compose.yml -f docker-compose.server.yml` : la prod
+# ne publie donc QUE les ports de Caddy (override serveur), tout le reste
+# (Postgres, NATS, observabilité, services, web) reste interne au réseau Docker.
+#
+# => But sécurité : ne plus exposer les bases/observabilité au LAN en prod,
+#    tout en gardant les ports accessibles en local (localhost) pour le debug
+#    et les tests E2E/smoke qui tapent sur les ports hôte.
+name: creche-planner
+
+services:
+  postgres-referentiel:
+    ports:
+      - '5433:5432'
+
+  postgres-foyer:
+    ports:
+      - '5434:5432'
+
+  postgres-planification:
+    ports:
+      - '5435:5432'
+
+  postgres-tarification:
+    ports:
+      - '5436:5432'
+
+  nats:
+    ports:
+      - '4222:4222'
+      - '8222:8222'
+
+  otel-collector:
+    ports:
+      - '4317:4317'
+      - '4318:4318'
+      - '8888:8888'
+      - '8889:8889'
+
+  tempo:
+    ports:
+      - '3200:3200'
+
+  prometheus:
+    ports:
+      - '9090:9090'
+
+  alertmanager:
+    ports:
+      - '9093:9093'
+
+  nats-exporter:
+    ports:
+      - '7777:7777'
+
+  grafana:
+    ports:
+      - '3003:3000'
+
+  svc-referentiel:
+    ports:
+      - '3001:3001'
+
+  svc-foyer:
+    ports:
+      - '3002:3002'
+
+  svc-planification:
+    ports:
+      - '3004:3004'
+
+  svc-tarification:
+    ports:
+      - '3005:3005'
+
+  api-gateway:
+    ports:
+      - '3000:3000'
+
+  web:
+    ports:
+      - '4200:80'

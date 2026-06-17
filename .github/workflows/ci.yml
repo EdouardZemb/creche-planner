@@ -1,0 +1,783 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  actions: read
+  contents: read
+
+# Annule les runs obsolètes sur une même branche/PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Bases Postgres éphémères pour les vérifications de contrat Pact (providers
+    # svc-foyer, svc-referentiel, svc-planification et svc-tarification).
+    services:
+      postgres-foyer:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: foyer
+          POSTGRES_PASSWORD: foyer
+          POSTGRES_DB: foyer
+        ports:
+          - '5434:5432'
+        options: >-
+          --health-cmd "pg_isready -U foyer -d foyer"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      postgres-referentiel:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: referentiel
+          POSTGRES_PASSWORD: referentiel
+          POSTGRES_DB: referentiel
+        ports:
+          - '5433:5432'
+        options: >-
+          --health-cmd "pg_isready -U referentiel -d referentiel"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      postgres-planification:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: planification
+          POSTGRES_PASSWORD: planification
+          POSTGRES_DB: planification
+        ports:
+          - '5435:5432'
+        options: >-
+          --health-cmd "pg_isready -U planification -d planification"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      postgres-tarification:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tarification
+          POSTGRES_PASSWORD: tarification
+          POSTGRES_DB: tarification
+        ports:
+          - '5436:5432'
+        options: >-
+          --health-cmd "pg_isready -U tarification -d tarification"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # Consommées par les vérifications Pact provider (apps/svc-foyer,
+      # apps/svc-referentiel, apps/svc-planification, apps/svc-tarification). `CI`
+      # est positionné automatiquement par GitHub Actions → vérifications bloquantes.
+      DATABASE_URL: postgres://foyer:foyer@localhost:5434/foyer
+      REFERENTIEL_DATABASE_URL: postgres://referentiel:referentiel@localhost:5433/referentiel
+      PLANIFICATION_DATABASE_URL: postgres://planification:planification@localhost:5435/planification
+      TARIFICATION_DATABASE_URL: postgres://tarification:tarification@localhost:5436/tarification
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Historique complet requis pour `nx affected` (calcul de la base).
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # AUD-13 (doc 25) — CACHE NX LOCAL. `nx affected` recalculait lint/typecheck/
+      # test/build À FROID à chaque run. On persiste `.nx/cache` entre exécutions :
+      # la clé inclut le SHA (sauvegarde fraîche par run) ; `restore-keys` rattache
+      # le cache le plus récent du même OS → réutilisation des artefacts inchangés.
+      # Pinné SHA (AUD-02). Posé sur le job `ci` (le plus lourd) ; les autres jobs
+      # nx (affected-images, e2e-web) restent à froid (moindre gain, clés en conflit).
+      - name: Cache Nx
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'nx.json') }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'nx.json') }}-
+            nx-${{ runner.os }}-
+
+      # Positionne NX_BASE / NX_HEAD pour `nx affected` (push et PR).
+      - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+
+      - name: Format check
+        run: pnpm nx format:check
+
+      - name: Lint · type-check · test · build (affected)
+        run: pnpm nx affected -t lint typecheck test build --parallel=3
+
+      # P1-2 (doc 18 §8) — publier les MÉTRIQUES de test, pas seulement le vert/rouge.
+      # Les reporters JUnit + couverture lcov/json-summary sont activés en CI par les
+      # vitest.config.mts (gardés par `process.env.CI`). On agrège un résumé lisible
+      # dans l'onglet de run (GITHUB_STEP_SUMMARY) et on archive les rapports bruts.
+      - name: Résumé des métriques de test (GITHUB_STEP_SUMMARY)
+        if: always()
+        run: node .github/workflows/scripts/test-summary.mjs
+
+      # AQ-06 (doc 27) — rétention LONGUE (90 j, max plan gratuit) : ces artefacts
+      # sont la série temporelle des métriques (couverture, durées, flakiness).
+      - name: Publier les rapports de test (JUnit + couverture)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-reports
+          path: |
+            **/test-output/vitest/junit.xml
+            **/test-output/vitest/coverage/lcov.info
+            **/test-output/vitest/coverage/coverage-summary.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+      # AQ-06 (doc 27) — GARDE ANTI-RÉGRESSION DE COUVERTURE. La couverture était
+      # calculée à chaque run mais jamais COMPARÉE dans le temps : un abaissement
+      # silencieux (seuil retiré, exclusion élargie) passerait inaperçu. La baseline
+      # est l'artefact `coverage-baseline` publié par le dernier run `main` (rolling :
+      # fusion projet par projet au fil des runs affectés). Téléchargement TOLÉRANT :
+      # premier run ou artefact expiré (90 j sans push main) → comparaison sautée.
+      - name: Télécharger la baseline de couverture (dernier run main)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ART_ID=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=coverage-baseline&per_page=100" \
+            --jq '[.artifacts[] | select(.workflow_run.head_branch == "main" and (.expired | not))][0].id // empty')
+          if [ -z "$ART_ID" ]; then
+            echo "Aucune baseline de couverture disponible (premier run) — comparaison sautée."
+          else
+            echo "Baseline : artefact ${ART_ID}"
+            gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${ART_ID}/zip" > /tmp/coverage-baseline.zip
+            unzip -o /tmp/coverage-baseline.zip -d .coverage-baseline
+          fi
+
+      # Échec si la couverture lignes d'un projet mesuré baisse de > 0,5 pt vs
+      # baseline ; résumé comparatif dans GITHUB_STEP_SUMMARY. Produit aussi la
+      # baseline fusionnée (coverage-baseline/) publiée par le step suivant.
+      - name: Comparer la couverture à la baseline (bloquant si baisse > 0,5 pt)
+        run: node .github/workflows/scripts/coverage-compare.mjs
+
+      # Publication de la baseline mise à jour : push main UNIQUEMENT (les PR
+      # comparent, seul main fait référence). `if: success()` implicite — une
+      # régression bloquée ne doit pas devenir la nouvelle référence.
+      - name: Publier la baseline de couverture (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-baseline
+          path: coverage-baseline/coverage-baseline.json
+          retention-days: 90
+
+  # P1-6 (doc 18 §8) — chaîne SÉCURITÉ minimale (SCA). La gateway est HTTP publique :
+  # on BLOQUE sur toute vulnérabilité high/critical des dépendances de PRODUCTION
+  # (surface d'attaque réelle du runtime). On exécute aussi un audit de l'arbre
+  # COMPLET (dev/test inclus) en INFORMATIF non bloquant : les advisories y sont
+  # surtout des outils de test (ex. underscore transitif via @pact-foundation/pact),
+  # non déployés, qu'on ne veut pas voir rougir `main`. Complété par Dependabot
+  # (.github/dependabot.yml) et CodeQL (.github/workflows/codeql.yml).
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Audit SCA — dépendances de production (high/critical, BLOQUANT)
+        run: pnpm audit --audit-level=high --prod
+
+      - name: Audit SCA — arbre complet dev inclus (informatif, non bloquant)
+        if: always()
+        run: pnpm audit --audit-level=high || true
+
+  # AUD-09 (doc 25) — SECRET SCANNING. Le flux manipule des secrets réels
+  # (`.env.server`, jetons Cloudflare/GHCR) : ce job BLOQUE si un secret est
+  # committé. gitleaks scanne l'historique git (fetch-depth: 0) sur push ET PR.
+  #
+  # GHAS / Security tab — l'upload de résultats « code scanning » (SARIF) et la
+  # Push Protection native exigent GitHub Advanced Security, INDISPONIBLE sur ce
+  # dépôt privé en plan gratuit (même limite que CodeQL, cf. codeql.yml). Le
+  # garde-fou ici est donc l'EXIT CODE du scan (job rouge = fuite), pas un upload.
+  # `GITLEAKS_ENABLE_COMMENTS: false` évite d'exiger `pull-requests: write`,
+  # mais l'action a tout de même besoin de `pull-requests: read` pour LISTER les
+  # commits de la PR (`GET /pulls/:n/commits`) et borner le scan — sans quoi elle
+  # échoue en « Resource not accessible by integration » (403).
+  # Sur compte personnel, gitleaks-action ne requiert pas de licence (orgs only).
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Historique complet requis pour scanner tous les commits.
+          fetch-depth: 0
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: 'false'
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: 'false'
+
+  # AQ-11 (doc 27) — SAST. CodeQL est en PAUSE (GHAS indisponible sur dépôt privé
+  # gratuit, cf. codeql.yml) : depuis, AUCUNE analyse statique de sécurité ne
+  # tournait. Semgrep OSS prend le relais sans GHAS : pas d'upload SARIF ni
+  # d'onglet Security — le garde-fou est l'EXIT CODE (convention doc 25, comme
+  # gitleaks/Trivy). Image épinglée par DIGEST (AUD-02).
+  #
+  # RÈGLES ÉPINGLÉES, PAS LE REGISTRE — l'esquisse doc 27 (`--config p/typescript
+  # --config p/nodejs`) a été ÉCARTÉE après vérification locale : sans login, le
+  # registre semgrep.dev ne sert qu'un sous-ensemble réduit (74 règles) qui ne
+  # détecte même pas `eval(userInput)` ni l'injection de commande — un SAST sans
+  # dents. On consomme donc directement les règles OSS de semgrep/semgrep-rules
+  # (dossiers javascript/ + typescript/, ~212 règles), épinglées par SHA comme
+  # les actions : déterministe, auditables, et `--metrics=off` possible (aucun
+  # appel réseau au registre). Montée de version des règles = bump du `ref`.
+  #
+  # Deux passes (même motif que le job `security`) : findings ERROR bloquants,
+  # toutes sévérités en informatif. Un faux positif se traite ligne à ligne par
+  # `// nosemgrep: <rule-id>` JUSTIFIÉ en commentaire, jamais par ignore global.
+  sast-semgrep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: semgrep/semgrep:1.165.0@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      # Règles OSS épinglées par SHA (HEAD develop au 2026-06-12). Sparse : seuls
+      # les dossiers de règles utiles. `--exclude .semgrep-rules` ci-dessous évite
+      # de scanner les FIXTURES volontairement vulnérables des règles elles-mêmes.
+      - name: Récupérer les règles (semgrep/semgrep-rules, épinglées)
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: semgrep/semgrep-rules
+          ref: 48a4fdb88d6b96fab3d06383aa36e34086bef6b1
+          path: .semgrep-rules
+          sparse-checkout: |
+            javascript
+            typescript
+
+      - name: Semgrep — findings ERROR (bloquant)
+        run: >-
+          semgrep scan --metrics=off
+          --config .semgrep-rules/javascript --config .semgrep-rules/typescript
+          --exclude .semgrep-rules
+          --severity ERROR --error
+
+      - name: Semgrep — toutes sévérités (informatif, non bloquant)
+        if: always()
+        run: >-
+          semgrep scan --metrics=off
+          --config .semgrep-rules/javascript --config .semgrep-rules/typescript
+          --exclude .semgrep-rules
+          || true
+
+  # Parcours E2E du front (Phase 8) : « planifier un mois → lire le coût ».
+  # BFF mocké par interception réseau dans les specs → pas de pile docker requise.
+  e2e-web:
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser (chromium)
+        # `@playwright/test` n'est déclaré que dans apps/web (convention deps par
+        # projet) ; avec le linker pnpm isolé, son bin vit dans
+        # apps/web/node_modules/.bin, PAS à la racine. Un `pnpm exec` lancé depuis
+        # la racine échoue donc (« Command playwright not found »). On scope
+        # l'install au paquet web, comme le fait le target nx `e2e` (cwd: apps/web).
+        run: pnpm --filter @creche-planner/web exec playwright install --with-deps chromium
+
+      - name: E2E web (BFF mocké)
+        run: pnpm nx e2e web
+
+      # AQ-06 (doc 27) — flakiness : avec `retries: 1` en CI, un test instable finit
+      # VERT. Le reporter JSON (playwright.config.ts) note l'outcome `flaky` ; ce
+      # step le fait apparaître dans le summary au lieu de le laisser s'installer.
+      - name: Résumé E2E + flakiness (GITHUB_STEP_SUMMARY)
+        if: always()
+        run: node .github/workflows/scripts/e2e-summary.mjs apps/web/test-output/playwright/results.json "E2E web (BFF mocké)"
+
+      - name: Publier le rapport E2E (JUnit + JSON)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-web-report
+          path: apps/web/test-output/playwright/
+          if-no-files-found: ignore
+          retention-days: 90
+
+  # Phase 15 / DoD-2 — SMOKE STACK RÉELLE. Le CI construisait les images
+  # (`build-images`, push:false load:true) sans JAMAIS les démarrer : un crash au
+  # boot (ex. dépendance non embarquée par `prune-lockfile`) passait inaperçu. Ce
+  # job MONTE toute la pile (`docker compose up -d --build --wait`) et PROUVE
+  # qu'elle RÉPOND (santé gateway + appel fonctionnel `/api/v1/couts`). Bloquant.
+  #
+  # PARTAGE D'IMAGES — On NE dépend PAS de `build-images` : ses images chargées
+  # (`load: true`) restent LOCALES à son runner et seraient invisibles ici (autre
+  # runner). Ce job (re)construit donc la pile lui-même via `compose up --build`,
+  # avec le cache buildx GHA implicite. On dépend de `ci` (lint/test/build verts)
+  # et de `pact-can-i-deploy` (garde contrats) avant de monter la pile.
+  #
+  # TEMPS CI (§8 / P2-7 doc 18) — La pile est lourde (4 Postgres + NATS + OTel + 4
+  # services + gateway + web). On NE la monte QUE si un projet DÉPLOYABLE est affecté
+  # (service/gateway/web), via la sortie `has_projects` de `affected-images` : un diff
+  # purement docs/libs ne déclenche plus la pile. `timeout-minutes` borne un hang.
+  smoke-stack:
+    needs: [ci, pact-can-i-deploy, affected-images]
+    if: needs.affected-images.outputs.has_projects == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Monte les services APPLICATIFS et attend leurs healthchecks (leurs
+      # depends_on tirent l'infra : 4 Postgres, NATS, otel-collector→tempo).
+      # On EXCLUT les sidecars d'observabilité (prometheus, grafana, nats-exporter) :
+      # `--wait` échoue si UN conteneur sort, or nats-exporter peut sortir (code 2)
+      # au démarrage à froid — un défaut d'observabilité ne doit pas faire échouer
+      # le smoke. `--build` reflète le code local ; un crash au boot d'un service
+      # applicatif fait toujours échouer ce step (c'est le but de DoD-2).
+      - name: Démarrage de la pile (docker compose up --build --wait)
+        run: >-
+          docker compose up -d --build --wait
+          web api-gateway svc-referentiel svc-foyer svc-planification svc-tarification
+
+      # SMOKE 1 — santé gateway. La gateway a un préfixe global `api`
+      # (app.config.ts) → la santé est exposée en /api/health ; /health renvoie 404
+      # (et curl --retry ne réessaie pas un 404). Cf. AUD-01 (doc 25).
+      # `--wait` garantit déjà la gateway HEALTHY (healthcheck liveness ajouté à
+      # api-gateway dans docker-compose.yml). On ajoute `--retry-all-errors` pour
+      # que curl réessaie aussi un « (52) Empty reply » transitoire (que `--retry`
+      # seul n'inclut pas), au cas où la readiness se cale juste après le `--wait`.
+      - name: Santé gateway
+        run: curl --fail --retry 10 --retry-delay 3 --retry-connrefused --retry-all-errors http://localhost:3000/api/health
+
+      # SMOKE 2 — appel fonctionnel réel. `/api/v1/couts` exige un `foyer` : on
+      # amorce l'état (seed SANS --verify suffit à créer le foyer), puis on lit
+      # le `foyerId` écrit dans scripts/.seed-demo-state.json et on interroge les
+      # coûts. Prouve que gateway → services → projection répondent bout en bout.
+      - name: Amorçage (seed de référence, sans garde des coûts)
+        run: node scripts/seed-demo.mjs
+
+      - name: Appel fonctionnel (GET /api/v1/couts)
+        run: |
+          FOYER=$(node -e "process.stdout.write(require('./scripts/.seed-demo-state.json').foyerId)")
+          echo "Foyer amorcé : $FOYER"
+          curl --fail --retry 10 --retry-delay 3 "http://localhost:3000/api/v1/couts?foyer=$FOYER&mois=2026-03"
+
+      # P2-6 (doc 18 §8 / doc 23) — SMOKE PERF. La pile est déjà montée et amorcée :
+      # on mesure la latence de l'agrégation annuelle (route la plus coûteuse, 12 mois)
+      # et on BLOQUE sur une régression multi-secondes (la classe du bug doc 06 §19.7,
+      # ~7 s / 502). SLO produit p95 ≈ 0,93 s ; plafond CI tolérant à la variance des
+      # runners partagés (PERF_SLO_P95_MS). Résumé publié dans GITHUB_STEP_SUMMARY.
+      - name: Smoke performance (GET /api/v1/couts/annuel)
+        run: node scripts/perf-smoke.mjs
+
+      # Diagnostic : en cas d'échec, on dump les logs de la pile (services qui
+      # crashent au boot, dépendances manquantes…).
+      - name: Logs de la pile (si échec)
+        if: failure()
+        run: docker compose logs --no-color | tail -n 200
+
+      # Teardown systématique (-v : volumes éphémères) pour ne rien laisser debout.
+      - name: Arrêt de la pile
+        if: always()
+        run: docker compose down -v
+
+  # Phase 15 / DoD-3 — E2E STACK RÉELLE. Monte la pile, amorce le seed (avec
+  # --verify : garde les montants de coûts) et joue les parcours Playwright
+  # contre la VRAIE UI servie par le conteneur web (aucun mock réseau, contrairement
+  # à `e2e-web` qu'on conserve pour le feedback rapide). Bloquant avant merge.
+  #
+  # PARTAGE D'IMAGES / TEMPS CI — mêmes choix que `smoke-stack` : on (re)construit
+  # la pile localement (pas de dépendance à `build-images`) et on dépend de `ci` +
+  # `pact-can-i-deploy`. Comme `smoke-stack` (P2-7), on ne joue ce job que si un
+  # projet déployable est affecté (`affected-images.has_projects`). `pnpm e2e:stack`
+  # orchestre up --build --wait + seed --verify + Playwright stack + down -v.
+  e2e-stack:
+    needs: [ci, pact-can-i-deploy, affected-images]
+    if: needs.affected-images.outputs.has_projects == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser (chromium)
+        # `@playwright/test` n'est déclaré que dans apps/web (convention deps par
+        # projet) ; avec le linker pnpm isolé, son bin vit dans
+        # apps/web/node_modules/.bin, PAS à la racine. Un `pnpm exec` lancé depuis
+        # la racine échoue donc (« Command playwright not found »). On scope
+        # l'install au paquet web, comme le fait le target nx `e2e` (cwd: apps/web).
+        run: pnpm --filter @creche-planner/web exec playwright install --with-deps chromium
+
+      # Orchestration complète : up --build --wait → seed --verify → Playwright
+      # stack → down -v (teardown dans le `finally` du script, sauf KEEP_STACK).
+      - name: E2E stack réelle (pile + seed + Playwright)
+        run: pnpm e2e:stack
+
+      # AQ-06 (doc 27) — même relevé de flakiness que e2e-web, sur le rapport stack
+      # (dossier distinct playwright-stack, cf. playwright.stack.config.ts).
+      - name: Résumé E2E stack + flakiness (GITHUB_STEP_SUMMARY)
+        if: always()
+        run: node .github/workflows/scripts/e2e-summary.mjs apps/web/test-output/playwright-stack/results.json "E2E stack réelle"
+
+      - name: Publier le rapport E2E stack (JUnit + JSON)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-stack-report
+          path: apps/web/test-output/playwright-stack/
+          if-no-files-found: ignore
+          retention-days: 90
+
+      # Diagnostic : si `e2e:stack` échoue, sa pile peut déjà être démolie
+      # (down -v en finally). On tente quand même un dump — sans échouer le job
+      # si la pile n'est plus là (`|| true`).
+      - name: Logs de la pile (si échec)
+        if: failure()
+        run: docker compose logs --no-color | tail -n 200 || true
+
+  # AQ-02 (doc 27) — GARDE ANTI-DÉRIVE DES PACTS COMMITÉS. Les pacts
+  # (`pacts/*.json`) sont GÉNÉRÉS par les tests consumer du gateway puis COMMITÉS ;
+  # les vérifications provider (job `ci`) et `pact-can-i-deploy` se fondent sur ces
+  # fichiers. Rien ne garantissait qu'ils soient À JOUR : une interaction consumer
+  # modifiée — ou supprimée : pact-js FUSIONNE dans le fichier existant, il ne
+  # retire jamais rien — sans re-commit ferait vérifier les providers contre un
+  # contrat périmé. Ce job SUPPRIME les pacts, les régénère depuis zéro (tests du
+  # gateway, aucune base requise) et exige un diff vide. La génération est
+  # déterministe (vérifié : régénération identique à l'octet près), donc un
+  # `git diff --exit-code` suffit, sans normalisation. Bloquant via
+  # `pact-can-i-deploy`.
+  pact-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # PAS de cache Nx ici (contrairement au job `ci`) : un cache hit sur
+      # `api-gateway:test` rejouerait le verdict SANS réécrire les pacts qu'on
+      # vient de supprimer → fausse dérive (fichiers manquants). Cette variable
+      # fige l'intention même si un cache d'atelier est ajouté plus tard.
+      NX_SKIP_NX_CACHE: 'true'
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Régénérer les pacts depuis zéro (tests consumer du gateway)
+        run: |
+          rm -f pacts/*.json
+          pnpm nx test api-gateway
+
+      - name: Refuser toute dérive entre pacts régénérés et pacts commités
+        run: |
+          # `git add -N` (intent-to-add) fait apparaître dans le diff les pacts
+          # NOUVEAUX (non suivis) en plus des modifiés/supprimés.
+          git add -N pacts/
+          if ! git diff --exit-code -- pacts/; then
+            echo '::error::Pacts dérivés — les tests consumer du gateway ne reproduisent pas pacts/*.json. Régénérer en local (pnpm nx test api-gateway) et commiter les pacts mis à jour.'
+            exit 1
+          fi
+
+  # AQ-10 (doc 27) / DEC-03 (doc 09) — GARDE ANTI-DÉRIVE DES TYPES WEB GÉNÉRÉS.
+  # `apps/web/src/api/openapi-types.gen.ts` est GÉNÉRÉ par openapi-typescript
+  # depuis le contrat `gatewayOpenApiDocument` (contracts-kernel) puis COMMITÉ ;
+  # le front type tous ses appels HTTP dessus (façade `types/bff.ts`). Ce job
+  # régénère et exige un diff vide : un DTO gateway modifié sans régénération
+  # échoue ici. Génération déterministe (openapi-typescript épinglé par le
+  # lockfile, sortie sans horodatage, EOL figé LF par .gitattributes) → un
+  # `git diff --exit-code` suffit, même motif qu'AQ-02 (pact-drift).
+  openapi-types-drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Même précaution que pact-drift : un cache hit Nx rejouerait le verdict
+      # sans réécrire le fichier qu'on veut comparer.
+      NX_SKIP_NX_CACHE: 'true'
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Régénérer les types web depuis le contrat OpenAPI
+        run: pnpm nx run web:generate-types
+
+      - name: Refuser toute dérive entre types régénérés et types commités
+        run: |
+          if ! git diff --exit-code -- apps/web/src/api/openapi-types.gen.ts; then
+            echo '::error::Types web dérivés — le contrat OpenAPI gateway a changé sans régénération. Lancer en local `pnpm nx run web:generate-types` et commiter apps/web/src/api/openapi-types.gen.ts.'
+            exit 1
+          fi
+
+  # DEC-06 — Garde de compatibilité de contrats, surrogate `can-i-deploy` en
+  # pacts FICHIERS (cf. docs/adr/0005-registre-de-contrats.md). Le job `ci`
+  # prouve déjà que chaque provider honore son pact (specs provider + Postgres) ;
+  # ce job ajoute la question « puis-je déployer ? » en vérifiant que la matrice
+  # de contrats attendue (api-gateway ↔ services) est complète et cohérente
+  # AVANT toute construction d'image. Bloquant. Dépend aussi de `pact-drift`
+  # (AQ-02) : inutile de poser la question sur des pacts périmés.
+  pact-can-i-deploy:
+    needs: [ci, pact-drift]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: can-i-deploy (pacts fichiers)
+        run: node .github/workflows/scripts/can-i-deploy.mjs
+
+  # DEC-04/CA2 — Calcule la liste des projets DÉPLOYABLES (services + gateway +
+  # web) RÉELLEMENT affectés par le diff, via `nx affected`. Un service non
+  # modifié ne ressort pas → il ne sera ni reconstruit ni republié.
+  affected-images:
+    # `openapi-types-drift` (AQ-10) : ne pas publier d'image web bâtie sur des
+    # types périmés vis-à-vis du contrat gateway.
+    needs: [ci, pact-can-i-deploy, openapi-types-drift]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      projects: ${{ steps.compute.outputs.projects }}
+      has_projects: ${{ steps.compute.outputs.has_projects }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Historique complet requis pour `nx affected` (calcul de la base).
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Positionne NX_BASE / NX_HEAD pour `nx affected` (push et PR).
+      - uses: nrwl/nx-set-shas@afb73a62d26e41464e9254689e1fd6122ee683c1 # v5.0.1
+
+      - name: Calculer les projets déployables affectés
+        id: compute
+        # Intersection {projets déployables} ∩ {affectés}. JSON compact → matrix.
+        run: |
+          PROJECTS=$(pnpm nx show projects --affected --projects "apps/svc-*,api-gateway,web" --json)
+          echo "projects=$PROJECTS" >> "$GITHUB_OUTPUT"
+          if [ "$PROJECTS" = "[]" ] || [ -z "$PROJECTS" ]; then
+            echo "has_projects=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_projects=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Projets déployables affectés : $PROJECTS"
+
+  # AUD-05/06/07/12 (doc 25) — PUBLISHER GHCR (CD réel + chaîne d'appro).
+  # Remplace l'ancien `build-images` en push:false (images CONSTRUITES PUIS
+  # JETÉES, jamais déployées → la prod reconstruisait les siennes : rupture de
+  # parité d'artefact). Désormais UN seul job par service affecté qui :
+  #   - sur PR (y compris forks) : BUILD seul (push:false, load:true) — preuve de
+  #     constructibilité + image chargée localement pour le scan ; AUCUNE
+  #     publication (les forks ne doivent pas pouvoir pousser) [AUD-12].
+  #   - sur push:main : BUILD + PUSH GHCR (tags `:main` rolling + `:<sha>`),
+  #     attestations provenance + SBOM [AUD-07], puis scan Trivy bloquant
+  #     [AUD-06] et signature cosign keyless [AUD-07].
+  # Images : ghcr.io/<owner-minuscule>/creche-planner/<projet>. Consommées par
+  # docker-compose.server.yml (`docker compose pull && up -d`, plus de --build).
+  # NB Security tab : pas d'upload SARIF (code scanning = GHAS indispo sur dépôt
+  # privé gratuit, cf. secret-scan/CodeQL) → le garde-fou Trivy est l'exit-code.
+  build-images:
+    needs: affected-images
+    if: needs.affected-images.outputs.has_projects == 'true'
+    runs-on: ubuntu-latest
+    # Build + scan + signature : plus long que l'ancien build seul.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write # AUD-05 — push vers GHCR
+      id-token: write # AUD-07 — OIDC pour cosign keyless
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(needs.affected-images.outputs.projects) }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      # On ne PUBLIE que sur push:main. Sur PR (y compris forks) : build sans push.
+      - name: Faut-il publier ?
+        id: gate
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # GHCR exige un nom d'image en MINUSCULES ; le propriétaire peut être casé
+      # (EdouardZemb) → on abaisse la casse une fois pour le réutiliser partout.
+      - name: Référence d'image (minuscules)
+        id: ref
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${OWNER}/creche-planner/${{ matrix.project }}" >> "$GITHUB_OUTPUT"
+
+      - name: Connexion à GHCR
+        if: steps.gate.outputs.push == 'true'
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tags : `main` (rolling, déployé par la prod) sur la branche par défaut, et
+      # `<sha40>` (immuable, rollback précis) toujours. `prefix=` retire le `sha-`.
+      - name: Métadonnées (tags + labels OCI)
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        with:
+          images: ${{ steps.ref.outputs.image }}
+          tags: |
+            type=raw,value=main,enable={{is_default_branch}}
+            type=sha,format=long,prefix=
+          labels: |
+            org.opencontainers.image.title=creche-planner/${{ matrix.project }}
+
+      # `web` = SPA nginx (Dockerfile dédié, sans build-arg APP).
+      - name: Build (+ push sur main) — web
+        if: matrix.project == 'web'
+        id: build-web
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # push/provenance/sbom uniquement sur main ; sinon load local (scan).
+          # provenance+sbom sont INCOMPATIBLES avec load:true → false sur PR.
+          push: ${{ steps.gate.outputs.push }}
+          load: ${{ steps.gate.outputs.push != 'true' }}
+          provenance: ${{ steps.gate.outputs.push }}
+          sbom: ${{ steps.gate.outputs.push }}
+          cache-from: type=gha,scope=${{ matrix.project }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.project }}
+
+      # services NestJS = `Dockerfile` racine générique, ciblé par build-arg APP.
+      - name: Build (+ push sur main) — service
+        if: matrix.project != 'web'
+        id: build-svc
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: Dockerfile
+          build-args: |
+            APP=${{ matrix.project }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          push: ${{ steps.gate.outputs.push }}
+          load: ${{ steps.gate.outputs.push != 'true' }}
+          provenance: ${{ steps.gate.outputs.push }}
+          sbom: ${{ steps.gate.outputs.push }}
+          cache-from: type=gha,scope=${{ matrix.project }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.project }}
+
+      # AUD-06 — scan CVE bloquant. On scanne la REF `:<sha>` (présente localement
+      # via load sur PR, dans GHCR sur main — login déjà fait). `ignore-unfixed`
+      # n'échoue que sur des CVE CORRIGIBLES (bruit moindre) ; `.trivyignore` à la
+      # racine liste les faux positifs assumés. Pas d'upload SARIF (GHAS indispo).
+      - name: Scan CVE (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.ref.outputs.image }}:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      # AUD-07 — signature keyless cosign (OIDC GitHub) du DIGEST poussé. main seul.
+      - name: Installer cosign
+        if: steps.gate.outputs.push == 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Signer l'image (cosign keyless)
+        if: steps.gate.outputs.push == 'true'
+        env:
+          # digest du build web OU service selon le projet de la matrice.
+          DIGEST: ${{ matrix.project == 'web' && steps.build-web.outputs.digest || steps.build-svc.outputs.digest }}
+        run: cosign sign --yes "${{ steps.ref.outputs.image }}@${DIGEST}"
+
+      - name: Récapitulatif
+        run: |
+          echo "Projet ${{ matrix.project }} — publication=${{ steps.gate.outputs.push }}"
+          echo "Image : ${{ steps.ref.outputs.image }} (tags main + ${{ github.sha }})"

@@ -1,0 +1,13 @@
+# Configuration gitleaks — étend le jeu de règles par défaut.
+# Le job CI `secret-scan` (gitleaks-action v3) charge automatiquement ce fichier
+# à la racine du dépôt.
+[extend]
+useDefault = true
+
+# Faux positifs documentés. La règle `generic-api-key` se déclenche sur des
+# chaînes à entropie moyenne ; on neutralise ici les passages de prose qui n'ont
+# rien de secret, par un motif précis (pas une exclusion de fichier entière).
+[[allowlists]]
+description = "Texte d'accessibilité FR (« onglets/landmarks ») pris pour une generic-api-key dans docs/06"
+regexTarget = "match"
+regexes = ['''onglets/landmarks''']

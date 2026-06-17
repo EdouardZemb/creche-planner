@@ -1,0 +1,61 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    {
+      "path": "./libs/shared-kernel"
+    },
+    {
+      "path": "./libs/contracts/kernel"
+    },
+    {
+      "path": "./libs/contracts/foyer"
+    },
+    {
+      "path": "./libs/contracts/referentiel"
+    },
+    {
+      "path": "./libs/contracts/planification"
+    },
+    {
+      "path": "./apps/svc-referentiel"
+    },
+    {
+      "path": "./apps/api-gateway"
+    },
+    {
+      "path": "./apps/svc-foyer"
+    },
+    {
+      "path": "./apps/svc-planification"
+    },
+    {
+      "path": "./apps/svc-tarification"
+    },
+    {
+      "path": "./libs/observability"
+    },
+    {
+      "path": "./libs/resilience"
+    },
+    {
+      "path": "./libs/tarification/domain"
+    },
+    {
+      "path": "./libs/foyer/domain"
+    },
+    {
+      "path": "./libs/referentiel/domain"
+    },
+    {
+      "path": "./libs/planification/domain"
+    },
+    {
+      "path": "./apps/web"
+    },
+    {
+      "path": "./libs/nest-commons"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+# AUD-08 (doc 25) — MÉTRIQUES DORA.
+#
+# Dernière action ouverte du plan d'audit. Calcule les 4 clés DORA (deployment
+# frequency, lead time, change failure rate, MTTR) depuis l'historique des
+# **GitHub Deployments** de l'environnement `production` — produits côté serveur
+# par `scripts/deploy.mjs` (wrapper de déploiement traçable). Design complet :
+# docs/26-instrumentation-dora-aud-08.md.
+#
+# DÉCOUPLAGE — ce workflow LIT l'historique : il n'a pas à courir à chaque `up`.
+# Déclenché périodiquement (hebdo) + à la demande (`workflow_dispatch`). Le calcul
+# n'a AUCUNE dépendance npm → pas de `pnpm install`, juste Node + le script pur.
+#
+# PERMISSIONS — lecture seule. Le `GITHUB_TOKEN` par défaut suffit (deployments +
+# issues en read) ; AUCUN PAT côté CI (le PAT n'existe que sur le serveur, pour
+# l'ÉCRITURE des Deployments). Actions épinglées par SHA (AUD-02), Node figé via
+# .nvmrc (AUD-10), timeout borné (AUD-03), concurrence (AUD-14).
+name: DORA
+
+on:
+  schedule:
+    - cron: '0 6 * * 1' # chaque lundi 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      window_days:
+        description: 'Fenêtre glissante (jours)'
+        required: false
+        default: '30'
+
+permissions:
+  contents: read
+  deployments: read
+  issues: read # enrichissement incidents (best-effort)
+
+concurrency:
+  group: dora-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dora:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Calculer les métriques DORA (GITHUB_STEP_SUMMARY)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          DORA_WINDOW_DAYS: ${{ github.event.inputs.window_days || '30' }}
+          DORA_ENVIRONMENT: production
+        run: node .github/workflows/scripts/dora-metrics.mjs

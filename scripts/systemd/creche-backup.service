@@ -1,0 +1,32 @@
+# ===========================================================================
+# creche-backup.service — Sauvegarde planifiée des bases creche-planner
+# ---------------------------------------------------------------------------
+# Unité oneshot déclenchée par creche-backup.timer. Adapter les chemins et
+# l'utilisateur à l'installation réelle (cf. scripts/systemd/README.md).
+# ===========================================================================
+[Unit]
+Description=Sauvegarde des bases PostgreSQL creche-planner
+Documentation=file:///home/<user>/creche-planner/docs/exploitation/sauvegardes.md
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+
+# --- Chemins de l'installation (remplacer <user>, adapter si clone ailleurs) -
+# Racine du clone (là où se trouvent docker-compose.yml et .env.server) :
+WorkingDirectory=/home/<user>/creche-planner
+# Utilisateur membre du groupe docker (ne pas lancer en root) :
+User=<user>
+Group=docker
+
+# Répertoire de sortie persistant (sous le home → aucun chown root requis) :
+Environment=BACKUP_DIR=/home/<user>/backups/creche
+Environment=BACKUP_RETENTION_DAYS=30
+
+ExecStart=/home/<user>/creche-planner/scripts/backup-cron.sh
+
+# Sécurité : la tâche n'écrit que dans BACKUP_DIR.
+ReadWritePaths=/home/<user>/backups/creche
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,504 @@
+import { randomUUID } from 'node:crypto';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { and, eq } from 'drizzle-orm';
+import { Duree } from '@creche-planner/shared-kernel';
+import {
+  ContratCreche,
+  InscriptionAbcm,
+  PlageHoraire,
+  SemaineType,
+  type AbsenceCreche,
+  type ExceptionJour,
+  type JourAlsh,
+  type JourSupplementaireCreche,
+  type PlanningMensuel,
+  type PrestationMois,
+  type SaisieGenerationAlsh,
+  type SaisieGenerationCantine,
+  type SaisieGenerationCreche,
+  type SaisieGenerationPeriscolaire,
+  type SaisieSemaineType,
+  type SemaineTypeAbcm,
+} from '@creche-planner/planification-domain';
+import {
+  CONTRAT_CREE_TYPE,
+  CONTRAT_MODIFIE_TYPE,
+  CONTRAT_SUPPRIME_TYPE,
+  PLANNING_MODIFIE_TYPE,
+  type ContratCreePayload,
+  type ContratModifiePayload,
+  type ContratSupprimePayload,
+  type PlanningModifiePayload,
+} from '@creche-planner/contracts-planification';
+import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
+import type { Database } from '../database/database.types.js';
+import {
+  contrat,
+  outbox,
+  planningMois,
+  type ContratRow,
+} from '../database/schema.js';
+import { ReferentielClient } from './referentiel.client.js';
+import type {
+  CreerContratDto,
+  EcrirePlanningDto,
+  ModifierContratDto,
+} from './planification.dto.js';
+
+/** Projection lisible d'un contrat. */
+export interface ContratVue {
+  readonly id: string;
+  readonly foyerId: string;
+  readonly enfant: string;
+  readonly mode: string;
+  readonly valideDu: string;
+  readonly valideAu: string | null;
+}
+
+/**
+ * Projection détaillée d'un contrat : ajoute la configuration spécifique au mode
+ * (semaine type / inscriptions, heures, mensualités) pour piloter l'app (liste
+ * des contrats + calendriers de planning), que le `ContratVue` minimal n'expose pas.
+ */
+export interface ContratDetailVue extends ContratVue {
+  readonly heuresAnnuellesContractualisees: number | null;
+  readonly nbMensualites: number | null;
+  readonly semaineType: unknown;
+  readonly semaineAbcm: unknown;
+}
+
+/** Quantités d'une prestation, sérialisées (les Durée → minutes). */
+export interface PrestationVue {
+  readonly mode: string;
+  readonly [cle: string]: unknown;
+}
+
+/** Forme JSON de la semaine type crèche stockée en base. */
+interface PlageJson {
+  readonly debutHeures: number;
+  readonly debutMinutes: number;
+  readonly finHeures: number;
+  readonly finMinutes: number;
+}
+type SemaineTypeJson = Record<string, PlageJson[]>;
+
+/** Plage horaire (heures/minutes d'arrivée et de départ). */
+interface PlageHeures {
+  readonly debutHeures: number;
+  readonly debutMinutes: number;
+  readonly finHeures: number;
+  readonly finMinutes: number;
+}
+
+/** Durée d'une plage (fin − début) ; `zero` si la plage est incohérente. */
+function dureeDePlage(p: PlageHeures): Duree {
+  const debut = p.debutHeures * 60 + p.debutMinutes;
+  const fin = p.finHeures * 60 + p.finMinutes;
+  return fin > debut ? Duree.depuisMinutes(fin - debut) : Duree.zero();
+}
+
+@Injectable()
+export class PlanificationService {
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly referentiel: ReferentielClient,
+  ) {}
+
+  /** Crée un contrat + émet `ContratCree` dans la même transaction (outbox). */
+  async creerContrat(dto: CreerContratDto): Promise<ContratVue> {
+    // Valide la cohérence métier via le domaine avant de persister.
+    if (dto.mode === 'CRECHE_PSU') {
+      ContratCreche.creer({
+        valideDu: dto.valideDu,
+        valideAu: dto.valideAu ?? dto.valideDu,
+        heuresAnnuellesContractualisees: dto.heuresAnnuellesContractualisees,
+        nbMensualites: dto.nbMensualites,
+        semaineType: this.semaineTypeDepuisJson(dto.semaineType),
+      });
+    }
+
+    const id = randomUUID();
+    await this.db.transaction(async (tx) => {
+      await tx.insert(contrat).values({
+        id,
+        foyerId: dto.foyerId,
+        enfant: dto.enfant,
+        mode: dto.mode,
+        valideDu: dto.valideDu,
+        valideAu: dto.valideAu,
+        heuresAnnuellesContractualisees:
+          dto.mode === 'CRECHE_PSU'
+            ? dto.heuresAnnuellesContractualisees
+            : null,
+        nbMensualites: dto.mode === 'CRECHE_PSU' ? dto.nbMensualites : null,
+        semaineType: dto.mode === 'CRECHE_PSU' ? dto.semaineType : null,
+        semaineAbcm: dto.mode === 'CRECHE_PSU' ? null : dto.semaineAbcm,
+      });
+      const payload: ContratCreePayload = {
+        contratId: id,
+        foyerId: dto.foyerId,
+        enfant: dto.enfant,
+        mode: dto.mode,
+        valideDu: dto.valideDu,
+        valideAu: dto.valideAu,
+      };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: CONTRAT_CREE_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+    });
+
+    return {
+      id,
+      foyerId: dto.foyerId,
+      enfant: dto.enfant,
+      mode: dto.mode,
+      valideDu: dto.valideDu,
+      valideAu: dto.valideAu,
+    };
+  }
+
+  /**
+   * Liste les contrats d'un foyer, avec leur configuration mode-spécifique
+   * (semaine type / inscriptions, heures, mensualités). Lecture seule : alimente
+   * la gestion des contrats et les calendriers de planning du front (qui ne
+   * stocke plus rien côté client). Triée par enfant puis mode (rendu stable).
+   */
+  async listerContrats(foyerId: string): Promise<ContratDetailVue[]> {
+    const lignes = await this.db
+      .select()
+      .from(contrat)
+      .where(eq(contrat.foyerId, foyerId))
+      .orderBy(contrat.enfant, contrat.mode);
+    return lignes.map((l) => ({
+      id: l.id,
+      foyerId: l.foyerId,
+      enfant: l.enfant,
+      mode: l.mode,
+      valideDu: l.valideDu,
+      valideAu: l.valideAu,
+      heuresAnnuellesContractualisees: l.heuresAnnuellesContractualisees,
+      nbMensualites: l.nbMensualites,
+      semaineType: l.semaineType,
+      semaineAbcm: l.semaineAbcm,
+    }));
+  }
+
+  /**
+   * Met à jour les champs d'un contrat (enfant, mode, dates de validité, semaine
+   * type / inscriptions, heures, nbMensualités selon le mode) + émet `ContratModifie`
+   * dans la même transaction (outbox). **Cascade** : les plannings mensuels saisis
+   * (`planning_mois`) sont invalidés (supprimés), car le changement de mode/dates les
+   * rend incohérents — ils seront ressaisis. 404 si le contrat n'existe pas.
+   */
+  async modifierContrat(
+    id: string,
+    dto: ModifierContratDto,
+  ): Promise<ContratVue> {
+    // Valide la cohérence métier via le domaine avant de persister (comme à la création).
+    if (dto.mode === 'CRECHE_PSU') {
+      ContratCreche.creer({
+        valideDu: dto.valideDu,
+        valideAu: dto.valideAu ?? dto.valideDu,
+        heuresAnnuellesContractualisees: dto.heuresAnnuellesContractualisees,
+        nbMensualites: dto.nbMensualites,
+        semaineType: this.semaineTypeDepuisJson(dto.semaineType),
+      });
+    }
+
+    await this.db.transaction(async (tx) => {
+      const lignes = await tx.select().from(contrat).where(eq(contrat.id, id));
+      if (!lignes[0]) {
+        throw new NotFoundException(`contrat introuvable : ${id}`);
+      }
+      await tx
+        .update(contrat)
+        .set({
+          foyerId: dto.foyerId,
+          enfant: dto.enfant,
+          mode: dto.mode,
+          valideDu: dto.valideDu,
+          valideAu: dto.valideAu,
+          heuresAnnuellesContractualisees:
+            dto.mode === 'CRECHE_PSU'
+              ? dto.heuresAnnuellesContractualisees
+              : null,
+          nbMensualites: dto.mode === 'CRECHE_PSU' ? dto.nbMensualites : null,
+          semaineType: dto.mode === 'CRECHE_PSU' ? dto.semaineType : null,
+          semaineAbcm: dto.mode === 'CRECHE_PSU' ? null : dto.semaineAbcm,
+          updatedAt: new Date(),
+        })
+        .where(eq(contrat.id, id));
+      // Invalide les plannings saisis : le changement de mode/dates les rend
+      // incohérents (un planning crèche n'a pas de sens pour un contrat cantine).
+      await tx.delete(planningMois).where(eq(planningMois.contratId, id));
+      const payload: ContratModifiePayload = {
+        contratId: id,
+        foyerId: dto.foyerId,
+        enfant: dto.enfant,
+        mode: dto.mode,
+        valideDu: dto.valideDu,
+        valideAu: dto.valideAu,
+      };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: CONTRAT_MODIFIE_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+    });
+
+    return {
+      id,
+      foyerId: dto.foyerId,
+      enfant: dto.enfant,
+      mode: dto.mode,
+      valideDu: dto.valideDu,
+      valideAu: dto.valideAu,
+    };
+  }
+
+  /**
+   * Supprime un contrat + ses plannings mensuels (cascade) + émet `ContratSupprime`
+   * dans la même transaction (outbox). 404 si le contrat n'existe pas.
+   */
+  async supprimerContrat(id: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const lignes = await tx.select().from(contrat).where(eq(contrat.id, id));
+      if (!lignes[0]) {
+        throw new NotFoundException(`contrat introuvable : ${id}`);
+      }
+      // Cascade explicite des plannings (la FK est aussi en `onDelete: cascade`).
+      await tx.delete(planningMois).where(eq(planningMois.contratId, id));
+      await tx.delete(contrat).where(eq(contrat.id, id));
+      const payload: ContratSupprimePayload = { contratId: id };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: CONTRAT_SUPPRIME_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+    });
+  }
+
+  /**
+   * Enregistre (ou remplace) le planning d'un mois pour un contrat (réel ou
+   * simulé) + émet `PlanningModifie` dans la même transaction (outbox).
+   */
+  async ecrirePlanning(
+    contratId: string,
+    mois: string,
+    simule: boolean,
+    dto: EcrirePlanningDto,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const lignes = await tx
+        .select()
+        .from(contrat)
+        .where(eq(contrat.id, contratId));
+      if (!lignes[0]) {
+        throw new NotFoundException(`contrat introuvable : ${contratId}`);
+      }
+      await tx
+        .insert(planningMois)
+        .values({ contratId, mois, simule, saisie: dto, updatedAt: new Date() })
+        .onConflictDoUpdate({
+          target: [
+            planningMois.contratId,
+            planningMois.mois,
+            planningMois.simule,
+          ],
+          set: { saisie: dto, updatedAt: new Date() },
+        });
+      const payload: PlanningModifiePayload = { contratId, mois, simule };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: PLANNING_MODIFIE_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+    });
+  }
+
+  /**
+   * Lit la saisie de planning enregistrée d'un mois (réelle ou simulée), telle
+   * que stockée (forme `EcrirePlanningDto`). Renvoie `null` si aucune saisie n'a
+   * été enregistrée pour ce couple (contrat, mois, simulé). 404 si le contrat
+   * n'existe pas. Permet à l'app de réhydrater les calendriers depuis le serveur
+   * (durabilité multi-poste), au lieu de ne s'appuyer que sur le navigateur.
+   */
+  async lirePlanning(
+    contratId: string,
+    mois: string,
+    simule: boolean,
+  ): Promise<EcrirePlanningDto | null> {
+    const contrats = await this.db
+      .select()
+      .from(contrat)
+      .where(eq(contrat.id, contratId));
+    if (!contrats[0]) {
+      throw new NotFoundException(`contrat introuvable : ${contratId}`);
+    }
+    const plannings = await this.db
+      .select()
+      .from(planningMois)
+      .where(
+        and(
+          eq(planningMois.contratId, contratId),
+          eq(planningMois.mois, mois),
+          eq(planningMois.simule, simule),
+        ),
+      );
+    return (plannings[0]?.saisie as EcrirePlanningDto | undefined) ?? null;
+  }
+
+  /**
+   * Génère les **prestations du mois** d'un contrat (cœur de la DoD). Lit la saisie
+   * enregistrée (réelle ou simulée), récupère les jours non facturables du
+   * Référentiel (INV-04) et délègue la génération au domaine pur.
+   */
+  async prestationsMois(
+    contratId: string,
+    mois: string,
+    simule: boolean,
+  ): Promise<PlanningMensuel> {
+    const lignes = await this.db
+      .select()
+      .from(contrat)
+      .where(eq(contrat.id, contratId));
+    const ligne = lignes[0];
+    if (!ligne) {
+      throw new NotFoundException(`contrat introuvable : ${contratId}`);
+    }
+
+    const plannings = await this.db
+      .select()
+      .from(planningMois)
+      .where(
+        and(
+          eq(planningMois.contratId, contratId),
+          eq(planningMois.mois, mois),
+          eq(planningMois.simule, simule),
+        ),
+      );
+    const saisie =
+      (plannings[0]?.saisie as EcrirePlanningDto | undefined) ?? {};
+    const joursNonFacturables = await this.referentiel.joursNonFacturables();
+
+    const prestation = this.genererPrestation(
+      ligne,
+      mois,
+      saisie,
+      joursNonFacturables,
+    );
+    return { mois, prestations: [prestation] };
+  }
+
+  /** Aiguille vers le générateur du domaine selon le mode du contrat. */
+  private genererPrestation(
+    ligne: ContratRow,
+    mois: string,
+    saisie: EcrirePlanningDto,
+    joursNonFacturables: readonly string[],
+  ): PrestationMois {
+    if (ligne.mode === 'CRECHE_PSU') {
+      const contratCreche = ContratCreche.creer({
+        valideDu: ligne.valideDu,
+        valideAu: ligne.valideAu ?? ligne.valideDu,
+        heuresAnnuellesContractualisees:
+          ligne.heuresAnnuellesContractualisees ?? 0,
+        nbMensualites: ligne.nbMensualites ?? 1,
+        semaineType: this.semaineTypeDepuisJson(
+          (ligne.semaineType as SemaineTypeJson | null) ?? {},
+        ),
+      });
+      const saisieCreche: SaisieGenerationCreche = {
+        mois,
+        complement:
+          saisie.complementMinutes !== undefined
+            ? Duree.depuisMinutes(saisie.complementMinutes)
+            : Duree.zero(),
+        joursSupplementaires: (saisie.joursSupplementaires ?? [])
+          .map(
+            (j): JourSupplementaireCreche => ({
+              date: j.date,
+              duree: dureeDePlage(j),
+            }),
+          )
+          // Plage incohérente (fin ≤ début) → durée nulle, ignorée (sans complément).
+          .filter((j) => !j.duree.estZero()),
+        absences: (saisie.absences ?? []).map(
+          (a): AbsenceCreche => ({
+            ...(a.date !== undefined ? { date: a.date } : {}),
+            duree: dureeDePlage(a),
+            preavisJours: a.preavisJours,
+            certificatMaladie: a.certificatMaladie,
+          }),
+        ),
+        joursNonFacturables,
+      };
+      return contratCreche.genererPrestationsMois(saisieCreche);
+    }
+
+    const inscription = InscriptionAbcm.creer({
+      semaine: (ligne.semaineAbcm as SemaineTypeAbcm | null) ?? {},
+      valideDu: ligne.valideDu,
+      ...(ligne.valideAu !== null ? { valideAu: ligne.valideAu } : {}),
+    });
+    const exceptions = (saisie.exceptions ?? []).map(
+      (e): ExceptionJour => ({
+        date: e.date,
+        ...(e.cantine !== undefined ? { cantine: e.cantine } : {}),
+        ...(e.periMatin !== undefined ? { periMatin: e.periMatin } : {}),
+        ...(e.periSoir !== undefined ? { periSoir: e.periSoir } : {}),
+      }),
+    );
+    if (ligne.mode === 'CANTINE') {
+      const saisieCantine: SaisieGenerationCantine = {
+        mois,
+        pai: saisie.pai ?? false,
+        exceptions,
+        joursNonFacturables,
+      };
+      return inscription.genererPrestationsCantine(saisieCantine);
+    }
+    if (ligne.mode === 'PERISCOLAIRE') {
+      const saisiePeri: SaisieGenerationPeriscolaire = {
+        mois,
+        exceptions,
+        joursNonFacturables,
+      };
+      return inscription.genererPrestationsPeriscolaire(saisiePeri);
+    }
+    const saisieAlsh: SaisieGenerationAlsh = {
+      mois,
+      joursAlsh: (saisie.joursAlsh ?? []).map(
+        (j): JourAlsh => ({
+          date: j.date,
+          type: j.type,
+          ...(j.repas !== undefined ? { repas: j.repas } : {}),
+        }),
+      ),
+      joursNonFacturables,
+    };
+    return inscription.genererPrestationsAlsh(saisieAlsh);
+  }
+
+  /** Reconstruit la `SemaineType` du domaine depuis sa forme JSON stockée. */
+  private semaineTypeDepuisJson(json: SemaineTypeJson): SemaineType {
+    const saisie: SaisieSemaineType = {};
+    for (const [jour, plages] of Object.entries(json)) {
+      (saisie as Record<string, PlageHoraire[]>)[jour] = plages.map((p) =>
+        PlageHoraire.creer(
+          p.debutHeures,
+          p.debutMinutes,
+          p.finHeures,
+          p.finMinutes,
+        ),
+      );
+    }
+    return SemaineType.creer(saisie);
+  }
+}

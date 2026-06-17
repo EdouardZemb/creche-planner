@@ -1,0 +1,11 @@
+# CODEOWNERS — routage automatique des revues (AUD-04, doc 25).
+#
+# Bus factor = 1 reconnu (doc 18 axe F.4) : un seul mainteneur aujourd'hui. Ce
+# fichier rend la propriété EXPLICITE et fera demander sa revue automatiquement
+# sur chaque PR. Affiner par dossier quand l'équipe s'élargit.
+#
+# NB : l'ENFORCEMENT (revue obligatoire avant merge) suppose une protection de
+# branche, indisponible sur ce dépôt privé en plan gratuit (cf. SECURITY.md et
+# doc 25 §AUD-04). CODEOWNERS reste utile pour la demande de revue automatique.
+
+* @EdouardZemb

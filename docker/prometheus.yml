@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Règles d'alerte Prometheus (ServiceDown, JetStream lag, OTel drops, repli synchrone).
+rule_files:
+  - /etc/prometheus/alerts/alerts.yml
+
+# Routage des alertes vers Alertmanager (P2-3, doc 18). Les règles qui passent en
+# « firing » sont poussées à Alertmanager (groupage/inhibition/notification).
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  # Métriques internes du collecteur OTel (spans reçus/exportés, queue, CPU/mémoire).
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['otel-collector:8888']
+
+  # Métriques APPLICATIVES réexposées par le collecteur (pipeline metrics → exporter
+  # prometheus sur :8889). Source de tarification_repli_planification_total (P2-3).
+  - job_name: 'otel-metrics'
+    static_configs:
+      - targets: ['otel-collector:8889']
+
+  # Métriques Prometheus lui-même (up, scrape duration, etc.).
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Métriques JetStream NATS via prometheus-nats-exporter.
+  # Le service nats-exporter scrape l'API monitoring NATS (:8222) et expose
+  # les métriques au format Prometheus sur :7777.
+  # Métriques clés : gnatsd_consumer_num_pending (consumer lag),
+  # gnatsd_stream_msgs, gnatsd_varz_connections, gnatsd_consumer_num_redelivered.
+  - job_name: 'nats-exporter'
+    static_configs:
+      - targets: ['nats-exporter:7777']

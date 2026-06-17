@@ -1,0 +1,12 @@
+# Allowlist Trivy — faux positifs / CVE assumées (AUD-06, doc 25).
+#
+# Le job `build-images` (.github/workflows/ci.yml) scanne chaque image publiée et
+# ÉCHOUE sur toute CVE HIGH/CRITICAL CORRIGIBLE (`ignore-unfixed: true`). Pour
+# accepter sciemment une CVE (faux positif, non exploitable dans notre contexte,
+# pas encore de correctif amont), ajouter son identifiant ici, UNE PAR LIGNE,
+# avec un commentaire justificatif daté. Réviser à chaque montée d'image de base.
+#
+# Format : un identifiant par ligne, ex.
+#   CVE-2024-XXXXX  # raison + date + lien advisory
+#
+# (vide pour l'instant — aucune exception assumée)

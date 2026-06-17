@@ -1,0 +1,234 @@
+{
+  "id": null,
+  "uid": "creche-services-overview",
+  "title": "Creche Planner — Vue d'ensemble des services",
+  "description": "Disponibilité des services (scrape Prometheus), métriques du collecteur OTel (traces reçues/envoyées, drops).",
+  "tags": ["creche-planner", "infrastructure"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Services UP",
+      "description": "Nombre de cibles Prometheus actuellement en ligne (up == 1).",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "mappings": []
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(up)",
+          "legendFormat": "Services UP",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Services DOWN",
+      "description": "Nombre de cibles Prometheus actuellement hors ligne (up == 0). Doit rester à 0.",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "mappings": []
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(1 - up)",
+          "legendFormat": "Services DOWN",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Disponibilité par cible Prometheus",
+      "description": "Valeur de up (0/1) par job Prometheus. Sources : otel-collector:8888 et prometheus:9090.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          },
+          "min": 0,
+          "max": 1
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "up",
+          "legendFormat": "{{job}} / {{instance}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "OTel Collector — Spans reçus (receiver)",
+      "description": "Nombre de spans/s reçus par le collecteur OTel. Métrique : otelcol_receiver_accepted_spans_total (rate). Indique l'activité de traçage des services NestJS.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 1, "fillOpacity": 10 }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "rate(otelcol_receiver_accepted_spans_total[2m])",
+          "legendFormat": "Spans acceptés/s — {{receiver}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(otelcol_receiver_refused_spans_total[2m])",
+          "legendFormat": "Spans refusés/s — {{receiver}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "OTel Collector — Spans exportés vers Tempo",
+      "description": "Nombre de spans/s exportés vers Tempo (exporter otlp/tempo). Un écart entre acceptés et exportés signale des drops dans le batch processor.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 1, "fillOpacity": 10 }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "rate(otelcol_exporter_sent_spans_total[2m])",
+          "legendFormat": "Spans envoyés/s — {{exporter}}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(otelcol_exporter_enqueue_failed_spans_total[2m])",
+          "legendFormat": "Spans perdus (queue full)/s — {{exporter}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "OTel Collector — Queue du batch processor",
+      "description": "Taille de la file d'attente du batch exporter. Une saturation indique un exporter trop lent ou Tempo indisponible.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 1, "fillOpacity": 10 }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "otelcol_exporter_queue_size",
+          "legendFormat": "Queue size — {{exporter}}",
+          "refId": "A"
+        },
+        {
+          "expr": "otelcol_exporter_queue_capacity",
+          "legendFormat": "Queue capacity — {{exporter}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "OTel Collector — Mémoire et CPU",
+      "description": "Consommation mémoire/CPU du processus collecteur OTel. Métriques process_* exposées sur :8888.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "lineWidth": 1, "fillOpacity": 10 }
+        }
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "otelcol_process_memory_rss",
+          "legendFormat": "RSS mémoire (bytes)",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(otelcol_process_cpu_seconds_total[2m])",
+          "legendFormat": "CPU (cores)",
+          "refId": "B"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "label": "Prometheus"
+      }
+    ]
+  }
+}

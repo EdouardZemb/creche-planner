@@ -1,0 +1,41 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  # Traces → Tempo (OTLP gRPC).
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  # Métriques → exposées au format Prometheus sur :8889 (P2-3, doc 18). Prometheus
+  # scrape cette cible (cf. docker/prometheus.yml, job otel-metrics) ; rend opérantes
+  # les métriques applicatives OTel (ex. tarification_repli_planification_total).
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    # Conserve les labels de ressource (service.name…) comme labels Prometheus.
+    resource_to_telemetry_conversion:
+      enabled: true
+  # Trace résumée dans les logs du collecteur (debug).
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo, debug]
+    # Pipeline MÉTRIQUES : reçoit l'OTLP des services (MeterProvider câblé dans
+    # libs/observability) et le réexpose en Prometheus.
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]

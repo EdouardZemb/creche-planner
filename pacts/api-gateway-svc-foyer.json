@@ -1,0 +1,398 @@
+{
+  "consumer": {
+    "name": "api-gateway"
+  },
+  "interactions": [
+    {
+      "description": "un rattachement d'enfant au foyer de référence",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 existe",
+          "params": {
+            "id": "11111111-1111-4111-8111-111111111111"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "dateNaissance": "2024-12-08",
+          "prenom": "Mia"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "POST",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111/enfants"
+      },
+      "response": {
+        "body": {
+          "dateNaissance": "2024-12-08",
+          "foyerId": "11111111-1111-4111-8111-111111111111",
+          "id": "22222222-2222-4222-8222-222222222222",
+          "prenom": "Mia"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.dateNaissance": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.prenom": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 201
+      }
+    },
+    {
+      "description": "une création de foyer de référence",
+      "request": {
+        "body": {
+          "nbEnfantsACharge": 2,
+          "nbParts": 3,
+          "ressourcesMensuelles": 6716.92,
+          "rfr": 72705
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "POST",
+        "path": "/api/foyers"
+      },
+      "response": {
+        "body": {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "nbEnfantsACharge": 2,
+          "nbParts": 3,
+          "ressourcesMensuellesCentimes": 671692,
+          "ressourcesMensuellesEuros": 6716.92,
+          "rfrCentimes": 7270500,
+          "rfrEuros": 72705,
+          "tranche": 3
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.nbEnfantsACharge": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.nbParts": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.ressourcesMensuellesCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.ressourcesMensuellesEuros": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "decimal"
+                }
+              ]
+            },
+            "$.rfrCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.rfrEuros": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 201
+      }
+    },
+    {
+      "description": "une lecture du foyer de référence",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 existe",
+          "params": {
+            "id": "11111111-1111-4111-8111-111111111111"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111"
+      },
+      "response": {
+        "body": {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "nbEnfantsACharge": 2,
+          "nbParts": 3,
+          "ressourcesMensuellesCentimes": 671692,
+          "ressourcesMensuellesEuros": 6716.92,
+          "rfrCentimes": 7270500,
+          "rfrEuros": 72705,
+          "tranche": 3
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.nbEnfantsACharge": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.nbParts": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.ressourcesMensuellesCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.ressourcesMensuellesEuros": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "decimal"
+                }
+              ]
+            },
+            "$.rfrCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.rfrEuros": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une liste des foyers existants",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 existe",
+          "params": {
+            "id": "11111111-1111-4111-8111-111111111111"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/foyers"
+      },
+      "response": {
+        "body": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "nbEnfantsACharge": 2,
+            "nbParts": 3,
+            "ressourcesMensuellesCentimes": 671692,
+            "ressourcesMensuellesEuros": 6716.92,
+            "rfrCentimes": 7270500,
+            "rfrEuros": 72705,
+            "tranche": 3
+          }
+        ],
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$[*].nbEnfantsACharge": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].nbParts": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].ressourcesMensuellesCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].ressourcesMensuellesEuros": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "decimal"
+                }
+              ]
+            },
+            "$[*].rfrCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].rfrEuros": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].tranche": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    }
+  ],
+  "metadata": {
+    "pact-js": {
+      "version": "13.2.0"
+    },
+    "pactRust": {
+      "ffi": "0.4.22",
+      "models": "1.2.3"
+    },
+    "pactSpecification": {
+      "version": "3.0.0"
+    }
+  },
+  "provider": {
+    "name": "svc-foyer"
+  }
+}

@@ -1,0 +1,16 @@
+# Add files here to ignore them from prettier formatting
+/dist
+**/dist
+/coverage
+**/coverage
+**/test-output
+/.nx/cache
+/.nx/workspace-data
+.nx/self-healing
+pnpm-lock.yaml
+# Contrats Pact generes par pact-js (sortie deterministe, sans newline final) :
+# les formater dirait l'arbre a chaque execution des tests de contrat.
+/pacts
+# Types generes par openapi-typescript (AQ-10) : sortie deterministe comparee
+# a l'octet pres en CI (job openapi-types-drift) — aucun formateur ne doit y toucher.
+*.gen.ts

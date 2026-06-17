@@ -1,0 +1,53 @@
+# AQ-13 (doc 27) — mutation testing Stryker sur les libs domaine, HORS CI
+# bloquante (coûteux : chaque mutant relance la suite vitest qui le couvre).
+# Déclenchement : manuel (workflow_dispatch) ou hebdomadaire. Un score < 80 %
+# (seuil `break` des stryker.config.mjs) met ce run en échec — signal à trier,
+# sans bloquer aucune PR. Rapports HTML/JSON archivés 90 j (série temporelle,
+# même logique que AQ-06).
+name: Mutation testing
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Lundi 05:00 UTC — avant la journée de travail, hors des heures de pointe.
+    - cron: '0 5 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [tarification-domain, planification-domain]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Stryker (${{ matrix.project }})
+        run: pnpm nx run ${{ matrix.project }}:mutation
+
+      - name: Publier le rapport de mutation
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-report-${{ matrix.project }}
+          path: |
+            libs/*/domain/test-output/stryker/mutation.html
+            libs/*/domain/test-output/stryker/mutation.json
+          retention-days: 90

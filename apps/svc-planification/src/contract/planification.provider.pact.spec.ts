@@ -1,0 +1,228 @@
+import { type ChildProcess, spawn } from 'node:child_process';
+import { resolve } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { afterAll, beforeAll, describe, it } from 'vitest';
+import { Verifier } from '@pact-foundation/pact';
+import postgres, { type Sql } from 'postgres';
+
+/**
+ * Vérification **provider** : `svc-planification` honore-t-il le contrat publié par
+ * `api-gateway` (pact file) ? On démarre le bundle réel du service contre une base
+ * Postgres, on rejoue les interactions du pact et on seede l'état attendu via
+ * `stateHandlers`. **Bloquant en CI** ; ignoré localement si aucune base n'est
+ * joignable (le développeur sans Docker n'est pas pénalisé).
+ *
+ * L'état « un contrat crèche de Mia avec un planning de mars 2026 existe » est
+ * garanti par le `stateHandler`. Le Référentiel n'est pas requis : son client
+ * dégrade proprement (aucun jour exclu) s'il est injoignable.
+ */
+const ETAT_CONTRAT_CRECHE =
+  'un contrat crèche de Mia avec un planning de mars 2026 existe';
+
+/** État pour l'édition/suppression (aligné avec le pact consumer). */
+const ETAT_CONTRAT_EXISTE = 'un contrat de garde modifiable existe';
+
+/** État pour la liste des contrats d'un foyer (aligné avec le pact consumer). */
+const ETAT_FOYER_AVEC_CONTRATS =
+  'un foyer avec au moins un contrat de garde existe';
+
+/** État relecture : un contrat avec une saisie de planning de mars 2026 (aligné consumer). */
+const ETAT_PLANNING_SAISI =
+  'un contrat crèche avec une saisie de planning de mars 2026 existe';
+
+/** Identifiant figé du contrat (aligné avec le pact consumer). */
+const CONTRAT_ID = '11111111-1111-1111-1111-111111111111';
+
+/** Foyer figé dont on liste les contrats (aligné avec le pact consumer). */
+const FOYER_LISTE_ID = '22222222-2222-2222-2222-222222222222';
+
+// nx lance vitest avec cwd = racine du projet (apps/svc-planification) → racine du dépôt à ../../.
+const RACINE = resolve(process.cwd(), '../..');
+const BUNDLE = resolve(RACINE, 'apps/svc-planification/dist/main.js');
+const PACT_FILE = resolve(RACINE, 'pacts/api-gateway-svc-planification.json');
+
+const PORT = Number(process.env['PACT_PROVIDER_PORT'] ?? 3997);
+const DATABASE_URL =
+  process.env['PLANIFICATION_DATABASE_URL'] ??
+  'postgres://planification:planification@localhost:5435/planification';
+const EN_CI = Boolean(process.env['CI']);
+
+/** Semaine type crèche de Mia (doc 02 §7), en minutes depuis minuit. */
+const SEMAINE_MIA = {
+  LUNDI: [{ debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 }],
+  MERCREDI: [
+    { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
+  ],
+  VENDREDI: [
+    { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
+  ],
+};
+
+async function baseJoignable(): Promise<boolean> {
+  const sql = postgres(DATABASE_URL, { max: 1, onnotice: () => undefined });
+  try {
+    await sql`select 1`;
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
+
+async function attendreReadiness(url: string, delaiMs = 40000): Promise<void> {
+  const echeance = Date.now() + delaiMs;
+  for (;;) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        return;
+      }
+    } catch {
+      // service pas encore à l'écoute
+    }
+    if (Date.now() > echeance) {
+      throw new Error(`provider non prêt après ${delaiMs} ms (${url})`);
+    }
+    await sleep(500);
+  }
+}
+
+describe('Pact provider · svc-planification honore le contrat api-gateway', () => {
+  let provider: ChildProcess | undefined;
+  let sql: Sql | undefined;
+  let baseOk = false;
+
+  beforeAll(async () => {
+    baseOk = await baseJoignable();
+    if (!baseOk) {
+      if (EN_CI) {
+        throw new Error(
+          `Postgres injoignable (${DATABASE_URL}) — requis pour la vérification Pact en CI`,
+        );
+      }
+      return; // local sans base : on saute la vérification
+    }
+
+    sql = postgres(DATABASE_URL, { max: 1, onnotice: () => undefined });
+    provider = spawn(process.execPath, [BUNDLE], {
+      env: {
+        ...process.env,
+        PORT: String(PORT),
+        DATABASE_URL,
+        NATS_URL: process.env['NATS_URL'] ?? 'nats://localhost:4222',
+        // Référentiel injoignable pendant la vérif → client dégradé (aucun jour exclu).
+        REFERENTIEL_URL: 'http://localhost:65535',
+        OTEL_SDK_DISABLED: 'true',
+      },
+      stdio: 'inherit',
+    });
+    await attendreReadiness(`http://localhost:${PORT}/api/health/live`);
+  });
+
+  afterAll(async () => {
+    provider?.kill('SIGTERM');
+    await sql?.end({ timeout: 5 });
+  });
+
+  it('vérifie les interactions du pact', async (ctx) => {
+    const db = sql;
+    if (!baseOk || !db) {
+      ctx.skip();
+      return;
+    }
+    await new Verifier({
+      provider: 'svc-planification',
+      providerBaseUrl: `http://localhost:${PORT}`,
+      pactUrls: [PACT_FILE],
+      logLevel: 'warn',
+      stateHandlers: {
+        [ETAT_CONTRAT_CRECHE]: async (): Promise<void> => {
+          // Contrat crèche PSU de Mia (doc 02 §7) : 763 h / 7 mensualités.
+          await db`delete from planning_mois where contrat_id = ${CONTRAT_ID}`;
+          await db`delete from contrat where id = ${CONTRAT_ID}`;
+          await db`
+            insert into contrat (
+              id, foyer_id, enfant, mode, valide_du, valide_au,
+              heures_annuelles_contractualisees, nb_mensualites, semaine_type
+            ) values (
+              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', 'Mia',
+              'CRECHE_PSU', '2026-01-01', '2026-07-31',
+              763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
+            )
+          `;
+          await db`
+            insert into planning_mois (contrat_id, mois, simule, saisie)
+            values (${CONTRAT_ID}, '2026-03', false, '{}'::jsonb)
+          `;
+        },
+        [ETAT_CONTRAT_EXISTE]: async (): Promise<void> => {
+          // Un contrat crèche existant, éditable/supprimable (mêmes id/foyer).
+          await db`delete from planning_mois where contrat_id = ${CONTRAT_ID}`;
+          await db`delete from contrat where id = ${CONTRAT_ID}`;
+          await db`
+            insert into contrat (
+              id, foyer_id, enfant, mode, valide_du, valide_au,
+              heures_annuelles_contractualisees, nb_mensualites, semaine_type
+            ) values (
+              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', 'Mia',
+              'CRECHE_PSU', '2026-01-01', '2026-07-31',
+              763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
+            )
+          `;
+        },
+        [ETAT_FOYER_AVEC_CONTRATS]: async (): Promise<void> => {
+          // Le foyer porte au moins un contrat crèche → `GET /api/contrats?foyer=`
+          // renvoie un tableau non vide.
+          await db`delete from planning_mois where contrat_id = ${CONTRAT_ID}`;
+          await db`delete from contrat where foyer_id = ${FOYER_LISTE_ID}`;
+          await db`
+            insert into contrat (
+              id, foyer_id, enfant, mode, valide_du, valide_au,
+              heures_annuelles_contractualisees, nb_mensualites, semaine_type
+            ) values (
+              ${CONTRAT_ID}, ${FOYER_LISTE_ID}, 'Mia',
+              'CRECHE_PSU', '2026-01-01', '2026-07-31',
+              763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
+            )
+          `;
+        },
+        [ETAT_PLANNING_SAISI]: async (): Promise<void> => {
+          // Contrat crèche + une saisie de planning enregistrée pour mars 2026 →
+          // `GET .../plannings/2026-03` renvoie `{ saisie: <la saisie stockée> }`.
+          // La saisie reflète exactement ce qu'attend le pact consumer.
+          await db`delete from planning_mois where contrat_id = ${CONTRAT_ID}`;
+          await db`delete from contrat where id = ${CONTRAT_ID}`;
+          await db`
+            insert into contrat (
+              id, foyer_id, enfant, mode, valide_du, valide_au,
+              heures_annuelles_contractualisees, nb_mensualites, semaine_type
+            ) values (
+              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', 'Mia',
+              'CRECHE_PSU', '2026-01-01', '2026-07-31',
+              763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
+            )
+          `;
+          await db`
+            insert into planning_mois (contrat_id, mois, simule, saisie)
+            values (
+              ${CONTRAT_ID}, '2026-03', false,
+              ${JSON.stringify({
+                complementMinutes: 60,
+                joursSupplementaires: [
+                  {
+                    date: '2026-03-18',
+                    debutHeures: 9,
+                    debutMinutes: 0,
+                    finHeures: 12,
+                    finMinutes: 0,
+                  },
+                ],
+              })}::jsonb
+            )
+          `;
+        },
+      },
+    }).verifyProvider();
+  });
+});

@@ -1,0 +1,36 @@
+# Dependabot — surveillance des dépendances (doc 18 §8, action P1-6).
+# Complète l'audit SCA bloquant en CI (`pnpm audit --prod`) par des PR de mise à
+# jour automatiques. pnpm est géré via l'écosystème `npm` (lecture de pnpm-lock.yaml).
+version: 2
+updates:
+  # Dépendances applicatives (monorepo à la racine).
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    open-pull-requests-limit: 10
+    labels:
+      - 'dependencies'
+      - 'security'
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
+    groups:
+      # Regroupe les patchs/minors pour limiter le bruit de PR.
+      dependances-mineures:
+        update-types:
+          - 'minor'
+          - 'patch'
+
+  # Actions GitHub épinglées dans les workflows.
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    labels:
+      - 'dependencies'
+      - 'ci'
+    commit-message:
+      prefix: 'ci'

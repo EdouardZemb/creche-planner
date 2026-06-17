@@ -1,0 +1,99 @@
+name: 🐞 Anomalie
+description: Signaler un défaut (alimente le registre d'anomalies, docs/22)
+title: '[bug] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de structurer le défaut selon les champs du **registre d'anomalies**
+        ([docs/22](../blob/main/docs/22-registre-anomalies.md)) — gravité, niveau de
+        détection et phase d'introduction permettent d'en dériver un DDP par niveau.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Ce qui ne va pas, en une à deux phrases.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: gravite
+    attributes:
+      label: Gravité
+      description: Impact sur le produit (cf. docs/22 §1).
+      options:
+        - '🟥 Bloquant — montant faux / parcours cassé'
+        - '🟧 Majeur — parcours dégradé'
+        - '🟨 Mineur — gêne réversible'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priorite
+    attributes:
+      label: Priorité
+      description: Urgence de traitement.
+      options:
+        - 'P1 — à corriger immédiatement'
+        - 'P2 — à corriger prochainement'
+        - 'P3 — quand possible / backlog'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: niveau-detection
+    attributes:
+      label: Niveau de détection
+      description: Niveau de test / activité qui a trouvé le défaut (stratégie docs/21 §2).
+      options:
+        - 'Unitaire domaine'
+        - 'MBT (model-based)'
+        - 'Composant (web)'
+        - 'Intégration / adapter'
+        - 'Contrat (Pact)'
+        - 'E2E web mocké'
+        - 'E2E stack réelle'
+        - 'Accessibilité (axe-core)'
+        - 'Performance (smoke)'
+        - 'Sécurité (SCA/SAST)'
+        - 'Smoke-stack (boot pile)'
+        - 'Validation manuelle / usage réel'
+    validations:
+      required: true
+
+  - type: input
+    id: version-detectee
+    attributes:
+      label: Version / commit détecté
+      description: SHA court ou version (SemVer) où le défaut a été observé.
+      placeholder: 'ex. fbec7a1 ou v1.2.0'
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Étapes de reproduction
+      description: Étapes minimales, résultat attendu vs obtenu.
+      value: |
+        1.
+        2.
+        3.
+
+        **Attendu** :
+        **Obtenu** :
+    validations:
+      required: true
+
+  - type: dropdown
+    id: statut
+    attributes:
+      label: Statut
+      options:
+        - '🔄 Ouvert'
+        - '🛠️ En cours'
+        - '✅ Résolu (avec test de non-régression)'
+    validations:
+      required: true

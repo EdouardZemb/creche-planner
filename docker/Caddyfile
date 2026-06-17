@@ -1,0 +1,33 @@
+# Reverse-proxy TLS du déploiement serveur (profil prod uniquement).
+# Sert d'unique point d'entrée du LAN : termine TLS et relaie vers le front `web`
+# (qui sert la SPA et proxifie /api vers la gateway sur le réseau Docker interne).
+#
+# TLS « internal » : Caddy agit comme autorité de certification LOCALE et émet un
+# certificat pour le serveur. Adapté à un LAN sans DNS public ni Let's Encrypt.
+# Les navigateurs afficheront un avertissement TANT QUE le certificat racine de
+# Caddy n'est pas importé sur les postes clients. Pour le récupérer :
+#   docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
+# puis l'installer comme autorité de confiance sur chaque poste du LAN.
+
+{
+	# La redirection 80->HTTPS est gérée explicitement par le bloc :80 ci-dessous ;
+	# on désactive l'auto-redirect de Caddy pour éviter tout conflit sur :80.
+	auto_https disable_redirects
+	# Sert le certificat interne même quand le client n'envoie pas de SNI — cas de
+	# l'accès par adresse IP (les navigateurs n'envoient pas de SNI pour une IP).
+	default_sni {$SERVER_DOMAIN}
+}
+
+# Redirige le HTTP simple vers HTTPS (vers le port HTTPS public réel, qui peut
+# être non standard, ex. 8443 si 443 est déjà pris par un autre service).
+:80 {
+	redir https://{host}:{$CADDY_PUBLIC_HTTPS_PORT:443}{uri} permanent
+}
+
+# Point d'entrée HTTPS : site NOMMÉ via SERVER_DOMAIN, pour que `tls internal`
+# sache pour quel nom (hôte ou IP) émettre le certificat. Termine TLS puis relaie.
+https://{$SERVER_DOMAIN} {
+	tls internal
+	encode gzip
+	reverse_proxy web:80
+}
