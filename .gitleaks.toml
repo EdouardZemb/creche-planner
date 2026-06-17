@@ -1,13 +1,15 @@
 # Configuration gitleaks — étend le jeu de règles par défaut.
 # Le job CI `secret-scan` (gitleaks-action v3) charge automatiquement ce fichier
-# à la racine du dépôt.
+# à la racine du dépôt. Syntaxe `[allowlist]` singulière = compatible gitleaks 8.x
+# (la forme `[[allowlists]]` n'est honorée que par les versions récentes ; la CI
+# embarque 8.24.3).
 [extend]
 useDefault = true
 
-# Faux positifs documentés. La règle `generic-api-key` se déclenche sur des
-# chaînes à entropie moyenne ; on neutralise ici les passages de prose qui n'ont
-# rien de secret, par un motif précis (pas une exclusion de fichier entière).
-[[allowlists]]
-description = "Texte d'accessibilité FR (« onglets/landmarks ») pris pour une generic-api-key dans docs/06"
+# Faux positif documenté : la règle `generic-api-key` se déclenche sur le passage
+# d'accessibilité FR « …modales accessibles, onglets/landmarks » de docs/06.
+# Neutralisé par un motif précis (pas une exclusion de fichier entière).
+[allowlist]
+description = "Texte d'accessibilite FR (onglets/landmarks) pris pour une generic-api-key dans docs/06"
 regexTarget = "match"
 regexes = ['''onglets/landmarks''']
