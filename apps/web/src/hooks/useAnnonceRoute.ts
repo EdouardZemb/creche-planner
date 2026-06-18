@@ -14,7 +14,7 @@ export interface RegionLiveProps extends Pick<
 
 export interface UseAnnonceRouteResultat<T extends HTMLElement = HTMLElement> {
   /** À poser sur la cible du focus (`<h1>`/`<main>`, doit porter `tabindex="-1"`). */
-  refCible: RefObject<T>;
+  refCible: RefObject<T | null>;
   /** À étaler sur la région d'annonce : `<p {...regionLiveProps} />`. */
   regionLiveProps: RegionLiveProps;
 }
