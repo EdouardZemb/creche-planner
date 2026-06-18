@@ -12,10 +12,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
-import type {
-  PrestationMois,
-  PrestationsMoisCreche,
-} from '@creche-planner/planification-domain';
+import type { PrestationMois } from '@creche-planner/planification-domain';
 import {
   creerContratSchema,
   ecrirePlanningSchema,
@@ -37,7 +34,7 @@ interface PrestationsMoisReponse {
   readonly contratId: string;
   readonly mois: string;
   readonly simule: boolean;
-  readonly prestations: ReadonlyArray<Record<string, unknown>>;
+  readonly prestations: readonly Record<string, unknown>[];
 }
 
 @Controller()
@@ -140,7 +137,7 @@ export class PlanificationController {
   /** Sérialise une prestation : les `Duree` du mode crèche → minutes (entiers). */
   private serialiser(prestation: PrestationMois): Record<string, unknown> {
     if (prestation.mode === 'CRECHE_PSU') {
-      const creche = prestation as PrestationsMoisCreche;
+      const creche = prestation;
       return {
         mode: creche.mode,
         heuresAnnuellesContractualisees: creche.heuresAnnuellesContractualisees,

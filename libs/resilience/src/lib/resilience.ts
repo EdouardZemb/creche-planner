@@ -102,7 +102,9 @@ export async function fetchAvecTimeout(
   init: RequestInit = {},
 ): Promise<Response> {
   const controleur = new AbortController();
-  const minuteur = setTimeout(() => controleur.abort(), timeoutMs);
+  const minuteur = setTimeout(() => {
+    controleur.abort();
+  }, timeoutMs);
   try {
     return await fetch(url, { ...init, signal: controleur.signal });
   } finally {

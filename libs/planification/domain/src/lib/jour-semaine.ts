@@ -58,7 +58,7 @@ export function jourSemaineDeIso(iso: string): JourSemaine {
     throw new DateInvalideError(`date inexistante : ${iso}`);
   }
   // getUTCDay : 0 (dimanche) → 6 (samedi). L'index est toujours valide.
-  return JOURS_PAR_INDEX[date.getUTCDay()] as JourSemaine;
+  return JOURS_PAR_INDEX[date.getUTCDay()]!;
 }
 
 /** Vrai si le jour est un jour d'ouverture de l'école ABCM (doc 02 §4.4 bis). */

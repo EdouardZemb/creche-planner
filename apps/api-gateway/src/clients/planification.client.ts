@@ -57,9 +57,7 @@ const prestationsReponseSchema = z.object({
 export type PrestationsReponse = z.infer<typeof prestationsReponseSchema>;
 
 /** Corps d'écriture d'un planning, relayé tel quel vers le service amont. */
-export interface SaisiePlanning {
-  readonly [k: string]: unknown;
-}
+export type SaisiePlanning = Readonly<Record<string, unknown>>;
 
 /**
  * Réponse `GET /api/contrats/:id/plannings/:mois` : la saisie enregistrée du

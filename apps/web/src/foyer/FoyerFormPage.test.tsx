@@ -128,7 +128,7 @@ describe('FoyerFormPage', () => {
     });
     const idDecrit = champ.getAttribute('aria-describedby');
     expect(idDecrit).toBeTruthy();
-    const message = document.getElementById(idDecrit as string);
+    const message = document.getElementById(idDecrit!);
     expect(message).toHaveTextContent('RFR invalide');
   });
 
@@ -179,7 +179,7 @@ describe('FoyerFormPage', () => {
     });
     const idDecrit = champ.getAttribute('aria-describedby');
     expect(idDecrit).toBeTruthy();
-    const message = document.getElementById(idDecrit as string);
+    const message = document.getElementById(idDecrit!);
     expect(message).not.toBeNull();
     expect(message).toHaveTextContent('Nombre invalide');
   });

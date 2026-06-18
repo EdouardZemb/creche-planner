@@ -106,7 +106,7 @@ export class ProjectionService {
       typeof donnees === 'object' &&
       donnees !== null &&
       'type' in donnees &&
-      typeof (donnees as { type: unknown }).type === 'string'
+      typeof donnees.type === 'string'
     ) {
       return (donnees as { type: string }).type;
     }
@@ -125,7 +125,7 @@ export class ProjectionService {
       typeof donnees === 'object' &&
       donnees !== null &&
       'version' in donnees &&
-      typeof (donnees as { version: unknown }).version === 'number'
+      typeof donnees.version === 'number'
         ? (donnees as { version: number }).version
         : 1;
     return version >= 2

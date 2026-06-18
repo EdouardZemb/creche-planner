@@ -30,7 +30,7 @@ const TARIF_UNITAIRE: Record<
   T3: { normal: 1268, pai: 801 },
 };
 
-const TRANCHES: ReadonlyArray<['T1' | 'T2' | 'T3', Tranche]> = [
+const TRANCHES: readonly ['T1' | 'T2' | 'T3', Tranche][] = [
   ['T1', Tranche.T1],
   ['T2', Tranche.T2],
   ['T3', Tranche.T3],
@@ -53,12 +53,10 @@ describe('MBT DT-09 — cantine pai × tranche (combinatoire complète)', () => 
   it('pai=true, T3 ⇒ nbJours × cantinePartGarde', () => {
     const tarif = new TarifCantineAbcm(GrilleAbcm.pour(Tranche.T3));
     const cout = tarif.calculerCoutMois({ nbJours: NB_JOURS, pai: true });
-    expect(cout.total.centimes).toBe(
-      (TARIF_UNITAIRE.T3.pai as number) * NB_JOURS,
-    );
+    expect(cout.total.centimes).toBe(TARIF_UNITAIRE.T3.pai! * NB_JOURS);
   });
 
-  const paiInterdit: ReadonlyArray<['T1' | 'T2', Tranche]> = [
+  const paiInterdit: readonly ['T1' | 'T2', Tranche][] = [
     ['T1', Tranche.T1],
     ['T2', Tranche.T2],
   ];
@@ -110,7 +108,7 @@ describe('MBT DT-09 — BVA sur nbJours', () => {
     ).toBe(1268);
   });
 
-  const invalides: ReadonlyArray<[string, number]> = [
+  const invalides: readonly [string, number][] = [
     ['négatif (borne basse − 1)', -1],
     ['non entier', 2.5],
   ];

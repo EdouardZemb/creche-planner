@@ -87,18 +87,20 @@ function gererAval(req: IncomingMessage, res: ServerResponse): void {
     };
 
     if (methode === 'POST' && url === '/api/foyers') {
-      return envoyer(201, FOYER_VUE);
+      envoyer(201, FOYER_VUE);
+      return;
     }
     if (methode === 'POST' && /^\/api\/foyers\/[^/]+\/enfants$/.test(url)) {
-      return envoyer(201, {
+      envoyer(201, {
         id: `enfant-${String(corps['prenom'])}`,
         foyerId: FOYER_ID,
         prenom: corps['prenom'],
         dateNaissance: corps['dateNaissance'],
       });
+      return;
     }
     if (methode === 'POST' && url === '/api/contrats') {
-      return envoyer(201, {
+      envoyer(201, {
         id: CONTRAT_ID,
         foyerId: corps['foyerId'],
         enfant: corps['enfant'],
@@ -106,11 +108,12 @@ function gererAval(req: IncomingMessage, res: ServerResponse): void {
         valideDu: corps['valideDu'],
         valideAu: corps['valideAu'] ?? null,
       });
+      return;
     }
     if (methode === 'PUT' && /^\/api\/contrats\/[^/]+$/.test(url)) {
       // Compte les modifications de contrat qui atteignent VRAIMENT l'aval.
       putContratsRecus += 1;
-      return envoyer(200, {
+      envoyer(200, {
         id: CONTRAT_ID,
         foyerId: corps['foyerId'],
         enfant: corps['enfant'],
@@ -118,9 +121,11 @@ function gererAval(req: IncomingMessage, res: ServerResponse): void {
         valideDu: corps['valideDu'],
         valideAu: corps['valideAu'] ?? null,
       });
+      return;
     }
     if (methode === 'GET' && url.startsWith('/api/couts')) {
-      return envoyer(200, COUT_MOIS_VUE);
+      envoyer(200, COUT_MOIS_VUE);
+      return;
     }
     envoyer(500, { message: `aval non simulé : ${methode} ${url}` });
   });
@@ -131,7 +136,9 @@ function trouverPortLibre(): Promise<number> {
     const serveur = createServer();
     serveur.listen(0, () => {
       const port = (serveur.address() as AddressInfo).port;
-      serveur.close((erreur) => (erreur ? rejeter(erreur) : resoudre(port)));
+      serveur.close((erreur) => {
+        erreur ? rejeter(erreur) : resoudre(port);
+      });
     });
   });
 }
@@ -203,9 +210,12 @@ describe('E2E API · parcours « créer foyer + contrats → lire le coût »', 
     gw?.proc.kill('SIGTERM');
     await new Promise<void>((resoudre) => {
       if (!stub) {
-        return resoudre();
+        resoudre();
+        return;
       }
-      stub.close(() => resoudre());
+      stub.close(() => {
+        resoudre();
+      });
     });
   });
 

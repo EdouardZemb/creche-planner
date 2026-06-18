@@ -112,12 +112,12 @@ describe('App — coquille de navigation', () => {
     await screen.findByText('PAGE_PLANNING');
     // L'appel part d'un useEffect (useFoyer) : il peut suivre de peu
     // l'apparition de la page — on attend l'appel plutôt que de l'exiger.
-    await waitFor(() =>
+    await waitFor(() => {
       expect(mockedApi.lireFoyer).toHaveBeenCalledWith(
         FOYER_ID,
         expect.anything(),
-      ),
-    );
+      );
+    });
   });
 
   it('Accueil : sans foyer mémorisé ni foyer existant, on propose la création', async () => {
@@ -247,7 +247,7 @@ describe('App — coquille de navigation', () => {
     rendre(`/foyers/${FOYER_ID}/planning`);
     await screen.findByText('PAGE_PLANNING');
 
-    const main = document.querySelector('main#contenu') as HTMLElement;
+    const main = document.querySelector('main#contenu')!;
     expect(main).not.toBeNull();
     expect(main).toHaveAttribute('tabindex', '-1');
     // Au premier rendu, le hook ne capture pas le focus (chargement initial).
@@ -265,7 +265,7 @@ describe('App — coquille de navigation', () => {
     rendre(`/foyers/${FOYER_ID}/planning`);
     await screen.findByText('PAGE_PLANNING');
 
-    const region = document.querySelector('[role="status"]') as HTMLElement;
+    const region = document.querySelector('[role="status"]')!;
     expect(region).not.toBeNull();
     expect(region).toHaveAttribute('aria-live', 'polite');
     expect(region).toHaveAttribute('aria-atomic', 'true');
@@ -275,7 +275,9 @@ describe('App — coquille de navigation', () => {
     await user.click(screen.getByRole('link', { name: 'Coûts annuels' }));
     await screen.findByText('PAGE_COUTS');
 
-    await waitFor(() => expect(region).toHaveTextContent('Coûts annuels'));
+    await waitFor(() => {
+      expect(region).toHaveTextContent('Coûts annuels');
+    });
   });
 
   it('UT-02 CA3 : le lien d’évitement « Aller au contenu » cible toujours #contenu', () => {

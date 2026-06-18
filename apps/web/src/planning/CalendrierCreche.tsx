@@ -402,7 +402,9 @@ export function CalendrierCreche({
   );
 
   const handleDateClick = useCallback(
-    (arg: DateClickArg) => ouvrirSaisie(arg.dateStr),
+    (arg: DateClickArg) => {
+      ouvrirSaisie(arg.dateStr);
+    },
     [ouvrirSaisie],
   );
 
@@ -730,12 +732,12 @@ export function CalendrierCreche({
               <input
                 type="checkbox"
                 checked={lotForm.journeeComplete}
-                onChange={(e) =>
+                onChange={(e) => {
                   setLotForm((f) => ({
                     ...f,
                     journeeComplete: e.target.checked,
-                  }))
-                }
+                  }));
+                }}
                 style={{ width: 'auto', padding: 0 }}
               />
               Toute la journée
@@ -747,9 +749,9 @@ export function CalendrierCreche({
                   <input
                     type="time"
                     value={lotForm.arrivee}
-                    onChange={(e) =>
-                      setLotForm((f) => ({ ...f, arrivee: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      setLotForm((f) => ({ ...f, arrivee: e.target.value }));
+                    }}
                   />
                 </label>
                 <label>
@@ -757,9 +759,9 @@ export function CalendrierCreche({
                   <input
                     type="time"
                     value={lotForm.depart}
-                    onChange={(e) =>
-                      setLotForm((f) => ({ ...f, depart: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      setLotForm((f) => ({ ...f, depart: e.target.value }));
+                    }}
                   />
                 </label>
               </>
@@ -770,12 +772,12 @@ export function CalendrierCreche({
                 type="number"
                 min={0}
                 value={lotForm.preavisJours}
-                onChange={(e) =>
+                onChange={(e) => {
                   setLotForm((f) => ({
                     ...f,
                     preavisJours: parseInt(e.target.value, 10) || 0,
-                  }))
-                }
+                  }));
+                }}
               />
             </label>
             <label
@@ -789,12 +791,12 @@ export function CalendrierCreche({
               <input
                 type="checkbox"
                 checked={lotForm.certificatMaladie}
-                onChange={(e) =>
+                onChange={(e) => {
                   setLotForm((f) => ({
                     ...f,
                     certificatMaladie: e.target.checked,
-                  }))
-                }
+                  }));
+                }}
                 style={{ width: 'auto', padding: 0 }}
               />
               Certificat médical
@@ -865,7 +867,9 @@ export function CalendrierCreche({
                     <input
                       type="checkbox"
                       checked={selection.has(jour)}
-                      onChange={() => basculerSelection(jour)}
+                      onChange={() => {
+                        basculerSelection(jour);
+                      }}
                       style={{ width: 'auto', padding: 0 }}
                       aria-label={`Sélectionner le ${libelleJour} pour la saisie en lot`}
                     />
@@ -877,7 +881,9 @@ export function CalendrierCreche({
                   <button
                     type="button"
                     className="btn secondaire"
-                    onClick={() => ouvrirSaisie(jour)}
+                    onClick={() => {
+                      ouvrirSaisie(jour);
+                    }}
                     aria-label={
                       estAbsent
                         ? `Modifier l’absence du ${libelleJour}`
@@ -901,7 +907,9 @@ export function CalendrierCreche({
               ? `Absence du ${formaterDateFr(dialogDate)}`
               : `Ajouter le ${formaterDateFr(dialogDate)}`
           }
-          onClose={() => setDialogDate(null)}
+          onClose={() => {
+            setDialogDate(null);
+          }}
         >
           {dialogKind === 'absence' && (
             <label
@@ -916,12 +924,12 @@ export function CalendrierCreche({
               <input
                 type="checkbox"
                 checked={dialogForm.journeeComplete}
-                onChange={(e) =>
+                onChange={(e) => {
                   setDialogForm((f) => ({
                     ...f,
                     journeeComplete: e.target.checked,
-                  }))
-                }
+                  }));
+                }}
                 style={{ width: 'auto', padding: 0 }}
               />
               Absence toute la journée
@@ -950,9 +958,9 @@ export function CalendrierCreche({
                 <input
                   type="time"
                   value={dialogForm.arrivee}
-                  onChange={(e) =>
-                    setDialogForm((f) => ({ ...f, arrivee: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    setDialogForm((f) => ({ ...f, arrivee: e.target.value }));
+                  }}
                 />
               </label>
               <label>
@@ -960,9 +968,9 @@ export function CalendrierCreche({
                 <input
                   type="time"
                   value={dialogForm.depart}
-                  onChange={(e) =>
-                    setDialogForm((f) => ({ ...f, depart: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    setDialogForm((f) => ({ ...f, depart: e.target.value }));
+                  }}
                 />
               </label>
             </div>
@@ -984,12 +992,12 @@ export function CalendrierCreche({
                   type="number"
                   min={0}
                   value={dialogForm.preavisJours}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setDialogForm((f) => ({
                       ...f,
                       preavisJours: parseInt(e.target.value, 10) || 0,
-                    }))
-                  }
+                    }));
+                  }}
                 />
               </label>
 
@@ -1005,12 +1013,12 @@ export function CalendrierCreche({
                 <input
                   type="checkbox"
                   checked={dialogForm.certificatMaladie}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setDialogForm((f) => ({
                       ...f,
                       certificatMaladie: e.target.checked,
-                    }))
-                  }
+                    }));
+                  }}
                   style={{ width: 'auto', padding: 0 }}
                 />
                 Certificat médical
@@ -1044,7 +1052,9 @@ export function CalendrierCreche({
             <button
               type="button"
               className="btn secondaire"
-              onClick={() => setDialogDate(null)}
+              onClick={() => {
+                setDialogDate(null);
+              }}
             >
               Annuler
             </button>
@@ -1065,7 +1075,9 @@ export function CalendrierCreche({
           }
           setConfirmationDurable(null);
         }}
-        onAnnuler={() => setConfirmationDurable(null)}
+        onAnnuler={() => {
+          setConfirmationDurable(null);
+        }}
       />
     </div>
   );

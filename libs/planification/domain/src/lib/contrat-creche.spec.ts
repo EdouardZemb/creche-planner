@@ -8,7 +8,6 @@ import {
   ParametreContratInvalideError,
   PeriodeContratInvalideError,
 } from './planification-error.js';
-import type { PrestationsMoisCreche } from './prestations-mois.types.js';
 
 /** Semaine type crèche de Mia (doc 02 §7) : 25 h 30 / sem. */
 function semaineMia(): SemaineType {
@@ -52,7 +51,7 @@ function presta(contrat: ContratCreche, mois: string, options = {}) {
   return contrat.genererPrestationsMois({
     mois,
     ...options,
-  }) as PrestationsMoisCreche;
+  });
 }
 
 describe('ContratCreche — construction (invariants)', () => {

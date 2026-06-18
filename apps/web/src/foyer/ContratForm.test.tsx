@@ -241,7 +241,7 @@ describe('ContratForm', () => {
     });
     const idDecrit = champ.getAttribute('aria-describedby');
     expect(idDecrit).toBeTruthy();
-    const message = document.getElementById(idDecrit as string);
+    const message = document.getElementById(idDecrit!);
     expect(message).not.toBeNull();
     expect(message).toHaveTextContent('Date invalide');
   });
@@ -294,12 +294,8 @@ describe('ContratForm', () => {
       />,
     );
 
-    expect(
-      (screen.getByLabelText(/Valide du/i) as HTMLInputElement).value,
-    ).toBe('2026-01-01');
-    expect(
-      (screen.getByLabelText(/Heures annuelles/i) as HTMLInputElement).value,
-    ).toBe('763');
+    expect(screen.getByLabelText(/Valide du/i).value).toBe('2026-01-01');
+    expect(screen.getByLabelText(/Heures annuelles/i).value).toBe('763');
     expect(
       screen.getByRole('button', { name: /Enregistrer les modifications/i }),
     ).toBeInTheDocument();

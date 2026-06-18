@@ -126,7 +126,7 @@ describe('telechargerCsv', () => {
   it('crée un lien de téléchargement et le clique', () => {
     const createUrl = vi.fn(() => 'blob:fake');
     const revokeUrl = vi.fn();
-    URL.createObjectURL = createUrl as typeof URL.createObjectURL;
+    URL.createObjectURL = createUrl;
     URL.revokeObjectURL = revokeUrl as typeof URL.revokeObjectURL;
     const click = vi
       .spyOn(HTMLAnchorElement.prototype, 'click')

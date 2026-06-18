@@ -14,7 +14,9 @@ export async function seReconnecter(
   sw: ConteneurSW | undefined = typeof navigator === 'undefined'
     ? undefined
     : navigator.serviceWorker,
-  recharger: () => void = () => window.location.reload(),
+  recharger: () => void = () => {
+    window.location.reload();
+  },
 ): Promise<void> {
   if (sw) {
     try {

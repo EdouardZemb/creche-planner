@@ -21,7 +21,7 @@ const bareme = new BaremeEffortPsu();
 
 describe('MBT DT-08 — paliers du taux d’effort (partition complète)', () => {
   // Tous les paliers, un représentant par classe + bornes BVA.
-  const cas: ReadonlyArray<[number, number]> = [
+  const cas: readonly [number, number][] = [
     [1, 0.000619], // palier 1
     [2, 0.000516], // palier 2
     [3, 0.000413], // palier 3  (borne basse du couple 3|4)
@@ -54,7 +54,7 @@ describe('MBT DT-08 — BVA aux bornes de palier', () => {
 });
 
 describe('MBT DT-08 — valeurs invalides (INV-02)', () => {
-  const invalides: ReadonlyArray<[string, number]> = [
+  const invalides: readonly [string, number][] = [
     ['zéro (borne basse −1)', 0],
     ['négatif', -1],
     ['non entier (2.5)', 2.5],

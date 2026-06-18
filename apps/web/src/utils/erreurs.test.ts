@@ -99,7 +99,11 @@ describe('focaliserSection (UT-04)', () => {
   });
 
   it('ne fait rien sur une cible nulle', () => {
-    expect(() => focaliserSection(null)).not.toThrow();
-    expect(() => focaliserSection(undefined)).not.toThrow();
+    expect(() => {
+      focaliserSection(null);
+    }).not.toThrow();
+    expect(() => {
+      focaliserSection(undefined);
+    }).not.toThrow();
   });
 });

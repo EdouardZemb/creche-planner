@@ -74,7 +74,9 @@ describe('usePersistanceAbsences — quota sessionStorage (AQ-12)', () => {
 
     expect(result.current.indisponible).toBe(false);
     act(() => {
-      expect(() => result.current.ecrire('c1', '2026-03', [A1])).not.toThrow();
+      expect(() => {
+        result.current.ecrire('c1', '2026-03', [A1]);
+      }).not.toThrow();
     });
 
     expect(result.current.indisponible).toBe(true);

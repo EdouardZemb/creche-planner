@@ -15,7 +15,12 @@ function Coquille({ titre }: { titre: string }) {
       <h1 tabIndex={-1} ref={refCible}>
         {titre}
       </h1>
-      <button type="button" onClick={() => navigate('/couts')}>
+      <button
+        type="button"
+        onClick={() => {
+          navigate('/couts');
+        }}
+      >
         Aller aux coûts
       </button>
     </div>

@@ -224,7 +224,7 @@ describe('SM-01 — couverture 0-switch (toutes les transitions une fois)', () =
 });
 
 describe('SM-01 — couverture 1-switch (toutes les paires de transitions)', () => {
-  const paires: ReadonlyArray<readonly [Transition, Transition]> = [
+  const paires: readonly (readonly [Transition, Transition])[] = [
     ['actualiserRfr', 'actualiserRfr'],
     ['actualiserRfr', 'ajouterEnfant'],
     ['ajouterEnfant', 'actualiserRfr'],

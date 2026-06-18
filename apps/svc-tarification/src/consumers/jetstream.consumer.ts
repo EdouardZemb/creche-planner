@@ -16,7 +16,7 @@ import { NatsService } from '@creche-planner/nest-commons';
 import { ProjectionService } from './projection.service.js';
 
 /** Streams amont consommés par Tarification, et leur consommateur durable. */
-const ABONNEMENTS: ReadonlyArray<{ stream: string; durable: string }> = [
+const ABONNEMENTS: readonly { stream: string; durable: string }[] = [
   { stream: 'FOYER', durable: 'tarification-foyer' },
   { stream: 'REFERENTIEL', durable: 'tarification-referentiel' },
   { stream: 'PLANIFICATION', durable: 'tarification-planification' },

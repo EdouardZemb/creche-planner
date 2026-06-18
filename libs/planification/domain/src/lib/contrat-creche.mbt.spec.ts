@@ -62,7 +62,7 @@ function presta(
   return contrat.genererPrestationsMois({
     mois,
     ...options,
-  }) as PrestationsMoisCreche;
+  });
 }
 
 /** Oracle : prestation entièrement nulle (mois hors période, SM-03 AVANT/APRÈS). */
@@ -358,7 +358,7 @@ describe('BVA-09 — agrégation jours supplémentaires au complément', () => {
         { date: '2026-07-10', duree: SEPT_HEURES }, // ≤ valideAu → compté
         { date: '2026-07-20', duree: SEPT_HEURES }, // > valideAu → filtré
       ],
-    }) as PrestationsMoisCreche;
+    });
     expect(p.complement.enMinutes).toBe(30 + 420);
   });
 });

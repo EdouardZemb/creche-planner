@@ -143,7 +143,9 @@ export function PanneauCoutMois({
         setLoading(false);
       });
 
-    return () => ctrl.abort();
+    return () => {
+      ctrl.abort();
+    };
   }, [foyerId, mois, simule, version]);
 
   if (loading) {
@@ -260,7 +262,9 @@ export function PanneauCoutMois({
         <button
           type="button"
           className="btn secondaire"
-          onClick={() => window.print()}
+          onClick={() => {
+            window.print();
+          }}
           aria-label="Imprimer ou enregistrer le coût du mois en PDF"
         >
           Imprimer / PDF

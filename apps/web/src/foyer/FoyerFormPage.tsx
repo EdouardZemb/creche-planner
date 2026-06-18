@@ -114,7 +114,7 @@ export function FoyerFormPage() {
         enfants: enfantsValides,
       });
       setFoyerId(dossier.foyer.id);
-      void navigate(`/foyers/${dossier.foyer.id}/contrats`);
+      navigate(`/foyers/${dossier.foyer.id}/contrats`);
     } catch (err) {
       if (err instanceof ApiError) {
         const erreurs = extraireErreurs(err.corps);
@@ -162,7 +162,9 @@ export function FoyerFormPage() {
               ? { 'aria-describedby': idErreur('ressourcesMensuelles') }
               : {})}
             value={ressourcesMensuelles}
-            onChange={(e) => setRessourcesMensuelles(e.target.value)}
+            onChange={(e) => {
+              setRessourcesMensuelles(e.target.value);
+            }}
             style={{ width: '100%' }}
           />
           {erreurPour('ressourcesMensuelles') && (
@@ -191,7 +193,9 @@ export function FoyerFormPage() {
               ? { 'aria-describedby': idErreur('rfr') }
               : {})}
             value={rfr}
-            onChange={(e) => setRfr(e.target.value)}
+            onChange={(e) => {
+              setRfr(e.target.value);
+            }}
             style={{ width: '100%' }}
           />
           {erreurPour('rfr') && (
@@ -215,7 +219,9 @@ export function FoyerFormPage() {
               ? { 'aria-describedby': idErreur('nbEnfantsACharge') }
               : {})}
             value={nbEnfantsACharge}
-            onChange={(e) => setNbEnfantsACharge(e.target.value)}
+            onChange={(e) => {
+              setNbEnfantsACharge(e.target.value);
+            }}
             style={{ width: '100%' }}
           />
           {erreurPour('nbEnfantsACharge') && (
@@ -243,7 +249,9 @@ export function FoyerFormPage() {
               ? { 'aria-describedby': idErreur('nbParts') }
               : {})}
             value={nbParts}
-            onChange={(e) => setNbParts(e.target.value)}
+            onChange={(e) => {
+              setNbParts(e.target.value);
+            }}
             style={{ width: '100%' }}
           />
           {erreurPour('nbParts') && (
@@ -279,9 +287,9 @@ export function FoyerFormPage() {
                   required
                   aria-required="true"
                   value={enfant.prenom}
-                  onChange={(e) =>
-                    mettreAJourEnfant(enfant.id, 'prenom', e.target.value)
-                  }
+                  onChange={(e) => {
+                    mettreAJourEnfant(enfant.id, 'prenom', e.target.value);
+                  }}
                   style={{ width: '100%' }}
                 />
               </div>
@@ -295,13 +303,13 @@ export function FoyerFormPage() {
                   required
                   aria-required="true"
                   value={enfant.dateNaissance}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     mettreAJourEnfant(
                       enfant.id,
                       'dateNaissance',
                       e.target.value,
-                    )
-                  }
+                    );
+                  }}
                   style={{ width: '100%' }}
                 />
               </div>
@@ -309,7 +317,9 @@ export function FoyerFormPage() {
                 <button
                   type="button"
                   className="btn secondaire"
-                  onClick={() => supprimerEnfant(enfant.id)}
+                  onClick={() => {
+                    supprimerEnfant(enfant.id);
+                  }}
                   aria-label={
                     enfant.prenom.trim() !== ''
                       ? `Retirer l'enfant ${enfant.prenom.trim()}`
