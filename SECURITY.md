@@ -50,20 +50,30 @@ les services tiers (GitHub, Cloudflare) relevant de leurs propres politiques.
 
 ## Garde-fous automatiques
 
-- **Secret scanning** — un job `secret-scan` (gitleaks) s'exécute sur chaque push
-  et chaque PR et **bloque** sur tout secret détecté
-  ([.github/workflows/ci.yml](.github/workflows/ci.yml)).
+- **Secret scanning** — double couche : (1) un job `secret-scan` (gitleaks) s'exécute
+  sur chaque push et chaque PR et **bloque** sur tout secret détecté
+  ([.github/workflows/ci.yml](.github/workflows/ci.yml)) ; (2) le **secret scanning
+  natif GitHub** et la **push protection** sont activés (dépôt public) — un secret
+  poussé est détecté côté serveur et le push est refusé avant d'atterrir.
 - **SCA** — `pnpm audit --prod` bloquant sur HIGH/CRITICAL.
-- **SAST** — CodeQL (en pause tant que le dépôt est privé sur plan gratuit :
-  l'upload de résultats « code scanning » exige GitHub Advanced Security).
+- **SAST** — CodeQL (code scanning) sur push `main`, PR et passage hebdomadaire ;
+  les alertes remontent dans l'onglet **Security → Code scanning** (GitHub Advanced
+  Security, gratuit sur dépôt public).
 - **Dépendances** — Dependabot (npm + actions GitHub épinglées par SHA).
 
-## Limitation connue — protection de branche
+## Protection de branche
 
-Le dépôt est **privé sur plan GitHub gratuit** : la protection de branche
-classique et les rulesets sont **indisponibles** (`gh api .../branches/main/protection`
-→ HTTP 403 « Upgrade to GitHub Pro or make this repository public »). Il n'y a
-donc **pas d'enforcement serveur** des revues obligatoires ni des checks requis ;
-la discipline repose sur la convention « une branche + une PR » et les portes CI.
-Voir [doc 25 §AUD-04](docs/25-audit-cicd-remediation.md) pour les options
-(GitHub Pro/Team, repo public, ou acter la limitation).
+Le dépôt étant **public**, la protection de branche est **activée et appliquée
+côté serveur** sur `main` (PUB-D, cf. [doc 25 §AUD-04](docs/25-audit-cicd-remediation.md)) :
+
+- **PR obligatoire** pour modifier `main` (push direct refusé).
+- **Check `ci` requis** et à jour (`strict: true`) avant tout merge. Le check
+  `security` n'est volontairement **pas** requis tant qu'il porte une vuln
+  pré-existante hors périmètre (Multer DoS, < 2.2.0) qui le maintient rouge.
+- **Force-push et suppression de branche interdits.**
+- Mainteneur unique : **0 revue obligatoire** (auto-merge possible) et
+  `enforce_admins` désactivé (échappatoire d'urgence conservée).
+
+> Historique : tant que le dépôt était privé sur plan gratuit, cette protection
+> était indisponible (`gh api .../branches/main/protection` → HTTP 403). La
+> limitation est **levée** depuis le passage en public.

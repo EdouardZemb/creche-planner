@@ -459,6 +459,12 @@ _Créé le 2026-06-09 à partir de l'audit CI/CD. Met à jour son statut au fil 
     (dépôt privé/plan gratuit). Pas d'enforcement serveur possible ; limitation tracée
     dans `SECURITY.md` et ici (§AUD-04 / §1 intro). Décision en suspens (Pro/Team, public,
     ou acter) inchangée.
+    - **MÀJ 2026-06-18 (PUB-D, dépôt rendu public)** : limitation **levée**. Protection de
+      `main` désormais **appliquée côté serveur** via `gh api .../branches/main/protection` :
+      PR obligatoire, check **`ci`** requis (`strict: true`), force-push/suppression
+      interdits, `enforce_admins: false`, **0 revue** (mono-mainteneur). Le check `security`
+      n'est **pas** requis (vuln Multer pré-existante hors périmètre → sinon plus aucune PR
+      ne pourrait merger). `SECURITY.md` §« Protection de branche » actualisé en conséquence.
   - **AUD-09** — job **`secret-scan`** ajouté à [`ci.yml`](../.github/workflows/ci.yml)
     (gitleaks-action `v3.0.0`, épinglée par SHA `e0c47f4…` résolu via `gh api`, cohérent
     avec AUD-02 + Dependabot `github-actions`). `fetch-depth: 0` → scan de **tout
