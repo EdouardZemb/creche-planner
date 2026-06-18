@@ -59,6 +59,11 @@
     "vitest": "~3.2.4",
     "webpack-cli": "^5.1.4"
   },
+  "pnpm": {
+    "overrides": {
+      "multer": "^2.2.0"
+    }
+  },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4",
