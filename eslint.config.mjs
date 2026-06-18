@@ -191,7 +191,10 @@ export default [
   { ...react.configs.flat.recommended, files: ['**/*.jsx', '**/*.tsx'] },
   { ...react.configs.flat['jsx-runtime'], files: ['**/*.jsx', '**/*.tsx'] },
   {
-    ...reactHooks.configs['recommended-latest'],
+    // react-hooks v7 (format flat) : inclut les règles du React Compiler
+    // (purity, immutability, static-components, set-state-in-render, refs…) qui
+    // signalent le code non compilable / non sûr pour la mémoïsation auto.
+    ...reactHooks.configs.flat['recommended-latest'],
     files: ['**/*.jsx', '**/*.tsx'],
   },
   { ...jsxA11y.flatConfigs.recommended, files: ['**/*.jsx', '**/*.tsx'] },
@@ -202,6 +205,15 @@ export default [
       // rules-of-hooks reste en erreur (critique). exhaustive-deps en « warn »
       // (recommandation React : autofix risqué). TODO ratchet.
       'react-hooks/exhaustive-deps': 'warn',
+      // Diagnostics React Compiler signalant des anti-patterns sur du code
+      // existant qui fonctionne (tests verts, build OK) : consultatifs, ratchetés
+      // en « warn » le temps de les traiter sans risque de régression. Les autres
+      // règles compiler (rules-of-hooks, static-components, use-memo, purity,
+      // set-state-in-render…) restent en ERREUR. TODO ratchet.
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/refs': 'warn',
+      'react-hooks/preserve-manual-memoization': 'warn',
+      'react-hooks/immutability': 'warn',
       'react/jsx-no-useless-fragment': 'error',
       'react/self-closing-comp': 'error',
       'react/jsx-boolean-value': ['error', 'never'],
