@@ -27,7 +27,7 @@ export class CoutsController {
     }
     valider(moisSchema, mois);
     return relayer(() =>
-      this.tarification.cout(foyer, mois as string, simule === 'true'),
+      this.tarification.cout(foyer, mois!, simule === 'true'),
     );
   }
 

@@ -9,7 +9,12 @@ function Coquille({ message }: { message: string }) {
   return (
     <div>
       <p data-testid="live" {...regionLiveProps} />
-      <button type="button" onClick={() => annoncer(message)}>
+      <button
+        type="button"
+        onClick={() => {
+          annoncer(message);
+        }}
+      >
         Muter
       </button>
     </div>

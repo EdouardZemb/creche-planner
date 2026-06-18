@@ -172,7 +172,9 @@ export function CoutsAnnuelsPage() {
           <button
             type="button"
             className="btn secondaire"
-            onClick={() => window.print()}
+            onClick={() => {
+              window.print();
+            }}
             aria-label="Imprimer ou enregistrer les coûts annuels en PDF"
           >
             Imprimer / PDF

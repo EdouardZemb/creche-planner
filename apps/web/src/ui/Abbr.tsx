@@ -19,6 +19,9 @@ export interface AbbrProps {
 export function Abbr({ sigle, title }: AbbrProps) {
   const libelle = title ?? libelleSigle(sigle) ?? sigle;
   return (
+    // tabIndex délibéré (UT-08) : rend l'<abbr> focusable au clavier pour
+    // déclencher le tooltip natif du `title` sans souris (cf. JSDoc).
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
     <abbr title={libelle} tabIndex={0}>
       {sigle}
     </abbr>

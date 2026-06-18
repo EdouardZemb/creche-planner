@@ -27,7 +27,7 @@ vi.mock('@fullcalendar/react', () => ({
     events,
     dateClick,
   }: {
-    events?: Array<{ id?: string }>;
+    events?: { id?: string }[];
     dateClick?: (arg: { dateStr: string }) => void;
   }) => (
     <div data-testid="fullcalendar">
@@ -38,20 +38,26 @@ vi.mock('@fullcalendar/react', () => ({
         <>
           <button
             data-testid="simulate-date-click"
-            onClick={() => dateClick({ dateStr: '2026-07-02' })}
+            onClick={() => {
+              dateClick({ dateStr: '2026-07-02' });
+            }}
           >
             Simuler clic ALSH
           </button>
           {/* 2026-06-01 = lundi (réservé), 2026-06-05 = vendredi (libre) */}
           <button
             data-testid="simulate-date-click-reserve"
-            onClick={() => dateClick({ dateStr: '2026-06-01' })}
+            onClick={() => {
+              dateClick({ dateStr: '2026-06-01' });
+            }}
           >
             Simuler clic réservé
           </button>
           <button
             data-testid="simulate-date-click-libre"
-            onClick={() => dateClick({ dateStr: '2026-06-05' })}
+            onClick={() => {
+              dateClick({ dateStr: '2026-06-05' });
+            }}
           >
             Simuler clic libre
           </button>
@@ -177,9 +183,14 @@ describe('CalendrierAbcm - CANTINE', () => {
       },
       { timeout: 2000 },
     );
-    await waitFor(() => expect(onEnregistre).toHaveBeenCalled(), {
-      timeout: 2000,
-    });
+    await waitFor(
+      () => {
+        expect(onEnregistre).toHaveBeenCalled();
+      },
+      {
+        timeout: 2000,
+      },
+    );
   });
 
   it('nomme chaque bouton « Ajuster » avec sa date et son état (nom accessible unique)', () => {
@@ -492,9 +503,14 @@ describe('CalendrierAbcm - ALSH', () => {
       },
       { timeout: 2000 },
     );
-    await waitFor(() => expect(onEnregistre).toHaveBeenCalled(), {
-      timeout: 2000,
-    });
+    await waitFor(
+      () => {
+        expect(onEnregistre).toHaveBeenCalled();
+      },
+      {
+        timeout: 2000,
+      },
+    );
   });
 
   it('ferme le popover en cliquant Annuler', () => {

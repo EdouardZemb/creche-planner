@@ -12,14 +12,16 @@ export interface AsyncEtat<T> {
 
 export function useAsync<T>(
   fn: (signal: AbortSignal) => Promise<T>,
-  deps: ReadonlyArray<unknown>,
+  deps: readonly unknown[],
 ): AsyncEtat<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
-  const reload = useCallback(() => setTick((t) => t + 1), []);
+  const reload = useCallback(() => {
+    setTick((t) => t + 1);
+  }, []);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -36,7 +38,9 @@ export function useAsync<T>(
         setError(messageErreur(e));
         setLoading(false);
       });
-    return () => ctrl.abort();
+    return () => {
+      ctrl.abort();
+    };
   }, [...deps, tick]);
 
   return { data, loading, error, reload };

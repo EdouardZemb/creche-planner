@@ -185,7 +185,9 @@ export function PlanningPage() {
           <input
             type="month"
             value={mois}
-            onChange={(e) => handleMoisChange(e.target.value)}
+            onChange={(e) => {
+              handleMoisChange(e.target.value);
+            }}
             style={{ fontSize: '0.9rem' }}
           />
         </label>
@@ -202,7 +204,9 @@ export function PlanningPage() {
           <input
             type="checkbox"
             checked={simule}
-            onChange={(e) => handleSimuleChange(e.target.checked)}
+            onChange={(e) => {
+              handleSimuleChange(e.target.checked);
+            }}
             style={{ width: 'auto', padding: 0 }}
           />
           Mode simulation
@@ -268,16 +272,18 @@ export function PlanningPage() {
                         aria-selected={actif}
                         tabIndex={actif ? 0 : -1}
                         className={actif ? 'onglet actif' : 'onglet'}
-                        onClick={() => handleEnfantClick(enfant.prenom)}
-                        onKeyDown={(e) =>
+                        onClick={() => {
+                          handleEnfantClick(enfant.prenom);
+                        }}
+                        onKeyDown={(e) => {
                           naviguerOnglets(
                             e,
                             enfants.map((en) => en.prenom),
                             enfant.prenom,
                             refsOngletsEnfants.current,
                             handleEnfantClick,
-                          )
-                        }
+                          );
+                        }}
                       >
                         {enfant.prenom}
                       </button>
@@ -329,16 +335,18 @@ export function PlanningPage() {
                                 aria-selected={actif}
                                 tabIndex={actif ? 0 : -1}
                                 className={actif ? 'onglet actif' : 'onglet'}
-                                onClick={() => handleModeClick(c.mode)}
-                                onKeyDown={(e) =>
+                                onClick={() => {
+                                  handleModeClick(c.mode);
+                                }}
+                                onKeyDown={(e) => {
                                   naviguerOnglets(
                                     e,
                                     contratsEnfant.map((ce) => ce.mode),
                                     c.mode,
                                     refsOngletsModes.current,
                                     handleModeClick,
-                                  )
-                                }
+                                  );
+                                }}
                               >
                                 {libelleMode(c.mode)}
                               </button>
@@ -413,7 +421,7 @@ export function PlanningPage() {
             {enfants.length === 0 && contrats.length > 0 && (
               <div className="carte muted">
                 Les contrats sont enregistrés localement mais le foyer ne
-                contient pas d'enfants chargés.
+                contient pas d’enfants chargés.
               </div>
             )}
           </div>

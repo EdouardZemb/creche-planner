@@ -22,7 +22,7 @@ const VALEUR_UA = 3125; // 31,25 € en centimes
 const ua = new UnitesAssociativesAbcm();
 
 describe('MBT DT-12 — partition heures réalisées vs quota', () => {
-  const cas: ReadonlyArray<[string, number, number, number]> = [
+  const cas: readonly [string, number, number, number][] = [
     // [libellé, heuresRealisees, heuresManquantes attendues, coût centimes attendu]
     ['aucune heure ⇒ quota entier manquant', 0, 20, 20 * VALEUR_UA],
     ['heures < quota ⇒ manque partiel', 12, 8, 8 * VALEUR_UA],
@@ -47,7 +47,7 @@ describe('MBT DT-12 — partition heures réalisées vs quota', () => {
 });
 
 describe('MBT DT-12 — BVA 3 points au quota (19 | 20 | 21)', () => {
-  const cas: ReadonlyArray<[string, number, number]> = [
+  const cas: readonly [string, number, number][] = [
     ['quota − 1 (19 h) ⇒ 1 h manquante', QUOTA - 1, 1 * VALEUR_UA],
     ['quota exact (20 h) ⇒ 0 manquante', QUOTA, 0],
     ['quota + 1 (21 h) ⇒ 0 manquante', QUOTA + 1, 0],
@@ -60,7 +60,7 @@ describe('MBT DT-12 — BVA 3 points au quota (19 | 20 | 21)', () => {
 });
 
 describe('MBT DT-12 — valeurs invalides', () => {
-  const invalides: ReadonlyArray<[string, number]> = [
+  const invalides: readonly [string, number][] = [
     ['négatif', -1],
     ['NaN', Number.NaN],
     ['infini', Number.POSITIVE_INFINITY],

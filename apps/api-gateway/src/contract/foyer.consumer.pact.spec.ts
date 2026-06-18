@@ -100,7 +100,7 @@ describe('Pact consumer · api-gateway → svc-foyer', () => {
     await provider.executeTest(async (mockServer) => {
       const reponse = await fetch(`${mockServer.url}/api/foyers`);
       expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as Array<{ id: string }>;
+      const corps = (await reponse.json()) as { id: string }[];
       expect(Array.isArray(corps)).toBe(true);
       expect(corps.length).toBeGreaterThanOrEqual(1);
     });

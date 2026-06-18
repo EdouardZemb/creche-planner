@@ -68,7 +68,9 @@ export function usePlanning(onEnregistre: () => void): UsePlanningResult {
             setErreur(null);
             onEnregistre();
             // Revenir à idle après 2 s
-            idleTimerRef.current = setTimeout(() => setEtat('idle'), 2000);
+            idleTimerRef.current = setTimeout(() => {
+              setEtat('idle');
+            }, 2000);
           })
           .catch((e: unknown) => {
             if (ctrl.signal.aborted) return;

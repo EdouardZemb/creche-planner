@@ -14,8 +14,8 @@ import type {
 // Client HTTP du BFF. Base URL configurable via VITE_API_BASE_URL (défaut '/api',
 // proxifié vers la gateway :3000 en dev). En-tête Authorization: Bearer ajouté
 // seulement si VITE_GATEWAY_TOKEN est défini (auth gateway désactivée sinon).
-const BASE = (import.meta.env['VITE_API_BASE_URL'] ?? '/api') as string;
-const TOKEN = import.meta.env['VITE_GATEWAY_TOKEN'] as string | undefined;
+const BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
+const TOKEN = import.meta.env.VITE_GATEWAY_TOKEN;
 
 /** Erreur HTTP non-2xx renvoyée par le BFF (corps = `[{champ,message}]` ou message). */
 export class ApiError extends Error {

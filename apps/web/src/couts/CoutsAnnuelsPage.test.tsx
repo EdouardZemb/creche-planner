@@ -313,7 +313,7 @@ describe('CoutsAnnuelsPage', () => {
   it('le bouton Exporter CSV déclenche un téléchargement Blob', async () => {
     vi.mocked(api.lireCoutAnnuel).mockResolvedValue(coutAnnuelFactice);
     const createUrl = vi.fn(() => 'blob:fake');
-    URL.createObjectURL = createUrl as typeof URL.createObjectURL;
+    URL.createObjectURL = createUrl;
     URL.revokeObjectURL = vi.fn() as typeof URL.revokeObjectURL;
     const click = vi
       .spyOn(HTMLAnchorElement.prototype, 'click')

@@ -227,8 +227,12 @@ export function ContratsPage() {
             <LigneContrat
               key={c.id}
               contrat={c}
-              onModifier={() => ouvrirEdition(c)}
-              onSupprimer={() => demanderSuppression(c)}
+              onModifier={() => {
+                ouvrirEdition(c);
+              }}
+              onSupprimer={() => {
+                demanderSuppression(c);
+              }}
               suppressionEnCours={suppressionId === c.id}
             />
           ))

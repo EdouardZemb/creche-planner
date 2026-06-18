@@ -131,7 +131,7 @@ describe('PanneauCoutMois', () => {
       .mockResolvedValueOnce(coutMoisSimuleFactice) // simule=true
       .mockResolvedValueOnce(coutMoisFactice); // simule=false (réel)
 
-    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule={true} />);
+    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule />);
 
     await waitFor(() => {
       // Simulé = 300 €, réel = 350 €, delta = -50 € (économie)
@@ -144,7 +144,7 @@ describe('PanneauCoutMois', () => {
       .mockResolvedValueOnce(coutMoisSimuleFactice) // 300 €
       .mockResolvedValueOnce(coutMoisFactice); // 350 €
 
-    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule={true} />);
+    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule />);
 
     await screen.findByText(/-50,00/);
 
@@ -176,7 +176,7 @@ describe('PanneauCoutMois', () => {
       .mockResolvedValueOnce(coutMoisSimuleFactice) // 300 €
       .mockResolvedValueOnce(coutMoisFactice); // 350 €
 
-    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule={true} />);
+    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule />);
 
     await screen.findByText(/-50,00/);
     // symbole non coloré ▼ + libellé textuel « économie » (hors couleur)
@@ -190,7 +190,7 @@ describe('PanneauCoutMois', () => {
       .mockResolvedValueOnce(coutMoisSimuleFactice) // 300 €
       .mockResolvedValueOnce(coutMoisSimuleFactice); // 300 € → delta = 0
 
-    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule={true} />);
+    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule />);
 
     await screen.findByText('=');
     expect(screen.getByText('=')).toBeInTheDocument();
@@ -231,7 +231,7 @@ describe('PanneauCoutMois', () => {
   it('affiche "simulation" dans le titre quand simule=true', async () => {
     vi.mocked(api.lireCoutMois).mockResolvedValue(coutMoisSimuleFactice);
 
-    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule={true} />);
+    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule />);
 
     await screen.findByText(/simulation/i);
     expect(screen.getByText(/simulation/i)).toBeInTheDocument();
@@ -265,7 +265,7 @@ describe('PanneauCoutMois', () => {
   it('le bouton Exporter CSV déclenche un téléchargement Blob', async () => {
     vi.mocked(api.lireCoutMois).mockResolvedValue(coutMoisFactice);
     const createUrl = vi.fn(() => 'blob:fake');
-    URL.createObjectURL = createUrl as typeof URL.createObjectURL;
+    URL.createObjectURL = createUrl;
     URL.revokeObjectURL = vi.fn() as typeof URL.revokeObjectURL;
     const click = vi
       .spyOn(HTMLAnchorElement.prototype, 'click')

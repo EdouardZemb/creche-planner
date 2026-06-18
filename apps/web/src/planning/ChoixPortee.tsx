@@ -29,7 +29,9 @@ export function ChoixPortee({ valeur, onChange, nom }: ChoixPorteeProps) {
             type="radio"
             name={`portee-${nom}`}
             checked={valeur === 'mois'}
-            onChange={() => onChange('mois')}
+            onChange={() => {
+              onChange('mois');
+            }}
             style={{ width: 'auto', padding: 0 }}
           />
           Ce mois uniquement
@@ -46,7 +48,9 @@ export function ChoixPortee({ valeur, onChange, nom }: ChoixPorteeProps) {
             type="radio"
             name={`portee-${nom}`}
             checked={valeur === 'tous'}
-            onChange={() => onChange('tous')}
+            onChange={() => {
+              onChange('tous');
+            }}
             style={{ width: 'auto', padding: 0 }}
           />
           Tous les mois (modifie le contrat)

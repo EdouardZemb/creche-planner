@@ -118,7 +118,9 @@ function PlageEditor({
         <input
           type="checkbox"
           checked={coche}
-          onChange={(e) => onCoche(e.target.checked)}
+          onChange={(e) => {
+            onCoche(e.target.checked);
+          }}
         />
         {LIBELLES_JOURS[jour]}
       </label>
@@ -232,9 +234,9 @@ function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
                   <input
                     type="checkbox"
                     checked={insc.cantine === true}
-                    onChange={(e) =>
-                      mettreAJour(jour, 'cantine', e.target.checked)
-                    }
+                    onChange={(e) => {
+                      mettreAJour(jour, 'cantine', e.target.checked);
+                    }}
                     aria-label={`Cantine ${LIBELLES_JOURS[jour]}`}
                   />
                 </td>
@@ -244,9 +246,9 @@ function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
                   <input
                     type="checkbox"
                     checked={insc.periMatin === true}
-                    onChange={(e) =>
-                      mettreAJour(jour, 'periMatin', e.target.checked)
-                    }
+                    onChange={(e) => {
+                      mettreAJour(jour, 'periMatin', e.target.checked);
+                    }}
                     aria-label={`Périscolaire matin ${LIBELLES_JOURS[jour]}`}
                   />
                 </td>
@@ -256,9 +258,9 @@ function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
                   <input
                     type="checkbox"
                     checked={insc.periSoir === true}
-                    onChange={(e) =>
-                      mettreAJour(jour, 'periSoir', e.target.checked)
-                    }
+                    onChange={(e) => {
+                      mettreAJour(jour, 'periSoir', e.target.checked);
+                    }}
                     aria-label={`Périscolaire soir ${LIBELLES_JOURS[jour]}`}
                   />
                 </td>
@@ -268,9 +270,9 @@ function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
                   <input
                     type="checkbox"
                     checked={insc.alsh === true}
-                    onChange={(e) =>
-                      mettreAJour(jour, 'alsh', e.target.checked)
-                    }
+                    onChange={(e) => {
+                      mettreAJour(jour, 'alsh', e.target.checked);
+                    }}
                     aria-label={`ALSH ${LIBELLES_JOURS[jour]}`}
                   />
                 </td>
@@ -541,7 +543,9 @@ export function ContratForm({
       <select
         id="contrat-enfant"
         value={enfantId}
-        onChange={(e) => setEnfantId(e.target.value)}
+        onChange={(e) => {
+          setEnfantId(e.target.value);
+        }}
         required
         aria-required="true"
         aria-invalid={erreurPour('enfant') ? true : undefined}
@@ -576,7 +580,9 @@ export function ContratForm({
           ? { 'aria-describedby': idErreur('valideDu') }
           : {})}
         value={valideDu}
-        onChange={(e) => setValideDu(e.target.value)}
+        onChange={(e) => {
+          setValideDu(e.target.value);
+        }}
         style={{ width: '100%' }}
       />
       {erreurPour('valideDu') && (
@@ -596,7 +602,9 @@ export function ContratForm({
           ? { 'aria-describedby': idErreur('valideAu') }
           : {})}
         value={valideAu}
-        onChange={(e) => setValideAu(e.target.value)}
+        onChange={(e) => {
+          setValideAu(e.target.value);
+        }}
         style={{ width: '100%' }}
       />
       {erreurPour('valideAu') && (
@@ -628,7 +636,9 @@ export function ContratForm({
                 }
               : {})}
             value={heuresAnnuelles}
-            onChange={(e) => setHeuresAnnuelles(e.target.value)}
+            onChange={(e) => {
+              setHeuresAnnuelles(e.target.value);
+            }}
             style={{ width: '100%' }}
           />
           {erreurPour('heuresAnnuellesContractualisees') && (
@@ -657,7 +667,9 @@ export function ContratForm({
               ? { 'aria-describedby': idErreur('nbMensualites') }
               : {})}
             value={nbMensualites}
-            onChange={(e) => setNbMensualites(e.target.value)}
+            onChange={(e) => {
+              setNbMensualites(e.target.value);
+            }}
             style={{ width: '100%' }}
           />
           {erreurPour('nbMensualites') && (
@@ -685,7 +697,7 @@ export function ContratForm({
                   jour={jour}
                   coche={cochesJours[jour] === true}
                   plage={plage}
-                  onCoche={(val) =>
+                  onCoche={(val) => {
                     setCochesJours((prev) => {
                       const n = { ...prev };
                       if (val) {
@@ -694,11 +706,11 @@ export function ContratForm({
                         delete n[jour];
                       }
                       return n;
-                    })
-                  }
-                  onPlage={(p) =>
-                    setPlagesJours((prev) => ({ ...prev, [jour]: p }))
-                  }
+                    });
+                  }}
+                  onPlage={(p) => {
+                    setPlagesJours((prev) => ({ ...prev, [jour]: p }));
+                  }}
                 />
               );
             })}

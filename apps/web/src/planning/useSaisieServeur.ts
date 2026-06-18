@@ -40,7 +40,9 @@ export function useSaisieServeur(
         if (ctrl.signal.aborted) return;
         setEtat({ saisie: null, chargee: true });
       });
-    return () => ctrl.abort();
+    return () => {
+      ctrl.abort();
+    };
   }, [contratId, mois, simule]);
 
   return etat;
