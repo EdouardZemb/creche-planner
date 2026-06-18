@@ -9,7 +9,7 @@ export default defineConfig(() => ({
     globals: true,
     environment: 'node',
     include: ['{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
-    reporters: process.env.CI
+    reporters: process.env['CI']
       ? [
           'default',
           ['junit', { outputFile: './test-output/vitest/junit.xml' }] as [

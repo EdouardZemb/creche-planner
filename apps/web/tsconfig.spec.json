@@ -15,6 +15,7 @@
     "useDefineForClassFields": true,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
+    "verbatimModuleSyntax": true,
     "types": [
       "vitest/globals",
       "vitest/importMeta",
