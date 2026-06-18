@@ -11,13 +11,24 @@ import { integrationEventSchema } from '@creche-planner/contracts-kernel';
 /** Service émetteur (champ `source` de l'enveloppe). */
 export const FOYER_EVENT_SOURCE = 'svc-foyer';
 
+// --- Identités brandées (parse-don't-validate, doc 03 §3) -------------------
+// Les identifiants UUID sont brandés via Zod : à la sortie d'un `.parse()` on
+// obtient un type nominal (FoyerId/EnfantId) impossible à confondre avec un
+// string brut ou un autre identifiant. Coût runtime nul (l'étiquette est
+// effacée), validation faite à la frontière.
+export const foyerIdSchema = z.string().uuid().brand<'FoyerId'>();
+export type FoyerId = z.infer<typeof foyerIdSchema>;
+
+export const enfantIdSchema = z.string().uuid().brand<'EnfantId'>();
+export type EnfantId = z.infer<typeof enfantIdSchema>;
+
 // --- foyer.FoyerMisAJour.v1 -------------------------------------------------
 
 /** Nom métier versionné (champ `type` de l'enveloppe). */
 export const FOYER_MIS_A_JOUR_TYPE = 'foyer.FoyerMisAJour.v1';
 
 export const foyerMisAJourPayloadSchema = z.object({
-  foyerId: z.string().uuid(),
+  foyerId: foyerIdSchema,
   ressourcesMensuellesCentimes: z.number().int().nonnegative(),
   rfrCentimes: z.number().int().nonnegative(),
   nbEnfantsACharge: z.number().int().min(1),
@@ -64,8 +75,8 @@ export type FoyerMisAJourEventV2 = z.infer<typeof foyerMisAJourEventV2Schema>;
 export const ENFANT_AJOUTE_TYPE = 'foyer.EnfantAjoute.v1';
 
 export const enfantAjoutePayloadSchema = z.object({
-  foyerId: z.string().uuid(),
-  enfantId: z.string().uuid(),
+  foyerId: foyerIdSchema,
+  enfantId: enfantIdSchema,
   prenom: z.string().min(1),
   /** Date de naissance au format ISO `YYYY-MM-DD`. */
   dateNaissance: z

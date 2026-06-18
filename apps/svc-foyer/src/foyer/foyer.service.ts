@@ -6,6 +6,8 @@ import { Enfant, Foyer } from '@creche-planner/foyer-domain';
 import {
   ENFANT_AJOUTE_TYPE,
   FOYER_MIS_A_JOUR_TYPE,
+  enfantIdSchema,
+  foyerIdSchema,
   type EnfantAjoutePayload,
   type FoyerMisAJourPayload,
 } from '@creche-planner/contracts-foyer';
@@ -120,7 +122,8 @@ export class FoyerService {
       prenom: dto.prenom,
       dateNaissance: new Date(dto.dateNaissance),
     });
-    const enfantId = randomUUID();
+    // Brandé à la frontière : à partir d'ici l'identité est nominale (EnfantId).
+    const enfantId = enfantIdSchema.parse(randomUUID());
     const ligne = await this.db.transaction(async (tx) => {
       const foyers = await tx.select().from(foyer).where(eq(foyer.id, foyerId));
       if (!foyers[0]) {
@@ -140,7 +143,7 @@ export class FoyerService {
         throw new Error(`insertion enfant échouée pour le foyer ${foyerId}`);
       }
       const payload: EnfantAjoutePayload = {
-        foyerId,
+        foyerId: foyerIdSchema.parse(foyerId),
         enfantId,
         prenom: enfantDomaine.prenom,
         dateNaissance: dto.dateNaissance,
@@ -180,7 +183,7 @@ export class FoyerService {
     domaine: Foyer,
   ): typeof outbox.$inferInsert {
     const payload: FoyerMisAJourPayload = {
-      foyerId: id,
+      foyerId: foyerIdSchema.parse(id),
       ressourcesMensuellesCentimes: domaine.ressourcesMensuelles.centimes,
       rfrCentimes: domaine.rfr.centimes,
       nbEnfantsACharge: domaine.nbEnfantsACharge,
