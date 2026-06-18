@@ -1,5 +1,8 @@
 import nx from '@nx/eslint-plugin';
 import tseslint from 'typescript-eslint';
+import react from 'eslint-plugin-react';
+import reactHooks from 'eslint-plugin-react-hooks';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
 
 export default [
   // Racine de résolution des tsconfig, fixée globalement : typescript-eslint v8
@@ -174,12 +177,36 @@ export default [
   // apps/web (les services/libs utilisent `*.spec.ts`). Le projectService résout
   // mal les types DOM dans le tsconfig « solution » de web (autofixes destructifs
   // sur les casts HTMLInputElement) ; on les lint sans type-info, `tsc -p
-  // tsconfig.spec.json` couvrant déjà leur typage. Déclaré au root pour
-  // s'appliquer aussi sous lint-staged (eslint lancé depuis la racine).
+  // tsconfig.spec.json` couvrant déjà leur typage. Déclaré au root (et non dans
+  // apps/web/eslint.config.mjs) pour s'appliquer aussi sous lint-staged, qui
+  // lance eslint depuis la racine sans cascade par dossier (flat config).
   ...tseslint.config({
     files: ['**/*.test.ts', '**/*.test.tsx'],
     extends: [tseslint.configs.disableTypeChecked],
   }),
+  // --- Couche React (apps/web — seul projet avec du JSX/TSX) ----------------
+  // Au root pour les mêmes raisons (lint-staged + résolution des directives
+  // eslint-disable jsx-a11y/react-*). Les globs **/*.{jsx,tsx} ne matchent que
+  // web et fonctionnent sous les deux cwd (nx par-projet et lint-staged racine).
+  { ...react.configs.flat.recommended, files: ['**/*.jsx', '**/*.tsx'] },
+  { ...react.configs.flat['jsx-runtime'], files: ['**/*.jsx', '**/*.tsx'] },
+  {
+    ...reactHooks.configs['recommended-latest'],
+    files: ['**/*.jsx', '**/*.tsx'],
+  },
+  { ...jsxA11y.flatConfigs.recommended, files: ['**/*.jsx', '**/*.tsx'] },
+  {
+    files: ['**/*.jsx', '**/*.tsx'],
+    settings: { react: { version: 'detect' } },
+    rules: {
+      // rules-of-hooks reste en erreur (critique). exhaustive-deps en « warn »
+      // (recommandation React : autofix risqué). TODO ratchet.
+      'react-hooks/exhaustive-deps': 'warn',
+      'react/jsx-no-useless-fragment': 'error',
+      'react/self-closing-comp': 'error',
+      'react/jsx-boolean-value': ['error', 'never'],
+    },
+  },
   {
     ignores: [
       '**/node_modules',

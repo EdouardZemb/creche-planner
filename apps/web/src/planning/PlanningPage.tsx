@@ -421,7 +421,7 @@ export function PlanningPage() {
             {enfants.length === 0 && contrats.length > 0 && (
               <div className="carte muted">
                 Les contrats sont enregistrés localement mais le foyer ne
-                contient pas d'enfants chargés.
+                contient pas d’enfants chargés.
               </div>
             )}
           </div>

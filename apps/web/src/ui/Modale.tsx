@@ -101,6 +101,9 @@ export function Modale({
   }
 
   return (
+    // Clic sur le backdrop = commodité souris pour fermer. L'accès clavier est
+    // garanti par Échap (cf. onKeyDown) et le bouton « fermer » ci-dessous.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div className="modal-overlay" onMouseDown={onClickOverlay}>
       <div
         className="modal"

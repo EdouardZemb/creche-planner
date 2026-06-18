@@ -375,7 +375,7 @@ describe('CalendrierCreche', () => {
       <CalendrierCreche
         contrat={contratCreche}
         mois="2026-06"
-        simule={true}
+        simule
         onEnregistre={vi.fn()}
       />,
     );
