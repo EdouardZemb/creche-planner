@@ -52,29 +52,29 @@ describe('selectionnerVersionApplicable', () => {
 
 describe('verifierAbsenceChevauchement', () => {
   it('accepte des périodes disjointes', () => {
-    expect(() =>
+    expect(() => {
       verifierAbsenceChevauchement([
         PeriodeValidite.creer('2025-01-01', '2025-12-31'),
         PeriodeValidite.creer('2026-01-01', '2026-12-31'),
-      ]),
-    ).not.toThrow();
+      ]);
+    }).not.toThrow();
   });
 
   it('lève si deux périodes se chevauchent (la courante ouverte)', () => {
-    expect(() =>
+    expect(() => {
       verifierAbsenceChevauchement([
         PeriodeValidite.creer('2026-06-01'),
         PeriodeValidite.creer('2026-01-01', '2026-12-31'),
-      ]),
-    ).toThrow(VersionsChevauchantesError);
+      ]);
+    }).toThrow(VersionsChevauchantesError);
   });
 
   it('lève si deux périodes se chevauchent (l’autre ouverte)', () => {
-    expect(() =>
+    expect(() => {
       verifierAbsenceChevauchement([
         PeriodeValidite.creer('2026-01-01', '2026-06-30'),
         PeriodeValidite.creer('2026-06-01'),
-      ]),
-    ).toThrow(VersionsChevauchantesError);
+      ]);
+    }).toThrow(VersionsChevauchantesError);
   });
 });

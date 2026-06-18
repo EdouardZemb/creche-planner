@@ -14,7 +14,12 @@ function Harnais({ onClose }: { onClose?: () => void }) {
   };
   return (
     <div>
-      <button type="button" onClick={() => setOuvert(true)}>
+      <button
+        type="button"
+        onClick={() => {
+          setOuvert(true);
+        }}
+      >
         Ouvrir
       </button>
       {ouvert && (
@@ -37,7 +42,7 @@ describe('Modale', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true');
     const labelId = dialog.getAttribute('aria-labelledby');
     expect(labelId).toBeTruthy();
-    expect(document.getElementById(labelId as string)).toHaveTextContent(
+    expect(document.getElementById(labelId!)).toHaveTextContent(
       'Saisir une absence',
     );
   });
@@ -68,7 +73,7 @@ describe('Modale', () => {
     await user.click(screen.getByRole('button', { name: 'Ouvrir' }));
     const dialog = screen.getByRole('dialog');
     // L'overlay est le parent de la modale.
-    const overlay = dialog.parentElement as HTMLElement;
+    const overlay = dialog.parentElement!;
     await user.click(overlay);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });

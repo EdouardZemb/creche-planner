@@ -406,6 +406,6 @@ export class CoutService {
    * portent que la cotisation.
    */
   private estPremiereAnneeAbcm(mois: string): boolean {
-    return mois.slice(0, 4) === '2026';
+    return mois.startsWith('2026');
   }
 }

@@ -49,7 +49,7 @@ const ATTENDU: Record<1 | 2 | 3, VecteurTarifs> = {
   },
 };
 
-const TRANCHES: ReadonlyArray<[1 | 2 | 3, Tranche]> = [
+const TRANCHES: readonly [1 | 2 | 3, Tranche][] = [
   [1, Tranche.T1],
   [2, Tranche.T2],
   [3, Tranche.T3],
@@ -73,7 +73,7 @@ describe('MBT BVA-17 — part « garde » cantine (PAI) : T3 seule', () => {
     expect(GrilleAbcm.pour(Tranche.T3).cantinePartGarde.centimes).toBe(801);
   });
 
-  const sansPartGarde: ReadonlyArray<[1 | 2, Tranche]> = [
+  const sansPartGarde: readonly [1 | 2, Tranche][] = [
     [1, Tranche.T1],
     [2, Tranche.T2],
   ];

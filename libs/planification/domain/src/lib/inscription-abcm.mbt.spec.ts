@@ -15,11 +15,6 @@ import {
   type SemaineTypeAbcm,
   type TypeAlsh,
 } from './inscription-abcm.js';
-import type {
-  PrestationsMoisAlsh,
-  PrestationsMoisCantine,
-  PrestationsMoisPeriscolaire,
-} from './prestations-mois.types.js';
 
 // --- Repères de dates (septembre 2026, aligné sur le spec existant) ----------
 // Jours d'école (semaine type) :
@@ -36,12 +31,12 @@ const MOIS = '2026-09';
 // =============================================================================
 describe('DT-05 — héritage d exception (true / false / undefined) × service', () => {
   // Oracle : effectif attendu = exc ?? base, puis « compté si === true ».
-  type CasHeritage = {
+  interface CasHeritage {
     readonly service: 'cantine' | 'periMatin' | 'periSoir';
     readonly base: boolean | undefined; // valeur en semaine type ce jour-là
     readonly exc: boolean | undefined; // valeur de l'exception
     readonly compteAttendu: boolean; // ce service est-il facturé ce jour ?
-  };
+  }
 
   /** base ∈ {true,false,undefined} × exc ∈ {true,false,undefined} = 9 lignes. */
   function casPourService(
@@ -86,11 +81,11 @@ describe('DT-05 — héritage d exception (true / false / undefined) × service'
       const cantine = inscriptionBornee.genererPrestationsCantine({
         mois: MOIS,
         exceptions: [exception],
-      }) as PrestationsMoisCantine;
+      });
       const peri = inscriptionBornee.genererPrestationsPeriscolaire({
         mois: MOIS,
         exceptions: [exception],
-      }) as PrestationsMoisPeriscolaire;
+      });
 
       const compteEffectif =
         service === 'cantine'
@@ -103,14 +98,14 @@ describe('DT-05 — héritage d exception (true / false / undefined) × service'
   );
 
   // Quelques combinaisons croisées (plusieurs services surchargés le même jour).
-  type CasCroise = {
+  interface CasCroise {
     readonly nom: string;
     readonly semaine: SemaineTypeAbcm;
     readonly exception: ExceptionJour;
     readonly cantine: number;
     readonly matins: number;
     readonly soirs: number;
-  };
+  }
   const croises: CasCroise[] = [
     {
       nom: 'tout hérité (exception vide) = semaine type',
@@ -154,11 +149,11 @@ describe('DT-05 — héritage d exception (true / false / undefined) × service'
       const c = inscription.genererPrestationsCantine({
         mois: MOIS,
         exceptions: [exception],
-      }) as PrestationsMoisCantine;
+      });
       const p = inscription.genererPrestationsPeriscolaire({
         mois: MOIS,
         exceptions: [exception],
-      }) as PrestationsMoisPeriscolaire;
+      });
       expect(c.nbJours).toBe(cantine);
       expect(p.nbMatins).toBe(matins);
       expect(p.nbSoirs).toBe(soirs);
@@ -173,12 +168,12 @@ describe('DT-05 — héritage d exception (true / false / undefined) × service'
 //   Oracle : effectif = exc ?? inscrit ; compté = effectif===true && facturable.
 // =============================================================================
 describe('BVA-10 — table jour facturable (inscrit × exception × non facturable)', () => {
-  type CasFacturable = {
+  interface CasFacturable {
     readonly inscrit: boolean; // cantine=true en semaine type ce jour ?
     readonly exc: boolean | undefined; // override cantine de l'exception
     readonly nonFacturable: boolean; // jour férié/fermeture (INV-04)
     readonly compteAttendu: boolean;
-  };
+  }
 
   const cas: CasFacturable[] = [];
   for (const inscrit of [true, false]) {
@@ -189,7 +184,7 @@ describe('BVA-10 — table jour facturable (inscrit × exception × non facturab
           inscrit,
           exc,
           nonFacturable,
-          compteAttendu: effectif === true && !nonFacturable,
+          compteAttendu: effectif && !nonFacturable,
         });
       }
     }
@@ -208,7 +203,7 @@ describe('BVA-10 — table jour facturable (inscrit × exception × non facturab
         joursNonFacturables: nonFacturable ? [LUNDI_INSCRIT] : [],
         exceptions:
           exc === undefined ? [] : [{ date: LUNDI_INSCRIT, cantine: exc }],
-      }) as PrestationsMoisCantine;
+      });
       expect(presta.nbJours === 1).toBe(compteAttendu);
     },
   );
@@ -222,7 +217,7 @@ describe('BVA-10 — table jour facturable (inscrit × exception × non facturab
     }).genererPrestationsCantine({
       mois: MOIS,
       joursNonFacturables: [LUNDI_INSCRIT],
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.nbJours).toBe(0);
   });
 
@@ -234,7 +229,7 @@ describe('BVA-10 — table jour facturable (inscrit × exception × non facturab
     }).genererPrestationsCantine({
       mois: MOIS,
       exceptions: [{ date: MERCREDI_LIBRE, cantine: true }],
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.nbJours).toBe(1);
   });
 
@@ -246,7 +241,7 @@ describe('BVA-10 — table jour facturable (inscrit × exception × non facturab
     }).genererPrestationsCantine({
       mois: MOIS,
       exceptions: [{ date: LUNDI_INSCRIT, cantine: false }],
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.nbJours).toBe(0);
   });
 });
@@ -256,13 +251,13 @@ describe('BVA-10 — table jour facturable (inscrit × exception × non facturab
 //   → (journées complètes / demi-journées / repas). Combinatoire complète.
 // =============================================================================
 describe('DT-10 — ALSH type × repas (combinatoire complète)', () => {
-  type CasAlsh = {
+  interface CasAlsh {
     readonly type: TypeAlsh;
     readonly repas: boolean;
     readonly completes: number;
     readonly demi: number;
     readonly nbRepas: number;
-  };
+  }
   const cas: CasAlsh[] = [
     { type: 'COMPLETE', repas: false, completes: 1, demi: 0, nbRepas: 0 },
     { type: 'COMPLETE', repas: true, completes: 1, demi: 0, nbRepas: 1 },
@@ -278,7 +273,7 @@ describe('DT-10 — ALSH type × repas (combinatoire complète)', () => {
       }).genererPrestationsAlsh({
         mois: '2026-10',
         joursAlsh: [{ date: '2026-10-19', type, repas }],
-      }) as PrestationsMoisAlsh;
+      });
       expect(presta.mode).toBe('ALSH');
       expect(presta.nbJourneesCompletes).toBe(completes);
       expect(presta.nbDemiJournees).toBe(demi);
@@ -292,7 +287,7 @@ describe('DT-10 — ALSH type × repas (combinatoire complète)', () => {
     }).genererPrestationsAlsh({
       mois: '2026-10',
       joursAlsh: [],
-    }) as PrestationsMoisAlsh;
+    });
     expect(presta.nbJourneesCompletes).toBe(0);
     expect(presta.nbDemiJournees).toBe(0);
     expect(presta.nbRepas).toBe(0);
@@ -304,7 +299,7 @@ describe('DT-10 — ALSH type × repas (combinatoire complète)', () => {
     }).genererPrestationsAlsh({
       mois: '2026-10',
       joursAlsh: [{ date: '2026-10-19', type: 'COMPLETE' }],
-    }) as PrestationsMoisAlsh;
+    });
     expect(presta.nbRepas).toBe(0);
   });
 });
@@ -314,13 +309,13 @@ describe('DT-10 — ALSH type × repas (combinatoire complète)', () => {
 //   des jours non facturables.
 // =============================================================================
 describe('BVA-11 — comptage séances péri matin / soir (BVA)', () => {
-  type CasPeri = {
+  interface CasPeri {
     readonly nom: string;
     readonly semaine: SemaineTypeAbcm;
     readonly nonFacturables: readonly string[];
     readonly matins: number;
     readonly soirs: number;
-  };
+  }
   // Semaine type Zoé : matin LUN+VEN, soir LUN+MER+VEN.
   const zoe: SemaineTypeAbcm = {
     LUNDI: { cantine: true, periMatin: true, periSoir: true },
@@ -373,7 +368,7 @@ describe('BVA-11 — comptage séances péri matin / soir (BVA)', () => {
         mois: MOIS,
         joursNonFacturables: nonFacturables,
       },
-    ) as PrestationsMoisPeriscolaire;
+    );
     expect(presta.mode).toBe('PERISCOLAIRE');
     expect(presta.nbMatins).toBe(matins);
     expect(presta.nbSoirs).toBe(soirs);

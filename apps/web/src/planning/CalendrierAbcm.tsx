@@ -493,7 +493,9 @@ export function CalendrierAbcm({
             <input
               type="checkbox"
               checked={pai ?? false}
-              onChange={(e) => handlePaiChange(e.target.checked)}
+              onChange={(e) => {
+                handlePaiChange(e.target.checked);
+              }}
               style={{ width: 'auto', padding: 0 }}
             />
             PAI (Projet d&apos;accueil individualisé)
@@ -588,7 +590,9 @@ export function CalendrierAbcm({
                   <button
                     type="button"
                     className="btn secondaire"
-                    onClick={() => ouvrirSaisieAlsh(jour)}
+                    onClick={() => {
+                      ouvrirSaisieAlsh(jour);
+                    }}
                     aria-label={
                       existant
                         ? `Modifier la journée ALSH du ${libelleJour}`
@@ -631,7 +635,9 @@ export function CalendrierAbcm({
                   <button
                     type="button"
                     className="btn secondaire"
-                    onClick={() => ouvrirAjustement(jour)}
+                    onClick={() => {
+                      ouvrirAjustement(jour);
+                    }}
                     aria-label={`Ajuster le ${libelleJour} (${
                       actif ? 'réservé' : 'non réservé'
                     })`}
@@ -649,7 +655,9 @@ export function CalendrierAbcm({
       {dialogDate !== null && (
         <Modale
           titre={`Ajuster le ${formaterDateFr(dialogDate)}`}
-          onClose={() => setDialogDate(null)}
+          onClose={() => {
+            setDialogDate(null);
+          }}
         >
           {mode === 'CANTINE' ? (
             <label
@@ -663,9 +671,9 @@ export function CalendrierAbcm({
               <input
                 type="checkbox"
                 checked={dialogForm.cantine}
-                onChange={(e) =>
-                  setDialogForm((f) => ({ ...f, cantine: e.target.checked }))
-                }
+                onChange={(e) => {
+                  setDialogForm((f) => ({ ...f, cantine: e.target.checked }));
+                }}
                 style={{ width: 'auto', padding: 0 }}
               />
               Cantine
@@ -689,9 +697,9 @@ export function CalendrierAbcm({
                 <input
                   type="checkbox"
                   checked={dialogForm.matin}
-                  onChange={(e) =>
-                    setDialogForm((f) => ({ ...f, matin: e.target.checked }))
-                  }
+                  onChange={(e) => {
+                    setDialogForm((f) => ({ ...f, matin: e.target.checked }));
+                  }}
                   style={{ width: 'auto', padding: 0 }}
                 />
                 Matin
@@ -707,9 +715,9 @@ export function CalendrierAbcm({
                 <input
                   type="checkbox"
                   checked={dialogForm.soir}
-                  onChange={(e) =>
-                    setDialogForm((f) => ({ ...f, soir: e.target.checked }))
-                  }
+                  onChange={(e) => {
+                    setDialogForm((f) => ({ ...f, soir: e.target.checked }));
+                  }}
                   style={{ width: 'auto', padding: 0 }}
                 />
                 Soir
@@ -735,7 +743,9 @@ export function CalendrierAbcm({
             <button
               type="button"
               className="btn secondaire"
-              onClick={() => setDialogDate(null)}
+              onClick={() => {
+                setDialogDate(null);
+              }}
             >
               Annuler
             </button>
@@ -747,18 +757,20 @@ export function CalendrierAbcm({
       {popoverDate !== null && (
         <Modale
           titre={`Journée ALSH du ${formaterDateFr(popoverDate)}`}
-          onClose={() => setPopoverDate(null)}
+          onClose={() => {
+            setPopoverDate(null);
+          }}
         >
           <label>
             Type
             <select
               value={popoverForm.type}
-              onChange={(e) =>
+              onChange={(e) => {
                 setPopoverForm((f) => ({
                   ...f,
                   type: e.target.value as 'COMPLETE' | 'DEMI',
-                }))
-              }
+                }));
+              }}
             >
               <option value="COMPLETE">Journée complète</option>
               <option value="DEMI">Demi-journée</option>
@@ -777,9 +789,9 @@ export function CalendrierAbcm({
             <input
               type="checkbox"
               checked={popoverForm.repas}
-              onChange={(e) =>
-                setPopoverForm((f) => ({ ...f, repas: e.target.checked }))
-              }
+              onChange={(e) => {
+                setPopoverForm((f) => ({ ...f, repas: e.target.checked }));
+              }}
               style={{ width: 'auto', padding: 0 }}
             />
             Repas inclus
@@ -801,7 +813,9 @@ export function CalendrierAbcm({
             <button
               type="button"
               className="btn secondaire"
-              onClick={() => setPopoverDate(null)}
+              onClick={() => {
+                setPopoverDate(null);
+              }}
             >
               Annuler
             </button>
@@ -822,7 +836,9 @@ export function CalendrierAbcm({
           }
           setConfirmationDurable(null);
         }}
-        onAnnuler={() => setConfirmationDurable(null)}
+        onAnnuler={() => {
+          setConfirmationDurable(null);
+        }}
       />
     </div>
   );

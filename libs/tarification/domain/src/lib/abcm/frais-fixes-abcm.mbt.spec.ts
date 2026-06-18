@@ -24,7 +24,7 @@ const frais = new FraisFixesAbcm();
 
 describe('MBT DT-11 — combinatoire mois × premiereAnnee', () => {
   // Partition des mois : { septembre } vs { autres } × { 1ère année, suivantes }
-  const cas: ReadonlyArray<[number, boolean, number]> = [
+  const cas: readonly [number, boolean, number][] = [
     // [mois, premiereAnnee, total centimes attendu]
     [9, false, COTISATION], // rattachement, année suivante
     [9, true, COTISATION + INSCRIPTION], // rattachement, 1ère année
@@ -62,7 +62,7 @@ describe('MBT DT-11 — combinatoire mois × premiereAnnee', () => {
 });
 
 describe('MBT DT-11 — BVA 3 points sur le mois (8 | 9 | 10)', () => {
-  const cas: ReadonlyArray<[string, number, number]> = [
+  const cas: readonly [string, number, number][] = [
     ['mois 8 (rattachement − 1) ⇒ 0', 8, 0],
     ['mois 9 (rattachement) ⇒ cotisation', 9, COTISATION],
     ['mois 10 (rattachement + 1) ⇒ 0', 10, 0],
@@ -87,7 +87,7 @@ describe('MBT DT-11 — bornes calendaires (BVA 1..12) et valeurs invalides', ()
     ).toBe(0);
   });
 
-  const invalides: ReadonlyArray<[string, number]> = [
+  const invalides: readonly [string, number][] = [
     ['mois 0 (borne basse − 1)', 0],
     ['mois 13 (borne haute + 1)', 13],
     ['mois négatif', -1],

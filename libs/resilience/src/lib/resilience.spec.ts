@@ -143,7 +143,7 @@ describe('fetchAvecTimeout', () => {
     }
     const [url, init] = appel;
     expect(url).toBe('http://amont/x');
-    expect((init as RequestInit).signal).toBeInstanceOf(AbortSignal);
+    expect(init!.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('propage l’init (méthode + corps) tout en conservant le signal', async () => {
@@ -157,7 +157,7 @@ describe('fetchAvecTimeout', () => {
     if (!appel) {
       throw new Error('fetch n’a pas été appelé');
     }
-    const init = appel[1] as RequestInit;
+    const init = appel[1]!;
     expect(init.method).toBe('POST');
     expect(init.body).toBe('{"a":1}');
     expect(init.signal).toBeInstanceOf(AbortSignal);
@@ -169,9 +169,9 @@ describe('fetchAvecTimeout', () => {
       const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
         (_url, init) =>
           new Promise((_resoudre, rejeter) => {
-            (init as RequestInit).signal?.addEventListener('abort', () =>
-              rejeter(new Error('aborted')),
-            );
+            init!.signal?.addEventListener('abort', () => {
+              rejeter(new Error('aborted'));
+            });
           }),
       );
       const promesse = fetchAvecTimeout('http://amont/lent', 10);

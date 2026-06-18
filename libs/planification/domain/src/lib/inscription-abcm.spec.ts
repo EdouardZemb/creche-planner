@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { InscriptionAbcm } from './inscription-abcm.js';
-import type {
-  PrestationsMoisAlsh,
-  PrestationsMoisCantine,
-  PrestationsMoisPeriscolaire,
-} from './prestations-mois.types.js';
 
 /**
  * Semaine type ABCM de Zoé (doc 02 §4/§7) : cantine lundi/mercredi/vendredi,
@@ -24,7 +19,7 @@ describe('InscriptionAbcm — cantine (CT-10)', () => {
   it('compte les jours de cantine réservés du mois (réservé = facturé)', () => {
     const presta = inscriptionZoé().genererPrestationsCantine({
       mois: '2026-09',
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.mode).toBe('CANTINE');
     expect(presta.pai).toBe(false);
     // Sept. 2026 jours de cantine : lundis 7,14,21,28 (4) + mercredis 2,9,16,23,30 (5)
@@ -38,18 +33,18 @@ describe('InscriptionAbcm — cantine (CT-10)', () => {
     const presta = inscriptionZoé().genererPrestationsCantine({
       mois: '2026-09',
       joursNonFacturables: ['2026-09-30'],
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.nbJours).toBe(12);
   });
 
   it('exclut un jour de cantine non facturable (INV-04)', () => {
     const reference = inscriptionZoé().genererPrestationsCantine({
       mois: '2026-09',
-    }) as PrestationsMoisCantine;
+    });
     const avecExclusion = inscriptionZoé().genererPrestationsCantine({
       mois: '2026-09',
       joursNonFacturables: ['2026-09-07'], // un lundi (jour de cantine)
-    }) as PrestationsMoisCantine;
+    });
     expect(reference.nbJours - avecExclusion.nbJours).toBe(1);
   });
 
@@ -57,7 +52,7 @@ describe('InscriptionAbcm — cantine (CT-10)', () => {
     const presta = inscriptionZoé().genererPrestationsCantine({
       mois: '2026-09',
       pai: true,
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.pai).toBe(true);
   });
 });
@@ -67,7 +62,7 @@ describe('InscriptionAbcm — exceptions par jour (ajout / retrait ponctuel)', (
     const presta = inscriptionZoé().genererPrestationsCantine({
       mois: '2026-09',
       exceptions: [{ date: '2026-09-07', cantine: false }], // un lundi prévu
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.nbJours).toBe(12); // 13 − 1
   });
 
@@ -76,7 +71,7 @@ describe('InscriptionAbcm — exceptions par jour (ajout / retrait ponctuel)', (
     const presta = inscriptionZoé().genererPrestationsCantine({
       mois: '2026-09',
       exceptions: [{ date: '2026-09-03', cantine: true }],
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.nbJours).toBe(14); // 13 + 1
   });
 
@@ -85,7 +80,7 @@ describe('InscriptionAbcm — exceptions par jour (ajout / retrait ponctuel)', (
     const presta = inscriptionZoé().genererPrestationsCantine({
       mois: '2026-09',
       exceptions: [{ date: '2026-09-07', periSoir: false }],
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.nbJours).toBe(13);
   });
 
@@ -93,7 +88,7 @@ describe('InscriptionAbcm — exceptions par jour (ajout / retrait ponctuel)', (
     const reference = inscriptionZoé().genererPrestationsPeriscolaire({
       mois: '2026-09',
       joursNonFacturables: ['2026-09-01'],
-    }) as PrestationsMoisPeriscolaire;
+    });
     const ajuste = inscriptionZoé().genererPrestationsPeriscolaire({
       mois: '2026-09',
       joursNonFacturables: ['2026-09-01'],
@@ -101,7 +96,7 @@ describe('InscriptionAbcm — exceptions par jour (ajout / retrait ponctuel)', (
         { date: '2026-09-07', periMatin: false }, // lundi : retire le matin
         { date: '2026-09-03', periSoir: true }, // jeudi : ajoute un soir
       ],
-    }) as PrestationsMoisPeriscolaire;
+    });
     expect(reference.nbMatins - ajuste.nbMatins).toBe(1);
     expect(ajuste.nbSoirs - reference.nbSoirs).toBe(1);
   });
@@ -111,7 +106,7 @@ describe('InscriptionAbcm — exceptions par jour (ajout / retrait ponctuel)', (
       mois: '2026-09',
       joursNonFacturables: ['2026-09-01'],
       exceptions: [{ date: '2026-09-01', cantine: true }],
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.nbJours).toBe(13); // le jour non facturable n est jamais facturé
   });
 });
@@ -121,7 +116,7 @@ describe('InscriptionAbcm — périscolaire (CT-11)', () => {
     const presta = inscriptionZoé().genererPrestationsPeriscolaire({
       mois: '2026-09',
       joursNonFacturables: ['2026-09-30'],
-    }) as PrestationsMoisPeriscolaire;
+    });
     expect(presta.mode).toBe('PERISCOLAIRE');
     // Soir lun/mer/ven, en excluant le mercredi 30 → 3 jours × 4 sem = 12 ;
     // matin lundi+vendredi × 4 sem = 8.
@@ -132,11 +127,11 @@ describe('InscriptionAbcm — périscolaire (CT-11)', () => {
   it('exclut une séance dont le jour est non facturable (INV-04)', () => {
     const reference = inscriptionZoé().genererPrestationsPeriscolaire({
       mois: '2026-09',
-    }) as PrestationsMoisPeriscolaire;
+    });
     const avec = inscriptionZoé().genererPrestationsPeriscolaire({
       mois: '2026-09',
       joursNonFacturables: ['2026-09-07'], // lundi : matin + soir
-    }) as PrestationsMoisPeriscolaire;
+    });
     expect(reference.nbMatins - avec.nbMatins).toBe(1);
     expect(reference.nbSoirs - avec.nbSoirs).toBe(1);
   });
@@ -154,7 +149,7 @@ describe('InscriptionAbcm — ALSH (CT-12)', () => {
         { date: '2026-10-22', type: 'COMPLETE' },
         { date: '2026-10-23', type: 'COMPLETE' },
       ],
-    }) as PrestationsMoisAlsh;
+    });
     expect(presta.mode).toBe('ALSH');
     expect(presta.nbJourneesCompletes).toBe(5);
     expect(presta.nbDemiJournees).toBe(0);
@@ -170,7 +165,7 @@ describe('InscriptionAbcm — ALSH (CT-12)', () => {
         { date: '2026-10-19', type: 'COMPLETE', repas: true },
         { date: '2026-10-20', type: 'DEMI' },
       ],
-    }) as PrestationsMoisAlsh;
+    });
     expect(presta.nbJourneesCompletes).toBe(1);
     expect(presta.nbDemiJournees).toBe(1);
     expect(presta.nbRepas).toBe(1);
@@ -186,7 +181,7 @@ describe('InscriptionAbcm — ALSH (CT-12)', () => {
         { date: '2026-10-20', type: 'COMPLETE' },
       ],
       joursNonFacturables: ['2026-10-20'],
-    }) as PrestationsMoisAlsh;
+    });
     expect(presta.nbJourneesCompletes).toBe(1);
   });
 
@@ -199,7 +194,7 @@ describe('InscriptionAbcm — ALSH (CT-12)', () => {
         { date: '2026-10-19', type: 'COMPLETE' },
         { date: '2026-11-02', type: 'COMPLETE' }, // novembre : ignoré
       ],
-    }) as PrestationsMoisAlsh;
+    });
     expect(presta.nbJourneesCompletes).toBe(1);
   });
 });
@@ -234,7 +229,7 @@ describe('InscriptionAbcm — couverture mensuelle (Phase 9, bug #2)', () => {
   it('cantine : zéro jour après la fin de validité (valideAu)', () => {
     const presta = inscriptionZoéRentree().genererPrestationsCantine({
       mois: '2027-09',
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.nbJours).toBe(0);
   });
 
@@ -247,14 +242,14 @@ describe('InscriptionAbcm — couverture mensuelle (Phase 9, bug #2)', () => {
   it('Zoé cantine en juin : zéro jour (avant la rentrée)', () => {
     const presta = inscriptionZoéRentree().genererPrestationsCantine({
       mois: '2026-06',
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.nbJours).toBe(0);
   });
 
   it('Zoé péri en juin : zéro séance (avant la rentrée)', () => {
     const presta = inscriptionZoéRentree().genererPrestationsPeriscolaire({
       mois: '2026-06',
-    }) as PrestationsMoisPeriscolaire;
+    });
     expect(presta.nbMatins).toBe(0);
     expect(presta.nbSoirs).toBe(0);
   });
@@ -262,7 +257,7 @@ describe('InscriptionAbcm — couverture mensuelle (Phase 9, bug #2)', () => {
   it('Zoé cantine en septembre : facturée normalement (13 jours)', () => {
     const presta = inscriptionZoéRentree().genererPrestationsCantine({
       mois: '2026-09',
-    }) as PrestationsMoisCantine;
+    });
     expect(presta.nbJours).toBe(13);
   });
 
@@ -278,7 +273,7 @@ describe('InscriptionAbcm — couverture mensuelle (Phase 9, bug #2)', () => {
     });
     const presta = inscription.genererPrestationsCantine({
       mois: '2026-09',
-    }) as PrestationsMoisCantine;
+    });
     // Jours de cantine ≥ 15 : lun 21,28 ; mer 16,23,30 ; ven 18,25 = 7.
     expect(presta.nbJours).toBe(7);
   });
@@ -294,7 +289,7 @@ describe('InscriptionAbcm — couverture mensuelle (Phase 9, bug #2)', () => {
         { date: '2026-10-19', type: 'COMPLETE' }, // avant valideDu : ignoré
         { date: '2026-10-21', type: 'COMPLETE' },
       ],
-    }) as PrestationsMoisAlsh;
+    });
     expect(presta.nbJourneesCompletes).toBe(1);
   });
 });

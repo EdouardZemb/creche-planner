@@ -27,7 +27,7 @@ vi.mock('@fullcalendar/react', () => ({
     events,
     dateClick,
   }: {
-    events?: Array<{ id?: string }>;
+    events?: { id?: string }[];
     dateClick?: (arg: { dateStr: string }) => void;
   }) => (
     <div data-testid="fullcalendar">
@@ -39,13 +39,17 @@ vi.mock('@fullcalendar/react', () => ({
         <>
           <button
             data-testid="simulate-date-click"
-            onClick={() => dateClick({ dateStr: '2026-06-02' })}
+            onClick={() => {
+              dateClick({ dateStr: '2026-06-02' });
+            }}
           >
             Simuler clic
           </button>
           <button
             data-testid="simulate-date-click-libre"
-            onClick={() => dateClick({ dateStr: '2026-06-06' })}
+            onClick={() => {
+              dateClick({ dateStr: '2026-06-06' });
+            }}
           >
             Simuler clic jour libre
           </button>
@@ -254,9 +258,14 @@ describe('CalendrierCreche', () => {
       { timeout: 2000 },
     );
 
-    await waitFor(() => expect(onEnregistre).toHaveBeenCalled(), {
-      timeout: 2000,
-    });
+    await waitFor(
+      () => {
+        expect(onEnregistre).toHaveBeenCalled();
+      },
+      {
+        timeout: 2000,
+      },
+    );
   });
 
   it('ouvre le dialog d ajout apres clic sur un jour non garde', () => {

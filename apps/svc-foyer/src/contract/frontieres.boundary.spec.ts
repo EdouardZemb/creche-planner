@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -16,6 +16,9 @@ import { describe, expect, it } from 'vitest';
  * échec « A project tagged with "context:foyer" can only depend on libs tagged
  * with "context:foyer", "context:shared" ». Ce test fige la config qui garantit
  * cet échec, sans avoir à booter ESLint.
+ *
+ * Les contraintes sont désormais portées par le flat config `eslint.config.mjs`
+ * (ESLint 9) ; on importe le module et on cherche le bloc qui définit la règle.
  */
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-foyer) → racine du dépôt à ../../.
@@ -26,20 +29,20 @@ interface DepConstraint {
   onlyDependOnLibsWithTags: string[];
 }
 
-function chargerContraintes(): DepConstraint[] {
-  const brut = readFileSync(resolve(RACINE, '.eslintrc.json'), 'utf8');
-  const config = JSON.parse(brut) as {
-    overrides: Array<{
-      rules?: {
-        '@nx/enforce-module-boundaries'?: [
-          string,
-          { depConstraints: DepConstraint[] },
-        ];
-      };
-    }>;
+interface FlatConfigBloc {
+  rules?: {
+    '@nx/enforce-module-boundaries'?: [
+      string,
+      { depConstraints: DepConstraint[] },
+    ];
   };
-  for (const override of config.overrides) {
-    const regle = override.rules?.['@nx/enforce-module-boundaries'];
+}
+
+async function chargerContraintes(): Promise<DepConstraint[]> {
+  const url = pathToFileURL(resolve(RACINE, 'eslint.config.mjs')).href;
+  const mod = (await import(url)) as { default: FlatConfigBloc[] };
+  for (const bloc of mod.default) {
+    const regle = bloc.rules?.['@nx/enforce-module-boundaries'];
     if (regle) {
       return regle[1].depConstraints;
     }
@@ -47,8 +50,10 @@ function chargerContraintes(): DepConstraint[] {
   throw new Error('Règle @nx/enforce-module-boundaries introuvable');
 }
 
-function allowList(tag: string): string[] {
-  const contrainte = chargerContraintes().find((c) => c.sourceTag === tag);
+async function allowList(tag: string): Promise<string[]> {
+  const contrainte = (await chargerContraintes()).find(
+    (c) => c.sourceTag === tag,
+  );
   if (!contrainte) {
     throw new Error(`Contrainte introuvable pour ${tag}`);
   }
@@ -56,19 +61,23 @@ function allowList(tag: string): string[] {
 }
 
 describe('frontières de contrats (DEC-01/CA2)', () => {
-  it('interdit context:foyer → context:planification (import inter-contexte interdit)', () => {
-    expect(allowList('context:foyer')).not.toContain('context:planification');
-    expect(allowList('context:foyer')).not.toContain('context:referentiel');
+  it('interdit context:foyer → context:planification (import inter-contexte interdit)', async () => {
+    expect(await allowList('context:foyer')).not.toContain(
+      'context:planification',
+    );
+    expect(await allowList('context:foyer')).not.toContain(
+      'context:referentiel',
+    );
   });
 
-  it('autorise context:foyer → context:foyer + context:shared (kernel) uniquement', () => {
-    expect(allowList('context:foyer')).toEqual(
+  it('autorise context:foyer → context:foyer + context:shared (kernel) uniquement', async () => {
+    expect(await allowList('context:foyer')).toEqual(
       expect.arrayContaining(['context:foyer', 'context:shared']),
     );
   });
 
-  it('autorise le consommateur context:tarification à tirer les contrats amont consommés', () => {
-    const tarif = allowList('context:tarification');
+  it('autorise le consommateur context:tarification à tirer les contrats amont consommés', async () => {
+    const tarif = await allowList('context:tarification');
     expect(tarif).toEqual(
       expect.arrayContaining([
         'context:tarification',
@@ -80,8 +89,8 @@ describe('frontières de contrats (DEC-01/CA2)', () => {
     );
   });
 
-  it('a retiré la contrainte morte type:application (DEC-10)', () => {
-    const tags = chargerContraintes().map((c) => c.sourceTag);
+  it('a retiré la contrainte morte type:application (DEC-10)', async () => {
+    const tags = (await chargerContraintes()).map((c) => c.sourceTag);
     expect(tags).not.toContain('type:application');
   });
 });

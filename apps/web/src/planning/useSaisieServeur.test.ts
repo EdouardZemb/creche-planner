@@ -84,7 +84,9 @@ describe('useSaisieServeur', () => {
       useSaisieServeur('c1', '2026-03', false),
     );
 
-    await waitFor(() => expect(result.current.chargee).toBe(true));
+    await waitFor(() => {
+      expect(result.current.chargee).toBe(true);
+    });
     // Restitution à l'identique (référence préservée, aucune transformation).
     expect(result.current.saisie).toBe(SAISIE_RICHE);
     expect(result.current.saisie).toEqual(SAISIE_RICHE);
@@ -100,7 +102,9 @@ describe('useSaisieServeur', () => {
       useSaisieServeur('c1', '2026-03', false),
     );
 
-    await waitFor(() => expect(result.current.chargee).toBe(true));
+    await waitFor(() => {
+      expect(result.current.chargee).toBe(true);
+    });
     expect(result.current.saisie).toBeNull();
   });
 
@@ -110,7 +114,9 @@ describe('useSaisieServeur', () => {
       useSaisieServeur('c1', '2026-03', false),
     );
 
-    await waitFor(() => expect(result.current.chargee).toBe(true));
+    await waitFor(() => {
+      expect(result.current.chargee).toBe(true);
+    });
     expect(result.current.saisie).toBeNull();
   });
 
@@ -162,7 +168,9 @@ describe('useSaisieServeur', () => {
       ancienne.resoudre({ saisie: saisieAncienne });
     });
 
-    await waitFor(() => expect(result.current.chargee).toBe(true));
+    await waitFor(() => {
+      expect(result.current.chargee).toBe(true);
+    });
     expect(result.current.saisie).toBe(saisieNouvelle);
   });
 
@@ -172,7 +180,9 @@ describe('useSaisieServeur', () => {
       ({ mois }: { mois: string }) => useSaisieServeur('c1', mois, false),
       { initialProps: { mois: '2026-03' } },
     );
-    await waitFor(() => expect(result.current.chargee).toBe(true));
+    await waitFor(() => {
+      expect(result.current.chargee).toBe(true);
+    });
     expect(result.current.saisie).toEqual({ complementMinutes: 1 });
 
     // Nouvelle réponse contrôlée pour observer l'état intermédiaire chargee:false.
@@ -189,7 +199,9 @@ describe('useSaisieServeur', () => {
     await act(async () => {
       d.resoudre({ saisie: { complementMinutes: 2 } });
     });
-    await waitFor(() => expect(result.current.chargee).toBe(true));
+    await waitFor(() => {
+      expect(result.current.chargee).toBe(true);
+    });
     expect(result.current.saisie).toEqual({ complementMinutes: 2 });
   });
 });

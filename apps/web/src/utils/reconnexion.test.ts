@@ -4,15 +4,9 @@ import { seReconnecter } from './reconnexion';
 // Les dépendances (conteneur SW, rechargement) sont injectées : pas besoin de
 // trafiquer navigator/location (non configurables sous jsdom).
 
-function fauxSW(
-  enregistrements: Array<{ unregister: () => Promise<boolean> }>,
-) {
+function fauxSW(enregistrements: { unregister: () => Promise<boolean> }[]) {
   return {
-    getRegistrations: vi
-      .fn()
-      .mockResolvedValue(
-        enregistrements as unknown as ServiceWorkerRegistration[],
-      ),
+    getRegistrations: vi.fn().mockResolvedValue(enregistrements),
   };
 }
 

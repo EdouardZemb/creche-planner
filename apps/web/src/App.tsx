@@ -220,7 +220,7 @@ function titreDepuisPathname(pathname: string): string {
  */
 function Coquille() {
   const { pathname } = useLocation();
-  const { refCible, regionLiveProps } = useAnnonceRoute<HTMLElement>(
+  const { refCible, regionLiveProps } = useAnnonceRoute(
     titreDepuisPathname(pathname),
   );
 

@@ -81,7 +81,7 @@ describe('MBT DT-07 — PSU ressources bornées (table de décision + BVA 3 poin
 
   // -- BVA 3 points au PLANCHER (plancher−ε / plancher / plancher+ε) --------
   describe('BVA 3 points au plancher (ε = 1 centime)', () => {
-    const cas: ReadonlyArray<[string, number, number]> = [
+    const cas: readonly [string, number, number][] = [
       // [libellé, ressource centimes, ressource appliquée centimes]
       ['plancher − ε ⇒ plancher', 80000 - 1, 80000],
       ['plancher exact ⇒ ressource (pas borné)', 80000, 80000],
@@ -98,7 +98,7 @@ describe('MBT DT-07 — PSU ressources bornées (table de décision + BVA 3 poin
 
   // -- BVA 3 points au PLAFOND (plafond−ε / plafond / plafond+ε) ------------
   describe('BVA 3 points au plafond (ε = 1 centime)', () => {
-    const cas: ReadonlyArray<[string, number, number]> = [
+    const cas: readonly [string, number, number][] = [
       ['plafond − ε ⇒ ressource', 600000 - 1, 600000 - 1],
       ['plafond exact ⇒ ressource (pas borné)', 600000, 600000],
       ['plafond + ε ⇒ plafond', 600000 + 1, 600000],
