@@ -242,7 +242,7 @@ describe('ProjectionService.traiter', () => {
       projection.traiter('FOYER', {
         ...base,
         payload: {
-          ...(base.payload as Record<string, unknown>),
+          ...(base['payload'] as Record<string, unknown>),
           anneeRevenus: 1700,
         },
       }),

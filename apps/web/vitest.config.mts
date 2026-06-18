@@ -14,7 +14,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['src/test-setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
-    reporters: process.env.CI
+    reporters: process.env['CI']
       ? [
           'default',
           ['junit', { outputFile: './test-output/vitest/junit.xml' }] as [
