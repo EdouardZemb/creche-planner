@@ -38,6 +38,18 @@ ARG APP
 COPY --from=build /app/apps/$APP/dist/package.json ./package.json
 COPY --from=build /app/apps/$APP/dist/pnpm-lock.yaml ./pnpm-lock.yaml
 COPY --from=build /app/apps/$APP/dist/workspace_modules ./workspace_modules
+# Réinjecte les `pnpm.overrides` de la racine dans le package.json élagué.
+# `@nx/js:prune-lockfile` recopie bien le bloc `overrides` dans le lockfile
+# élagué mais PAS dans le package.json. L'install ci-dessous verrait alors un
+# lockfile qui déclare un override absent du manifeste et, sous
+# `--no-frozen-lockfile`, le « corrigerait » en re-résolvant la version d'origine
+# (ex. multer 2.1.1, CVE-2026-5079 DoS HIGH — bloque le scan Trivy) au lieu de la
+# version forcée (2.2.0). On recopie donc les overrides racine pour que manifeste
+# et lockfile concordent et que le forçage tienne dans l'image finale. Générique :
+# tout override racine (présent ou futur) est propagé, sans dépendance YAML (node natif).
+COPY --from=build /app/package.json ./root-package.json
+RUN node -e "const fs=require('fs');const root=require('./root-package.json');const pkg=require('./package.json');if(root.pnpm&&root.pnpm.overrides){pkg.pnpm=Object.assign({},pkg.pnpm,{overrides:Object.assign({},pkg.pnpm&&pkg.pnpm.overrides,root.pnpm.overrides)});fs.writeFileSync('./package.json',JSON.stringify(pkg,null,2));}" \
+  && rm root-package.json
 RUN pnpm install --prod --no-frozen-lockfile
 
 # --- Stage 3 : runtime minimal ----------------------------------------------
