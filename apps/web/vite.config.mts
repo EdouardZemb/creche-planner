@@ -28,7 +28,14 @@ export default defineConfig({
     reportCompressedSize: true,
   },
   plugins: [
-    react(),
+    // React Compiler (stable 1.0) : mémoïsation automatique des composants/hooks.
+    // Cible React 19. La mémoïsation manuelle (useMemo/useCallback/memo) ne doit
+    // plus être ajoutée par défaut — seulement après profilage.
+    react({
+      babel: {
+        plugins: [['babel-plugin-react-compiler', { target: '19' }]],
+      },
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
