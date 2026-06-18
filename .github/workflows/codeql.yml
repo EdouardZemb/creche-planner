@@ -2,25 +2,21 @@
 # Volet « SAST » de la chaîne sécurité, en complément du SCA (`pnpm audit` dans ci.yml)
 # et de Dependabot.
 #
-# ⚠️ EN PAUSE (2026-06-10, décision plan doc 25). L'analyse s'exécute correctement
-# mais l'UPLOAD des résultats (code scanning) échoue avec « Code scanning is not
-# enabled for this repository » : GitHub Advanced Security est INDISPONIBLE sur un
-# dépôt PRIVÉ en plan GRATUIT. Ce job rougissait donc `main` à chaque push sans
-# apporter de valeur. On retire les déclencheurs automatiques (push/PR/schedule) et
-# on ne garde que `workflow_dispatch` (lancement manuel) pour ne plus bloquer la CI.
-#
-# POUR RÉ-ACTIVER (quand le dépôt devient public OU que GHAS est acquis) : restaurer
-# le bloc `on:` ci-dessous (push main + pull_request + schedule hebdo). La concurrency
-# et le job d'analyse sont conservés intacts, prêts à resservir.
+# ✅ RÉ-ACTIVÉ (2026-06-18, PUB-D doc 29 §4). Le dépôt est désormais PUBLIC : GitHub
+# Advanced Security (code scanning) est gratuit, donc l'UPLOAD des résultats SARIF
+# fonctionne. On restaure les déclencheurs automatiques (push:main + pull_request +
+# schedule hebdo). Historique : le job avait été mis EN PAUSE le 2026-06-10 (doc 25)
+# car l'upload échouait sur dépôt PRIVÉ en plan gratuit (« Code scanning is not
+# enabled »), ce qui rougissait `main` sans valeur ; seul `workflow_dispatch` restait.
 name: CodeQL
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [main]
-  # pull_request:
-  # schedule:
-  #   - cron: '0 3 * * 1' # lundi 03:00 UTC
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 3 * * 1' # lundi 03:00 UTC
 
 # Annule les runs obsolètes sur une même PR (pushes rapprochés). Le `group` inclut
 # `event_name` pour que les runs `pull_request`, `push` et le passage hebdomadaire
