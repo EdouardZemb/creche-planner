@@ -294,8 +294,12 @@ describe('ContratForm', () => {
       />,
     );
 
-    expect(screen.getByLabelText(/Valide du/i).value).toBe('2026-01-01');
-    expect(screen.getByLabelText(/Heures annuelles/i).value).toBe('763');
+    expect(
+      (screen.getByLabelText(/Valide du/i) as HTMLInputElement).value,
+    ).toBe('2026-01-01');
+    expect(
+      (screen.getByLabelText(/Heures annuelles/i) as HTMLInputElement).value,
+    ).toBe('763');
     expect(
       screen.getByRole('button', { name: /Enregistrer les modifications/i }),
     ).toBeInTheDocument();

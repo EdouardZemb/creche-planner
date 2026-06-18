@@ -2,6 +2,13 @@ import nx from '@nx/eslint-plugin';
 import tseslint from 'typescript-eslint';
 
 export default [
+  // Racine de résolution des tsconfig, fixée globalement : typescript-eslint v8
+  // exige un tsconfigRootDir non ambigu dès qu'un projet a plusieurs tsconfig.
+  {
+    languageOptions: {
+      parserOptions: { tsconfigRootDir: import.meta.dirname },
+    },
+  },
   ...nx.configs['flat/base'],
   {
     files: ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx'],
@@ -162,6 +169,16 @@ export default [
     languageOptions: {
       parserOptions: { projectService: false, project: null },
     },
+  }),
+  // Tests web (jsdom + Testing Library) — `*.test.ts(x)` n'est utilisé QUE par
+  // apps/web (les services/libs utilisent `*.spec.ts`). Le projectService résout
+  // mal les types DOM dans le tsconfig « solution » de web (autofixes destructifs
+  // sur les casts HTMLInputElement) ; on les lint sans type-info, `tsc -p
+  // tsconfig.spec.json` couvrant déjà leur typage. Déclaré au root pour
+  // s'appliquer aussi sous lint-staged (eslint lancé depuis la racine).
+  ...tseslint.config({
+    files: ['**/*.test.ts', '**/*.test.tsx'],
+    extends: [tseslint.configs.disableTypeChecked],
   }),
   {
     ignores: [
