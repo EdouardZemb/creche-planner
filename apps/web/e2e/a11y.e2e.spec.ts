@@ -182,13 +182,11 @@ async function auditer(
   const resultats = await builder.analyze();
 
   // Récapitulatif consignable du score AA par route.
-  // eslint-disable-next-line no-console
   console.log(
     `[axe AA] ${libelleRoute} → violations: ${resultats.violations.length}, ` +
       `passes: ${resultats.passes.length}, incomplete: ${resultats.incomplete.length}`,
   );
   if (resultats.violations.length > 0) {
-    // eslint-disable-next-line no-console
     console.log(
       `[axe AA] ${libelleRoute} règles en échec : ` +
         resultats.violations.map((v) => `${v.id} (${v.impact})`).join(', '),
