@@ -28,5 +28,9 @@ datasources:
     isDefault: false
     jsonData:
       auth_method: bearerToken
+      # Infinity v2+ refuse toute URL hors de cette liste (« requested URL not
+      # allowed ») : on autorise explicitement l'API GitHub.
+      allowedHosts:
+        - https://api.github.com
     secureJsonData:
       bearerToken: ${GH_DEPLOYMENTS_TOKEN}
