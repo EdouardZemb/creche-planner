@@ -64,6 +64,13 @@ WORKDIR /app
 RUN apt-get update \
   && apt-get upgrade -y \
   && rm -rf /var/lib/apt/lists/*
+# Durcissement chaîne d'appro : RETIRER npm du runtime de production. On démarre
+# via `node main.js` (jamais npm/npx) ; or npm — livré avec node:24-slim — embarque
+# sa PROPRE copie d'undici (6.25.0) sous /usr/local/lib/node_modules/npm, qui porte
+# CVE-2026-12151 (HIGH, DoS) → scan Trivy bloquant. L'undici INTERNE de Node
+# (process.versions.undici, ≥ 7.28.0 sur node 24.17) n'est PAS concerné. Retirer npm
+# supprime la CVE ET réduit la surface d'attaque du runtime.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 ARG APP
 ENV NODE_ENV=production
 ENV APP=$APP
