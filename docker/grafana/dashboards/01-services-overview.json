@@ -151,7 +151,7 @@
       "id": 4,
       "type": "timeseries",
       "title": "OTel Collector — Spans reçus (receiver)",
-      "description": "Nombre de spans/s reçus par le collecteur OTel. Métrique : otelcol_receiver_accepted_spans_total (rate). Indique l'activité de traçage des services NestJS.",
+      "description": "Nombre de spans/s reçus par le collecteur OTel. Métrique : otelcol_receiver_accepted_spans (rate) — sans suffixe _total depuis otelcol v0.123+. Indique l'activité de traçage des services NestJS.",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
@@ -163,12 +163,12 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "rate(otelcol_receiver_accepted_spans_total[2m])",
+          "expr": "rate(otelcol_receiver_accepted_spans[2m])",
           "legendFormat": "Spans acceptés/s — {{receiver}}",
           "refId": "A"
         },
         {
-          "expr": "rate(otelcol_receiver_refused_spans_total[2m])",
+          "expr": "rate(otelcol_receiver_refused_spans[2m])",
           "legendFormat": "Spans refusés/s — {{receiver}}",
           "refId": "B"
         }
@@ -190,12 +190,12 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "rate(otelcol_exporter_sent_spans_total[2m])",
+          "expr": "rate(otelcol_exporter_sent_spans[2m])",
           "legendFormat": "Spans envoyés/s — {{exporter}}",
           "refId": "A"
         },
         {
-          "expr": "rate(otelcol_exporter_enqueue_failed_spans_total[2m])",
+          "expr": "rate(otelcol_exporter_enqueue_failed_spans[2m])",
           "legendFormat": "Spans perdus (queue full)/s — {{exporter}}",
           "refId": "B"
         }
@@ -249,7 +249,7 @@
           "refId": "A"
         },
         {
-          "expr": "rate(otelcol_process_cpu_seconds_total[2m])",
+          "expr": "rate(otelcol_process_cpu_seconds[2m])",
           "legendFormat": "CPU (cores)",
           "refId": "B"
         }
