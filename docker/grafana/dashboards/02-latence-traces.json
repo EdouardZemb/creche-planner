@@ -9,6 +9,43 @@
   "version": 1,
   "refresh": "30s",
   "time": { "from": "now-1h", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "yesoreyeram-infinity-datasource",
+          "uid": "infinity-github-deploys"
+        },
+        "enable": true,
+        "iconColor": "purple",
+        "name": "Déploiements (prod)",
+        "target": {
+          "refId": "Deploiements",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "https://api.github.com/repos/EdouardZemb/creche-planner/deployments?environment=production&per_page=30",
+          "url_options": { "method": "GET" },
+          "root_selector": "",
+          "columns": [
+            { "selector": "created_at", "text": "time", "type": "timestamp" },
+            { "selector": "description", "text": "text", "type": "string" },
+            { "selector": "environment", "text": "tags", "type": "string" }
+          ]
+        }
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,

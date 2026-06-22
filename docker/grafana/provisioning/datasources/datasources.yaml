@@ -13,3 +13,20 @@ datasources:
     type: prometheus
     access: proxy
     url: http://prometheus:9090
+  # Datasource Infinity (plugin yesoreyeram-infinity-datasource) — interroge l'API
+  # GitHub Deployments pour ANNOTER les déploiements (DORA) sur les dashboards.
+  # • PROD : plugin installé via GF_INSTALL_PLUGINS (docker-compose.server.yml) ;
+  #   token de lecture injecté depuis GH_DEPLOYMENTS_TOKEN (.env.server) — un
+  #   dashboard à refresh 30s rejoue la requête d'annotation et saturerait la limite
+  #   anonyme de l'API GitHub (60/h) ; authentifié, la limite passe à 5000/h.
+  # • DEV/CI : ni le plugin ni la variable ne sont présents → ce datasource reste
+  #   inerte (Grafana démarre normalement, les annotations ne s'affichent pas).
+  - name: GitHub Deployments
+    type: yesoreyeram-infinity-datasource
+    uid: infinity-github-deploys
+    access: proxy
+    isDefault: false
+    jsonData:
+      auth_method: bearerToken
+    secureJsonData:
+      bearerToken: ${GH_DEPLOYMENTS_TOKEN}
