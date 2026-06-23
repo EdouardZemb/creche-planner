@@ -52,6 +52,28 @@ services:
   nats:
     restart: unless-stopped
 
+  # Exporters Postgres (Phase 13c) — surcharge du mot de passe par le secret PG_*_PWD
+  # (le base/dev utilise le défaut). Même schéma que DATABASE_URL des services.
+  postgres-exporter-referentiel:
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://referentiel:${PG_REFERENTIEL_PWD:?defini .env.server}@postgres-referentiel:5432/referentiel?sslmode=disable
+
+  postgres-exporter-foyer:
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://foyer:${PG_FOYER_PWD:?defini .env.server}@postgres-foyer:5432/foyer?sslmode=disable
+
+  postgres-exporter-planification:
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://planification:${PG_PLANIFICATION_PWD:?defini .env.server}@postgres-planification:5432/planification?sslmode=disable
+
+  postgres-exporter-tarification:
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://tarification:${PG_TARIFICATION_PWD:?defini .env.server}@postgres-tarification:5432/tarification?sslmode=disable
+
   # --- Observabilité ---------------------------------------------------------
   otel-collector:
     restart: unless-stopped

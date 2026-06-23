@@ -180,3 +180,65 @@ groups:
             vraisemblablement froid à grande échelle (consumer arrêté, base purgée).
             Le couplage runtime résiduel devient un chemin nominal : investiguer en
             priorité (lag JetStream, santé de svc-tarification, projection.service).
+
+  # ---------------------------------------------------------------------------
+  # Groupe 5 : Bases Postgres (Phase 13c)
+  # Source : postgres-exporter (job `postgres`, label `base`). `pg_up` reflète la
+  # joignabilité de la DB depuis l'exporter (l'injoignabilité de l'EXPORTER lui-même
+  # est déjà couverte par ServiceDown / up==0). Routé vers email-ops via severity.
+  # ---------------------------------------------------------------------------
+  - name: postgres
+    interval: 30s
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Base Postgres injoignable : {{ $labels.base }}'
+          description: >
+            L'exporter du job postgres (base {{ $labels.base }}) ne parvient plus à
+            interroger sa base depuis plus d'1 minute (pg_up = 0). La base est arrêtée,
+            sature ses connexions, ou refuse l'authentification. Vérifiez le conteneur
+            postgres-{{ $labels.base }} (`docker compose ps`, logs).
+
+      - alert: PostgresTooManyConnections
+        expr: >
+          sum by (base) (pg_stat_database_numbackends)
+          / max by (base) (pg_settings_max_connections) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Postgres {{ $labels.base }} — connexions proches de la limite'
+          description: >
+            La base {{ $labels.base }} utilise plus de 80 % de ses connexions autorisées
+            ({{ $value | humanizePercentage }}) depuis 5 min. Risque de refus de connexion
+            (« too many clients »). Vérifiez les connexions oisives (pool applicatif) et
+            `max_connections`.
+
+      - alert: PostgresLongRunningTransaction
+        expr: max by (base) (pg_stat_activity_max_tx_duration) > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Postgres {{ $labels.base }} — transaction longue (> 5 min)'
+          description: >
+            Une transaction tourne depuis plus de 5 minutes sur la base {{ $labels.base }}
+            (max {{ $value | humanizeDuration }}). Une transaction « idle in transaction »
+            ou une requête bloquée retient des verrous et empêche le VACUUM. Identifiez-la
+            via pg_stat_activity.
+
+      - alert: PostgresDeadlocks
+        expr: sum by (base) (increase(pg_stat_database_deadlocks[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Postgres {{ $labels.base }} — deadlocks détectés'
+          description: >
+            La base {{ $labels.base }} a enregistré {{ $value | humanize }} deadlock(s) sur
+            les 5 dernières minutes. Deux transactions se sont mutuellement bloquées : Postgres
+            en a annulé une. Vérifiez l'ordre d'acquisition des verrous côté applicatif.
