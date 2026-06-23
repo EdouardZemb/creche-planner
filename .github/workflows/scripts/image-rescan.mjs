@@ -47,6 +47,8 @@
  *   SMTP_PASSWORD           mot de passe d'application Gmail (= Phase 4)
  *   SMTP_SMARTHOST/FROM/TO  défauts Phase 4 (smtp.gmail.com:587, edouard.zemb@…)
  *   SCAN_DRY_RUN=1          n'exécute ni Trivy ni curl (mise au point locale)
+ *   SCAN_FAKE_FINDING=1     injecte un finding SYNTHÉTIQUE [TEST] après le scan réel
+ *                           (valide la chaîne e-mail sans vraie CVE ; opt-in dispatch)
  *   GITHUB_STEP_SUMMARY     fichier de résumé (posé par Actions)
  */
 
@@ -63,6 +65,13 @@ const IMAGE_BASE =
   process.env.IMAGE_BASE ?? 'ghcr.io/edouardzemb/creche-planner';
 const SEVERITY = process.env.TRIVY_SEVERITY ?? 'HIGH,CRITICAL';
 const DRY_RUN = process.env.SCAN_DRY_RUN === '1';
+// Affordance de TEST (cf. DEPLOY_FAKE_FAIL de deploy.mjs) : injecte un finding
+// SYNTHÉTIQUE après le scan réel pour exercer la chaîne de notification e-mail
+// (secret + curl + Gmail) sans attendre une vraie CVE-drift. Opt-in seulement
+// (entrée `test_notification` du workflow_dispatch) ; ne se déclenche JAMAIS en cron.
+const FAKE_FINDING = ['1', 'true'].includes(
+  process.env.SCAN_FAKE_FINDING ?? '',
+);
 const SERVICES = (
   process.env.SCAN_SERVICES ??
   'web api-gateway svc-referentiel svc-foyer svc-planification svc-tarification'
@@ -338,6 +347,29 @@ async function main() {
     console.log(`  CRITICAL=${crit} HIGH=${high}`);
   }
 
+  // Affordance de TEST : finding synthétique pour valider la chaîne de notification
+  // (le scan réel ci-dessus a quand même tourné). Clairement étiqueté [TEST].
+  if (FAKE_FINDING) {
+    console.log(
+      '\n⚠️ SCAN_FAKE_FINDING — injection d’un finding synthétique [TEST].',
+    );
+    totalHigh += 1;
+    rows.push('| `(test)` | 0 | 1 | 🧪 finding synthétique |');
+    withFindings.push({
+      image: `${IMAGE_BASE}/api-gateway:${version} (FINDING DE TEST)`,
+      vulns: [
+        {
+          id: 'CVE-TEST-0000',
+          pkg: 'paquet-de-test',
+          installed: '1.0.0',
+          fixed: '1.0.1',
+          severity: 'HIGH',
+          title: 'Finding synthétique — test de la notification e-mail',
+        },
+      ],
+    });
+  }
+
   // 3) Rapport.
   summary('| Service | CRITICAL | HIGH | État |');
   summary('| --- | ---: | ---: | --- |');
@@ -380,11 +412,14 @@ async function main() {
     return;
   }
 
+  const prefix = FAKE_FINDING ? '[TEST] ' : '';
   const subject =
-    `[VEILLE CVE] ${totalFindings} vuln. ${SEVERITY} sur la prod (${version}) — ` +
+    `${prefix}[VEILLE CVE] ${totalFindings} vuln. ${SEVERITY} sur la prod (${version}) — ` +
     `${totalCritical} CRITICAL / ${totalHigh} HIGH`;
   const bodyLines = [
-    `Veille CVE creche-planner — images DÉJÀ déployées en production.`,
+    FAKE_FINDING
+      ? `*** E-MAIL DE TEST (SCAN_FAKE_FINDING) — finding synthétique, AUCUNE CVE réelle. ***`
+      : `Veille CVE creche-planner — images DÉJÀ déployées en production.`,
     ``,
     `Version en ligne : ${version}  (source : ${source})`,
     `Total : ${totalCritical} CRITICAL, ${totalHigh} HIGH (corrigibles, hors .trivyignore).`,

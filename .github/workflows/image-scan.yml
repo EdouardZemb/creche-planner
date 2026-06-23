@@ -33,6 +33,11 @@ on:
         description: "Tag d'image à scanner (vide ⇒ version prod déduite de l'API Deployments)"
         required: false
         default: ''
+      test_notification:
+        description: 'Injecter un finding SYNTHÉTIQUE pour tester la chaîne e-mail (étiqueté [TEST])'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read # checkout (.trivyignore + script)
@@ -70,6 +75,8 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
           # Vide en cron (⇒ version prod déduite de l'API) ; renseigné en dispatch.
           SCAN_VERSION: ${{ github.event.inputs.version }}
+          # Test manuel de la notification (finding synthétique). Jamais en cron.
+          SCAN_FAKE_FINDING: ${{ github.event.inputs.test_notification }}
           # Secret de la Phase 4 (mot de passe d'application Gmail). Absent ⇒ run
           # rouge SEULEMENT s'il y a des findings (veille muette interdite).
           SMTP_PASSWORD: ${{ secrets.ALERTMANAGER_SMTP_PASSWORD }}
