@@ -147,6 +147,44 @@ services:
     volumes:
       - ./docker/blackbox.yml:/etc/blackbox/blackbox.yml:ro
 
+  # Exporters Postgres (Phase 13c) — une instance par base. Chacun se connecte à SON
+  # Postgres (least privilege, attribution claire des pannes) et expose les métriques
+  # pg_* sur :9187. Prometheus les scrape (job `postgres`, label `base`). Le mot de
+  # passe est le défaut du base/dev ; la PROD le surcharge par le secret PG_*_PWD
+  # (docker-compose.server.yml), comme pour DATABASE_URL des services.
+  postgres-exporter-referentiel:
+    # Épinglé par digest (= v0.17.1) pour une pile reproductible (cf. P2-8).
+    image: quay.io/prometheuscommunity/postgres-exporter@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    environment:
+      DATA_SOURCE_NAME: postgresql://referentiel:referentiel@postgres-referentiel:5432/referentiel?sslmode=disable
+    depends_on:
+      postgres-referentiel:
+        condition: service_healthy
+
+  postgres-exporter-foyer:
+    image: quay.io/prometheuscommunity/postgres-exporter@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    environment:
+      DATA_SOURCE_NAME: postgresql://foyer:foyer@postgres-foyer:5432/foyer?sslmode=disable
+    depends_on:
+      postgres-foyer:
+        condition: service_healthy
+
+  postgres-exporter-planification:
+    image: quay.io/prometheuscommunity/postgres-exporter@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    environment:
+      DATA_SOURCE_NAME: postgresql://planification:planification@postgres-planification:5432/planification?sslmode=disable
+    depends_on:
+      postgres-planification:
+        condition: service_healthy
+
+  postgres-exporter-tarification:
+    image: quay.io/prometheuscommunity/postgres-exporter@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    environment:
+      DATA_SOURCE_NAME: postgresql://tarification:tarification@postgres-tarification:5432/tarification?sslmode=disable
+    depends_on:
+      postgres-tarification:
+        condition: service_healthy
+
   grafana:
     # P2-8 — épinglé par digest (= v13.0.2) pour une pile reproductible.
     image: grafana/grafana@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2

@@ -60,6 +60,22 @@ services:
     ports:
       - '9115:9115'
 
+  postgres-exporter-referentiel:
+    ports:
+      - '9187:9187'
+
+  postgres-exporter-foyer:
+    ports:
+      - '9188:9187'
+
+  postgres-exporter-planification:
+    ports:
+      - '9189:9187'
+
+  postgres-exporter-tarification:
+    ports:
+      - '9190:9187'
+
   grafana:
     ports:
       - '3003:3000'

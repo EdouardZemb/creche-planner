@@ -912,10 +912,15 @@ jobs:
       # -exporter réussisse (`up{job="blackbox"}=1` = exporter joignable), pas le
       # résultat de la sonde elle-même.
       - name: Boot pile observabilité (docker compose up --wait)
+        # Les postgres-exporter-* (Phase 13c) tirent leurs 4 Postgres via depends_on
+        # (sans --no-deps) → le job `postgres` a des cibles UP et `pg_up` = 1 (DB
+        # réellement jointe), sinon l'assertion « cibles UP » échouerait.
         run: >-
           docker compose up -d --wait
           prometheus alertmanager grafana otel-collector tempo nats-exporter
           blackbox-exporter loki promtail
+          postgres-exporter-referentiel postgres-exporter-foyer
+          postgres-exporter-planification postgres-exporter-tarification
 
       # 6) Le boot ne suffit pas : la classe de bug visée (otel :8888 bindé localhost)
       # laisse les conteneurs SAINS mais le SCRAPE DOWN. On exige donc que TOUTES les

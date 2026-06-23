@@ -39,6 +39,21 @@ scrape_configs:
     static_configs:
       - targets: ['nats-exporter:7777']
 
+  # Métriques Postgres (Phase 13c) via postgres-exporter — une cible par base. Le
+  # label `base` (referentiel/foyer/planification/tarification) identifie l'instance ;
+  # les métriques portent aussi `datname` (base interrogée) et `server` (hôte:port).
+  # `pg_up == 0` = exporter joignable mais DB injoignable → alerte PostgresDown.
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter-referentiel:9187']
+        labels: { base: referentiel }
+      - targets: ['postgres-exporter-foyer:9187']
+        labels: { base: foyer }
+      - targets: ['postgres-exporter-planification:9187']
+        labels: { base: planification }
+      - targets: ['postgres-exporter-tarification:9187']
+        labels: { base: tarification }
+
   # Sondes « boîte noire » des 5 services APPLICATIFS (Phase 6). Jusqu'ici aucun
   # svc-* ni l'api-gateway n'était scrapé : si la gateway tombait, AUCUNE alerte
   # ne partait. On sonde l'endpoint de LIVENESS (/api/health/live, sans dépendance
