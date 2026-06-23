@@ -182,13 +182,14 @@ export function PlanningPage() {
           }}
         >
           <span style={{ fontSize: '0.9rem' }}>Mois :</span>
+          {/* Pas de fontSize réduit ici : iOS zoome au focus d'un champ < 16px
+              (la taille vient du style global input/select). */}
           <input
             type="month"
             value={mois}
             onChange={(e) => {
               handleMoisChange(e.target.value);
             }}
-            style={{ fontSize: '0.9rem' }}
           />
         </label>
 
@@ -426,11 +427,8 @@ export function PlanningPage() {
             )}
           </div>
 
-          {/* Panneau coût du mois */}
-          <div
-            className="planning-panneau"
-            style={{ width: '22rem', flexShrink: 0 }}
-          >
+          {/* Panneau coût du mois (largeur responsive gérée par .planning-panneau) */}
+          <div className="planning-panneau">
             <PanneauCoutMois
               foyerId={id}
               mois={mois}

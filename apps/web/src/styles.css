@@ -50,13 +50,25 @@ a {
   color: var(--bleu);
 }
 
+/* Base = mobile (cf. section « Responsive » en bas pour l'enrichissement
+   tablette/desktop via min-width). */
 .app-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 1.5rem;
-  padding: 0.75rem 1.25rem;
+  gap: 0.75rem 1rem;
+  padding: 0.6rem 0.9rem;
   background: var(--bleu);
   color: white;
+}
+
+/* Les liens de navigation sont regroupés dans un <nav> : sans display:flex,
+   les <a> adjacents (sans espace dans le JSX) se colleraient les uns aux autres. */
+.app-header nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
 }
 
 .app-header a {
@@ -80,7 +92,7 @@ a {
 main {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 1.25rem;
+  padding: 0.75rem; /* mobile ; élargi en tablette (cf. min-width: 768px) */
 }
 
 button {
@@ -89,7 +101,11 @@ button {
 }
 
 .btn {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Cible tactile ~44px de haut. */
+  min-height: 2.75rem;
   background: var(--bleu);
   color: white;
   border: none;
@@ -130,16 +146,25 @@ label {
 input,
 select {
   font: inherit;
-  padding: 0.4rem 0.5rem;
+  /* 16px minimum : en deçà, iOS zoome automatiquement au focus d'un champ. */
+  font-size: max(1rem, 16px);
+  padding: 0.45rem 0.55rem;
   border: 1px solid var(--bordure);
   border-radius: 6px;
+}
+
+/* Cibles tactiles : les champs de saisie (hors cases à cocher / radios, qui
+   gardent leur taille native) atteignent ~44px de haut, recommandation WCAG. */
+input:not([type='checkbox']):not([type='radio']),
+select {
+  min-height: 2.75rem;
 }
 
 .carte {
   background: white;
   border: 1px solid var(--bordure);
   border-radius: 10px;
-  padding: 1rem;
+  padding: 0.75rem; /* mobile ; élargi en tablette (cf. min-width: 768px) */
   margin-bottom: 1rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
@@ -170,15 +195,26 @@ h3 {
 }
 
 /* ---- Onglets (enfants / modes) ------------------------------------------- */
+/* Base mobile : onglets sur une seule ligne qui défile horizontalement (plus
+   lisible qu'un retour à la ligne désordonné quand il y a plusieurs enfants /
+   modes). Repassent en multi-lignes dès la tablette (cf. min-width: 768px). */
 .onglets {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: var(--esp-2);
   border-bottom: 1px solid var(--bordure);
   margin-bottom: var(--esp-4);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .onglet {
+  display: inline-flex;
+  align-items: center;
+  /* Cible tactile + ne se comprime pas dans le conteneur scrollable. */
+  min-height: 2.75rem;
+  flex: 0 0 auto;
+  white-space: nowrap;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -201,26 +237,27 @@ h3 {
 }
 
 /* ---- Modale -------------------------------------------------------------- */
+/* Base mobile : la modale s'ancre en bas de l'écran (bottom-sheet), pleine
+   largeur, pouce à portée. Elle redevient une carte centrée dès la tablette
+   (cf. min-width: 768px). */
 .modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(17, 24, 39, 0.5);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  padding: var(--esp-4);
   z-index: 50;
 }
 
 .modal {
   background: white;
-  border-radius: 10px;
+  border-radius: 14px 14px 0 0;
   padding: var(--esp-5);
-  max-width: 32rem;
   width: 100%;
-  max-height: 90vh;
+  max-height: 92vh;
   overflow-y: auto;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
 }
 
 .modal-entete {
@@ -237,6 +274,12 @@ h3 {
 }
 
 .modal-fermer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Cible tactile ~44px (l'icône « × » seule serait trop petite à viser). */
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   background: none;
   border: none;
   font-size: 1.5rem;
@@ -352,6 +395,26 @@ h3 {
   justify-content: center;
 }
 
+/* ---- Layout planning (mobile-first) -------------------------------------- */
+/* Base mobile : calendrier et panneau coût empilés en colonne, pleine largeur.
+   Le passage côte-à-côte se fait en tablette/desktop (cf. min-width plus bas). */
+.planning-zone {
+  flex-direction: column;
+}
+
+.planning-panneau {
+  width: 100%;
+  flex-shrink: 0;
+}
+
+/* ---- Ligne « Enfant » du formulaire foyer (mobile-first) ----------------- */
+/* Base mobile : prénom, date et bouton empilés (sinon les champs s'écrasent
+   sous ~400px). Repassent en ligne dès la tablette. */
+.enfant-ligne {
+  flex-direction: column;
+  align-items: stretch;
+}
+
 /* ---- Panneau coût (sticky le long du planning) --------------------------- */
 .panneau-cout {
   position: sticky;
@@ -371,40 +434,76 @@ button:disabled,
   cursor: not-allowed;
 }
 
-/* ---- Responsive (mobile / tablette) -------------------------------------- */
-@media (max-width: 768px) {
+/* ---- Responsive : enrichissement mobile-first ---------------------------- */
+/* Tout ce qui précède cible le mobile. Les requêtes min-width ci-dessous
+   ré-aèrent et passent en multi-colonnes à partir de la tablette. */
+
+/* Tablette et plus (≥ 768px). */
+@media (min-width: 768px) {
   main {
-    padding: 0.75rem;
+    padding: 1.25rem;
   }
 
   .app-header {
-    flex-wrap: wrap;
-    gap: 0.75rem 1rem;
-    padding: 0.6rem 0.9rem;
+    gap: 1.5rem;
+    padding: 0.75rem 1.25rem;
   }
 
-  /* Les zones planning (calendrier + panneau coût) passent en colonne. */
-  .planning-zone {
-    flex-direction: column;
-  }
-
-  .planning-panneau {
-    width: 100% !important;
-  }
-
-  /* Formulaires : champs et cartes pleine largeur sur petit écran. */
   .carte {
-    padding: 0.75rem;
+    padding: 1rem;
   }
 
-  /* Tableau des coûts annuels : police plus compacte, défilement horizontal. */
-  .barre-couts-annuels {
-    gap: 0.6rem;
+  /* Calendrier + panneau coût côte à côte. */
+  .planning-zone {
+    flex-direction: row;
+  }
+
+  /* Panneau un peu resserré sur tablette pour laisser respirer le calendrier ;
+     élargi sur desktop (cf. min-width: 1024px). */
+  .planning-panneau {
+    width: 18rem;
+  }
+
+  /* La ligne enfant repasse sur une rangée (prénom | date | retirer). */
+  .enfant-ligne {
+    flex-direction: row;
+    align-items: flex-end;
   }
 
   .actions-export {
-    width: 100%;
+    width: auto;
   }
+
+  /* Les onglets ont la place de s'aligner sur plusieurs lignes (plus de scroll). */
+  .onglets {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  /* La modale redevient une carte centrée à l'écran. */
+  .modal-overlay {
+    align-items: center;
+    padding: var(--esp-4);
+  }
+
+  .modal {
+    border-radius: 10px;
+    max-width: 32rem;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+  }
+}
+
+/* Desktop (≥ 1024px) : panneau coût à sa largeur confortable. */
+@media (min-width: 1024px) {
+  .planning-panneau {
+    width: 22rem;
+  }
+}
+
+/* Boutons d'export : pleine largeur sur mobile (cibles tactiles), largeur
+   naturelle dès la tablette (cf. min-width: 768px). */
+.actions-export {
+  width: 100%;
 }
 
 /* Le tableau annuel peut défiler horizontalement plutôt que de déborder. */
@@ -416,6 +515,52 @@ button:disabled,
 /* Largeur minimale : le tableau scrolle au lieu de se comprimer sur mobile. */
 .table-couts-wrap table {
   min-width: 640px;
+}
+
+/* ---- Calendrier (FullCalendar) : compactage mobile-first ----------------- */
+/* Base mobile : police et cellules resserrées pour tenir sous 375px sans
+   débordement, tout en gardant des jours assez hauts pour être visés au doigt.
+   Le grid s'aère dès la tablette (cf. min-width: 768px). */
+.fc {
+  font-size: 0.8rem;
+}
+
+/* Hauteur minimale d'une case-jour : cible tactile pour le clic « saisir ». */
+.fc .fc-daygrid-day-frame {
+  min-height: 2.75rem;
+}
+
+.fc .fc-daygrid-day-number {
+  padding: 2px 4px;
+}
+
+/* Les pastilles d'événement (Gardé / Absent / Ajouté) ne débordent pas d'une
+   case étroite : texte tronqué proprement plutôt que de pousser la grille. */
+.fc .fc-daygrid-event {
+  font-size: 0.7rem;
+  padding: 0 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* En-têtes de colonnes (jours de la semaine) compacts sur mobile. */
+.fc .fc-col-header-cell-cushion {
+  padding: 2px 4px;
+}
+
+@media (min-width: 768px) {
+  .fc {
+    font-size: 1rem;
+  }
+
+  .fc .fc-daygrid-day-frame {
+    min-height: 4rem;
+  }
+
+  .fc .fc-daygrid-event {
+    font-size: 0.85rem;
+  }
 }
 
 /* ---- Impression / export PDF (window.print) ------------------------------ */
