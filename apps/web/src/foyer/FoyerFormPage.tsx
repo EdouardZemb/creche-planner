@@ -269,12 +269,11 @@ export function FoyerFormPage() {
           {enfants.map((enfant) => (
             <div
               key={enfant.id}
-              className="carte"
+              className="carte enfant-ligne"
               style={{
                 marginBottom: '0.5rem',
                 display: 'flex',
                 gap: '0.5rem',
-                alignItems: 'flex-end',
               }}
             >
               <div style={{ flex: 1 }}>
