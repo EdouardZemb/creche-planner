@@ -1,0 +1,32 @@
+# Configuration du blackbox-exporter (Phase 6, doc observabilité — TODO 2).
+#
+# Le blackbox-exporter sonde des cibles HTTP « de l'extérieur » et expose le
+# résultat sous forme de métriques Prometheus (notamment `probe_success`).
+# Prometheus le scrape via /probe?module=<module>&target=<url> ; le job
+# `blackbox` (docker/prometheus.yml) sonde l'endpoint de LIVENESS
+# (/api/health/live) des 5 services applicatifs (api-gateway + 4 svc-*), qui
+# n'étaient jusqu'ici PAS surveillés (l'alerte ServiceDown ne couvrait que les
+# cibles d'infra otel/prometheus/nats-exporter). `probe_success == 0` arme
+# l'alerte `AppServiceDown` (docker/prometheus/alerts.yml).
+#
+# Pourquoi /api/health/live (liveness) et pas /api/health (readiness) ? La
+# liveness renvoie 200 dès que le PROCESS répond, sans dépendance externe
+# (cf. libs/nest-commons HealthController) : c'est exactement le signal « le
+# service est tombé ». La readiness (DB + NATS) basculerait en 503 sur un
+# simple hoquet de dépendance et provoquerait des alertes de service « down »
+# trompeuses.
+
+modules:
+  # Sonde HTTP GET attendant un code 2xx (défaut quand valid_status_codes est vide).
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      # Réseau Docker interne en IPv4 (le DNS embarqué résout les noms de service
+      # en A/IPv4) — évite l'échec « connection refused » d'une tentative IPv6.
+      preferred_ip_protocol: ip4
+      ip_protocol_fallback: false
+      # valid_status_codes vide ⇒ 2xx accepté (le endpoint de liveness renvoie 200).
+      valid_status_codes: []
+      fail_if_not_ssl: false

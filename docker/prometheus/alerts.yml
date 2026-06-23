@@ -19,6 +19,33 @@ groups:
             que le port est accessible depuis le réseau Docker.
 
   # ---------------------------------------------------------------------------
+  # Groupe 1bis : Disponibilité des SERVICES APPLICATIFS (Phase 6)
+  # Source : probe_success du blackbox-exporter (job `blackbox`, prometheus.yml),
+  #          qui sonde /api/health/live des 5 services (api-gateway + svc-*).
+  # Comble l'angle mort de ServiceDown (qui ne couvre que les cibles d'infra :
+  # otel-collector, otel-metrics, prometheus, nats-exporter). Sans cette règle,
+  # la chute de l'api-gateway ou d'un svc-* ne déclenchait AUCUNE alerte.
+  # Routée vers le receiver e-mail `email-ops` via le label severity=critical
+  # (Alertmanager : route accélérée des alertes critiques).
+  # ---------------------------------------------------------------------------
+  - name: services-applicatifs
+    interval: 30s
+    rules:
+      - alert: AppServiceDown
+        expr: probe_success == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Service applicatif injoignable : {{ $labels.service }}'
+          description: >
+            La sonde de liveness ({{ $labels.instance }}) du service
+            {{ $labels.service }} échoue depuis plus d'1 minute (probe_success = 0).
+            Le service ne répond plus en HTTP 2xx : conteneur arrêté, crash au
+            démarrage, ou port inaccessible sur le réseau Docker. Vérifiez
+            `docker compose ps` et les logs du conteneur, puis relancez-le.
+
+  # ---------------------------------------------------------------------------
   # Groupe 2 : Collecteur OpenTelemetry
   # Sources : métriques otelcol_* exposées sur otel-collector:8888
   # ---------------------------------------------------------------------------

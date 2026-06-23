@@ -73,6 +73,9 @@ services:
   nats-exporter:
     restart: unless-stopped
 
+  blackbox-exporter:
+    restart: unless-stopped
+
   grafana:
     restart: unless-stopped
     environment:
