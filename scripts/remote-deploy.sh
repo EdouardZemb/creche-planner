@@ -22,26 +22,31 @@
 # opérateur Linux/Mac dont la clé est dans un agent POSIX (ssh-agent classique).
 #
 # Usage :
-#   scripts/remote-deploy.sh <IMAGE_TAG> [options]
+#   scripts/remote-deploy.sh [<IMAGE_TAG>] [options]
 #
 # Options :
+#   --environment <env>  « production » (défaut) ou « staging » (Phase 8). En staging :
+#                        clone /home/edouard/creche-planner-staging, env-file
+#                        .env.staging, verrou dédié, IMAGE_TAG défaut « main » accepté.
 #   --deploy-ref <ref>   Ref consigné sur le GitHub Deployment (rollback SHA brut).
 #   --server <u@host>    Cible SSH (défaut : edouard@192.168.1.129).
-#   --repo-path <path>   Clone serveur (défaut : /home/edouard/creche-planner).
+#   --repo-path <path>   Clone serveur (défaut dérivé de --environment).
 #   -y, --yes            Saute la confirmation interactive.
-#   --allow-main         Autorise le tag MUTABLE main/latest (déconseillé).
+#   --allow-main         Autorise le tag MUTABLE main/latest en PRODUCTION (déconseillé).
 #   --skip-pull          Ne pas git pull --ff-only côté serveur avant de déployer.
 #   -h, --help           Affiche cette aide.
 #
 # Exemples :
-#   scripts/remote-deploy.sh 0.1.0
-#   scripts/remote-deploy.sh 0e5e59e --deploy-ref 0e5e59e --yes      # rollback tracé
+#   scripts/remote-deploy.sh 0.1.0                                   # prod, version figée
+#   scripts/remote-deploy.sh 0e5e59e --deploy-ref 0e5e59e --yes      # prod, rollback tracé
+#   scripts/remote-deploy.sh --environment staging                  # staging, :main (bootstrap)
 set -euo pipefail
 
 IMAGE_TAG=""
 DEPLOY_REF=""
+ENVIRONMENT="production"
 SERVER="edouard@192.168.1.129"
-REPO_PATH="/home/edouard/creche-planner"
+REPO_PATH=""
 ASSUME_YES=0
 ALLOW_MAIN=0
 SKIP_PULL=0
@@ -50,19 +55,36 @@ die() { echo "Erreur : $*" >&2; exit 2; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --deploy-ref) DEPLOY_REF="${2:-}"; shift 2 ;;
-    --server)     SERVER="${2:-}"; shift 2 ;;
-    --repo-path)  REPO_PATH="${2:-}"; shift 2 ;;
-    -y|--yes)     ASSUME_YES=1; shift ;;
-    --allow-main) ALLOW_MAIN=1; shift ;;
-    --skip-pull)  SKIP_PULL=1; shift ;;
-    -h|--help)    sed -n '2,40p' "$0"; exit 0 ;;
-    -*)           die "option inconnue : $1" ;;
+    --environment) ENVIRONMENT="${2:-}"; shift 2 ;;
+    --deploy-ref)  DEPLOY_REF="${2:-}"; shift 2 ;;
+    --server)      SERVER="${2:-}"; shift 2 ;;
+    --repo-path)   REPO_PATH="${2:-}"; shift 2 ;;
+    -y|--yes)      ASSUME_YES=1; shift ;;
+    --allow-main)  ALLOW_MAIN=1; shift ;;
+    --skip-pull)   SKIP_PULL=1; shift ;;
+    -h|--help)     sed -n '2,48p' "$0"; exit 0 ;;
+    -*)            die "option inconnue : $1" ;;
     *)
       if [ -z "$IMAGE_TAG" ]; then IMAGE_TAG="$1"; else die "argument en trop : $1"; fi
       shift ;;
   esac
 done
+
+# --- Résolution selon l'environnement (production | staging, cf. Phase 8) ----
+case "$ENVIRONMENT" in
+  production)
+    [ -n "$REPO_PATH" ] || REPO_PATH="/home/edouard/creche-planner"
+    ENV_FILE=".env.server"
+    LOCK_FILE="/tmp/creche-deploy.lock"
+    ;;
+  staging)
+    [ -n "$IMAGE_TAG" ] || IMAGE_TAG="main"   # staging SUIT le tag rolling
+    [ -n "$REPO_PATH" ] || REPO_PATH="/home/edouard/creche-planner-staging"
+    ENV_FILE=".env.staging"
+    LOCK_FILE="/tmp/creche-staging-deploy.lock"
+    ;;
+  *) die "Environnement invalide : '$ENVIRONMENT' (attendu : production | staging)." ;;
+esac
 
 # --- Validation (anti-injection : valeurs interpolées dans un script bash distant)
 SAFE='^[A-Za-z0-9][A-Za-z0-9._/-]*$'
@@ -73,7 +95,8 @@ if [ -n "$DEPLOY_REF" ]; then
 fi
 [[ "$REPO_PATH" =~ ^[A-Za-z0-9._/-]+$ ]] || die "repo-path invalide : '$REPO_PATH'."
 
-if { [ "$IMAGE_TAG" = "main" ] || [ "$IMAGE_TAG" = "latest" ]; } && [ "$ALLOW_MAIN" -eq 0 ]; then
+# Refus du tag mutable en PRODUCTION uniquement ; en staging « main » est attendu.
+if [ "$ENVIRONMENT" = "production" ] && { [ "$IMAGE_TAG" = "main" ] || [ "$IMAGE_TAG" = "latest" ]; } && [ "$ALLOW_MAIN" -eq 0 ]; then
   die "IMAGE_TAG « $IMAGE_TAG » est MUTABLE. Déployez une version figée (ex. 0.1.0) ou passez --allow-main."
 fi
 
@@ -92,9 +115,9 @@ set -euo pipefail
 export PATH="\$HOME/.local/bin:\$PATH"
 cd '$REPO_PATH'
 
-exec 9>/tmp/creche-deploy.lock
+exec 9>$LOCK_FILE
 if ! flock -n 9; then
-  echo 'REMOTE: un deploiement est DEJA en cours (verrou /tmp/creche-deploy.lock occupe) — abandon.' >&2
+  echo 'REMOTE: un deploiement est DEJA en cours (verrou $LOCK_FILE occupe) — abandon.' >&2
   exit 69
 fi
 
@@ -103,7 +126,7 @@ $PULL_BLOCK
 
 echo "REMOTE: commit du clone = \$(git rev-parse --short HEAD 2>/dev/null || echo '?')"
 set -a
-. ./.env.server
+. ./$ENV_FILE
 set +a
 
 echo 'REMOTE: lancement de scripts/deploy.mjs (portes + GitHub Deployment → DORA)…'
@@ -114,16 +137,19 @@ EOF
 B64=$(printf '%s' "$REMOTE_SCRIPT" | base64 | tr -d '\n')
 
 # --- Récapitulatif + go/no-go humain
-echo "=== creche-planner — declencheur de deploiement (Phase 3) ==="
-echo "Serveur    : $SERVER"
-echo "Clone      : $REPO_PATH"
-echo "IMAGE_TAG  : $IMAGE_TAG"
-[ -n "$DEPLOY_REF" ] && echo "DEPLOY_REF : $DEPLOY_REF"
-echo "git pull   : $([ "$SKIP_PULL" -eq 1 ] && echo 'NON (--skip-pull)' || echo 'oui (ff-only)')"
+ENV_LABEL=$(printf '%s' "$ENVIRONMENT" | tr '[:lower:]' '[:upper:]')
+echo "=== creche-planner — declencheur de deploiement ($ENV_LABEL) ==="
+echo "Environnement : $ENV_LABEL"
+echo "Serveur       : $SERVER"
+echo "Clone         : $REPO_PATH"
+echo "Env-file      : $ENV_FILE"
+echo "IMAGE_TAG     : $IMAGE_TAG"
+[ -n "$DEPLOY_REF" ] && echo "DEPLOY_REF    : $DEPLOY_REF"
+echo "git pull      : $([ "$SKIP_PULL" -eq 1 ] && echo 'NON (--skip-pull)' || echo 'oui (ff-only)')"
 echo
 
 if [ "$ASSUME_YES" -eq 0 ]; then
-  printf 'Declencher le deploiement en PRODUCTION ? [y/N] '
+  printf 'Declencher le deploiement en %s ? [y/N] ' "$ENV_LABEL"
   read -r resp
   case "$resp" in
     y|Y|yes|YES|o|O|oui|OUI) ;;

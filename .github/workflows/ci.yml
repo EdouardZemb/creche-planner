@@ -861,6 +861,14 @@ jobs:
           ALERTMANAGER_SMTP_PASSWORD: ci
         run: docker compose -f docker-compose.yml -f docker-compose.server.yml config -q
 
+      # 1bis) Merge dev/CI + STAGING (Phase 8) valide. La pile de staging
+      # (docker-compose.staging.yml) ne déclare AUCUN secret ni `${VAR:?}` (elle
+      # garde les mots de passe Postgres par défaut du base) → aucune variable
+      # factice nécessaire : un `config -q` nu suffit. Garde contre une dérive de la
+      # pile staging (image GHCR, ports loopback, nom de projet isolé).
+      - name: Compose — merge dev/CI + staging valide (config -q)
+        run: docker compose -f docker-compose.yml -f docker-compose.staging.yml config -q
+
       # 2) Prometheus : config (scrape_configs + alerting + rule_files résolus) ET
       # règles d'alerte (PromQL + gabarits d'annotations) parsables. Les montages
       # MIROITENT ceux du compose pour que le `rule_files:` absolu résolve.

@@ -33,8 +33,17 @@
     dont la clé est dans un agent POSIX.
 
 .PARAMETER ImageTag
-    OBLIGATOIRE. Tag d'image / version à déployer (ex. « 0.1.0 »). Devient
-    IMAGE_TAG côté serveur. Le tag mutable « main »/« latest » exige -AllowMain.
+    Tag d'image / version à déployer (ex. « 0.1.0 »). Devient IMAGE_TAG côté
+    serveur. OBLIGATOIRE en production ; en staging, défaut « main ». En
+    production, le tag mutable « main »/« latest » exige -AllowMain.
+
+.PARAMETER Environment
+    « production » (défaut) ou « staging » (Phase 8). En staging : clone séparé
+    (/home/edouard/creche-planner-staging), env-file .env.staging (qui porte
+    DEPLOY_COMPOSE_FILES/DEPLOY_UP_SERVICES/DEPLOY_ENVIRONMENT=staging/ROLLBACK=0),
+    verrou flock dédié, et le tag rolling « main » est ACCEPTÉ sans -AllowMain.
+    Routine : le poller systemd auto-déploie le staging ; ce déclencheur sert au
+    bootstrap ou à forcer un tag précis en staging.
 
 .PARAMETER DeployRef
     Optionnel. Ref explicite (SHA/tag) consigné sur le GitHub Deployment (clé du
@@ -71,8 +80,14 @@
     .\scripts\remote-deploy.ps1 -ImageTag 0e5e59e -DeployRef 0e5e59e -Yes
 
 .EXAMPLE
-    # Forcer le tag rolling mutable (déconseillé)
+    # Forcer le tag rolling mutable en PRODUCTION (déconseillé)
     .\scripts\remote-deploy.ps1 -ImageTag main -AllowMain
+
+.EXAMPLE
+    # Déclencher un déploiement STAGING de `:main` (bootstrap / forçage manuel ;
+    # la routine est le poller systemd). ImageTag défaut « main », pas de -AllowMain.
+    .\scripts\remote-deploy.ps1 -Environment staging
+    .\scripts\remote-deploy.ps1 -Environment staging -ImageTag <sha> -Yes
 
 .NOTES
     Prérequis : clé chargée dans le service Windows ssh-agent
@@ -83,14 +98,20 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
-    [string]$ImageTag,
+    # Optionnel : en staging, défaut « main » (la pile staging SUIT le tag rolling).
+    # En production, OBLIGATOIRE (on ne déploie qu'un artefact figé/signé).
+    [string]$ImageTag = '',
+
+    [ValidateSet('production', 'staging')]
+    [string]$Environment = 'production',
 
     [string]$DeployRef = '',
 
     [string]$Server = 'edouard@192.168.1.129',
 
-    [string]$RepoPath = '/home/edouard/creche-planner',
+    # Vide => défaut dérivé de -Environment (prod : creche-planner ; staging :
+    # creche-planner-staging — clone SÉPARÉ pour ne pas mêler les arbres de travail).
+    [string]$RepoPath = '',
 
     [switch]$Yes,
 
@@ -103,10 +124,33 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ---------------------------------------------------------------------------
+# Résolution selon l'environnement (production | staging). Le STAGING (Phase 8)
+# vise un CLONE SÉPARÉ, source .env.staging (qui porte DEPLOY_COMPOSE_FILES /
+# DEPLOY_UP_SERVICES / DEPLOY_ENVIRONMENT=staging / ROLLBACK=0) et SUIT le tag
+# rolling « main ». Verrou flock dédié pour ne pas heurter un déploiement prod.
+# ---------------------------------------------------------------------------
+if ($Environment -eq 'staging') {
+    if ($ImageTag -eq '') { $ImageTag = 'main' }
+    if ($RepoPath -eq '') { $RepoPath = '/home/edouard/creche-planner-staging' }
+    $EnvFile = '.env.staging'
+    $LockFile = '/tmp/creche-staging-deploy.lock'
+}
+else {
+    if ($RepoPath -eq '') { $RepoPath = '/home/edouard/creche-planner' }
+    $EnvFile = '.env.server'
+    $LockFile = '/tmp/creche-deploy.lock'
+}
+
+# ---------------------------------------------------------------------------
 # Validation des entrées (anti-injection : ces valeurs sont interpolées dans un
 # script bash distant). On n'accepte que des refs Git/tags d'image plausibles.
 # ---------------------------------------------------------------------------
 $SafeRef = '^[A-Za-z0-9][A-Za-z0-9._/-]*$'
+
+if ($ImageTag -eq '') {
+    Write-Error "ImageTag est OBLIGATOIRE en production (déployez une version figée, ex. -ImageTag 0.1.0)."
+    exit 2
+}
 
 if ($ImageTag -notmatch $SafeRef) {
     Write-Error "ImageTag invalide : '$ImageTag'. Attendu : un tag/SHA (alphanumérique, . _ / -)."
@@ -121,8 +165,10 @@ if ($RepoPath -notmatch "^[A-Za-z0-9._/-]+$") {
     exit 2
 }
 
-# Refus du tag MUTABLE par défaut : on ne déploie qu'un artefact figé/signé.
-if ($ImageTag -in @('main', 'latest') -and -not $AllowMain) {
+# Refus du tag MUTABLE en PRODUCTION : on n'y déploie qu'un artefact figé/signé.
+# En STAGING, le tag rolling « main » est au contraire ATTENDU (c'est le sujet de
+# la pile staging) → pas de refus.
+if ($Environment -eq 'production' -and $ImageTag -in @('main', 'latest') -and -not $AllowMain) {
     Write-Error ("ImageTag « $ImageTag » est un tag MUTABLE (artefact non figé). " +
         "Déployez une version semver figée (ex. -ImageTag 0.1.0) ou forcez avec -AllowMain.")
     exit 2
@@ -139,7 +185,7 @@ if (-not (Test-Path $SshExe)) {
 # Construction du payload bash distant.
 #   - flock non bloquant : refuse une exécution concurrente (garde-fou Phase 3).
 #   - PATH enrichi de ~/.local/bin : cosign (DEPLOY_VERIFY_COSIGN=1) y est installé.
-#   - IMAGE_TAG/DEPLOY_REF passés SUR la ligne node → priment sur .env.server.
+#   - IMAGE_TAG/DEPLOY_REF passés SUR la ligne node → priment sur l'env-file.
 # Le script est encodé en base64 puis « base64 -d | bash » côté serveur : on
 # évite tout enfer de quoting PowerShell→ssh→bash (cf. mémoire prod-server-access).
 # ---------------------------------------------------------------------------
@@ -160,10 +206,11 @@ set -euo pipefail
 export PATH="`$HOME/.local/bin:`$PATH"
 cd '$RepoPath'
 
-# Verrou anti-concurrence : un seul deploy.mjs à la fois sur le serveur.
-exec 9>/tmp/creche-deploy.lock
+# Verrou anti-concurrence (dédié à l'environnement : prod et staging ont des
+# verrous DISTINCTS → un déploiement staging ne bloque pas la prod, et réciproquement).
+exec 9>$LockFile
 if ! flock -n 9; then
-  echo 'REMOTE: un deploiement est DEJA en cours (verrou /tmp/creche-deploy.lock occupe) — abandon.' >&2
+  echo 'REMOTE: un deploiement est DEJA en cours (verrou $LockFile occupe) — abandon.' >&2
   exit 69
 fi
 
@@ -172,7 +219,7 @@ $PullBlock
 
 echo "REMOTE: commit du clone = `$(git rev-parse --short HEAD 2>/dev/null || echo '?')"
 set -a
-. ./.env.server
+. ./$EnvFile
 set +a
 
 echo 'REMOTE: lancement de scripts/deploy.mjs (portes + GitHub Deployment → DORA)…'
@@ -187,16 +234,19 @@ $RemoteCmd = "echo $B64 | base64 -d | bash"
 # ---------------------------------------------------------------------------
 # Récapitulatif + go/no-go humain
 # ---------------------------------------------------------------------------
-Write-Host "=== creche-planner — declencheur de deploiement (Phase 3) ===" -ForegroundColor Cyan
-Write-Host "Serveur    : $Server"
-Write-Host "Clone      : $RepoPath"
-Write-Host "IMAGE_TAG  : $ImageTag$(if ($ImageTag -in @('main','latest')) { '   ⚠️ MUTABLE' })"
-if ($DeployRef -ne '') { Write-Host "DEPLOY_REF : $DeployRef" }
-Write-Host "git pull   : $(if ($SkipPull) { 'NON (--skip-pull)' } else { 'oui (ff-only)' })"
+$EnvLabel = $Environment.ToUpper()
+Write-Host "=== creche-planner — declencheur de deploiement ($EnvLabel) ===" -ForegroundColor Cyan
+Write-Host "Environnement : $EnvLabel"
+Write-Host "Serveur       : $Server"
+Write-Host "Clone         : $RepoPath"
+Write-Host "Env-file      : $EnvFile"
+Write-Host "IMAGE_TAG     : $ImageTag$(if ($ImageTag -in @('main','latest')) { '   (rolling/MUTABLE)' })"
+if ($DeployRef -ne '') { Write-Host "DEPLOY_REF    : $DeployRef" }
+Write-Host "git pull      : $(if ($SkipPull) { 'NON (--skip-pull)' } else { 'oui (ff-only)' })"
 Write-Host ""
 
 if (-not $Yes) {
-    $resp = Read-Host "Declencher le deploiement en PRODUCTION ? [y/N]"
+    $resp = Read-Host "Declencher le deploiement en $EnvLabel ? [y/N]"
     if ($resp -notmatch '^(y|yes|o|oui)$') {
         Write-Host "Annule." -ForegroundColor Yellow
         exit 0
@@ -212,7 +262,7 @@ $code = $LASTEXITCODE
 
 Write-Host ""
 if ($code -eq 0) {
-    Write-Host "✅ Deploiement declenche avec succes (IMAGE_TAG=$ImageTag)." -ForegroundColor Green
+    Write-Host "✅ Deploiement $EnvLabel declenche avec succes (IMAGE_TAG=$ImageTag)." -ForegroundColor Green
     Write-Host "   Verifier la trace DORA : gh api repos/EdouardZemb/creche-planner/deployments --jq '.[0]'" -ForegroundColor DarkGray
 } elseif ($code -eq 69) {
     Write-Host "⏳ Abandon : un deploiement est deja en cours sur le serveur (verrou occupe)." -ForegroundColor Yellow
