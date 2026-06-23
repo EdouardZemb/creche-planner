@@ -7,18 +7,40 @@ datasources:
     url: http://tempo:3200
     isDefault: true
     jsonData:
+      # Corrélation Tempo → Loki (Phase 13b) : depuis une trace, « Logs for this
+      # span » interroge Loki en sélectionnant le service (tag service.name → label
+      # `service` posé par Promtail) ET en filtrant sur l'identifiant de trace
+      # (filterByTraceID → line filter `|= "<traceID>"`), qui matche le champ
+      # `trace_id` des logs pino. Aucun label à haute cardinalité requis.
+      #
+      # ⚠️ NE PAS donner d'`uid:` explicite à CE datasource Tempo (préexistant) : sur
+      # un Grafana dont la base contient déjà « Tempo » (uid auto-généré), réécrire son
+      # uid fait ÉCHOUER la provision (« data source not found ») et Grafana boucle au
+      # démarrage. On référence donc Loki (uid stable `loki`, datasource NEUVE) depuis
+      # Tempo, jamais l'inverse — la navigation log→trace est volontairement omise pour
+      # ne pas avoir à figer l'uid de Tempo.
       tracesToLogsV2:
-        datasourceUid: ''
+        datasourceUid: loki
+        filterByTraceID: true
+        filterBySpanID: false
+        tags:
+          - key: service.name
+            value: service
   - name: Prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
+  # Loki (Phase 13b) — logs agrégés des 5 services applicatifs (poussés par Promtail).
+  # Datasource NEUVE → un `uid` fixe (`loki`) est sûr (insertion, pas de réécriture).
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
   # Datasource Infinity (plugin yesoreyeram-infinity-datasource) — interroge l'API
   # GitHub Deployments pour ANNOTER les déploiements (DORA) sur les dashboards.
   # • PROD : plugin installé via GF_INSTALL_PLUGINS (docker-compose.server.yml) ;
-  #   token de lecture injecté depuis GH_DEPLOYMENTS_TOKEN (.env.server) — un
-  #   dashboard à refresh 30s rejoue la requête d'annotation et saturerait la limite
-  #   anonyme de l'API GitHub (60/h) ; authentifié, la limite passe à 5000/h.
+  #   token de lecture injecté depuis GH_DEPLOYMENTS_TOKEN (.env.server).
   # • DEV/CI : ni le plugin ni la variable ne sont présents → ce datasource reste
   #   inerte (Grafana démarre normalement, les annotations ne s'affichent pas).
   - name: GitHub Deployments

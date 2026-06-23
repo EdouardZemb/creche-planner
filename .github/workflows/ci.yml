@@ -915,7 +915,7 @@ jobs:
         run: >-
           docker compose up -d --wait
           prometheus alertmanager grafana otel-collector tempo nats-exporter
-          blackbox-exporter
+          blackbox-exporter loki promtail
 
       # 6) Le boot ne suffit pas : la classe de bug visée (otel :8888 bindé localhost)
       # laisse les conteneurs SAINS mais le SCRAPE DOWN. On exige donc que TOUTES les

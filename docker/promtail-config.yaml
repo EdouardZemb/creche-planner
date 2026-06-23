@@ -1,0 +1,44 @@
+# Promtail — collecte les logs Docker et les pousse vers Loki (Phase 13b).
+#
+# Découverte via `docker_sd_configs` (socket Docker monté en lecture seule) : Promtail
+# liste les conteneurs et tail leurs logs JSON sans monter /var/lib/docker. On NE garde
+# QUE les 5 services applicatifs instrumentés (api-gateway + svc-*) du projet `creche-planner`
+# (les conteneurs `creche-planner-staging-*` et l'infra/observabilité sont ÉCARTÉS). Le
+# label Loki `service` reprend le nom de service Compose = `OTEL_SERVICE_NAME` = le
+# `service.name` des traces Tempo → la corrélation Tempo→Loki (tracesToLogsV2) résout
+# `{service="<service.name>"} |= "<traceID>"`.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 10s
+    relabel_configs:
+      # Ne conserver QUE le projet de prod (exclut creche-planner-staging-*).
+      - source_labels:
+          ['__meta_docker_container_label_com_docker_compose_project']
+        regex: 'creche-planner'
+        action: keep
+      # Ne conserver QUE les 5 services instrumentés (porteurs de trace_id pino).
+      - source_labels:
+          ['__meta_docker_container_label_com_docker_compose_service']
+        regex: 'api-gateway|svc-referentiel|svc-foyer|svc-planification|svc-tarification'
+        action: keep
+      # Label `service` = nom de service Compose (= service.name des traces).
+      - source_labels:
+          ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: service
+      # Label `container` = nom du conteneur (sans le « / » initial), pour le tri fin.
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container

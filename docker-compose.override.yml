@@ -64,6 +64,14 @@ services:
     ports:
       - '3003:3000'
 
+  loki:
+    ports:
+      - '3100:3100'
+
+  promtail:
+    ports:
+      - '9080:9080'
+
   svc-referentiel:
     ports:
       - '3001:3001'

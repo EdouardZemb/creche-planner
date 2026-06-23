@@ -91,7 +91,7 @@ const COMPOSE = [
 // Surchargeable pour cibler un sous-ensemble : OBS_SERVICES="prometheus grafana".
 const OBS_SERVICES = (
   process.env.OBS_SERVICES ??
-  'otel-collector tempo prometheus alertmanager nats-exporter blackbox-exporter grafana'
+  'otel-collector tempo prometheus alertmanager nats-exporter blackbox-exporter loki promtail grafana'
 )
   .trim()
   .split(/\s+/)
