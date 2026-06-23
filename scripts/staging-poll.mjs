@@ -32,6 +32,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -47,29 +48,29 @@ const MARKER =
 const FORCE = process.env.STAGING_FORCE === '1';
 const DRY_RUN = process.env.DORA_DRY_RUN === '1';
 
-/** Digest distant du tag (sha256:…) via buildx imagetools. '' si introuvable. */
+/**
+ * Digest distant (index OCI) du tag `:main` = sha256 du manifeste BRUT.
+ * On NE se fie PAS à `--format '{{.Manifest.Digest}}'` : selon la version de buildx
+ * (ex. 0.13.x sur le serveur), ce gabarit est IGNORÉ et imprime la sortie humaine
+ * → la sonde renvoyait '' à tort. Or le digest d'un manifeste EST le sha256 de ses
+ * octets bruts (`--raw`) : méthode canonique, indépendante de la version de buildx.
+ * '' si la sonde échoue (réseau / login GHCR manquant).
+ */
 function digestDistant() {
   if (DRY_RUN) return 'sha256:dry-run';
+  // stdout en Buffer (aucun `encoding`) pour hasher les OCTETS EXACTS du manifeste.
   const r = spawnSync(
     'docker',
-    [
-      'buildx',
-      'imagetools',
-      'inspect',
-      IMAGE_REF,
-      '--format',
-      '{{.Manifest.Digest}}',
-    ],
-    { cwd: RACINE, encoding: 'utf8' },
+    ['buildx', 'imagetools', 'inspect', IMAGE_REF, '--raw'],
+    { cwd: RACINE },
   );
-  if (r.status !== 0) {
+  if (r.status !== 0 || !r.stdout || r.stdout.length === 0) {
     console.error(
-      `  ✗ Impossible de résoudre le digest de ${IMAGE_REF} :\n${(r.stderr || r.stdout || '').trim()}`,
+      `  ✗ Impossible de résoudre le digest de ${IMAGE_REF} :\n${(r.stderr?.toString() || '').trim()}`,
     );
     return '';
   }
-  const d = (r.stdout ?? '').trim();
-  return d.startsWith('sha256:') ? d : '';
+  return 'sha256:' + createHash('sha256').update(r.stdout).digest('hex');
 }
 
 /** Marqueur local du dernier digest déployé. '' si absent. */
