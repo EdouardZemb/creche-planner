@@ -184,8 +184,14 @@ if (-not (Test-Path $SshExe)) {
 # ---------------------------------------------------------------------------
 # Construction du payload bash distant.
 #   - flock non bloquant : refuse une exécution concurrente (garde-fou Phase 3).
-#   - PATH enrichi de ~/.local/bin : cosign (DEPLOY_VERIFY_COSIGN=1) y est installé.
-#   - IMAGE_TAG/DEPLOY_REF passés SUR la ligne node → priment sur l'env-file.
+#   - PATH enrichi de ~/.local/bin : cosign (DEPLOY_VERIFY_COSIGN=1) ET sops/age
+#     (Phase 11) y sont installés.
+#   - PRODUCTION : les secrets sont CHIFFRÉS (.env.server.enc, sops+age). On ne
+#     source plus de clair : `scripts/with-secrets.sh` déchiffre en RAM le temps du
+#     déploiement (cf. doc 29). `env IMAGE_TAG=… …` surcharge APRÈS le source interne
+#     (sinon l'IMAGE_TAG par défaut du fichier l'écraserait).
+#   - STAGING : `.env.staging` reste en clair (DB jetables, hors périmètre Phase 11)
+#     → on conserve `set -a; . ./.env.staging; set +a`.
 # Le script est encodé en base64 puis « base64 -d | bash » côté serveur : on
 # évite tout enfer de quoting PowerShell→ssh→bash (cf. mémoire prod-server-access).
 # ---------------------------------------------------------------------------
@@ -200,6 +206,25 @@ git pull --ff-only
 }
 
 $DeployRefAssign = if ($DeployRef -ne '') { "DEPLOY_REF='$DeployRef' " } else { '' }
+
+# Bloc de chargement des secrets + lancement de deploy.mjs, selon l'environnement.
+# PRODUCTION : déchiffrement éphémère sops via with-secrets (aucun clair persistant).
+# STAGING    : source du clair .env.staging (hors périmètre Phase 11).
+$LaunchBlock = if ($Environment -eq 'staging') {
+    @"
+set -a
+. ./$EnvFile
+set +a
+
+echo 'REMOTE: lancement de scripts/deploy.mjs (portes + GitHub Deployment -> DORA)...'
+IMAGE_TAG='$ImageTag' ${DeployRefAssign}node scripts/deploy.mjs
+"@
+} else {
+    @"
+echo 'REMOTE: dechiffrement sops (with-secrets) + lancement de scripts/deploy.mjs (portes + GitHub Deployment -> DORA)...'
+bash scripts/with-secrets.sh env IMAGE_TAG='$ImageTag' ${DeployRefAssign}node scripts/deploy.mjs
+"@
+}
 
 $RemoteScript = @"
 set -euo pipefail
@@ -218,12 +243,7 @@ echo "REMOTE: hote=`$(hostname) pwd=`$(pwd)"
 $PullBlock
 
 echo "REMOTE: commit du clone = `$(git rev-parse --short HEAD 2>/dev/null || echo '?')"
-set -a
-. ./$EnvFile
-set +a
-
-echo 'REMOTE: lancement de scripts/deploy.mjs (portes + GitHub Deployment → DORA)…'
-IMAGE_TAG='$ImageTag' ${DeployRefAssign}node scripts/deploy.mjs
+$LaunchBlock
 "@
 
 # Normalise en LF (le serveur est Linux) puis encode UTF-8 → base64 mono-ligne.
@@ -239,7 +259,7 @@ Write-Host "=== creche-planner — declencheur de deploiement ($EnvLabel) ===" -
 Write-Host "Environnement : $EnvLabel"
 Write-Host "Serveur       : $Server"
 Write-Host "Clone         : $RepoPath"
-Write-Host "Env-file      : $EnvFile"
+Write-Host "Secrets       : $(if ($Environment -eq 'staging') { "$EnvFile (clair)" } else { '.env.server.enc (sops+age, dechiffre en RAM)' })"
 Write-Host "IMAGE_TAG     : $ImageTag$(if ($ImageTag -in @('main','latest')) { '   (rolling/MUTABLE)' })"
 if ($DeployRef -ne '') { Write-Host "DEPLOY_REF    : $DeployRef" }
 Write-Host "git pull      : $(if ($SkipPull) { 'NON (--skip-pull)' } else { 'oui (ff-only)' })"

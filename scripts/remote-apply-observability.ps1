@@ -11,7 +11,9 @@
 
         flock (anti-concurrence, verrou DEDIE a l'obs)
           -> git fetch + git pull --ff-only   (recupere docker/** + compose + scripts)
-          -> set -a; source .env.server; set +a
+          -> bash scripts/with-secrets.sh ...  (Phase 11 : dechiffre .env.server.enc
+               sops+age en RAM ; l'obs prod consomme GRAFANA_ADMIN_PWD /
+               GH_DEPLOYMENTS_TOKEN / ALERTMANAGER_SMTP_PASSWORD)
           -> node scripts/apply-observability.mjs
                (recreation --no-deps --force-recreate + verifications +
                 GitHub Deployment env=observability => DORA)
@@ -125,12 +127,8 @@ echo "REMOTE: hote=`$(hostname) pwd=`$(pwd)"
 $PullBlock
 
 echo "REMOTE: commit du clone = `$(git rev-parse --short HEAD 2>/dev/null || echo '?')"
-set -a
-. ./.env.server
-set +a
-
-echo 'REMOTE: lancement de scripts/apply-observability.mjs (recreation + verifs + DORA)...'
-${EnvAssign}${ServicesAssign}node scripts/apply-observability.mjs
+echo 'REMOTE: dechiffrement sops (with-secrets) + lancement de scripts/apply-observability.mjs (recreation + verifs + DORA)...'
+bash scripts/with-secrets.sh env ${EnvAssign}${ServicesAssign}node scripts/apply-observability.mjs
 "@
 
 # Normalise en LF (serveur Linux) puis encode UTF-8 -> base64 mono-ligne.
