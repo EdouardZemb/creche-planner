@@ -8,7 +8,14 @@
 #
 # Le format dotenv n'est pas auto-détecté depuis l'extension `.enc` → les scripts
 # passent toujours `--input-type dotenv --output-type dotenv` (with-secrets.sh,
-# sops-edit.sh). Cette règle fournit le recipient à `sops -e` (plus besoin de --age).
+# sops-edit.sh). Cette règle fournit le recipient à `sops -e`.
+#
+# Le path_regex couvre le clair `.env.server` ET le chiffré `.env.server.enc` : sops
+# applique les creation_rules d'après le nom du fichier d'ENTRÉE. La commande de
+# bootstrap `sops -e ... .env.server > .env.server.enc` a pour entrée `.env.server`
+# → sans `.env.server` dans le motif, sops répond « no matching creation rules ».
+# (Une ré-édition en place `sops .env.server.enc` réutilise, elle, le recipient stocké
+# dans les métadonnées du fichier — indépendamment de cette règle.)
 creation_rules:
-  - path_regex: \.env\.server\.enc$
+  - path_regex: \.env\.server(\.enc)?$
     age: age1kgl35m9smf22ajjryg0qvm06sr8gv798k79hugw7722u48mmz4as67naxa
