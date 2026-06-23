@@ -92,10 +92,12 @@ services:
       # saturerait la valeur de prod (120/min). NE PAS le redéfinir ici.
     ports:
       # SEULE exposition de la pile : la gateway sur la LOOPBACK uniquement, pour
-      # que les smokes de deploy.mjs (santé/seed/perf) tapent http://127.0.0.1:3100
-      # SANS Caddy ni TLS. `127.0.0.1:` => INACCESSIBLE depuis le LAN. Port 3100
-      # (≠ 3000 du dev) pour ne pas heurter un éventuel usage local de la gateway.
-      - '127.0.0.1:3100:3000'
+      # que les smokes de deploy.mjs (santé/seed/perf) tapent http://127.0.0.1:3110
+      # SANS Caddy ni TLS. `127.0.0.1:` => INACCESSIBLE depuis le LAN. Port 3110
+      # choisi LIBRE sur ce serveur (3000=dev, 3100 déjà pris par un autre service
+      # local — vérifié au bootstrap). Si 3110 entre un jour en conflit, le changer
+      # ici ET dans .env.staging (GATEWAY_URL/DEPLOY_ENVIRONMENT_URL).
+      - '127.0.0.1:3110:3000'
 
   # --- Front web : image GHCR + port loopback (inspection manuelle via tunnel) -
   web:
@@ -103,6 +105,6 @@ services:
     restart: unless-stopped
     ports:
       # Loopback uniquement (non exposé LAN). Inspecter depuis le poste de dev via
-      # un tunnel SSH : `ssh -L 4201:127.0.0.1:4201 edouard@192.168.1.129` puis
-      # http://localhost:4201. La SPA proxifie /api vers api-gateway (même origine).
-      - '127.0.0.1:4201:80'
+      # un tunnel SSH : `ssh -L 4210:127.0.0.1:4210 edouard@192.168.1.129` puis
+      # http://localhost:4210. La SPA proxifie /api vers api-gateway (même origine).
+      - '127.0.0.1:4210:80'
