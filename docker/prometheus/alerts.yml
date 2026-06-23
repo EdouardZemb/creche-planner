@@ -27,7 +27,7 @@ groups:
     rules:
       - alert: OtelCollectorSpansDrops
         expr: >
-          rate(otelcol_exporter_enqueue_failed_spans_total[5m]) > 0
+          rate(otelcol_exporter_enqueue_failed_spans[5m]) > 0
         for: 2m
         labels:
           severity: warning
@@ -40,7 +40,7 @@ groups:
 
       - alert: OtelCollectorReceiverRefusedSpans
         expr: >
-          rate(otelcol_receiver_refused_spans_total[5m]) > 0
+          rate(otelcol_receiver_refused_spans[5m]) > 0
         for: 2m
         labels:
           severity: warning

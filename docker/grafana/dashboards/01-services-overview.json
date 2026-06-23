@@ -9,6 +9,43 @@
   "version": 1,
   "refresh": "30s",
   "time": { "from": "now-1h", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "yesoreyeram-infinity-datasource",
+          "uid": "infinity-github-deploys"
+        },
+        "enable": true,
+        "iconColor": "purple",
+        "name": "Déploiements (prod)",
+        "target": {
+          "refId": "Deploiements",
+          "type": "json",
+          "source": "url",
+          "format": "table",
+          "parser": "backend",
+          "url": "https://api.github.com/repos/EdouardZemb/creche-planner/deployments?environment=production&per_page=30",
+          "url_options": { "method": "GET" },
+          "root_selector": "",
+          "columns": [
+            { "selector": "created_at", "text": "time", "type": "timestamp" },
+            { "selector": "description", "text": "text", "type": "string" },
+            { "selector": "environment", "text": "tags", "type": "string" }
+          ]
+        }
+      }
+    ]
+  },
   "panels": [
     {
       "id": 1,
@@ -114,7 +151,7 @@
       "id": 4,
       "type": "timeseries",
       "title": "OTel Collector — Spans reçus (receiver)",
-      "description": "Nombre de spans/s reçus par le collecteur OTel. Métrique : otelcol_receiver_accepted_spans_total (rate). Indique l'activité de traçage des services NestJS.",
+      "description": "Nombre de spans/s reçus par le collecteur OTel. Métrique : otelcol_receiver_accepted_spans (rate) — sans suffixe _total depuis otelcol v0.123+. Indique l'activité de traçage des services NestJS.",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "fieldConfig": {
@@ -126,12 +163,12 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "rate(otelcol_receiver_accepted_spans_total[2m])",
+          "expr": "rate(otelcol_receiver_accepted_spans[2m])",
           "legendFormat": "Spans acceptés/s — {{receiver}}",
           "refId": "A"
         },
         {
-          "expr": "rate(otelcol_receiver_refused_spans_total[2m])",
+          "expr": "rate(otelcol_receiver_refused_spans[2m])",
           "legendFormat": "Spans refusés/s — {{receiver}}",
           "refId": "B"
         }
@@ -153,12 +190,12 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
       "targets": [
         {
-          "expr": "rate(otelcol_exporter_sent_spans_total[2m])",
+          "expr": "rate(otelcol_exporter_sent_spans[2m])",
           "legendFormat": "Spans envoyés/s — {{exporter}}",
           "refId": "A"
         },
         {
-          "expr": "rate(otelcol_exporter_enqueue_failed_spans_total[2m])",
+          "expr": "rate(otelcol_exporter_enqueue_failed_spans[2m])",
           "legendFormat": "Spans perdus (queue full)/s — {{exporter}}",
           "refId": "B"
         }
@@ -212,7 +249,7 @@
           "refId": "A"
         },
         {
-          "expr": "rate(otelcol_process_cpu_seconds_total[2m])",
+          "expr": "rate(otelcol_process_cpu_seconds[2m])",
           "legendFormat": "CPU (cores)",
           "refId": "B"
         }

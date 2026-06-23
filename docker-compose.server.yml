@@ -64,6 +64,11 @@ services:
 
   alertmanager:
     restart: unless-stopped
+    # Receiver e-mail (Phase 4, doc 24 §8) : le mot de passe d'application Gmail est
+    # injecté en fichier-secret Docker, lu par docker/alertmanager.yml via
+    # smtp_auth_password_file. Source = ALERTMANAGER_SMTP_PASSWORD (.env.server).
+    secrets:
+      - alertmanager_smtp_password
 
   nats-exporter:
     restart: unless-stopped
@@ -76,6 +81,11 @@ services:
       GF_AUTH_DISABLE_LOGIN_FORM: 'false'
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PWD:?defini .env.server}
+      # Phase 4 — annotations de déploiement (DORA) : plugin Infinity + token de
+      # lecture consommé par le datasource « GitHub Deployments » (provisionné dans
+      # docker/grafana/provisioning/datasources/datasources.yaml).
+      GF_INSTALL_PLUGINS: yesoreyeram-infinity-datasource
+      GH_DEPLOYMENTS_TOKEN: ${GH_DEPLOYMENTS_TOKEN:-}
 
   # --- Services métier : secrets BDD + redémarrage ---------------------------
   svc-referentiel:
@@ -173,3 +183,14 @@ services:
 volumes:
   caddy-data:
   caddy-config:
+
+secrets:
+  # Mot de passe d'application Gmail pour les e-mails d'alerte Alertmanager (Phase 4).
+  # JAMAIS dans le repo : valeur lue depuis ALERTMANAGER_SMTP_PASSWORD de .env.server
+  # (Compose passe --env-file .env.server). Compose la matérialise dans le conteneur
+  # alertmanager à /run/secrets/alertmanager_smtp_password (cf. docker/alertmanager.yml,
+  # smtp_auth_password_file). Source `environment` volontairement absente du compose de
+  # base (docker-compose.yml) : en dev/CI la variable n'existe pas et un secret de source
+  # `environment` non défini fait échouer Compose — le secret n'est donc déclaré qu'ici.
+  alertmanager_smtp_password:
+    environment: ALERTMANAGER_SMTP_PASSWORD

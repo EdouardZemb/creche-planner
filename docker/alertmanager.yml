@@ -1,14 +1,32 @@
-# Configuration Alertmanager (P2-3, doc 18 §8).
+# Configuration Alertmanager.
 #
 # Reçoit les alertes « firing » de Prometheus (cf. docker/prometheus.yml, section
-# `alerting`) et les groupe / déduplique. En contexte solo, AUCUN canal de
-# notification externe n'est configuré par défaut : les alertes sont visibles dans
-# l'UI Alertmanager (http://localhost:9093) et le pipeline est ainsi OPÉRANT et
-# vérifiable. Pour notifier réellement, décommenter un receiver (Slack/email) et le
-# référencer dans la route.
+# `alerting`), les groupe / déduplique et les NOTIFIE par e-mail (SMTP Gmail).
+# Pipeline câblé en P2-3 (doc 18 §8) ; receiver réel branché en Phase 4
+# (doc 24 §8, « configurer un receiver Alertmanager »).
+#
+# ── Secret (mot de passe SMTP) ────────────────────────────────────────────────
+# Le mot de passe n'est JAMAIS dans le repo. Il est lu depuis le fichier-secret
+# Docker `/run/secrets/alertmanager_smtp_password` (cf. smtp_auth_password_file) :
+#   • PROD  : source `environment: ALERTMANAGER_SMTP_PASSWORD` (.env.server),
+#             déclarée pour le service alertmanager dans docker-compose.server.yml.
+#   • DEV/CI: ce fichier-secret est ABSENT. Alertmanager lit les secrets `_file`
+#             de façon PARESSEUSE (à l'envoi, pas au démarrage) : la pile boote
+#             normalement et le pipeline reste vérifiable dans l'UI :9093 ; un
+#             éventuel envoi échoue simplement (aucune notification réelle en dev).
+# L'adresse e-mail (expéditeur/destinataire) n'est pas un secret : elle figure
+# déjà dans l'historique git (auteur des commits). Voir
+# docs/exploitation/observabilite.md (« Receiver Alertmanager »).
 
 global:
   resolve_timeout: 5m
+  # Smarthost Gmail — STARTTLS sur le port 587.
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'edouard.zemb@gmail.com'
+  smtp_hello: 'creche.testlens.dev'
+  smtp_auth_username: 'edouard.zemb@gmail.com'
+  smtp_auth_password_file: /run/secrets/alertmanager_smtp_password
+  smtp_require_tls: true
 
 route:
   # Groupe les alertes par nom + sévérité pour éviter le bruit.
@@ -16,29 +34,28 @@ route:
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
-  receiver: 'defaut'
+  receiver: 'email-ops'
   routes:
-    # Les alertes critiques sont notifiées plus vite (et pourraient cibler un canal
-    # dédié une fois un receiver réel configuré).
+    # Les alertes critiques sont notifiées plus vite et répétées plus souvent.
     - matchers:
         - severity = critical
-      receiver: 'defaut'
+      receiver: 'email-ops'
       group_wait: 10s
       repeat_interval: 1h
 
 receivers:
-  # Receiver « puits » : sans notifier, les alertes restent visibles dans l'UI
-  # Alertmanager sans être poussées ailleurs. Suffit à rendre le pipeline opérant.
-  - name: 'defaut'
-    # Exemple de notification Slack (à activer en fournissant l'URL du webhook) :
-    # slack_configs:
-    #   - api_url: 'https://hooks.slack.com/services/XXXX/YYYY/ZZZZ'
-    #     channel: '#alertes-creche-planner'
-    #     send_resolved: true
-    # Exemple de notification e-mail (nécessite la section global.smtp_*) :
-    # email_configs:
-    #   - to: 'ops@example.com'
-    #     send_resolved: true
+  - name: 'email-ops'
+    email_configs:
+      - to: 'edouard.zemb@gmail.com'
+        send_resolved: true
+        # Sujet compact : état + nb d'alertes firing + nom + sévérité.
+        headers:
+          Subject: >-
+            [{{ .Status | toUpper }}{{ if eq .Status "firing" }}
+            ×{{ .Alerts.Firing | len }}{{ end }}]
+            {{ .CommonLabels.alertname }} ({{ .CommonLabels.severity }})
+        # Corps : on s'appuie sur le gabarit HTML par défaut d'Alertmanager
+        # (liste des alertes, labels, annotations, liens vers l'UI).
 
 # Inhibition : une alerte critique masque la version « warning » de la même alerte
 # sur la même cible (évite la double notification).
