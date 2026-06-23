@@ -6,7 +6,7 @@
   "tags": ["creche-planner", "traces", "latence"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-1h", "to": "now" },
   "annotations": {
@@ -54,7 +54,7 @@
       "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "## Traces distribuées — Creche Planner\n\nCe dashboard s'appuie sur **Tempo** (backend de traces) alimenté via le collecteur OTel.\n\n- Utilisez le panneau **Traces par service** pour explorer les spans par `service.name`.\n- Filtrez par `http.route`, `http.status_code`, ou `error=true` pour isoler les erreurs.\n- Les `trace_id` apparaissent dans les logs pino des services (champ `trace_id`) — corrélation logs ↔ traces possible.\n- **Source des données** : spans OTLP envoyés par les services NestJS → collecteur → Tempo.\n\n> Note : les métriques RED (Rate/Errors/Duration) par service nécessitent l'activation du **metrics generator** de Tempo (span-metrics pipeline). Voir les TODO dans `docs/exploitation/observabilite.md`."
+        "content": "## Traces distribuées & métriques RED — Creche Planner\n\nCe dashboard s'appuie sur **Tempo** (backend de traces) alimenté via le collecteur OTel.\n\n- Utilisez les panneaux **Explorateur de traces** pour explorer les spans par `service.name`.\n- Filtrez par `http.route`, `http.status_code`, ou `error=true` pour isoler les erreurs.\n- Les `trace_id` apparaissent dans les logs pino des services (champ `trace_id`) — corrélation logs ↔ traces possible.\n- **Source des traces** : spans OTLP envoyés par les services NestJS → collecteur → Tempo.\n\n> **Métriques RED (Phase 13a).** Les panneaux **Débit / Erreurs / Latence p50-p95-p99** sont dérivés des traces par le **metrics generator** de Tempo (processeur `span-metrics`), poussés vers Prometheus en `remote_write` puis interrogés via la métrique `traces_spanmetrics_*`. Les percentiles ne couvrent que les spans **serveur** (`span_kind=SPAN_KIND_SERVER`, requêtes entrantes). Sans trafic récent, les séries sont vides — générez quelques requêtes pour les voir apparaître."
       }
     },
     {
@@ -107,6 +107,176 @@
         }
       ],
       "options": {}
+    },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Métriques RED (dérivées des traces — Tempo span-metrics)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 },
+      "panels": []
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Débit de requêtes par service (req/s)",
+      "description": "Rate — taux de requêtes ENTRANTES par service (spans serveur), dérivé de traces_spanmetrics_calls_total.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "lineInterpolation": "smooth"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (service) (rate(traces_spanmetrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[$__rate_interval]))",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Taux d'erreurs par service (%)",
+      "description": "Errors — proportion de spans serveur en erreur (status_code=STATUS_CODE_ERROR) par service. clamp_min évite la division par zéro hors trafic.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "showPoints": "never"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (service) (rate(traces_spanmetrics_calls_total{span_kind=\"SPAN_KIND_SERVER\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) / clamp_min(sum by (service) (rate(traces_spanmetrics_calls_total{span_kind=\"SPAN_KIND_SERVER\"}[$__rate_interval])), 0.001)",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Latence p95 par service",
+      "description": "Duration — 95e percentile de la durée des spans serveur par service, via histogram_quantile sur traces_spanmetrics_latency_bucket (secondes).",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 49 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.95, sum by (service, le) (rate(traces_spanmetrics_latency_bucket{span_kind=\"SPAN_KIND_SERVER\"}[$__rate_interval])))",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Latence p50 / p95 / p99 — api-gateway",
+      "description": "Distribution de la latence de l'api-gateway (point d'entrée), trois percentiles dérivés de traces_spanmetrics_latency_bucket (secondes).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 49 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(traces_spanmetrics_latency_bucket{service=\"api-gateway\", span_kind=\"SPAN_KIND_SERVER\"}[$__rate_interval])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_spanmetrics_latency_bucket{service=\"api-gateway\", span_kind=\"SPAN_KIND_SERVER\"}[$__rate_interval])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(traces_spanmetrics_latency_bucket{service=\"api-gateway\", span_kind=\"SPAN_KIND_SERVER\"}[$__rate_interval])))",
+          "legendFormat": "p99"
+        }
+      ]
     }
   ],
   "templating": {
@@ -118,6 +288,14 @@
         "current": {},
         "hide": 0,
         "label": "Tempo"
+      },
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "label": "Prometheus"
       }
     ]
   }
