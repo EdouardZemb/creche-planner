@@ -110,6 +110,28 @@ fi
 DEPLOY_REF_ASSIGN=""
 [ -n "$DEPLOY_REF" ] && DEPLOY_REF_ASSIGN="DEPLOY_REF='$DEPLOY_REF' "
 
+# Chargement des secrets + lancement de deploy.mjs, selon l'environnement.
+# PRODUCTION (Phase 11) : secrets CHIFFRÉS (.env.server.enc, sops+age) → with-secrets
+# les déchiffre en RAM le temps du déploiement (aucun clair persistant ; cf. doc 29).
+# `env IMAGE_TAG=… …` surcharge APRÈS le source interne. STAGING : .env.staging clair.
+if [ "$ENVIRONMENT" = "staging" ]; then
+  LAUNCH_BLOCK=$(cat <<EOF
+set -a
+. ./$ENV_FILE
+set +a
+
+echo 'REMOTE: lancement de scripts/deploy.mjs (portes + GitHub Deployment -> DORA)...'
+IMAGE_TAG='$IMAGE_TAG' ${DEPLOY_REF_ASSIGN}node scripts/deploy.mjs
+EOF
+)
+else
+  LAUNCH_BLOCK=$(cat <<EOF
+echo 'REMOTE: dechiffrement sops (with-secrets) + lancement de scripts/deploy.mjs (portes + GitHub Deployment -> DORA)...'
+bash scripts/with-secrets.sh env IMAGE_TAG='$IMAGE_TAG' ${DEPLOY_REF_ASSIGN}node scripts/deploy.mjs
+EOF
+)
+fi
+
 REMOTE_SCRIPT=$(cat <<EOF
 set -euo pipefail
 export PATH="\$HOME/.local/bin:\$PATH"
@@ -125,12 +147,7 @@ echo "REMOTE: hote=\$(hostname) pwd=\$(pwd)"
 $PULL_BLOCK
 
 echo "REMOTE: commit du clone = \$(git rev-parse --short HEAD 2>/dev/null || echo '?')"
-set -a
-. ./$ENV_FILE
-set +a
-
-echo 'REMOTE: lancement de scripts/deploy.mjs (portes + GitHub Deployment → DORA)…'
-IMAGE_TAG='$IMAGE_TAG' ${DEPLOY_REF_ASSIGN}node scripts/deploy.mjs
+$LAUNCH_BLOCK
 EOF
 )
 
@@ -142,7 +159,11 @@ echo "=== creche-planner — declencheur de deploiement ($ENV_LABEL) ==="
 echo "Environnement : $ENV_LABEL"
 echo "Serveur       : $SERVER"
 echo "Clone         : $REPO_PATH"
-echo "Env-file      : $ENV_FILE"
+if [ "$ENVIRONMENT" = "staging" ]; then
+  echo "Secrets       : $ENV_FILE (clair)"
+else
+  echo "Secrets       : .env.server.enc (sops+age, dechiffre en RAM)"
+fi
 echo "IMAGE_TAG     : $IMAGE_TAG"
 [ -n "$DEPLOY_REF" ] && echo "DEPLOY_REF    : $DEPLOY_REF"
 echo "git pull      : $([ "$SKIP_PULL" -eq 1 ] && echo 'NON (--skip-pull)' || echo 'oui (ff-only)')"

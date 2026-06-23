@@ -9,7 +9,15 @@ useDefault = true
 # Faux positif documenté : la règle `generic-api-key` se déclenche sur le passage
 # d'accessibilité FR « …modales accessibles, onglets/landmarks » de docs/06.
 # Neutralisé par un motif précis (pas une exclusion de fichier entière).
+#
+# `.env.server.enc` (Phase 11) : artefact sops+age dont les VALEURS sont chiffrées
+# (ENC[AES256_GCM,data:…]). Les blobs base64 déclenchent generic-api-key/high-entropy
+# alors qu'ils ne révèlent AUCUN secret (déchiffrables seulement avec la clé age, hors
+# repo). On allowliste donc ce SEUL chemin. Les critères d'un même bloc [allowlist]
+# sont combinés en OU (défaut gitleaks 8.x) : une trouvaille est ignorée si elle
+# correspond au motif d'accessibilité OU au chemin du fichier chiffré.
 [allowlist]
-description = "Texte d'accessibilite FR (onglets/landmarks) pris pour une generic-api-key dans docs/06"
+description = "Accessibilite FR (onglets/landmarks) + artefact chiffre sops .env.server.enc"
 regexTarget = "match"
 regexes = ['''onglets/landmarks''']
+paths = ['''\.env\.server\.enc$''']

@@ -3,14 +3,14 @@
 #
 # Supprime la dépendance au poste de dev pour déployer : un timer systemd SORTANT
 # sonde les GitHub Releases SIGNÉES et déclenche `scripts/deploy.mjs` à chaque
-# nouvelle version semver. Porte le VERROU anti-concurrence et le chargement de
-# .env.server, puis délègue la logique « release > déployé ? → déployer → marquer »
-# à scripts/release-poll.mjs.
+# nouvelle version semver. Porte le VERROU anti-concurrence et le déchiffrement des
+# secrets (Phase 11 : sops+age via with-secrets), puis délègue la logique « release >
+# déployé ? → déployer → marquer » à scripts/release-poll.mjs.
 #
 #   flock -n (verrou PROD PARTAGÉ avec remote-deploy → /tmp/creche-deploy.lock)
 #     → git fetch + git pull --ff-only      (rattrape compose/scripts)
-#     → set -a; . ./.env.server; set +a
-#     → node scripts/release-poll.mjs        (sonde Releases + deploy.mjs si nouvelle version)
+#     → bash scripts/with-secrets.sh node scripts/release-poll.mjs
+#         (déchiffre .env.server.enc en RAM → sonde Releases + deploy.mjs si nouvelle version)
 #
 # Topologie pull-based préservée : tout est SORTANT, rien n'est exposé en entrant.
 # Ce wrapper vise le clone de PROD (/home/edouard/creche-planner) — le MÊME que
@@ -46,8 +46,7 @@ if [ "${RELEASE_SKIP_PULL:-0}" != '1' ]; then
 fi
 echo "RELEASE: commit du clone = $(git rev-parse --short HEAD 2>/dev/null || echo '?')"
 
-set -a
-. ./.env.server
-set +a
-
-exec node scripts/release-poll.mjs
+# Secrets CHIFFRÉS (Phase 11) : with-secrets déchiffre .env.server.enc (sops+age) en
+# RAM le temps du poll, source les variables, expose DEPLOY_ENV_FILE, puis détruit le
+# clair. release-poll.mjs (et le deploy.mjs qu'il lance) en hérite. Aucun clair persistant.
+exec bash scripts/with-secrets.sh node scripts/release-poll.mjs

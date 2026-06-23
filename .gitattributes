@@ -12,3 +12,7 @@
 *.sh text eol=lf
 scripts/systemd/*.service text eol=lf
 scripts/systemd/*.timer text eol=lf
+
+# Secret chiffre sops (Phase 11) : le MAC sops couvre les OCTETS EXACTS du fichier.
+# Une conversion CRLF par l'autocrlf de Windows casserait le dechiffrement → figer EOL=LF.
+.env.server.enc text eol=lf

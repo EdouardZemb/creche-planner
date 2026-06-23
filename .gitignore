@@ -71,11 +71,13 @@ scripts/.seed-*-state.json
 # Surcouche locale du seed (override foyer/contrats propre à une instance) — jamais commitée
 scripts/seed.local.json
 
-# Secrets de PRODUCTION/STAGING (serveur) — ne JAMAIS commiter. Le glob couvre
+# Secrets de PRODUCTION/STAGING (serveur) — ne JAMAIS commiter EN CLAIR. Le glob couvre
 # toute variante (.env, .env.server, .env.staging, .env.local…) ; seuls les modèles
-# sans secret .env.server.example / .env.staging.example sont versionnés (négations).
+# sans secret (.env.server.example / .env.staging.example) ET l'artefact CHIFFRÉ
+# .env.server.enc (Phase 11 : sops+age, valeurs chiffrées → versionnable) sont suivis.
 .env*
 !.env.server.example
 !.env.staging.example
+!.env.server.enc
 # Certificat racine exporté de Caddy (autorité TLS locale)
 caddy-root.crt
