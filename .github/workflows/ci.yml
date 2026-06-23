@@ -781,3 +781,161 @@ jobs:
         run: |
           echo "Projet ${{ matrix.project }} — publication=${{ steps.gate.outputs.push }}"
           echo "Image : ${{ steps.ref.outputs.image }} (tags main + ${{ github.sha }})"
+
+  # Phase 5 (roadmap CI/CD) — DÉTECTION DE CHANGEMENT DE CONFIG INFRA/OBSERVABILITÉ.
+  # Le reste du pipeline raisonne sur le graphe nx (code applicatif) : une PR qui ne
+  # touche QUE docker/** ou un compose laisse `affected-images.has_projects=false`,
+  # donc smoke-stack / e2e-stack / build-images sont SKIP et la pile Compose n'est
+  # JAMAIS bootée. Des bugs de config sont ainsi passés en prod sans être vus en CI
+  # (otel-collector :8888 bindé localhost → scrape DOWN ; Infinity allowedHosts
+  # manquant). Ce job calcule si la config a changé pour DÉCLENCHER `config-validation`
+  # uniquement quand c'est utile (la pile d'observabilité est lourde à monter).
+  #
+  # POURQUOI un job de détection + `if`, et pas `on.<event>.paths` ? Un filtre `paths`
+  # au niveau workflow laisserait un check requis en « pending » éternel sur les PR
+  # hors-config (→ blocage). Un job SKIPPÉ par `if:` est, lui, rapporté « skipped »,
+  # ce que la protection de branche traite comme RÉUSSI : `config-validation` peut donc
+  # être requis sans bloquer les PR qui ne touchent pas la config (cf. observabilite.md,
+  # « Validation des configs en CI »).
+  config-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      config: ${{ steps.filter.outputs.config }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Requis par paths-filter pour les événements `push` (diff sur l'historique).
+          fetch-depth: 0
+
+      - id: filter
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        with:
+          filters: |
+            config:
+              - 'docker/**'
+              - 'docker-compose*.yml'
+              - '.github/workflows/**'
+
+  # Phase 5 — VALIDATION DES CONFIGS INFRA/OBSERVABILITÉ. Comble l'angle mort décrit
+  # sur `config-changes` : on VALIDE statiquement chaque config, puis on PROUVE que la
+  # pile d'observabilité boote et que toutes ses cibles de scrape répondent.
+  #
+  # Aucune dépendance pnpm/nx : ce job n'a besoin que de docker (préinstallé sur le
+  # runner). Les images de validation (promtool/amtool/otelcol) sont les MÊMES,
+  # épinglées par digest, que celles consommées par docker-compose.yml (AUD-02 / DRY :
+  # tout bump de digest dans le compose doit être répercuté dans `env:` ci-dessous).
+  #
+  # Critère d'acceptation : une PR qui casse alertmanager.yml, un nom/expression de
+  # métrique d'alerte, la config otel, ou un compose, échoue ICI.
+  config-validation:
+    needs: config-changes
+    if: needs.config-changes.outputs.config == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Digests = ceux de docker-compose.yml (prometheus v3.12.0, alertmanager v0.32.2,
+      # otelcol-contrib v0.153.0). promtool ET amtool vivent dans /bin de leurs images
+      # respectives ; otelcol expose le sous-commande `validate` via son entrypoint.
+      PROM_IMAGE: prom/prometheus@sha256:69f5241418838263316593f7274a304b095c40bcf22e57272865da91bd60a8ac
+      ALERTMANAGER_IMAGE: prom/alertmanager@sha256:b85533a2eb45865835315810315f6951331b2dbc8c93a6cf9a51e156a006a706
+      OTEL_IMAGE: otel/opentelemetry-collector-contrib@sha256:93aad750175cbf1a973ae1c5886c3371f4d800f61be25cdd26870b8441ffe9fa
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      # 1) Le merge dev/CI + PROD doit produire un Compose valide. L'override serveur
+      # exige des variables obligatoires (`${VAR:?}`) et déclare un secret de source
+      # `environment` (ALERTMANAGER_SMTP_PASSWORD) qui, non défini, fait ÉCHOUER
+      # Compose : on injecte des valeurs FACTICES (jamais de vrais secrets ici) pour
+      # valider la STRUCTURE du merge, pas pour démarrer la prod.
+      - name: Compose — merge dev/CI + prod valide (config -q)
+        env:
+          PG_REFERENTIEL_PWD: ci
+          PG_FOYER_PWD: ci
+          PG_PLANIFICATION_PWD: ci
+          PG_TARIFICATION_PWD: ci
+          GRAFANA_ADMIN_PWD: ci
+          SERVER_ORIGIN: https://config-validation.invalid
+          SERVER_DOMAIN: config-validation.invalid
+          CLOUDFLARE_TUNNEL_TOKEN: ci
+          ALERTMANAGER_SMTP_PASSWORD: ci
+        run: docker compose -f docker-compose.yml -f docker-compose.server.yml config -q
+
+      # 2) Prometheus : config (scrape_configs + alerting + rule_files résolus) ET
+      # règles d'alerte (PromQL + gabarits d'annotations) parsables. Les montages
+      # MIROITENT ceux du compose pour que le `rule_files:` absolu résolve.
+      - name: Prometheus — promtool check config + rules
+        run: |
+          docker run --rm \
+            -v "$PWD/docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+            -v "$PWD/docker/prometheus:/etc/prometheus/alerts:ro" \
+            --entrypoint /bin/promtool "$PROM_IMAGE" \
+            check config /etc/prometheus/prometheus.yml
+          docker run --rm \
+            -v "$PWD/docker/prometheus:/etc/prometheus/alerts:ro" \
+            --entrypoint /bin/promtool "$PROM_IMAGE" \
+            check rules /etc/prometheus/alerts/alerts.yml
+
+      # 3) Alertmanager : structure (route ↔ receivers cohérents, templates, smarthost).
+      # `check-config` n'exige PAS le fichier-secret SMTP (lu paresseusement à l'envoi).
+      - name: Alertmanager — amtool check-config
+        run: |
+          docker run --rm \
+            -v "$PWD/docker/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro" \
+            --entrypoint /bin/amtool "$ALERTMANAGER_IMAGE" \
+            check-config /etc/alertmanager/alertmanager.yml
+
+      # 4) Collecteur OTel : receivers/exporters/pipelines cohérents (réf. croisées).
+      - name: OTel Collector — otelcol validate
+        run: |
+          docker run --rm \
+            -v "$PWD/docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro" \
+            "$OTEL_IMAGE" \
+            validate --config=/etc/otel/config.yaml
+
+      # 5) PREUVE DE BOOT — on monte la pile d'observabilité SEULE (sans les services
+      # applicatifs ni leurs Postgres). `--wait` échoue si un conteneur ne devient pas
+      # sain : les images officielles embarquent toutes un HEALTHCHECK. L'override
+      # dev/CI (docker-compose.override.yml, committé) est chargé automatiquement.
+      - name: Boot pile observabilité (docker compose up --wait)
+        run: >-
+          docker compose up -d --wait
+          prometheus alertmanager grafana otel-collector tempo nats-exporter
+
+      # 6) Le boot ne suffit pas : la classe de bug visée (otel :8888 bindé localhost)
+      # laisse les conteneurs SAINS mais le SCRAPE DOWN. On exige donc que TOUTES les
+      # cibles actives de Prometheus soient `up`. Requête via `exec` (indépendante des
+      # ports publiés) ; jq est préinstallé sur le runner.
+      - name: Cibles Prometheus toutes UP (anti otel:8888 / scrape muet)
+        run: |
+          set -uo pipefail
+          JSON=''
+          for i in $(seq 1 18); do
+            JSON=$(docker compose exec -T prometheus wget -qO- http://127.0.0.1:9090/api/v1/targets || echo '')
+            if [ -n "$JSON" ]; then
+              TOTAL=$(echo "$JSON" | jq '.data.activeTargets | length')
+              DOWN=$(echo "$JSON" | jq '[.data.activeTargets[] | select(.health != "up")] | length')
+              echo "Tentative $i : $((TOTAL - DOWN))/$TOTAL cible(s) UP"
+              if [ "$TOTAL" -gt 0 ] && [ "$DOWN" -eq 0 ]; then
+                echo "$JSON" | jq -r '.data.activeTargets[] | "  ✔ \(.labels.job) \(.scrapeUrl)"'
+                echo "Toutes les cibles Prometheus sont UP."
+                exit 0
+              fi
+            else
+              echo "Tentative $i : Prometheus pas encore prêt"
+            fi
+            sleep 8
+          done
+          echo "::error::Des cibles Prometheus restent DOWN — config de scrape ou bind d'exposition à revoir."
+          echo "$JSON" | jq -r '.data.activeTargets[] | select(.health != "up") | "  ✘ \(.labels.job) \(.scrapeUrl) — \(.lastError)"' || true
+          exit 1
+
+      # Diagnostic en cas d'échec d'un des deux derniers steps (boot / cibles).
+      - name: Logs de la pile (si échec)
+        if: failure()
+        run: docker compose logs --no-color | tail -n 200 || true
+
+      # Teardown systématique (-v : volumes éphémères).
+      - name: Arrêt de la pile
+        if: always()
+        run: docker compose down -v
