@@ -163,6 +163,39 @@ services:
       - tempo
       - prometheus
 
+  # Agrégation des logs (Phase 13b). Loki stocke les logs poussés par Promtail ;
+  # Grafana l'interroge (datasource `loki`) et corrèle Tempo→Loki via `trace_id`.
+  # NB : aucun port hôte publié en base/prod (Grafana l'atteint via loki:3100 sur le
+  # réseau Docker) → pas de conflit avec le port 3100 déjà pris sur le serveur. Le
+  # port local est publié par docker-compose.override.yml (dev uniquement).
+  loki:
+    # Épinglé par digest (= v3.4.2) pour une pile reproductible (cf. P2-8).
+    image: grafana/loki@sha256:58a6c186ce78ba04d58bfe2a927eff296ba733a430df09645d56cdc158f3ba08
+    command: ['-config.file=/etc/loki/loki-config.yaml']
+    volumes:
+      - ./docker/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - loki-data:/loki
+    healthcheck:
+      # L'image n'embarque pas de healthcheck ; busybox wget est dispo dans /busybox.
+      test: ['CMD', '/busybox/wget', '-qO-', 'http://127.0.0.1:3100/ready']
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+  # Collecte les logs Docker des 5 services applicatifs et les pousse vers Loki
+  # (Phase 13b). Découverte via le socket Docker (monté en lecture seule).
+  promtail:
+    # Épinglé par digest (= v3.4.2) pour une pile reproductible (cf. P2-8).
+    image: grafana/promtail@sha256:c6e9a987ca086cbfef945b8ebd708eb09f98b5e78bfb659e4e5a8b3bd604d11b
+    command: ['-config.file=/etc/promtail/promtail-config.yaml']
+    volumes:
+      - ./docker/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      # Socket Docker en lecture seule → découverte + lecture des logs des conteneurs.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+
   # --- Services métier -----------------------------------------------------
   svc-referentiel:
     build:
@@ -319,3 +352,4 @@ volumes:
   pg-tarification:
   tempo-data:
   grafana-data:
+  loki-data:
