@@ -1,0 +1,23 @@
+# ===========================================================================
+# creche-staging-poll.timer — Planifie le poll de staging creche-planner
+# ---------------------------------------------------------------------------
+# Déclenche creche-staging-poll.service toutes les ~5 minutes. Le poller est
+# IDEMPOTENT (compare le digest GHCR de `:main` à un marqueur local) : un tick
+# sans nouvelle image ne fait RIEN. Un nouveau `:main` (= un merge) est ainsi
+# déployé/fumé en staging dans les ~5 min, sans intervention.
+#
+# Persistent=true rattrape un tick manqué (serveur éteint) ; RandomizedDelaySec
+# évite de taper GHCR pile à la minute ronde.
+# ===========================================================================
+[Unit]
+Description=Planification du poll de déploiement staging creche-planner
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+RandomizedDelaySec=30
+Unit=creche-staging-poll.service
+
+[Install]
+WantedBy=timers.target

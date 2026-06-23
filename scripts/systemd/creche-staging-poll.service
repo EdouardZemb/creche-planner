@@ -1,0 +1,38 @@
+# ===========================================================================
+# creche-staging-poll.service — Auto-déploiement STAGING de `:main` (Phase 8)
+# ---------------------------------------------------------------------------
+# Unité oneshot déclenchée par creche-staging-poll.timer (toutes les ~5 min).
+# Sonde le digest GHCR de `:main` (SORTANT) et, s'il a changé, déploie/fume la
+# pile de staging via scripts/deploy.mjs. Topologie pull-based préservée (aucun
+# port entrant). Adapter les chemins et l'utilisateur (cf. scripts/systemd/README.md).
+#
+# IMPORTANT : ce service vise le CLONE DE STAGING (séparé de la prod) pour qu'un
+# `git pull` n'altère jamais l'arbre de travail de la prod.
+# ===========================================================================
+[Unit]
+Description=Auto-déploiement staging creche-planner (poll GHCR :main)
+Documentation=file:///home/<user>/creche-planner-staging/docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+
+# --- Chemins de l'installation (remplacer <user>, adapter si clone ailleurs) -
+# Racine du CLONE DE STAGING (là où vivent docker-compose.staging.yml + .env.staging) :
+WorkingDirectory=/home/<user>/creche-planner-staging
+# Utilisateur membre du groupe docker (ne pas lancer en root) :
+User=<user>
+Group=docker
+
+# PATH : ~/.local/bin (cosign) + emplacements usuels de docker/git/node. Si node est
+# installé via nvm/fnm (hors /usr/bin), ajouter ici son répertoire bin (cf. README).
+Environment=PATH=/home/<user>/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+ExecStart=/home/<user>/creche-planner-staging/scripts/staging-poll.sh
+
+# Le marqueur de digest est écrit sous le home (aucun chown root requis).
+ReadWritePaths=/home/<user>
+Nice=10
+IOSchedulingClass=idle

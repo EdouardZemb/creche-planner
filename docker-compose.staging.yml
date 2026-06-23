@@ -1,0 +1,108 @@
+# Override de STAGING (Phase 8) — pile « :main » vivante sur le serveur LAN.
+#
+# S'applique PAR-DESSUS docker-compose.yml (profil dev/CI, inchangé) :
+#   docker compose --env-file .env.staging \
+#     -f docker-compose.yml -f docker-compose.staging.yml pull
+#   docker compose --env-file .env.staging \
+#     -f docker-compose.yml -f docker-compose.staging.yml up -d --wait \
+#       web api-gateway svc-referentiel svc-foyer svc-planification svc-tarification
+#
+# POURQUOI un staging ? `:main` est construit/poussé à chaque merge (build-images)
+# mais n'était JAMAIS déployé ni fumé sur une pile en marche avant la prod (seul
+# test « pile réelle » : e2e-stack éphémère en CI, puis directement la prod). Cette
+# pile déploie et FUME chaque `:main` (santé/seed/perf, portes de scripts/deploy.mjs)
+# AVANT toute promotion. La prod, elle, ne reçoit qu'une VERSION semver figée
+# promue depuis ici (cf. docs/exploitation/24 §12).
+#
+# ISOLATION TOTALE vs la prod (qui tourne sur la même machine) :
+#   - `name: creche-planner-staging` → conteneurs, RÉSEAU et VOLUMES distincts
+#     (Compose préfixe volumes/réseaux par le nom de projet). Aucune collision avec
+#     le projet `creche-planner` (prod) : bases, NATS, données = silos séparés.
+#   - Ports publiés UNIQUEMENT sur la LOOPBACK (127.0.0.1) → la pile n'est PAS
+#     joignable depuis le LAN. Pas de Caddy, pas de cloudflared : RIEN d'exposé
+#     publiquement (la topologie pull-based « zéro port entrant » est préservée).
+#
+# EMPREINTE « LEAN » : on ne lance que les 6 services APPLICATIFS (+ leurs deps
+# infra : 4 Postgres, NATS, otel-collector→tempo tirés par depends_on). On NE
+# double PAS l'observabilité lourde (Prometheus/Grafana/Alertmanager/blackbox) :
+# la prod la porte déjà, et le but du staging est de valider que `:main` boote et
+# passe les smokes — pas d'exploiter un 2e SOC. Le sous-ensemble `up` est le MÊME
+# que celui éprouvé par le job CI `smoke-stack` (.github/workflows/ci.yml).
+#
+# SECRETS : aucun. Staging garde les mots de passe Postgres PAR DÉFAUT du profil
+# de base (referentiel/foyer/… — données jetables, pile non exposée) : les
+# DATABASE_URL du base correspondent déjà. Donc PAS de `${VAR:?}` ici → le merge
+# `docker compose … config -q` valide sans aucune variable (cf. CI Phase 5).
+#
+# `image:` PRIME sur le `build:` du fichier de base au merge → staging CONSOMME les
+# images GHCR `:main` publiées par la CI (parité d'artefact), il ne reconstruit pas.
+
+name: creche-planner-staging
+
+services:
+  # --- Infrastructure : redémarrage automatique (survie au reboot serveur) -----
+  postgres-referentiel:
+    restart: unless-stopped
+
+  postgres-foyer:
+    restart: unless-stopped
+
+  postgres-planification:
+    restart: unless-stopped
+
+  postgres-tarification:
+    restart: unless-stopped
+
+  nats:
+    restart: unless-stopped
+
+  otel-collector:
+    restart: unless-stopped
+
+  tempo:
+    restart: unless-stopped
+
+  # --- Services métier : images GHCR `:main` + redémarrage ---------------------
+  svc-referentiel:
+    image: ghcr.io/edouardzemb/creche-planner/svc-referentiel:${IMAGE_TAG:-main}
+    restart: unless-stopped
+
+  svc-foyer:
+    image: ghcr.io/edouardzemb/creche-planner/svc-foyer:${IMAGE_TAG:-main}
+    restart: unless-stopped
+
+  svc-planification:
+    image: ghcr.io/edouardzemb/creche-planner/svc-planification:${IMAGE_TAG:-main}
+    restart: unless-stopped
+
+  svc-tarification:
+    image: ghcr.io/edouardzemb/creche-planner/svc-tarification:${IMAGE_TAG:-main}
+    restart: unless-stopped
+
+  # --- Gateway (BFF) : image GHCR + port LOOPBACK pour les smokes --------------
+  api-gateway:
+    image: ghcr.io/edouardzemb/creche-planner/api-gateway:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      # Échappatoire EXPLICITE du garde-fou de démarrage (AQ-01, doc 27) : les
+      # images tournent avec NODE_ENV=production et REFUSENT de démarrer sans
+      # GATEWAY_TOKEN. La gateway staging n'est pas exposée (loopback) : auth off.
+      GATEWAY_AUTH_DISABLED: '1'
+      # RATE_LIMIT_MAX hérité du base (100000) : perf-smoke martèle la gateway et
+      # saturerait la valeur de prod (120/min). NE PAS le redéfinir ici.
+    ports:
+      # SEULE exposition de la pile : la gateway sur la LOOPBACK uniquement, pour
+      # que les smokes de deploy.mjs (santé/seed/perf) tapent http://127.0.0.1:3100
+      # SANS Caddy ni TLS. `127.0.0.1:` => INACCESSIBLE depuis le LAN. Port 3100
+      # (≠ 3000 du dev) pour ne pas heurter un éventuel usage local de la gateway.
+      - '127.0.0.1:3100:3000'
+
+  # --- Front web : image GHCR + port loopback (inspection manuelle via tunnel) -
+  web:
+    image: ghcr.io/edouardzemb/creche-planner/web:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    ports:
+      # Loopback uniquement (non exposé LAN). Inspecter depuis le poste de dev via
+      # un tunnel SSH : `ssh -L 4201:127.0.0.1:4201 edouard@192.168.1.129` puis
+      # http://localhost:4201. La SPA proxifie /api vers api-gateway (même origine).
+      - '127.0.0.1:4201:80'

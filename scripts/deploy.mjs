@@ -95,16 +95,31 @@ const ROLLBACK_ENABLED = process.env.ROLLBACK !== '0';
 // p3-seed | p3-perf) pour exercer le rollback (utile en DORA_DRY_RUN=1).
 const FAKE_FAIL = process.env.DEPLOY_FAKE_FAIL || '';
 
-// Fichiers compose + env-file de prod (override prod par-dessus la base).
+// Fichiers compose + env-file (override par-dessus la base). PROD par défaut ;
+// le STAGING (Phase 8) surcharge via .env.staging :
+//   DEPLOY_COMPOSE_FILES="docker-compose.yml docker-compose.staging.yml"
+//   DEPLOY_ENV_FILE=.env.staging
 const ENV_FILE = process.env.DEPLOY_ENV_FILE ?? '.env.server';
+const COMPOSE_FILES = (
+  process.env.DEPLOY_COMPOSE_FILES ??
+  'docker-compose.yml docker-compose.server.yml'
+)
+  .trim()
+  .split(/\s+/)
+  .filter(Boolean);
 const COMPOSE = [
   '--env-file',
   ENV_FILE,
-  '-f',
-  'docker-compose.yml',
-  '-f',
-  'docker-compose.server.yml',
+  ...COMPOSE_FILES.flatMap((f) => ['-f', f]),
 ];
+// Sous-ensemble de services passé à `up -d --wait` (Porte 2 ET rollback). VIDE en
+// prod (= pile entière). Le STAGING ne lève que les 6 services applicatifs (leurs
+// depends_on tirent l'infra), pas l'observabilité lourde :
+//   DEPLOY_UP_SERVICES="web api-gateway svc-referentiel svc-foyer svc-planification svc-tarification"
+const UP_SERVICES = (process.env.DEPLOY_UP_SERVICES ?? '')
+  .trim()
+  .split(/\s+/)
+  .filter(Boolean);
 
 const GATEWAY_IMAGE = `ghcr.io/edouardzemb/creche-planner/api-gateway:${IMAGE_TAG}`;
 
@@ -303,10 +318,14 @@ async function rollback() {
     `\n↩️  ROLLBACK automatique → restauration de « ${versionPrecedente} » (dernière version saine).`,
   );
   // `up -d --wait` avec l'ANCIEN IMAGE_TAG : recrée les conteneurs depuis les
-  // images locales. La var d'environnement de shell prime sur l'--env-file.
-  const code = run('docker', ['compose', ...COMPOSE, 'up', '-d', '--wait'], {
-    env: { ...process.env, IMAGE_TAG: versionPrecedente },
-  });
+  // images locales. La var d'environnement de shell prime sur l'--env-file. Même
+  // sous-ensemble de services que le déploiement (UP_SERVICES) pour ne pas toucher
+  // d'autres conteneurs.
+  const code = run(
+    'docker',
+    ['compose', ...COMPOSE, 'up', '-d', '--wait', ...UP_SERVICES],
+    { env: { ...process.env, IMAGE_TAG: versionPrecedente } },
+  );
   if (code !== 0) {
     console.error(
       '   ✗ `up -d --wait` du rollback a échoué — la prod peut rester dégradée.',
@@ -415,6 +434,9 @@ function porteEchoue(id, codeReel) {
 async function main() {
   console.log('═══ Déploiement traçable creche-planner (AUD-08) ═══');
   console.log(`  dépôt=${REPO} · env=${ENVIRONMENT} · IMAGE_TAG=${IMAGE_TAG}`);
+  console.log(
+    `  compose=[${COMPOSE_FILES.join(' ')}] · services=${UP_SERVICES.length ? UP_SERVICES.join(',') : '(pile entière)'}`,
+  );
   if (DRY_RUN) console.log('  MODE DORA_DRY_RUN : aucune action réelle.');
   if (!TOKEN && !DRY_RUN)
     console.warn(
@@ -467,12 +489,20 @@ async function main() {
   const ref = resoudreRef();
   await creerDeploiement(ref);
 
-  // Porte 2 — démarrage (healthcheck = porte via --wait).
+  // Porte 2 — démarrage (healthcheck = porte via --wait). UP_SERVICES vide en prod
+  // (pile entière) ; en staging, seulement les 6 services applicatifs.
   console.log('\n▶ Porte 2 — démarrage de la pile (up -d --wait)');
   if (
     porteEchoue(
       'p2',
-      run('docker', ['compose', ...COMPOSE, 'up', '-d', '--wait']),
+      run('docker', [
+        'compose',
+        ...COMPOSE,
+        'up',
+        '-d',
+        '--wait',
+        ...UP_SERVICES,
+      ]),
     )
   )
     await echouer(
