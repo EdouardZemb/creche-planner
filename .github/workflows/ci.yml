@@ -897,10 +897,17 @@ jobs:
       # applicatifs ni leurs Postgres). `--wait` échoue si un conteneur ne devient pas
       # sain : les images officielles embarquent toutes un HEALTHCHECK. L'override
       # dev/CI (docker-compose.override.yml, committé) est chargé automatiquement.
+      # `blackbox-exporter` est inclus : le job de scrape `blackbox` (Phase 6) le
+      # vise (:9115), donc il doit tourner pour que ses cibles soient `up`. NB : ici
+      # les services applicatifs ne tournent PAS, donc `probe_success` vaudra 0 ;
+      # ce qui importe pour l'assertion ci-dessous, c'est que le SCRAPE du blackbox
+      # -exporter réussisse (`up{job="blackbox"}=1` = exporter joignable), pas le
+      # résultat de la sonde elle-même.
       - name: Boot pile observabilité (docker compose up --wait)
         run: >-
           docker compose up -d --wait
           prometheus alertmanager grafana otel-collector tempo nats-exporter
+          blackbox-exporter
 
       # 6) Le boot ne suffit pas : la classe de bug visée (otel :8888 bindé localhost)
       # laisse les conteneurs SAINS mais le SCRAPE DOWN. On exige donc que TOUTES les

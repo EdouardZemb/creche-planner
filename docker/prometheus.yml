@@ -38,3 +38,39 @@ scrape_configs:
   - job_name: 'nats-exporter'
     static_configs:
       - targets: ['nats-exporter:7777']
+
+  # Sondes « boîte noire » des 5 services APPLICATIFS (Phase 6). Jusqu'ici aucun
+  # svc-* ni l'api-gateway n'était scrapé : si la gateway tombait, AUCUNE alerte
+  # ne partait. On sonde l'endpoint de LIVENESS (/api/health/live, sans dépendance
+  # externe) via le blackbox-exporter. Le résultat est exposé en `probe_success`
+  # (1 = 2xx atteint, 0 = injoignable/non-2xx) → arme l'alerte AppServiceDown.
+  #
+  # Mécanique du relabeling : la cible RÉELLE du scrape est le blackbox-exporter
+  # (:9115) ; l'URL à sonder transite par le paramètre `target`. On préserve l'URL
+  # sondée dans le label `instance`, et on dérive un label `service` lisible.
+  - job_name: 'blackbox'
+    metrics_path: /probe
+    params:
+      module: ['http_2xx']
+    static_configs:
+      - targets:
+          - http://api-gateway:3000/api/health/live
+          - http://svc-referentiel:3001/api/health/live
+          - http://svc-foyer:3002/api/health/live
+          - http://svc-planification:3004/api/health/live
+          - http://svc-tarification:3005/api/health/live
+    relabel_configs:
+      # 1) L'adresse de la cible devient le paramètre ?target= passé au prober.
+      - source_labels: [__address__]
+        target_label: __param_target
+      # 2) On conserve l'URL sondée comme `instance` (lisible dans les alertes).
+      - source_labels: [__param_target]
+        target_label: instance
+      # 3) `service` = nom d'hôte extrait de l'URL (api-gateway, svc-foyer, …).
+      - source_labels: [__param_target]
+        regex: 'https?://([^:/]+).*'
+        replacement: '${1}'
+        target_label: service
+      # 4) Le scrape réel vise le blackbox-exporter, pas le service directement.
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

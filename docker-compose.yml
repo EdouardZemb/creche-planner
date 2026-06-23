@@ -99,6 +99,7 @@ services:
       - otel-collector
       - nats-exporter
       - alertmanager
+      - blackbox-exporter
 
   # Alertmanager (P2-3, doc 18) — reçoit les alertes « firing » de Prometheus,
   # les groupe/déduplique et (une fois un receiver configuré) les notifie. Rend
@@ -124,6 +125,18 @@ services:
     depends_on:
       nats:
         condition: service_healthy
+
+  # Sonde de disponibilité « boîte noire » (Phase 6). Prometheus le scrape via
+  # /probe pour sonder l'endpoint de liveness (/api/health/live) des 5 services
+  # applicatifs (api-gateway + svc-*), jusqu'ici NON surveillés par ServiceDown.
+  # Voir docker/blackbox.yml (module http_2xx) et le job `blackbox` de
+  # docker/prometheus.yml. `probe_success == 0` arme l'alerte AppServiceDown.
+  blackbox-exporter:
+    # Épinglé par digest (= v0.27.0) pour une pile reproductible (cf. P2-8).
+    image: prom/blackbox-exporter@sha256:a50c4c0eda297baa1678cd4dc4712a67fdea713b832d43ce7fcc5f9bea05094d
+    command: ['--config.file=/etc/blackbox/blackbox.yml']
+    volumes:
+      - ./docker/blackbox.yml:/etc/blackbox/blackbox.yml:ro
 
   grafana:
     # P2-8 — épinglé par digest (= v13.0.2) pour une pile reproductible.

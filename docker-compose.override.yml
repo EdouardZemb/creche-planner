@@ -56,6 +56,10 @@ services:
     ports:
       - '7777:7777'
 
+  blackbox-exporter:
+    ports:
+      - '9115:9115'
+
   grafana:
     ports:
       - '3003:3000'
