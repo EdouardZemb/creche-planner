@@ -18,6 +18,15 @@
  * déploiement réel (avertissement journalisé). À l'inverse, l'échec d'une PORTE
  * (pull/up/health) est fatal et se reflète en statut `failure`.
  *
+ * ROLLBACK AUTOMATIQUE (Phase 7) : avant toute mutation, on mémorise la version
+ * SAINE en place (label OCI du conteneur gateway). Si une porte P2 (`up --wait`)
+ * ou P3 (`/health`, seed, perf) échoue, on RESTAURE cette version (re-`up --wait`
+ * sur l'ancien `IMAGE_TAG`, sans re-pull car ses images sont déjà locales) puis
+ * on re-teste `/health` AVANT de poster le statut `failure` annoté
+ * « rolled back to <tag> ». Le rollback ne se relance JAMAIS lui-même (garde
+ * anti-boucle) et ne crée pas de nouveau Deployment : ce déploiement reste
+ * `failure`, la prod redevient saine → MTTR réduit.
+ *
  * Zéro dépendance (Node ESM pur, `fetch` natif). Configuré par variables
  * d'environnement (lues depuis `.env.server` au besoin) — cf. tableau doc 26 §4.
  *
@@ -27,6 +36,9 @@
  *   IMAGE_TAG=<sha> DEPLOY_REF=<sha> node scripts/deploy.mjs
  *   # répétition à blanc du flux (ni Docker ni API)
  *   DORA_DRY_RUN=1 node scripts/deploy.mjs
+ *   # test du rollback à blanc (force l'échec d'une porte + version précédente)
+ *   DORA_DRY_RUN=1 DEPLOY_PREVIOUS_TAG=0.1.0 DEPLOY_FAKE_FAIL=p3-health \
+ *     node scripts/deploy.mjs
  */
 
 import { spawnSync } from 'node:child_process';
@@ -74,6 +86,14 @@ const DRY_RUN = process.env.DORA_DRY_RUN === '1';
 const VERIFY_COSIGN = process.env.DEPLOY_VERIFY_COSIGN === '1';
 const SKIP_SEED = process.env.DEPLOY_SKIP_SEED === '1';
 const SKIP_PERF = process.env.DEPLOY_SKIP_PERF === '1';
+// Rollback auto (Phase 7). Override explicite de la version-cible du rollback
+// (sinon détectée depuis le conteneur gateway en place — cf. versionDeployee()).
+// `ROLLBACK=0` désactive le rollback automatique (échec = on laisse en l'état).
+const PREVIOUS_TAG_OVERRIDE = process.env.DEPLOY_PREVIOUS_TAG || '';
+const ROLLBACK_ENABLED = process.env.ROLLBACK !== '0';
+// Affordance de TEST : force l'échec d'une porte donnée (p2 | p3-health |
+// p3-seed | p3-perf) pour exercer le rollback (utile en DORA_DRY_RUN=1).
+const FAKE_FAIL = process.env.DEPLOY_FAKE_FAIL || '';
 
 // Fichiers compose + env-file de prod (override prod par-dessus la base).
 const ENV_FILE = process.env.DEPLOY_ENV_FILE ?? '.env.server';
@@ -175,6 +195,10 @@ async function gh(method, path, body, { retries = 3 } = {}) {
 // --- Étapes du déploiement --------------------------------------------------
 
 let deploymentId = null;
+// Rollback auto (Phase 7) : version SAINE en place AVANT ce déploiement (cible de
+// restauration), et garde anti-boucle (un rollback ne se relance jamais).
+let versionPrecedente = '';
+let enRollback = false;
 
 /** Crée le GitHub Deployment + statut in_progress. `ref` = SHA/tag déployé. */
 async function creerDeploiement(ref) {
@@ -231,11 +255,75 @@ async function statut(state, description) {
   return false;
 }
 
-/** Échec d'une porte : poste `failure` puis termine en erreur. */
+/**
+ * Échec d'une porte (P2/P3) : tente le ROLLBACK automatique vers la version saine
+ * précédente, PUIS poste `failure` (annoté du résultat du rollback) et termine en
+ * erreur. Le rollback est best-effort sur le statut GitHub (non-blocage télémétrie)
+ * mais la RESTAURATION elle-même est réelle.
+ */
 async function echouer(message) {
   console.error(`\n❌ ${message}`);
-  await statut('failure', message.slice(0, 140));
+  let note = message;
+  if (enRollback) {
+    // Sécurité : on n'entre jamais ici depuis le rollback (qui n'appelle pas
+    // echouer), mais on garde le garde anti-boucle explicite.
+    note = `${message} (échec pendant le rollback — pas de nouvelle tentative)`;
+  } else if (!ROLLBACK_ENABLED) {
+    note = `${message} (rollback auto désactivé — prod laissée en l'état)`;
+  } else if (!versionPrecedente) {
+    note = `${message} (aucune version précédente connue — rollback impossible)`;
+  } else if (versionPrecedente === IMAGE_TAG) {
+    // Redéploiement du MÊME tag (mutable, ou re-déploiement identique) : revenir
+    // au même artefact ne réparerait rien → on ne tente pas un rollback futile.
+    console.warn(
+      `   ⚠️ cible de rollback (${versionPrecedente}) == IMAGE_TAG déployé : rollback sans effet, ignoré.`,
+    );
+    note = `${message} (rollback ignoré : version précédente == tag déployé ${IMAGE_TAG})`;
+  } else {
+    const ok = await rollback();
+    note = ok
+      ? `${message} — rolled back to ${versionPrecedente}`
+      : `${message} — ROLLBACK vers ${versionPrecedente} ÉCHOUÉ (prod dégradée, intervention requise)`;
+  }
+  await statut('failure', note.slice(0, 140));
   process.exit(1);
+}
+
+/**
+ * ROLLBACK automatique (Phase 7) : restaure `versionPrecedente`.
+ * Re-démarre la pile sur l'ancien `IMAGE_TAG` puis re-teste `/health`. NE re-pull
+ * PAS : avec des tags immuables (Phase 2) les images d'avant sont encore présentes
+ * localement (les conteneurs tournaient dessus) ; éviter le réseau réduit la
+ * surface d'échec du rollback lui-même. NE se relance JAMAIS (garde `enRollback`).
+ * Retourne `true` si la prod est de nouveau saine (santé 200).
+ */
+async function rollback() {
+  enRollback = true;
+  console.error(
+    `\n↩️  ROLLBACK automatique → restauration de « ${versionPrecedente} » (dernière version saine).`,
+  );
+  // `up -d --wait` avec l'ANCIEN IMAGE_TAG : recrée les conteneurs depuis les
+  // images locales. La var d'environnement de shell prime sur l'--env-file.
+  const code = run('docker', ['compose', ...COMPOSE, 'up', '-d', '--wait'], {
+    env: { ...process.env, IMAGE_TAG: versionPrecedente },
+  });
+  if (code !== 0) {
+    console.error(
+      '   ✗ `up -d --wait` du rollback a échoué — la prod peut rester dégradée.',
+    );
+    return false;
+  }
+  console.log(
+    `\n▶ Rollback — re-vérification santé (${GATEWAY_URL}/api/health)`,
+  );
+  if (verifierSante() !== 0) {
+    console.error('   ✗ Santé toujours rouge après rollback.');
+    return false;
+  }
+  console.error(
+    `   ✓ Rollback réussi — prod restaurée sur « ${versionPrecedente} » (santé 200).`,
+  );
+  return true;
 }
 
 /**
@@ -256,6 +344,72 @@ function resoudreRef() {
   return IMAGE_TAG;
 }
 
+/**
+ * Version actuellement DÉPLOYÉE (cible du rollback), lue AVANT toute mutation
+ * depuis les labels OCI du CONTENEUR gateway en place. Priorité :
+ * `.image.version` (semver de train — couvre les 6 services, rollback uniforme) >
+ * `.image.revision` (SHA). '' si aucun conteneur (1er déploiement) ⇒ pas de
+ * rollback possible. Un override explicite `DEPLOY_PREVIOUS_TAG` court-circuite la
+ * détection (utile en test, ou si l'opérateur connaît la cible).
+ */
+function versionDeployee() {
+  if (PREVIOUS_TAG_OVERRIDE) return PREVIOUS_TAG_OVERRIDE;
+  const cid = capture('docker', [
+    'compose',
+    ...COMPOSE,
+    'ps',
+    '-q',
+    'api-gateway',
+  ]);
+  if (!cid) return '';
+  // ps -q peut rendre plusieurs lignes (réplicas) : on inspecte la première.
+  const conteneur = cid.split('\n')[0].trim();
+  for (const label of [
+    'org.opencontainers.image.version',
+    'org.opencontainers.image.revision',
+  ]) {
+    const v = capture('docker', [
+      'inspect',
+      conteneur,
+      '--format',
+      `{{ index .Config.Labels "${label}" }}`,
+    ]);
+    if (v && v !== '<no value>') return v;
+  }
+  return '';
+}
+
+/** Porte 3 — santé gateway (`/api/health`). Retourne le code de sortie de curl. */
+function verifierSante() {
+  const curlArgs = [
+    '--fail',
+    '--retry',
+    '10',
+    '--retry-delay',
+    '3',
+    '--retry-connrefused',
+    '--retry-all-errors',
+  ];
+  // TLS « internal » de Caddy : faire confiance au CA exporté (jamais -k).
+  if (GATEWAY_URL.startsWith('https://') && CA_CERT)
+    curlArgs.push('--cacert', CA_CERT);
+  curlArgs.push(`${GATEWAY_URL}/api/health`);
+  return run('curl', curlArgs);
+}
+
+/**
+ * Verdict d'une porte : `true` = échec. Combine le code réel et l'affordance de
+ * TEST `DEPLOY_FAKE_FAIL` (force l'échec de la porte `id` pour exercer le rollback,
+ * notamment en DORA_DRY_RUN où `run()` renvoie toujours 0).
+ */
+function porteEchoue(id, codeReel) {
+  if (FAKE_FAIL === id) {
+    console.warn(`  (DEPLOY_FAKE_FAIL=${id} — échec de porte simulé)`);
+    return true;
+  }
+  return codeReel !== 0;
+}
+
 // --- Orchestration ----------------------------------------------------------
 
 async function main() {
@@ -265,6 +419,20 @@ async function main() {
   if (!TOKEN && !DRY_RUN)
     console.warn(
       '  ⚠️ GH_DEPLOYMENTS_TOKEN absent → le déploiement NE SERA PAS tracé (DORA aveugle).',
+    );
+
+  // Rollback auto (Phase 7) : mémoriser la version SAINE en place AVANT toute
+  // mutation (pull/up). C'est la cible de restauration si une porte échoue.
+  versionPrecedente = versionDeployee();
+  if (!ROLLBACK_ENABLED)
+    console.log('  ↩️  rollback automatique DÉSACTIVÉ (ROLLBACK=0).');
+  else if (versionPrecedente)
+    console.log(
+      `  ↩️  version en place (cible de rollback) : ${versionPrecedente}`,
+    );
+  else
+    console.log(
+      '  ↩️  aucune version en place détectée → rollback auto indisponible (1er déploiement ?).',
     );
 
   // On crée d'abord un Deployment provisoire sur IMAGE_TAG, puis on raffine le ref
@@ -301,38 +469,40 @@ async function main() {
 
   // Porte 2 — démarrage (healthcheck = porte via --wait).
   console.log('\n▶ Porte 2 — démarrage de la pile (up -d --wait)');
-  if (run('docker', ['compose', ...COMPOSE, 'up', '-d', '--wait']) !== 0)
+  if (
+    porteEchoue(
+      'p2',
+      run('docker', ['compose', ...COMPOSE, 'up', '-d', '--wait']),
+    )
+  )
     await echouer(
       "Porte 2 : `up -d --wait` a échoué (un conteneur n'est pas sain).",
     );
 
   // Porte 3 — vérification post-déploiement (shift-right).
   console.log(`\n▶ Porte 3 — santé gateway (${GATEWAY_URL}/api/health)`);
-  const curlArgs = [
-    '--fail',
-    '--retry',
-    '10',
-    '--retry-delay',
-    '3',
-    '--retry-connrefused',
-    '--retry-all-errors',
-  ];
-  // TLS « internal » de Caddy : faire confiance au CA exporté (jamais -k).
-  if (GATEWAY_URL.startsWith('https://') && CA_CERT)
-    curlArgs.push('--cacert', CA_CERT);
-  curlArgs.push(`${GATEWAY_URL}/api/health`);
-  if (run('curl', curlArgs) !== 0)
+  if (porteEchoue('p3-health', verifierSante()))
     await echouer('Porte 3 : la santé gateway ne répond pas 200.');
 
   if (!SKIP_SEED) {
     console.log('\n▶ Porte 3 — seed de référence (idempotent)');
-    if (run('node', ['scripts/seed-demo.mjs'], { env: CHILD_ENV }) !== 0)
+    if (
+      porteEchoue(
+        'p3-seed',
+        run('node', ['scripts/seed-demo.mjs'], { env: CHILD_ENV }),
+      )
+    )
       await echouer('Porte 3 : le seed de référence a échoué.');
   }
 
   if (!SKIP_PERF) {
     console.log('\n▶ Porte 3 — smoke performance');
-    if (run('node', ['scripts/perf-smoke.mjs'], { env: CHILD_ENV }) !== 0)
+    if (
+      porteEchoue(
+        'p3-perf',
+        run('node', ['scripts/perf-smoke.mjs'], { env: CHILD_ENV }),
+      )
+    )
       await echouer('Porte 3 : le smoke performance a dépassé le plafond.');
   }
 
