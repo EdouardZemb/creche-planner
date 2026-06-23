@@ -128,3 +128,80 @@ Un tick sans nouvelle image journalise « Staging déjà à jour — rien à fai
 nouveau `:main` déclenche `deploy.mjs` (portes + GitHub Deployment d'env `staging`).
 Un **échec** de porte laisse la pile en l'état (`ROLLBACK=0`) : c'est le signal
 « ne pas promouvoir ce `:main` ».
+
+---
+
+# Auto-déploiement PROD sur Release signée (Phase 10)
+
+Unités `creche-release-poll.{service,timer}` : un timer **sortant** sonde l'API
+**GitHub Releases** (~5 min) et, à chaque **nouvelle version semver publiée** (artefact
+immuable + **signé cosign** par `release.yml`), déploie la **prod** via
+[`scripts/release-poll.sh`](../release-poll.sh) →
+[`scripts/release-poll.mjs`](../release-poll.mjs) → `scripts/deploy.mjs`. **Supprime la
+dépendance au poste de dev** (`remote-deploy.ps1`) tout en préservant la topologie
+**pull-based** (rien d'entrant). Voir
+[docs/exploitation/24 §9.3](../../docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md).
+
+> **Pendant PROD du poller staging.** Même architecture que la Phase 8 (§ ci-dessus),
+> **garde-fous durcis** : ne déploie QUE des **versions semver figées + signées**
+> (refus de `main`/`latest`/pré-release/draft), **roule en avant uniquement** (jamais
+> de downgrade auto), et partage le **verrou prod** `/tmp/creche-deploy.lock` avec
+> `remote-deploy` (aucun entrelacement). Un **rollback** reste un geste **manuel**
+> (`remote-deploy.ps1 -ImageTag <version_précédente>`).
+
+> **Clone de PROD (le même que remote-deploy).** Contrairement au staging (clone
+> séparé), le poller release vise le clone de **prod** `/home/<user>/creche-planner`.
+> Le `git pull --ff-only` y est déjà la norme (remote-deploy fait pareil) ; le verrou
+> commun garantit qu'un poll et un déclenchement manuel ne s'entrelacent jamais.
+
+## 1. Prérequis (déjà en place si la prod tourne)
+
+```bash
+cd /home/<user>/creche-planner
+# .env.server rempli (GH_DEPLOYMENTS_TOKEN, IMAGE_TAG, DEPLOY_VERIFY_COSIGN=1, …)
+# docker login ghcr.io déjà fait ; cosign installé dans ~/.local/bin
+chmod +x scripts/release-poll.sh          # exécuté par systemd
+```
+
+> **Baseline.** Au 1er run, le poller initialise sa baseline (`~/.creche-last-deployed`)
+> depuis le label OCI `image.version` du conteneur gateway **en place** → il ne
+> redéploie pas la version déjà en prod. Pour forcer une baseline explicite :
+> `echo 0.1.0 > ~/.creche-last-deployed`.
+
+## 2. Adapter et installer les unités
+
+Remplacer `<user>` (et le chemin du clone si différent) dans
+[`creche-release-poll.service`](creche-release-poll.service) :
+`WorkingDirectory`, `User`, `ExecStart`, `Environment=PATH`, `Documentation`,
+`ReadWritePaths`. (Même remarque **PATH / node nvm-fnm** que pour le staging ci-dessus.)
+
+```bash
+sudo cp scripts/systemd/creche-release-poll.service /etc/systemd/system/
+sudo cp scripts/systemd/creche-release-poll.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now creche-release-poll.timer
+```
+
+> **`sudo -n` indisponible ?** Les unités portent des placeholders `<user>` :
+> `sed 's/<user>/edouard/g' scripts/systemd/creche-release-poll.service | sudo tee /etc/systemd/system/creche-release-poll.service` (idem `.timer`, sans `sed`).
+
+## 3. Vérifier
+
+```bash
+# Prochaine échéance
+systemctl list-timers creche-release-poll.timer
+
+# Forcer un poll immédiat (déploie si une nouvelle release semver existe)
+sudo systemctl start creche-release-poll.service
+journalctl -u creche-release-poll.service -n 80 --no-pager
+
+# Forcer un (re)déploiement de la release latest (test) :
+cd /home/<user>/creche-planner && RELEASE_FORCE=1 ./scripts/release-poll.sh
+```
+
+Un tick sans nouvelle version journalise « Prod déjà à jour … ». Une nouvelle release
+`0.x.y` déclenche `deploy.mjs` (portes + GitHub Deployment d'env `production` → DORA).
+Un **échec** est **réessayé** jusqu'à `RELEASE_MAX_ATTEMPTS` (défaut 3) puis abandonné
+(journal : « intervention requise ») — la prod restant saine via le **rollback auto**
+(§9.4). Variables utiles : `RELEASE_FORCE=1`, `RELEASE_MAX_ATTEMPTS=<n>`,
+`RELEASE_SKIP_PULL=1`, `DORA_DRY_RUN=1`.

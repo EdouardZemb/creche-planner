@@ -1,0 +1,24 @@
+# ===========================================================================
+# creche-release-poll.timer — Planifie le poll de release prod creche-planner
+# ---------------------------------------------------------------------------
+# Déclenche creche-release-poll.service toutes les ~5 minutes. Le poller est
+# IDEMPOTENT (compare la version de la dernière GitHub Release à une baseline
+# locale) et ROULE EN AVANT uniquement : un tick sans nouvelle version (ou une
+# version ≤ celle déployée) ne fait RIEN. Une nouvelle release `0.x.y` signée est
+# ainsi déployée en prod dans les ~5 min, SANS le poste de dev.
+#
+# Persistent=true rattrape un tick manqué (serveur éteint) ; RandomizedDelaySec
+# évite de taper l'API GitHub pile à la minute ronde.
+# ===========================================================================
+[Unit]
+Description=Planification du poll de déploiement release prod creche-planner
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Persistent=true
+RandomizedDelaySec=30
+Unit=creche-release-poll.service
+
+[Install]
+WantedBy=timers.target

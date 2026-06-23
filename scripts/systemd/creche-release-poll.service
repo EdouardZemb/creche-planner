@@ -1,0 +1,40 @@
+# ===========================================================================
+# creche-release-poll.service — Auto-déploiement PROD des Releases signées (Phase 10)
+# ---------------------------------------------------------------------------
+# Unité oneshot déclenchée par creche-release-poll.timer (toutes les ~5 min).
+# Sonde l'API GitHub Releases (SORTANT) et, à chaque NOUVELLE version semver
+# publiée (artefact immuable + signé cosign), déploie la prod via scripts/deploy.mjs.
+# Supprime la dépendance au poste de dev (remote-deploy.ps1). Topologie pull-based
+# préservée (aucun port entrant). Adapter <user> et les chemins (cf. README.md).
+#
+# IMPORTANT : ce service vise le CLONE DE PROD (le MÊME que remote-deploy) ; le
+# verrou flock partagé /tmp/creche-deploy.lock empêche tout entrelacement avec un
+# déclenchement manuel. NE PAS le faire viser le clone de staging.
+# ===========================================================================
+[Unit]
+Description=Auto-déploiement prod creche-planner (poll GitHub Releases signées)
+Documentation=file:///home/<user>/creche-planner/docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+
+# --- Chemins de l'installation (remplacer <user>, adapter si clone ailleurs) -
+# Racine du CLONE DE PROD (là où vivent docker-compose.server.yml + .env.server) :
+WorkingDirectory=/home/<user>/creche-planner
+# Utilisateur membre du groupe docker (ne pas lancer en root) :
+User=<user>
+Group=docker
+
+# PATH : ~/.local/bin (cosign) + emplacements usuels de docker/git/node. Si node est
+# installé via nvm/fnm (hors /usr/bin), ajouter ici son répertoire bin (cf. README).
+Environment=PATH=/home/<user>/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+ExecStart=/home/<user>/creche-planner/scripts/release-poll.sh
+
+# La baseline + le compteur de tentatives sont écrits sous le home (aucun chown root).
+ReadWritePaths=/home/<user>
+Nice=10
+IOSchedulingClass=idle
