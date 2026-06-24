@@ -12,6 +12,35 @@ import { jsonb, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
  * `envoi_mail`) arrivent aux lots suivants par migrations incrémentales.
  */
 
+// --- Read model : Planification (projeté depuis le stream PLANIFICATION) ----
+
+/**
+ * Projection de l'**identité** d'un contrat de garde (events
+ * `planification.ContratCree.v1` / `ContratModifie.v1` / `ContratSupprime.v1`,
+ * stream `PLANIFICATION`). Notifications projette ce read model pour savoir, lors de
+ * la validation hebdomadaire, **quels contrats actifs** notifier, à quel foyer ils
+ * appartiennent et sur quelle **période de validité** (`valide_du`/`valide_au`) ils
+ * portent. Le `mode` sert plus tard à résoudre l'établissement destinataire
+ * (`CRECHE_PSU` → crèche ; `PERISCOLAIRE`/`CANTINE`/`ALSH` → ABCM). Alimenté
+ * idempotemment via `processed_event` (cf. plus bas), une seule ligne par contrat.
+ */
+export const contrat = pgTable('contrat', {
+  /** Identifiant du contrat amont (PK). */
+  id: uuid('id').primaryKey(),
+  foyerId: uuid('foyer_id').notNull(),
+  /** Prénom de l'enfant du contrat (jointure faible avec le référentiel amont). */
+  enfant: varchar('enfant', { length: 200 }).notNull(),
+  /** Mode de garde (CRECHE_PSU | PERISCOLAIRE | CANTINE | ALSH). */
+  mode: varchar('mode', { length: 32 }).notNull(),
+  /** Début de validité ISO `YYYY-MM-DD` (inclus). */
+  valideDu: varchar('valide_du', { length: 10 }).notNull(),
+  /** Fin de validité ISO `YYYY-MM-DD` (incluse), `null` si période ouverte. */
+  valideAu: varchar('valide_au', { length: 10 }),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // --- Idempotence de consommation --------------------------------------------
 
 /**
@@ -53,5 +82,6 @@ export const outbox = pgTable('outbox', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
 });
 
+export type ContratRow = typeof contrat.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;
