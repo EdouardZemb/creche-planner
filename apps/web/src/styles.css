@@ -160,6 +160,15 @@ select {
   min-height: 2.75rem;
 }
 
+/* Un <fieldset> porte une règle agent-utilisateur `min-inline-size: min-content`
+   qui l'empêche de rétrécir sous la largeur intrinsèque de son contenu, même
+   borné par un conteneur plus étroit. Sur très petit écran (≤ 320px) les
+   fieldsets de saisie crèche débordaient ainsi la page de ~11px. `min-width: 0`
+   lève cette contrainte → le fieldset respecte la largeur de sa carte. */
+fieldset {
+  min-width: 0;
+}
+
 .carte {
   background: white;
   border: 1px solid var(--bordure);

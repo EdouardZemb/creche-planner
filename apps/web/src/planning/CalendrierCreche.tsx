@@ -852,6 +852,11 @@ export function CalendrierCreche({
                   style={{
                     display: 'flex',
                     alignItems: 'center',
+                    // Sur très petit écran (≤ 320px), le bouton « Saisir » passe
+                    // sous la date plutôt que de forcer la ligne (et le fieldset)
+                    // au-delà du viewport. À largeur confortable, tout reste sur
+                    // une rangée.
+                    flexWrap: 'wrap',
                     gap: '0.5rem',
                     padding: '0.2rem 0',
                   }}
