@@ -354,6 +354,31 @@ describe('PlanningPage', () => {
     expect(await screen.findByRole('tab', { name: 'Alice' })).toHaveFocus();
   });
 
+  // Régression largeur (débordement mobile) : à la saisie d'une absence crèche,
+  // FullCalendar surcalculait sa largeur sur petit écran et, faute de borne sur
+  // la colonne flex, étirait la page au-delà du viewport (débordement horizontal).
+  // Le correctif borne CHAQUE enfant de `.planning-zone` à `max-width: 100%`.
+  // jsdom ne calcule pas le layout : on vérifie ici le contrat structurel (les
+  // styles stabilisateurs), la mesure pixel étant couverte par l'e2e mobile.
+  it('borne les colonnes du planning à 100% (anti-débordement mobile)', async () => {
+    vi.mocked(api.lireFoyer).mockResolvedValue(dossierMock);
+
+    const { container } = renderPage();
+    await screen.findByText(/Planning mensuel/i);
+
+    const zone = container.querySelector('.planning-zone');
+    expect(zone).not.toBeNull();
+    const colonnes = Array.from(zone!.children) as HTMLElement[];
+    // Deux colonnes : zone principale (calendrier) + panneau coût.
+    expect(colonnes.length).toBeGreaterThanOrEqual(2);
+    for (const colonne of colonnes) {
+      expect(colonne.style.maxWidth).toBe('100%');
+    }
+    // La colonne principale doit aussi pouvoir se rétrécir sous la largeur
+    // intrinsèque de son contenu (sinon la borne ne sert à rien en flex).
+    expect(colonnes[0]!.style.minWidth).not.toBe('');
+  });
+
   it('affiche le libelle de mode accentue dans les onglets (EX-13)', async () => {
     vi.mocked(api.lireFoyer).mockResolvedValue(dossierMock);
 

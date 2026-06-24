@@ -164,6 +164,71 @@ test('calendrier crèche mobile : cellules tactiles, pas de débordement, onglet
   await expect(onglets).toHaveCSS('overflow-x', 'auto');
 });
 
+// Régression largeur : sur petit écran, la saisie d'une absence crèche faisait
+// « grossir » la grille (FullCalendar surcalcule sa largeur après la mise à jour
+// des événements) et débordait la page, faute de borne sur la colonne flex. Le
+// débordement n'apparaît qu'en deçà de ~388px ; on force donc un viewport Android
+// étroit (360px), plus petit que le Pixel 5 (393px) du reste du fichier, où la
+// régression se reproduit de façon fiable.
+//
+// On asserte l'INVARIANCE DE LARGEUR DE LA GRILLE (avant == après), qui est le
+// cœur du bug et reste fiable d'un OS à l'autre. On évite volontairement de
+// comparer `scrollWidth`/`clientWidth` du document : la présence d'une barre de
+// défilement verticale (classique sous Linux CI, overlay sous Windows) fausse ce
+// rapport. Un éventuel débordement résiduel de page à très petite largeur relève
+// du panneau coût (hors de ce correctif) et est suivi séparément.
+test.describe('régression : largeur stable à la saisie (mobile étroit)', () => {
+  test.use({ viewport: { width: 360, height: 800 } });
+
+  test('saisir des absences puis un ajout ne change pas la largeur de la grille', async ({
+    page,
+  }) => {
+    await ouvrirCalendrier(page);
+
+    const grille = page.locator('.fc-scrollgrid');
+    const largeurInitiale = await grille.evaluate(
+      (el) => el.getBoundingClientRect().width,
+    );
+
+    // Trois absences via la liste clavier (jours gardés lun→ven de juin 2026).
+    for (const jour of ['01/06/2026', '02/06/2026', '03/06/2026']) {
+      const ligne = page
+        .getByRole('group', { name: /Saisir une absence/i })
+        .getByRole('listitem')
+        .filter({ hasText: jour });
+      await ligne.getByRole('button', { name: /Saisir|Modifier/ }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'Confirmer' }).click();
+      await expect(dialog).toBeHidden();
+    }
+
+    // + un ajout sur un samedi non gardé (clic sur le haut de la cellule ; le
+    //   dateClick peut rater un premier clic sur une grille fraîchement montée).
+    const haut = page.locator(
+      'td.fc-daygrid-day[data-date="2026-06-06"] .fc-daygrid-day-top',
+    );
+    await expect(async () => {
+      await haut.click();
+      await expect(page.getByRole('dialog')).toBeVisible({ timeout: 1500 });
+    }).toPass({ timeout: 10000 });
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Confirmer' })
+      .click();
+    await expect(page.getByRole('dialog')).toBeHidden();
+
+    // Cœur de la régression : la grille n'a pas changé de largeur (à 1px près)
+    // après les saisies. Avant le correctif, elle « grossissait » (~+27px).
+    const largeurApres = await grille.evaluate(
+      (el) => el.getBoundingClientRect().width,
+    );
+    expect(
+      Math.abs(largeurApres - largeurInitiale),
+      'largeur de grille inchangée',
+    ).toBeLessThanOrEqual(1);
+  });
+});
+
 test('rendu visuel du calendrier crèche (mobile)', async ({ page }) => {
   // La baseline screenshot est spécifique à l'OS/au moteur de rendu : générée
   // localement (win32), elle n'existe pas pour le runner CI (linux). On garde
