@@ -234,8 +234,14 @@ export function PlanningPage() {
             flexWrap: 'wrap',
           }}
         >
-          {/* Zone principale */}
-          <div style={{ flex: '1 1 0', minWidth: '0' }}>
+          {/* Zone principale.
+              `maxWidth: 100%` borne la colonne à la largeur du conteneur : sur
+              mobile, FullCalendar peut surcalculer sa largeur après une saisie
+              (ex. première absence crèche) et, sans borne, étirer cette colonne
+              au-delà du viewport → débordement horizontal de toute la page.
+              `minWidth: 0` autorise la colonne flex à se rétrécir sous la
+              largeur intrinsèque de son contenu. */}
+          <div style={{ flex: '1 1 0', minWidth: '0', maxWidth: '100%' }}>
             {/* EX-07 : état vide orienté action si ni enfant ni contrat */}
             {enfants.length === 0 && contrats.length === 0 && (
               <EtatVide
@@ -427,8 +433,10 @@ export function PlanningPage() {
             )}
           </div>
 
-          {/* Panneau coût du mois (largeur responsive gérée par .planning-panneau) */}
-          <div className="planning-panneau">
+          {/* Panneau coût du mois (largeur responsive gérée par .planning-panneau).
+              Même borne que la zone principale : aucun enfant de `.planning-zone`
+              ne doit pouvoir pousser la page au-delà de sa largeur. */}
+          <div className="planning-panneau" style={{ maxWidth: '100%' }}>
             <PanneauCoutMois
               foyerId={id}
               mois={mois}
