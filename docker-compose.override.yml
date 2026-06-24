@@ -28,6 +28,10 @@ services:
     ports:
       - '5436:5432'
 
+  postgres-notifications:
+    ports:
+      - '5437:5432'
+
   nats:
     ports:
       - '4222:4222'
@@ -76,6 +80,10 @@ services:
     ports:
       - '9190:9187'
 
+  postgres-exporter-notifications:
+    ports:
+      - '9191:9187'
+
   grafana:
     ports:
       - '3003:3000'
@@ -103,6 +111,10 @@ services:
   svc-tarification:
     ports:
       - '3005:3005'
+
+  svc-notifications:
+    ports:
+      - '3006:3006'
 
   api-gateway:
     ports:
