@@ -11,8 +11,16 @@
  * la prod n'auto-déploie QUE des versions semver signées ; le staging suit `:main`).
  *
  * MÉCANIQUE :
- *   1. Résout le DIGEST distant de `ghcr.io/.../api-gateway:${IMAGE_TAG}` (= `:main`)
- *      via `docker buildx imagetools inspect` (utilise le `docker login` du serveur).
+ *   1. Résout le DIGEST distant de CHACUNE des images APPLICATIVES déployables
+ *      (`ghcr.io/.../<projet>:${IMAGE_TAG}` = `:main`) via `docker buildx imagetools
+ *      inspect --raw` (utilise le `docker login` du serveur), puis AGRÈGE ces digests
+ *      en UN SEUL (sha256 de leur concaténation, dans un ordre stable trié).
+ *      POURQUOI toutes les images et pas seulement api-gateway ? Le job CI `build-images`
+ *      (nx affected) ne (re)construit/pousse QUE les images réellement touchées par un
+ *      merge : un changement web-only laisse `api-gateway:main` au MÊME digest. Sonder la
+ *      seule gateway ratait donc TOUT déploiement web-only (staging ne tirait jamais la
+ *      nouvelle image `web`). L'agrégat bouge dès qu'AU MOINS une image change → n'importe
+ *      quel merge déployable est désormais auto-déployé.
  *   2. Le compare à un MARQUEUR local (~/.creche-staging-last-digest).
  *   3. Inchangé → ne fait RIEN (sortie 0, silencieux).
  *      Nouveau digest (ou 1er run) → lance `node scripts/deploy.mjs` (portes +
@@ -34,14 +42,29 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const IMAGE_TAG = process.env.IMAGE_TAG ?? 'main';
-const IMAGE_REF = `ghcr.io/edouardzemb/creche-planner/api-gateway:${IMAGE_TAG}`;
+const REGISTRE = 'ghcr.io/edouardzemb/creche-planner';
+// Images APPLICATIVES déployables sur staging — À GARDER SYNCHRONISÉ avec la liste
+// `image:` de docker-compose.staging.yml ET DEPLOY_UP_SERVICES de .env.staging. Triées
+// (l'ordre n'influe PAS sur l'agrégat — agregerDigests() trie — mais une liste ordonnée
+// se compare plus vite au compose). On ne dérive pas du YAML pour rester sans dépendance.
+const PROJETS_DEPLOYABLES = [
+  'api-gateway',
+  'svc-foyer',
+  'svc-planification',
+  'svc-referentiel',
+  'svc-tarification',
+  'web',
+];
+const IMAGE_REFS = PROJETS_DEPLOYABLES.map(
+  (projet) => `${REGISTRE}/${projet}:${IMAGE_TAG}`,
+);
 const MARKER =
   process.env.STAGING_DIGEST_MARKER ||
   join(homedir(), '.creche-staging-last-digest');
@@ -49,28 +72,63 @@ const FORCE = process.env.STAGING_FORCE === '1';
 const DRY_RUN = process.env.DORA_DRY_RUN === '1';
 
 /**
- * Digest distant (index OCI) du tag `:main` = sha256 du manifeste BRUT.
+ * Digest distant (index OCI) d'UNE image au tag `:main` = sha256 du manifeste BRUT.
  * On NE se fie PAS à `--format '{{.Manifest.Digest}}'` : selon la version de buildx
  * (ex. 0.13.x sur le serveur), ce gabarit est IGNORÉ et imprime la sortie humaine
  * → la sonde renvoyait '' à tort. Or le digest d'un manifeste EST le sha256 de ses
  * octets bruts (`--raw`) : méthode canonique, indépendante de la version de buildx.
  * '' si la sonde échoue (réseau / login GHCR manquant).
  */
-function digestDistant() {
-  if (DRY_RUN) return 'sha256:dry-run';
+function digestImage(ref) {
   // stdout en Buffer (aucun `encoding`) pour hasher les OCTETS EXACTS du manifeste.
   const r = spawnSync(
     'docker',
-    ['buildx', 'imagetools', 'inspect', IMAGE_REF, '--raw'],
+    ['buildx', 'imagetools', 'inspect', ref, '--raw'],
     { cwd: RACINE },
   );
   if (r.status !== 0 || !r.stdout || r.stdout.length === 0) {
     console.error(
-      `  ✗ Impossible de résoudre le digest de ${IMAGE_REF} :\n${(r.stderr?.toString() || '').trim()}`,
+      `  ✗ Impossible de résoudre le digest de ${ref} :\n${(r.stderr?.toString() || '').trim()}`,
     );
     return '';
   }
   return 'sha256:' + createHash('sha256').update(r.stdout).digest('hex');
+}
+
+/**
+ * Agrège des digests d'images en UN digest DÉTERMINISTE (sha256 de leur concaténation
+ * triée). Fonction PURE — exportée pour être unit-testable HORS serveur (le test de la
+ * sonde GHCR elle-même est impossible sans le `docker login` du serveur) :
+ *   - l'ORDRE des entrées n'influe pas sur le résultat (tri par ref) ;
+ *   - la `ref` est incluse dans la chaîne hachée → deux images au même digest (artefacts
+ *     identiques) restent distinguables, et ajouter/retirer une image change l'agrégat.
+ * @param {Record<string, string>} digestsParRef  ref d'image → digest (`sha256:…`)
+ * @returns {string} digest agrégé (`sha256:…`)
+ */
+export function agregerDigests(digestsParRef) {
+  const lignes = Object.keys(digestsParRef)
+    .sort()
+    .map((ref) => `${ref}\t${digestsParRef[ref]}`);
+  return (
+    'sha256:' + createHash('sha256').update(lignes.join('\n')).digest('hex')
+  );
+}
+
+/**
+ * Digest AGRÉGÉ des 6 images déployables au tag `:main`. '' si la sonde d'AU MOINS une
+ * image échoue → le tick est abandonné proprement (marqueur intact, réessai au prochain)
+ * plutôt que de marquer un état partiel/faux.
+ */
+function digestAgrege() {
+  if (DRY_RUN) return 'sha256:dry-run';
+  /** @type {Record<string, string>} */
+  const digestsParRef = {};
+  for (const ref of IMAGE_REFS) {
+    const d = digestImage(ref);
+    if (!d) return ''; // une sonde KO → on n'agrège pas un état partiel.
+    digestsParRef[ref] = d;
+  }
+  return agregerDigests(digestsParRef);
 }
 
 /** Marqueur local du dernier digest déployé. '' si absent. */
@@ -98,9 +156,11 @@ function ecrireMarqueur(digest) {
 
 function main() {
   console.log('═══ Poller staging creche-planner (Phase 8) ═══');
-  console.log(`  image=${IMAGE_REF} · marqueur=${MARKER}`);
+  console.log(
+    `  images=${PROJETS_DEPLOYABLES.length} (${PROJETS_DEPLOYABLES.join(', ')}) @ :${IMAGE_TAG} · marqueur=${MARKER}`,
+  );
 
-  const distant = digestDistant();
+  const distant = digestAgrege();
   if (!distant) {
     // Sonde KO (réseau/login GHCR) : on n'écrit PAS le marqueur → réessai au
     // prochain tick. Sortie non nulle pour que journalctl/systemd la voie.
@@ -110,7 +170,7 @@ function main() {
     process.exit(1);
   }
   const local = marqueurLocal();
-  console.log(`  digest distant : ${distant}`);
+  console.log(`  digest distant : ${distant} (agrégat des 6 images)`);
   console.log(`  digest déployé : ${local || '(aucun — 1er run)'}`);
 
   if (distant === local && !FORCE) {
@@ -143,4 +203,12 @@ function main() {
   process.exit(ok ? 0 : 1);
 }
 
-main();
+// Lancé directement (pas importé pour un test unitaire de `agregerDigests`) → on POLL.
+// Sans cette garde, importer le module exécuterait main() (sonde docker + process.exit),
+// ce qui tuerait le test runner.
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main();
+}
