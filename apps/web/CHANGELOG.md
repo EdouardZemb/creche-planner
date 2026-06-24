@@ -1,3 +1,14 @@
+## 0.2.0 (2026-06-24)
+
+### 🚀 Features
+
+- **web:** adapte l'UI au mobile (cibles tactiles, calendrier, modales) ([#53](https://github.com/EdouardZemb/creche-planner/pull/53))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.1.0 (2026-06-22)
 
 ### 🚀 Features
