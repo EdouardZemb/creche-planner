@@ -229,6 +229,33 @@ test.describe('régression : largeur stable à la saisie (mobile étroit)', () =
   });
 });
 
+// Régression débordement de PAGE à très petite largeur (iPhone 5/SE, 320px) —
+// distinct de la largeur de grille ci-dessus. Préexistant AVANT toute saisie :
+// le <fieldset> « Saisir une absence » refusait de rétrécir sous son contenu
+// (règle UA `min-inline-size: min-content`) et débordait la page de ~11px
+// (scrollWidth ≈ 331 pour 320 de viewport). Corrigé par `fieldset{min-width:0}`
+// + retour à la ligne des rangées de la liste. On mesure ici scrollWidth vs
+// clientWidth du <html> (tous deux hors barre de défilement → robuste OS/CI).
+test.describe('régression : pas de débordement de page à 320px (iPhone SE)', () => {
+  test.use({ viewport: { width: 320, height: 820 } });
+
+  test('la page ne déborde pas horizontalement au chargement', async ({
+    page,
+  }) => {
+    await ouvrirCalendrier(page);
+
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+
+    expect(
+      scrollWidth,
+      `débordement horizontal de page (scrollWidth=${scrollWidth} > clientWidth=${clientWidth})`,
+    ).toBeLessThanOrEqual(clientWidth + 1);
+  });
+});
+
 test('rendu visuel du calendrier crèche (mobile)', async ({ page }) => {
   // La baseline screenshot est spécifique à l'OS/au moteur de rendu : générée
   // localement (win32), elle n'existe pas pour le runner CI (linux). On garde
