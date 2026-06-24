@@ -74,6 +74,57 @@ export const gatewayOpenApiDocument = {
         },
         required: ['id', 'foyerId', 'enfant', 'mode', 'valideDu', 'valideAu'],
       },
+      PreavisRegle: {
+        description:
+          'Règle de préavis d’un établissement (union discriminée par `type`).',
+        oneOf: [
+          {
+            type: 'object',
+            description:
+              'Préavis exprimé en jours ouvrés (ex. 2 jours, crèche).',
+            properties: {
+              type: { type: 'string', enum: ['JOURS_OUVRES'] },
+              valeur: { type: 'integer', minimum: 0, maximum: 30 },
+            },
+            required: ['type', 'valeur'],
+          },
+          {
+            type: 'object',
+            description:
+              'Préavis exprimé en jour + heure butoir (ex. jeudi 12:00, ABCM).',
+            properties: {
+              type: { type: 'string', enum: ['JOUR_HEURE'] },
+              jour: {
+                type: 'string',
+                enum: [
+                  'LUNDI',
+                  'MARDI',
+                  'MERCREDI',
+                  'JEUDI',
+                  'VENDREDI',
+                  'SAMEDI',
+                  'DIMANCHE',
+                ],
+              },
+              heure: { type: 'string', pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' },
+            },
+            required: ['type', 'jour', 'heure'],
+          },
+        ],
+      },
+      EtablissementVue: {
+        type: 'object',
+        description:
+          'Établissement destinataire d’un mail de service (annuaire notifications).',
+        properties: {
+          cle: { type: 'string', enum: ['CRECHE_HIRONDELLES', 'ABCM'] },
+          libelle: { type: 'string' },
+          emailService: { type: 'string', format: 'email' },
+          preavisRegle: { $ref: '#/components/schemas/PreavisRegle' },
+          actif: { type: 'boolean' },
+        },
+        required: ['cle', 'libelle', 'emailService', 'preavisRegle', 'actif'],
+      },
       Ligne: {
         type: 'object',
         description: 'Ligne de coût (débit ou crédit) en centimes.',
@@ -460,6 +511,70 @@ export const gatewayOpenApiDocument = {
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/CoutAnnuelVue' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/etablissements': {
+      get: {
+        summary: 'Lister les établissements destinataires',
+        description:
+          'Annuaire des établissements (crèche / ABCM) destinataires des ' +
+          'mails de service, avec leur règle de préavis.',
+        responses: {
+          '200': {
+            description: 'Établissements destinataires.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/EtablissementVue' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/etablissements/{cle}': {
+      put: {
+        summary: 'Mettre à jour un établissement destinataire (upsert par clé)',
+        parameters: [
+          {
+            name: 'cle',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', enum: ['CRECHE_HIRONDELLES', 'ABCM'] },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Champs éditables de l’établissement : adresse du service et ' +
+                  'règle de préavis (libellé/actif optionnels).',
+                properties: {
+                  emailService: { type: 'string', format: 'email' },
+                  preavisRegle: { $ref: '#/components/schemas/PreavisRegle' },
+                  libelle: { type: 'string' },
+                  actif: { type: 'boolean' },
+                },
+                required: ['emailService', 'preavisRegle'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Établissement mis à jour.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/EtablissementVue' },
               },
             },
           },

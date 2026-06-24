@@ -23,9 +23,7 @@ export interface paths {
             responses: {
                 /** @description La gateway est vivante. */
                 200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
+                    headers: Record<string, unknown>;
                     content: {
                         "application/json": {
                             status: string;
@@ -61,9 +59,7 @@ export interface paths {
             responses: {
                 /** @description Le document OpenAPI de la gateway. */
                 200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
+                    headers: Record<string, unknown>;
                     content: {
                         "application/json": Record<string, never>;
                     };
@@ -100,9 +96,7 @@ export interface paths {
             responses: {
                 /** @description Foyers existants (liste vide si aucun). */
                 200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
+                    headers: Record<string, unknown>;
                     content: {
                         "application/json": components["schemas"]["FoyerVue"][];
                     };
@@ -136,9 +130,7 @@ export interface paths {
             responses: {
                 /** @description Foyer créé avec ses enfants. */
                 201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
+                    headers: Record<string, unknown>;
                     content: {
                         "application/json": {
                             foyer: components["schemas"]["FoyerVue"];
@@ -175,9 +167,7 @@ export interface paths {
             responses: {
                 /** @description Foyer et ses enfants. */
                 200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
+                    headers: Record<string, unknown>;
                     content: {
                         "application/json": {
                             foyer: components["schemas"]["FoyerVue"];
@@ -187,9 +177,7 @@ export interface paths {
                 };
                 /** @description Foyer inconnu. */
                 404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
+                    headers: Record<string, unknown>;
                     content?: never;
                 };
             };
@@ -223,9 +211,7 @@ export interface paths {
             responses: {
                 /** @description Contrats du foyer. */
                 200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
+                    headers: Record<string, unknown>;
                     content: {
                         "application/json": components["schemas"]["ContratVue"][];
                     };
@@ -253,17 +239,13 @@ export interface paths {
                         valideDu: string;
                         /** Format: date */
                         valideAu: string | null;
-                    } & {
-                        [key: string]: unknown;
-                    };
+                    } & Record<string, unknown>;
                 };
             };
             responses: {
                 /** @description Contrat créé. */
                 201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
+                    headers: Record<string, unknown>;
                     content: {
                         "application/json": components["schemas"]["ContratVue"];
                     };
@@ -299,17 +281,13 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": Record<string, unknown>;
                 };
             };
             responses: {
                 /** @description Planning enregistré (pas de contenu). */
                 204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
+                    headers: Record<string, unknown>;
                     content?: never;
                 };
             };
@@ -344,9 +322,7 @@ export interface paths {
             responses: {
                 /** @description Coût consolidé du mois. */
                 200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
+                    headers: Record<string, unknown>;
                     content: {
                         "application/json": components["schemas"]["CoutMoisVue"];
                     };
@@ -384,9 +360,7 @@ export interface paths {
             responses: {
                 /** @description Coût consolidé de l’année. */
                 200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
+                    headers: Record<string, unknown>;
                     content: {
                         "application/json": components["schemas"]["CoutAnnuelVue"];
                     };
@@ -394,6 +368,89 @@ export interface paths {
             };
         };
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etablissements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lister les établissements destinataires
+         * @description Annuaire des établissements (crèche / ABCM) destinataires des mails de service, avec leur règle de préavis.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Établissements destinataires. */
+                200: {
+                    headers: Record<string, unknown>;
+                    content: {
+                        "application/json": components["schemas"]["EtablissementVue"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etablissements/{cle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Mettre à jour un établissement destinataire (upsert par clé) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    cle: "CRECHE_HIRONDELLES" | "ABCM";
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: email */
+                        emailService: string;
+                        preavisRegle: components["schemas"]["PreavisRegle"];
+                        libelle?: string;
+                        actif?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Établissement mis à jour. */
+                200: {
+                    headers: Record<string, unknown>;
+                    content: {
+                        "application/json": components["schemas"]["EtablissementVue"];
+                    };
+                };
+            };
+        };
         post?: never;
         delete?: never;
         options?: never;
@@ -439,6 +496,28 @@ export interface components {
             valideDu: string;
             /** Format: date */
             valideAu: string | null;
+        };
+        /** @description Règle de préavis d’un établissement (union discriminée par `type`). */
+        PreavisRegle: {
+            /** @enum {string} */
+            type: "JOURS_OUVRES";
+            valeur: number;
+        } | {
+            /** @enum {string} */
+            type: "JOUR_HEURE";
+            /** @enum {string} */
+            jour: "LUNDI" | "MARDI" | "MERCREDI" | "JEUDI" | "VENDREDI" | "SAMEDI" | "DIMANCHE";
+            heure: string;
+        };
+        /** @description Établissement destinataire d’un mail de service (annuaire notifications). */
+        EtablissementVue: {
+            /** @enum {string} */
+            cle: "CRECHE_HIRONDELLES" | "ABCM";
+            libelle: string;
+            /** Format: email */
+            emailService: string;
+            preavisRegle: components["schemas"]["PreavisRegle"];
+            actif: boolean;
         };
         /** @description Ligne de coût (débit ou crédit) en centimes. */
         Ligne: {

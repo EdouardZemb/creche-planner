@@ -12,6 +12,7 @@ export interface GatewayConfig {
   readonly foyerUrl: string;
   readonly planificationUrl: string;
   readonly tarificationUrl: string;
+  readonly notificationsUrl: string;
   /**
    * Jeton d'API attendu (auth Bearer). Si **absent**, l'authentification est
    * **désactivée** (confort de dev local). En production, cette absence doit
@@ -75,6 +76,8 @@ export function loadConfig(): GatewayConfig {
     planificationUrl:
       process.env['PLANIFICATION_URL'] ?? 'http://localhost:3004',
     tarificationUrl: process.env['TARIFICATION_URL'] ?? 'http://localhost:3005',
+    notificationsUrl:
+      process.env['NOTIFICATIONS_URL'] ?? 'http://localhost:3006',
     authToken: process.env['GATEWAY_TOKEN'] ?? undefined,
     corsOrigins: origins.length > 0 ? origins : ['*'],
     rateLimit: {

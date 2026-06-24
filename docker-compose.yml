@@ -373,6 +373,7 @@ services:
       FOYER_URL: http://svc-foyer:3002
       PLANIFICATION_URL: http://svc-planification:3004
       TARIFICATION_URL: http://svc-tarification:3005
+      NOTIFICATIONS_URL: http://svc-notifications:3006
       # Auth désactivée par défaut dans la pile locale (pas de GATEWAY_TOKEN) ;
       # CORS reflète toutes les origines tant que CORS_ORIGINS n'est pas défini.
       # L'image embarque NODE_ENV=production (Dockerfile) : le garde-fou AQ-01
@@ -408,6 +409,8 @@ services:
       svc-planification:
         condition: service_started
       svc-tarification:
+        condition: service_started
+      svc-notifications:
         condition: service_started
       otel-collector:
         condition: service_started

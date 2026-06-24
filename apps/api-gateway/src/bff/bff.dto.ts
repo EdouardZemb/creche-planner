@@ -49,6 +49,44 @@ export const modifierContratSchema = creerContratSchema;
 /** Corps d'écriture de planning : relayé tel quel au service propriétaire. */
 export const ecrirePlanningSchema = z.object({}).passthrough();
 
+/** Heure du jour `HH:MM` (00:00 → 23:59), pour la règle de préavis « jour + heure ». */
+const HEURE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/**
+ * Règle de préavis d'un établissement (union discriminée par `type`) — forme
+ * minimale validée à la frontière BFF, la validation profonde reste au service.
+ */
+export const preavisRegleSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('JOURS_OUVRES'),
+    valeur: z.number().int().min(0).max(30),
+  }),
+  z.object({
+    type: z.literal('JOUR_HEURE'),
+    jour: z.enum([
+      'LUNDI',
+      'MARDI',
+      'MERCREDI',
+      'JEUDI',
+      'VENDREDI',
+      'SAMEDI',
+      'DIMANCHE',
+    ]),
+    heure: z.string().regex(HEURE, 'heure attendue au format HH:MM'),
+  }),
+]);
+
+/** Upsert d'un établissement destinataire (la clé voyage dans l'URL). */
+export const upsertEtablissementSchema = z.object({
+  emailService: z.email('adresse e-mail invalide'),
+  preavisRegle: preavisRegleSchema,
+  libelle: z.string().min(1).max(200).optional(),
+  actif: z.boolean().optional(),
+});
+
+/** Clés d'établissement acceptées en chemin (`PUT /etablissements/:cle`). */
+export const CLES_ETABLISSEMENT = ['CRECHE_HIRONDELLES', 'ABCM'] as const;
+
 // Mois borné 01-12 (AQ-04, doc 27 : l'ancienne `\d{2}` acceptait « 2026-13 »).
 const MOIS = /^\d{4}-(0[1-9]|1[0-2])$/;
 /** Mois au format `YYYY-MM`. */

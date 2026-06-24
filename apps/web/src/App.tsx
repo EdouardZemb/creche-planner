@@ -14,6 +14,7 @@ import { FoyerFormPage } from './foyer/FoyerFormPage';
 import { ContratsPage } from './foyer/ContratsPage';
 import { PlanningPage } from './planning/PlanningPage';
 import { CoutsAnnuelsPage } from './couts/CoutsAnnuelsPage';
+import { EtablissementsPage } from './etablissements/EtablissementsPage';
 import { getFoyerId, setFoyerId, effacerFoyerId } from './utils/store';
 import { seReconnecter } from './utils/reconnexion';
 import { api } from './api/client';
@@ -83,6 +84,7 @@ function Entete() {
           </>
         )}
         <NavLink to="/foyers/new">Nouveau foyer</NavLink>
+        <NavLink to="/etablissements">Établissements</NavLink>
       </nav>
     </header>
   );
@@ -201,6 +203,7 @@ function PageIntrouvable() {
  */
 function titreDepuisPathname(pathname: string): string {
   if (pathname === '/foyers/new') return 'Nouveau foyer';
+  if (pathname === '/etablissements') return 'Établissements';
   const foyer = /^\/foyers\/[^/]+\/(contrats|planning|couts)$/.exec(pathname);
   if (foyer) {
     const segment = foyer[1];
@@ -235,6 +238,7 @@ function Coquille() {
       <main id="contenu" tabIndex={-1} ref={refCible}>
         <Routes>
           <Route path="/" element={<Accueil />} />
+          <Route path="/etablissements" element={<EtablissementsPage />} />
           <Route path="/foyers/new" element={<FoyerFormPage />} />
           <Route path="/foyers/:foyerId" element={<GardeFoyer />}>
             <Route path="contrats" element={<ContratsPage />} />

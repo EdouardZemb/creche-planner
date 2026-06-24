@@ -11,7 +11,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(gatewayOpenApiDocument.info.version).toBe('1.0.0');
   });
 
-  it('expose exactement les 8 routes attendues', () => {
+  it('expose exactement les 10 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -23,6 +23,8 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/contrats/{id}/plannings/{mois}',
         '/api/v1/couts',
         '/api/v1/couts/annuel',
+        '/api/v1/etablissements',
+        '/api/v1/etablissements/{cle}',
       ].sort(),
     );
   });
@@ -51,6 +53,8 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(schemas.Ligne).toBeDefined();
     expect(schemas.CoutMoisVue).toBeDefined();
     expect(schemas.CoutAnnuelVue).toBeDefined();
+    expect(schemas.EtablissementVue).toBeDefined();
+    expect(schemas.PreavisRegle).toBeDefined();
   });
 
   it('expose le serveur local de la gateway', () => {
