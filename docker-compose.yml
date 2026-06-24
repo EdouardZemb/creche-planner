@@ -61,6 +61,20 @@ services:
       timeout: 3s
       retries: 10
 
+  postgres-notifications:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: notifications
+      POSTGRES_PASSWORD: notifications
+      POSTGRES_DB: notifications
+    volumes:
+      - pg-notifications:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U notifications -d notifications']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   nats:
     image: nats:2.10-alpine
     command: ['-js', '-m', '8222']
@@ -183,6 +197,14 @@ services:
       DATA_SOURCE_NAME: postgresql://tarification:tarification@postgres-tarification:5432/tarification?sslmode=disable
     depends_on:
       postgres-tarification:
+        condition: service_healthy
+
+  postgres-exporter-notifications:
+    image: quay.io/prometheuscommunity/postgres-exporter@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    environment:
+      DATA_SOURCE_NAME: postgresql://notifications:notifications@postgres-notifications:5432/notifications?sslmode=disable
+    depends_on:
+      postgres-notifications:
         condition: service_healthy
 
   grafana:
@@ -319,6 +341,26 @@ services:
       otel-collector:
         condition: service_started
 
+  svc-notifications:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP: svc-notifications
+    environment:
+      PORT: '3006'
+      DATABASE_URL: postgres://notifications:notifications@postgres-notifications:5432/notifications
+      NATS_URL: nats://nats:4222
+      OTEL_SERVICE_NAME: svc-notifications
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      postgres-notifications:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
   api-gateway:
     build:
       context: .
@@ -388,6 +430,7 @@ volumes:
   pg-foyer:
   pg-planification:
   pg-tarification:
+  pg-notifications:
   tempo-data:
   grafana-data:
   loki-data:
