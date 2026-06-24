@@ -10,6 +10,7 @@ import {
 } from '@creche-planner/nest-commons';
 import { loadConfig } from './config.js';
 import * as schema from './database/schema.js';
+import { ConsumersModule } from './consumers/consumers.module.js';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import * as schema from './database/schema.js';
       url: () => loadConfig().natsUrl,
     }),
     HealthModule,
+    ConsumersModule,
   ],
 })
 export class AppModule {}

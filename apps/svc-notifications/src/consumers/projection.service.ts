@@ -1,0 +1,209 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import {
+  contratCreeEventSchema,
+  contratModifieEventSchema,
+  contratSupprimeEventSchema,
+  CONTRAT_CREE_TYPE,
+  CONTRAT_MODIFIE_TYPE,
+  CONTRAT_SUPPRIME_TYPE,
+} from '@creche-planner/contracts-planification';
+import { DRIZZLE } from '@creche-planner/nest-commons';
+import type { Database } from '../database/database.types.js';
+import { contrat, processedEvent } from '../database/schema.js';
+
+/** Transaction Drizzle (type du callback `db.transaction`). */
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/**
+ * Projette les événements du stream **PLANIFICATION** dans le **read model** des
+ * contrats actifs du service Notifications. Chaque message est traité
+ * **idempotemment** dans une seule transaction : on insère d'abord la ligne
+ * `processed_event` (clé = `id` d'enveloppe) ; si elle existe déjà (rejeu
+ * at-least-once JetStream), la projection est sautée (no-op effectivement-une-fois).
+ *
+ * Contrairement à `svc-tarification`, Notifications n'a besoin que de l'**identité**
+ * et de la **période de validité** des contrats (pas des quantités du planning), donc
+ * il ne consomme pas `PlanningModifie` et n'a aucun client de repli vers
+ * `svc-planification` : tout ce dont il a besoin tient dans les payloads
+ * `ContratCree`/`ContratModifie`/`ContratSupprime`.
+ */
+@Injectable()
+export class ProjectionService {
+  private readonly logger = new Logger(ProjectionService.name);
+
+  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+
+  /**
+   * Traite un message brut du stream `PLANIFICATION`. Renvoie `true` si l'événement
+   * a été appliqué (ou ignoré proprement) et peut être acquitté ; `false` si une
+   * erreur transitoire impose une re-livraison (NAK). La forme inconnue d'un type non
+   * géré est acquittée (on ne bloque pas le stream sur un événement étranger).
+   */
+  async traiter(stream: string, donnees: unknown): Promise<boolean> {
+    try {
+      const type = this.typeDe(donnees);
+      if (type === undefined) {
+        return true; // pas une enveloppe reconnue : on acquitte sans projeter
+      }
+      switch (type) {
+        case CONTRAT_CREE_TYPE:
+          await this.appliquerContratCree(stream, donnees);
+          return true;
+        case CONTRAT_MODIFIE_TYPE:
+          await this.appliquerContratModifie(stream, donnees);
+          return true;
+        case CONTRAT_SUPPRIME_TYPE:
+          await this.appliquerContratSupprime(stream, donnees);
+          return true;
+        default:
+          return true; // type non consommé par Notifications : acquitté
+      }
+    } catch (erreur) {
+      this.logger.warn(
+        `Projection échouée (${stream}) : ${(erreur as Error).message} — re-livraison`,
+      );
+      return false;
+    }
+  }
+
+  /** Lit le champ `type` d'une enveloppe brute sans valider le payload. */
+  private typeDe(donnees: unknown): string | undefined {
+    if (
+      typeof donnees === 'object' &&
+      donnees !== null &&
+      'type' in donnees &&
+      typeof donnees.type === 'string'
+    ) {
+      return (donnees as { type: string }).type;
+    }
+    return undefined;
+  }
+
+  /**
+   * Insère le marqueur d'idempotence ; renvoie `false` si déjà présent (doublon),
+   * auquel cas l'appelant n'applique pas la projection.
+   */
+  private async marquerTraite(
+    tx: Tx,
+    id: string,
+    stream: string,
+    type: string,
+  ): Promise<boolean> {
+    const insere = await tx
+      .insert(processedEvent)
+      .values({ id, stream, type })
+      .onConflictDoNothing({ target: processedEvent.id })
+      .returning({ id: processedEvent.id });
+    return insere.length > 0;
+  }
+
+  /**
+   * `ContratCree` : on mémorise l'identité du contrat (foyer/enfant/mode) et sa
+   * période de validité (`valideDu`/`valideAu`) dans la table locale `contrat`.
+   * C'est cette projection que la validation hebdomadaire interrogera pour savoir
+   * quels contrats actifs notifier. Idempotent via `processed_event`.
+   */
+  private async appliquerContratCree(
+    stream: string,
+    donnees: unknown,
+  ): Promise<void> {
+    const evt = contratCreeEventSchema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      const p = evt.payload;
+      await tx
+        .insert(contrat)
+        .values({
+          id: p.contratId,
+          foyerId: p.foyerId,
+          enfant: p.enfant,
+          mode: p.mode,
+          valideDu: p.valideDu,
+          valideAu: p.valideAu,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: contrat.id,
+          set: {
+            foyerId: p.foyerId,
+            enfant: p.enfant,
+            mode: p.mode,
+            valideDu: p.valideDu,
+            valideAu: p.valideAu,
+            updatedAt: new Date(),
+          },
+        });
+    });
+  }
+
+  /**
+   * `ContratModifie` : le contrat a changé (enfant/mode/dates). On met à jour la
+   * table locale `contrat` (upsert : on tolère un `ContratModifie` reçu avant le
+   * `ContratCree` correspondant). Idempotent via `processed_event`.
+   */
+  private async appliquerContratModifie(
+    stream: string,
+    donnees: unknown,
+  ): Promise<void> {
+    const evt = contratModifieEventSchema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      const p = evt.payload;
+      await tx
+        .insert(contrat)
+        .values({
+          id: p.contratId,
+          foyerId: p.foyerId,
+          enfant: p.enfant,
+          mode: p.mode,
+          valideDu: p.valideDu,
+          valideAu: p.valideAu,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: contrat.id,
+          set: {
+            foyerId: p.foyerId,
+            enfant: p.enfant,
+            mode: p.mode,
+            valideDu: p.valideDu,
+            valideAu: p.valideAu,
+            updatedAt: new Date(),
+          },
+        });
+    });
+  }
+
+  /**
+   * `ContratSupprime` : retire le contrat du read model. Idempotent via
+   * `processed_event` (un rejeu supprime une ligne déjà absente : no-op). Tout dans
+   * une seule transaction.
+   */
+  private async appliquerContratSupprime(
+    stream: string,
+    donnees: unknown,
+  ): Promise<void> {
+    const evt = contratSupprimeEventSchema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      const p = evt.payload;
+      await tx.delete(contrat).where(eq(contrat.id, p.contratId));
+    });
+  }
+
+  /** Indique si un événement a déjà été traité (utilitaire de diagnostic/test). */
+  async dejaTraite(id: string): Promise<boolean> {
+    const lignes = await this.db
+      .select()
+      .from(processedEvent)
+      .where(eq(processedEvent.id, id));
+    return lignes.length > 0;
+  }
+}
