@@ -29,6 +29,13 @@
       "when": 1782372837776,
       "tag": "0003_notification_hebdo",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782378336944,
+      "tag": "0004_envoi_mail",
+      "breakpoints": true
     }
   ]
 }

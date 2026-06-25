@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import type { NotificationAValider } from '../types/bff';
 import { messageErreur } from '../utils/erreurs';
 import { useNotifications } from './useNotifications';
+import { RelectureEnvoi } from './RelectureEnvoi';
 
 /** Rend `2026-W27` en libellé lisible « semaine 27 (2026) ». */
 function libelleSemaine(semaineIso: string): string {
@@ -24,6 +25,9 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
   const { data, loading } = useNotifications(foyerId, version);
   const [enCours, setEnCours] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Semaine validée AVEC modifications : on propose alors d'envoyer le récap au
+  // service concerné (relecture + envoi du Lot 6). `null` tant qu'aucune ne le requiert.
+  const [aEnvoyer, setAEnvoyer] = useState<NotificationAValider | null>(null);
 
   // Chargement initial ou aucune semaine à valider : pas d'encart.
   if (loading && !data) return null;
@@ -35,11 +39,15 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
     setMessage(null);
     try {
       const resultat = await api.validerSemaine(n.contratId, n.semaineIso);
+      const avecModifs = resultat.statut === 'VALIDEE_AVEC_MODIFS';
       setMessage(
-        resultat.statut === 'VALIDEE_AVEC_MODIFS'
+        avecModifs
           ? `Planning de la ${libelleSemaine(n.semaineIso)} validé (avec modifications).`
           : `Planning de la ${libelleSemaine(n.semaineIso)} validé.`,
       );
+      // Avec modifications, on doit prévenir le service : on garde la semaine pour
+      // proposer la relecture/envoi (pas d'envoi automatique — relecture obligatoire).
+      setAEnvoyer(avecModifs ? n : null);
       setVersion((v) => v + 1);
     } catch (err) {
       setMessage(messageErreur(err));
@@ -89,6 +97,13 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
           </li>
         ))}
       </ul>
+
+      {aEnvoyer && (
+        <RelectureEnvoi
+          contratId={aEnvoyer.contratId}
+          semaineIso={aEnvoyer.semaineIso}
+        />
+      )}
     </section>
   );
 }

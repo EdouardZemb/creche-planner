@@ -220,6 +220,41 @@ export interface ValidationResultat {
   deltaModifs: DeltaModifs | null;
 }
 
+// ---- Notifications : mail au service (relecture + envoi, Lot 6) ------------
+
+/**
+ * Brouillon régénérable du mail adressé au service (crèche / école ABCM) après
+ * relecture humaine. `dryRun` indique qu'un envoi réel serait neutralisé (bac à
+ * sable ou destinataire hors allowlist) → bandeau d'avertissement avant l'envoi.
+ */
+export interface Brouillon {
+  contratId: string;
+  semaineIso: string;
+  etablissementCle: CleEtablissement;
+  etablissementLibelle: string;
+  destinataire: string;
+  sujet: string;
+  corps: string; // HTML rendu, figé à l'envoi
+  texte: string; // aperçu texte brut
+  deltaModifs: DeltaModifs;
+  dryRun: boolean;
+}
+
+/** Statut d'un envoi de récap au service. */
+export type StatutEnvoi = 'EN_COURS' | 'ENVOYE' | 'ECHEC' | 'DRY_RUN';
+
+/** Résultat d'un envoi (action sortante réelle, idempotente). */
+export interface EnvoiResultat {
+  contratId: string;
+  semaineIso: string;
+  etablissementCle: CleEtablissement;
+  destinataire: string;
+  statut: StatutEnvoi;
+  messageId: string | null;
+  erreur: string | null;
+  envoyeLe: string | null;
+}
+
 // Contrat enrichi conservé côté client (le BFF ne renvoie pas la semaine-type ;
 // on la mémorise pour piloter le calendrier). Voir utils/store.ts.
 export interface ContratLocal extends ContratVue {

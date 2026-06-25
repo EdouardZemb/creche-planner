@@ -7,11 +7,27 @@ vi.mock('../api/client', () => ({
   api: {
     listerAValider: vi.fn(),
     validerSemaine: vi.fn(),
+    lireBrouillon: vi.fn(),
+    envoyerRecap: vi.fn(),
   },
   ApiError: class ApiError extends Error {},
 }));
 
 import { api } from '../api/client';
+
+/** Brouillon par défaut renvoyé à la `RelectureEnvoi` montée après une validation. */
+const BROUILLON = {
+  contratId: '55555555-0000-4000-8000-000000000000',
+  semaineIso: '2026-W27',
+  etablissementCle: 'CRECHE_HIRONDELLES' as const,
+  etablissementLibelle: 'Crèche Les Hirondelles',
+  destinataire: 'contact-creche@example.org',
+  sujet: 'Planning de Léa — semaine 2026-W27 : modifications',
+  corps: '<p>Bonjour</p>',
+  texte: 'Bonjour',
+  deltaModifs: { jours: [{ date: '2026-07-01', avant: null, apres: {} }] },
+  dryRun: true,
+};
 
 const A_VALIDER: NotificationAValider[] = [
   {
@@ -26,6 +42,7 @@ const A_VALIDER: NotificationAValider[] = [
 describe('EncartValidation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(api.lireBrouillon).mockResolvedValue(BROUILLON);
   });
 
   it('ne rend rien quand il n’y a aucune semaine à valider', async () => {

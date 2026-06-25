@@ -5,7 +5,7 @@ import {
   Logger,
   type OnApplicationBootstrap,
 } from '@nestjs/common';
-import { asc } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
@@ -91,6 +91,20 @@ export class EtablissementService implements OnApplicationBootstrap {
         `Seed des établissements impossible (${(erreur as Error).message}) — ignoré`,
       );
     }
+  }
+
+  /**
+   * Résout un établissement par sa clé (destinataire du mail de service, Lot 6).
+   * Renvoie `undefined` si la clé n'est pas (ou plus) en base — l'appelant décide
+   * alors comment dégrader (404 côté envoi).
+   */
+  async parCle(cle: CleEtablissement): Promise<EtablissementVue | undefined> {
+    const lignes = await this.db
+      .select()
+      .from(etablissementDestinataire)
+      .where(eq(etablissementDestinataire.cle, cle));
+    const ligne = lignes[0];
+    return ligne ? this.versVue(ligne) : undefined;
   }
 
   /** Liste les établissements destinataires (ordre alphabétique de clé). */

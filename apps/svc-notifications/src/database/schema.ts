@@ -2,6 +2,7 @@ import {
   boolean,
   jsonb,
   pgTable,
+  text,
   timestamp,
   unique,
   uuid,
@@ -171,6 +172,75 @@ export const notificationHebdo = pgTable(
   ],
 );
 
+// --- Journal des envois de mail au service (action sortante réelle) ----------
+
+/**
+ * Statut d'un envoi de récap au service :
+ * - `EN_COURS` : ligne posée (slot réservé) avant l'appel au transport — un crash
+ *   entre l'insert et l'update laisse cette trace plutôt qu'un envoi fantôme ;
+ * - `ENVOYE` : transport SMTP réel sollicité, `message_id` renseigné ;
+ * - `DRY_RUN` : envoi neutralisé par le garde-fou du mailer (bac à sable ou
+ *   destinataire hors allowlist) — aucun SMTP réel, `message_id` nul ;
+ * - `ECHEC` : le transport a levé — `erreur` porte le motif, rien n'est parti.
+ */
+export const STATUTS_ENVOI = [
+  'EN_COURS',
+  'ENVOYE',
+  'ECHEC',
+  'DRY_RUN',
+] as const;
+export type StatutEnvoi = (typeof STATUTS_ENVOI)[number];
+
+/**
+ * Journal de l'**action sortante réelle** (cœur du Lot 6) : le mail récapitulatif
+ * envoyé au service concerné (crèche / école ABCM) après relecture humaine. C'est la
+ * première I/O vers un tiers réel : la ligne en porte la **preuve** (`destinataire`
+ * figé, `sujet`, `corps` rendu) et le **résultat** (`statut`, `message_id`/`erreur`).
+ *
+ * La clé `UNIQUE(contrat_id, semaine_iso, etablissement_cle)` garantit l'idempotence :
+ * un second clic « Envoyer » (ou un rejeu) ne ré-émet pas le même récap — l'insert
+ * `onConflictDoNothing` ne réserve le slot qu'une fois, et l'appelant renvoie alors
+ * l'envoi déjà journalisé. `destinataire`/`sujet`/`corps` sont **figés** à l'insert :
+ * ils prouvent ce qui a réellement été adressé, indépendamment d'une édition ultérieure
+ * de l'annuaire ou du planning.
+ */
+export const envoiMail = pgTable(
+  'envoi_mail',
+  {
+    id: uuid('id').primaryKey(),
+    /** Contrat concerné (read model `contrat`). */
+    contratId: uuid('contrat_id').notNull(),
+    /** Semaine ISO 8601 du récap, format `YYYY-Www`. */
+    semaineIso: varchar('semaine_iso', { length: 8 }).notNull(),
+    /** Clé de l'établissement destinataire (`CRECHE_HIRONDELLES` | `ABCM`). */
+    etablissementCle: varchar('etablissement_cle', { length: 32 }).notNull(),
+    /** Adresse réellement visée, **figée** à l'insert (preuve, pas une jointure vive). */
+    destinataire: varchar('destinataire', { length: 320 }).notNull(),
+    /** Sujet du mail, figé. */
+    sujet: varchar('sujet', { length: 300 }).notNull(),
+    /** Corps rendu (HTML), figé — preuve du contenu adressé au service. */
+    corps: text('corps').notNull(),
+    /** Statut courant (cf. `STATUTS_ENVOI`). */
+    statut: varchar('statut', { length: 16 }).notNull(),
+    /** Identifiant de message SMTP (`null` en dry-run / avant complétion). */
+    messageId: varchar('message_id', { length: 998 }),
+    /** Motif de l'échec si `statut = ECHEC` (`null` sinon). */
+    erreur: text('erreur'),
+    /** Horodatage de complétion (`null` tant que `EN_COURS`). */
+    envoyeLe: timestamp('envoye_le', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique('envoi_mail_contrat_semaine_etab_uq').on(
+      table.contratId,
+      table.semaineIso,
+      table.etablissementCle,
+    ),
+  ],
+);
+
 // --- Idempotence de consommation --------------------------------------------
 
 /**
@@ -215,5 +285,6 @@ export const outbox = pgTable('outbox', {
 export type ContratRow = typeof contrat.$inferSelect;
 export type EtablissementRow = typeof etablissementDestinataire.$inferSelect;
 export type NotificationHebdoRow = typeof notificationHebdo.$inferSelect;
+export type EnvoiMailRow = typeof envoiMail.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;
