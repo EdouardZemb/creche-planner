@@ -402,6 +402,7 @@ jobs:
         run: >-
           docker compose up -d --build --wait
           web api-gateway svc-referentiel svc-foyer svc-planification svc-tarification
+          svc-notifications
 
       # SMOKE 1 — santé gateway. La gateway a un préfixe global `api`
       # (app.config.ts) → la santé est exposée en /api/health ; /health renvoie 404

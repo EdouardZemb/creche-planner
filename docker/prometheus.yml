@@ -40,9 +40,9 @@ scrape_configs:
       - targets: ['nats-exporter:7777']
 
   # Métriques Postgres (Phase 13c) via postgres-exporter — une cible par base. Le
-  # label `base` (referentiel/foyer/planification/tarification) identifie l'instance ;
-  # les métriques portent aussi `datname` (base interrogée) et `server` (hôte:port).
-  # `pg_up == 0` = exporter joignable mais DB injoignable → alerte PostgresDown.
+  # label `base` (referentiel/foyer/planification/tarification/notifications) identifie
+  # l'instance ; les métriques portent aussi `datname` (base interrogée) et `server`
+  # (hôte:port). `pg_up == 0` = exporter joignable mais DB injoignable → PostgresDown.
   - job_name: 'postgres'
     static_configs:
       - targets: ['postgres-exporter-referentiel:9187']
@@ -53,8 +53,10 @@ scrape_configs:
         labels: { base: planification }
       - targets: ['postgres-exporter-tarification:9187']
         labels: { base: tarification }
+      - targets: ['postgres-exporter-notifications:9187']
+        labels: { base: notifications }
 
-  # Sondes « boîte noire » des 5 services APPLICATIFS (Phase 6). Jusqu'ici aucun
+  # Sondes « boîte noire » des 6 services APPLICATIFS (Phase 6). Jusqu'ici aucun
   # svc-* ni l'api-gateway n'était scrapé : si la gateway tombait, AUCUNE alerte
   # ne partait. On sonde l'endpoint de LIVENESS (/api/health/live, sans dépendance
   # externe) via le blackbox-exporter. Le résultat est exposé en `probe_success`
@@ -74,6 +76,7 @@ scrape_configs:
           - http://svc-foyer:3002/api/health/live
           - http://svc-planification:3004/api/health/live
           - http://svc-tarification:3005/api/health/live
+          - http://svc-notifications:3006/api/health/live
     relabel_configs:
       # 1) L'adresse de la cible devient le paramètre ?target= passé au prober.
       - source_labels: [__address__]

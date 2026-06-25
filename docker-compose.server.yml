@@ -49,6 +49,11 @@ services:
     environment:
       POSTGRES_PASSWORD: ${PG_TARIFICATION_PWD:?defini .env.server}
 
+  postgres-notifications:
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${PG_NOTIFICATIONS_PWD:?defini .env.server}
+
   nats:
     restart: unless-stopped
 
@@ -73,6 +78,11 @@ services:
     restart: unless-stopped
     environment:
       DATA_SOURCE_NAME: postgresql://tarification:${PG_TARIFICATION_PWD:?defini .env.server}@postgres-tarification:5432/tarification?sslmode=disable
+
+  postgres-exporter-notifications:
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgresql://notifications:${PG_NOTIFICATIONS_PWD:?defini .env.server}@postgres-notifications:5432/notifications?sslmode=disable
 
   # --- Observabilité ---------------------------------------------------------
   otel-collector:
@@ -136,6 +146,34 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://tarification:${PG_TARIFICATION_PWD:?defini .env.server}@postgres-tarification:5432/tarification
+
+  # Lot 7 — svc-notifications : image GHCR + secret BDD + e-mails récap (Lots 5 & 6).
+  # ENVOI RÉEL = effet de bord vers un tiers → GARDE-FOU EN PROFONDEUR :
+  #   - NOTIF_EMAIL_DRY_RUN défaut `true` ici → AUCUN SMTP réel tant qu'on ne pose pas
+  #     EXPLICITEMENT `false` dans .env.server (config.ts ne sort du bac à sable que
+  #     sur un `false` littéral) ;
+  #   - NOTIF_EMAIL_ALLOWLIST (CSV) neutralise tout destinataire hors liste (rodage) ;
+  #   - le transport réutilise le MÊME mot de passe d'application Gmail qu'Alertmanager
+  #     (ALERTMANAGER_SMTP_PASSWORD) — mappé sur SMTP_PASSWORD, jamais dupliqué en clair.
+  # Le lien « valider » des mails pointe vers l'origine publique (SERVER_ORIGIN).
+  # Cf. .env.server.example (§ svc-notifications) et apps/svc-notifications/src/config.ts.
+  svc-notifications:
+    image: ghcr.io/edouardzemb/creche-planner/svc-notifications:${IMAGE_TAG:-main}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://notifications:${PG_NOTIFICATIONS_PWD:?defini .env.server}@postgres-notifications:5432/notifications
+      # URL publique = base du lien « valider la semaine » inséré dans les mails.
+      NOTIF_APP_URL: ${SERVER_ORIGIN:?defini .env.server}
+      # Transport SMTP (Gmail) — voir config.ts (clés SMTP_USER/SMTP_PASSWORD). Le mot
+      # de passe est celui d'Alertmanager (app password Gmail), non redupliqué.
+      SMTP_USER: ${NOTIF_SMTP_USER:-}
+      SMTP_PASSWORD: ${ALERTMANAGER_SMTP_PASSWORD:-}
+      NOTIF_EMAIL_FROM: ${NOTIF_EMAIL_FROM:-Crèche Planner <edouard.zemb@gmail.com>}
+      NOTIF_EMAIL_PARENT: ${NOTIF_EMAIL_PARENT:-edouard.zemb@gmail.com}
+      # GARDE-FOU : dry-run par défaut. Passer NOTIF_EMAIL_DRY_RUN=false dans .env.server
+      # SEULEMENT quand l'envoi réel au service est validé bout-en-bout.
+      NOTIF_EMAIL_DRY_RUN: ${NOTIF_EMAIL_DRY_RUN:-true}
+      NOTIF_EMAIL_ALLOWLIST: ${NOTIF_EMAIL_ALLOWLIST:-}
 
   # --- Gateway (BFF) : durcissement applicatif -------------------------------
   api-gateway:
