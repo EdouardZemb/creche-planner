@@ -1538,5 +1538,36 @@ fichier généré au commit ; (c) le surrogate`can-i-deploy.mjs`(ADR-0005) tient
     (hand-typé, hors OpenAPI). **Pact** : nouvelle interaction consumer (PUT → 204) sur l'état **existant**
     `ETAT_CONTRAT_EXISTE` (aucun nouveau provider/état, rien à changer dans `can-i-deploy`). **Piège
     reproduit** : `nx build svc-planification` **avant** typecheck (dist partagé périmé → `TS6305`).
-  - **Phases 3-4 à venir** : (3) écran web éditeur consolidé ; (4) mail récap **agrégé par établissement**
-    (remplace l'envoi par-contrat du Lot 6).
+- **Phase 3 — Web : éditeur hebdomadaire consolidé depuis la notification** (`apps/web`) :
+  - Depuis l'`EncartValidation`, un bouton **« Éditer la semaine »** (à côté de « Valider ») ouvre **en
+    ligne** un éditeur consolidé (foyer + semaine) qui charge la vue Phase 1 (`api.lireSemaineBesoins`),
+    **groupe** les contrats actifs de la semaine par **établissement → enfant/mode** et rend les **besoins
+    datés éditables jour par jour**, bornés aux **7 jours de la semaine notifiée** (décision produit : pas de
+    navigation inter-semaines).
+  - **Réutilisation, pas de duplication** : extraction des helpers purs `HH:MM ↔ PlageHoraire`
+    (`planning/heures.ts` : `versHhmm`/`minutesDeHhmm`/`plageDepuisHeures`/`plageValide`/`formaterPlage`)
+    partagés par `CalendrierCreche` (mensuel) et l'éditeur hebdo. **L'édition mensuelle reste inchangée** (le
+    piège « casser les calendriers en factorisant » est évité : seuls des helpers purs sont extraits, les
+    composants calendrier ne sont pas refactorés). La vue hebdo n'expose **pas** la semaine-type (le BFF ne
+    renvoie que les entrées datées) → on édite directement ces entrées, sans repère « jour gardé ».
+  - **Composants** : `EditeurSemaine` (orchestrateur : chargement `useAsync`, regroupement, états
+    loading/erreur/vide) + `EditeurContratSemaine` (éditeur **par contrat** : 7 rangées jour, modale d'édition
+    selon le mode — absence/jour ajouté (crèche), cantine, matin/soir (péri), type+repas (ALSH) —, suppression,
+    résumé par jour). **Écriture** debounce 800 ms via `useEcritureSemaine` (jumeau de `usePlanning`) →
+    `api.ecrireSemaineBesoins` (fusion mois côté serveur, Phase 2). Corps envoyé = **état complet** de la
+    semaine pour ce contrat (la fusion serveur retire puis ré-insère la fenêtre → suppression d'un jour =
+    absence de l'entrée).
+  - **Validation par contrat** (comportement inchangé, décision produit) : bouton **« Valider »** par contrat
+    (`api.validerSemaine`), désactivé pendant un enregistrement en vol ; sur `VALIDEE_AVEC_MODIFS`, montage de
+    la `RelectureEnvoi` existante (récap au service, Lot 6 — sera **agrégé par établissement** en Phase 4).
+  - **A11y** : modale accessible réutilisée (`ui/Modale`, piège-focus), région live d'annonce des mutations,
+    libellés de boutons **datés** (`Modifier/Saisir le <jour>`) → cibles uniques même quand la **même date
+    apparaît dans plusieurs contrats** (piège « found multiple elements » du Lot 6 : tests ciblés par
+    aria-label daté, jamais par texte de date partagé). Hiérarchie de titres encart h2 → éditeur h3 →
+    établissement h4 → contrat h5.
+  - **Tests** : `EditeurSemaine.test` (rendu groupé établissement/enfant, édition→`ecrireSemaineBesoins`
+    debounce avec corps attendu, validation par contrat + `RelectureEnvoi`), `EncartValidation.test` étendu
+    (ouverture de l'éditeur ; mocks `api.lireSemaineBesoins`/`ecrireSemaineBesoins` ajoutés). lint/typecheck/
+    test/build web **verts** (290 tests). **Hors OpenAPI** (routes hand-typées) → aucun drift, aucun nouveau
+    provider Pact, rien à toucher côté déploiement.
+  - **Phase 4 à venir** : mail récap **agrégé par établissement** (remplace l'envoi par-contrat du Lot 6).

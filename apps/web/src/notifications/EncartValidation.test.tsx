@@ -9,6 +9,9 @@ vi.mock('../api/client', () => ({
     validerSemaine: vi.fn(),
     lireBrouillon: vi.fn(),
     envoyerRecap: vi.fn(),
+    // Ouvrir l'éditeur hebdomadaire (Phase 3) charge la vue consolidée.
+    lireSemaineBesoins: vi.fn(),
+    ecrireSemaineBesoins: vi.fn(),
   },
   ApiError: class ApiError extends Error {},
 }));
@@ -39,10 +42,40 @@ const A_VALIDER: NotificationAValider[] = [
   },
 ];
 
+const SEMAINE_BESOINS = {
+  semaineIso: '2026-W27',
+  jours: [
+    '2026-06-29',
+    '2026-06-30',
+    '2026-07-01',
+    '2026-07-02',
+    '2026-07-03',
+    '2026-07-04',
+    '2026-07-05',
+  ],
+  etablissements: [
+    {
+      cle: 'CRECHE_HIRONDELLES' as const,
+      libelle: 'Crèche Les Hirondelles',
+      preavisRegle: { type: 'JOURS_OUVRES' as const, valeur: 2 },
+    },
+  ],
+  contrats: [
+    {
+      contratId: '55555555-0000-4000-8000-000000000000',
+      enfant: 'Léa',
+      mode: 'CRECHE_PSU' as const,
+      etablissementCle: 'CRECHE_HIRONDELLES' as const,
+      besoins: {},
+    },
+  ],
+};
+
 describe('EncartValidation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.lireBrouillon).mockResolvedValue(BROUILLON);
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(SEMAINE_BESOINS);
   });
 
   it('ne rend rien quand il n’y a aucune semaine à valider', async () => {
@@ -94,5 +127,34 @@ describe('EncartValidation', () => {
     expect(
       await screen.findByText(/validé \(avec modifications\)/i),
     ).toBeInTheDocument();
+  });
+
+  it('ouvre l’éditeur hebdomadaire consolidé depuis « Éditer la semaine »', async () => {
+    vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER);
+    render(<EncartValidation foyerId="foyer-1" />);
+
+    const bouton = await screen.findByRole('button', {
+      name: 'Éditer la semaine',
+    });
+    fireEvent.click(bouton);
+
+    await waitFor(() => {
+      expect(api.lireSemaineBesoins).toHaveBeenCalledWith(
+        'foyer-1',
+        '2026-W27',
+        {
+          signal: expect.anything(),
+        },
+      );
+    });
+    expect(
+      await screen.findByRole('heading', {
+        name: /Éditer les besoins de la semaine 27/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText('Crèche Les Hirondelles'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Léa — Crèche PSU/)).toBeInTheDocument();
   });
 });
