@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import type { StatutNotification } from '../database/schema.js';
 import type { DeltaModifs } from './validation.diff.js';
-import { estSemaineIso } from './semaine.js';
+import { estSemaineIso } from '@creche-planner/shared-semaine';
 
 /**
  * Vue d'une semaine **à valider** (liste in-app). Volontairement réduite à ce que

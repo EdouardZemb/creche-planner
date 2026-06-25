@@ -1,32 +1,29 @@
 /**
- * Diff **pur** d'une semaine de planning. Le planning d'un mois (`planning_mois.saisie`
- * côté `svc-planification`) est un objet libre dont seules les entrées **datées**
- * portent un jour précis : `joursSupplementaires`, `absences`, `exceptions`,
- * `joursAlsh` (chacune un tableau d'items `{ date: 'YYYY-MM-DD', … }`). Les scalaires
- * mensuels (`complementMinutes`, `pai`) ne sont pas rattachables à un jour : ils sont
- * **hors périmètre** du diff hebdomadaire, qui raisonne jour par jour.
+ * Diff **pur** d'une semaine de planning. L'extraction de la fenêtre d'une semaine
+ * (entrées datées restreintes aux 7 jours → `SnapshotSemaine` canonique) est
+ * désormais partagée dans `@creche-planner/shared-semaine` (`extraireSemaine`),
+ * consommée aussi par le BFF gateway et `svc-planification`. Ce module garde la
+ * partie **propre à la validation** : comparer deux snapshots et renvoyer les jours
+ * qui diffèrent. Aucune I/O, aucune horloge : testable par propriétés et oracles.
  *
- * `extraireSemaine` restreint ces entrées datées aux 7 jours de la semaine pour
- * produire un `SnapshotSemaine` canonique (jour → entrées). `calculerDelta` compare
- * deux snapshots et renvoie les jours qui diffèrent. Aucune I/O, aucune horloge : le
- * module est testable par propriétés et oracles.
+ * `extraireSemaine` et les types `SaisieJour`/`SnapshotSemaine` sont **réexportés**
+ * ici pour rester le point d'accès historique des consommateurs internes
+ * (`schema.ts`, `brouillonService.ts`, `validation.service.ts`).
  */
 
-/** Catégories d'entrées **datées** d'une saisie mensuelle (jour par jour). */
-const CATEGORIES_DATEES = [
-  'joursSupplementaires',
-  'absences',
-  'exceptions',
-  'joursAlsh',
-] as const;
+import type {
+  SaisieJour,
+  SnapshotSemaine,
+} from '@creche-planner/shared-semaine';
 
-type CategorieDatee = (typeof CATEGORIES_DATEES)[number];
-
-/** Entrées de planning rattachées à un même jour (`YYYY-MM-DD`). */
-export type SaisieJour = Readonly<Record<CategorieDatee, readonly unknown[]>>;
-
-/** Vue canonique d'une semaine : jour → entrées datées (jours vides omis). */
-export type SnapshotSemaine = Readonly<Record<string, SaisieJour>>;
+// Réexport du point d'accès historique : les consommateurs internes (`schema.ts`,
+// `brouillonService.ts`, `validation.service.ts`, specs) importent l'extraction de
+// fenêtre et ses types depuis `validation.diff` — la source réelle est partagée.
+export { extraireSemaine } from '@creche-planner/shared-semaine';
+export type {
+  SaisieJour,
+  SnapshotSemaine,
+} from '@creche-planner/shared-semaine';
 
 /** Un jour dont les entrées diffèrent entre deux snapshots (`null` = jour absent). */
 export interface DeltaJour {
@@ -38,57 +35,6 @@ export interface DeltaJour {
 /** Ensemble des jours modifiés entre snapshot et relecture (vide ⇒ aucune modif). */
 export interface DeltaModifs {
   readonly jours: readonly DeltaJour[];
-}
-
-function jourVide(): Record<CategorieDatee, unknown[]> {
-  return {
-    joursSupplementaires: [],
-    absences: [],
-    exceptions: [],
-    joursAlsh: [],
-  };
-}
-
-/**
- * Extrait la vue canonique des jours d'une semaine à partir d'une ou deux saisies
- * mensuelles (une semaine peut chevaucher deux mois). On ne retient que les entrées
- * datées dont la `date` tombe dans `jours` ; un jour sans aucune entrée n'apparaît
- * pas dans le snapshot (forme canonique → diff stable).
- */
-export function extraireSemaine(
-  plannings: readonly (Record<string, unknown> | null | undefined)[],
-  jours: readonly string[],
-): SnapshotSemaine {
-  const fenetre = new Set(jours);
-  const snapshot: Record<string, Record<CategorieDatee, unknown[]>> = {};
-  const garantir = (date: string) => {
-    const existant = snapshot[date];
-    if (existant) {
-      return existant;
-    }
-    const cree = jourVide();
-    snapshot[date] = cree;
-    return cree;
-  };
-
-  for (const planning of plannings) {
-    if (!planning) {
-      continue;
-    }
-    for (const categorie of CATEGORIES_DATEES) {
-      const valeur = planning[categorie];
-      if (!Array.isArray(valeur)) {
-        continue;
-      }
-      for (const item of valeur) {
-        const date = (item as { date?: unknown }).date;
-        if (typeof date === 'string' && fenetre.has(date)) {
-          garantir(date)[categorie].push(item);
-        }
-      }
-    }
-  }
-  return snapshot;
 }
 
 /** Égalité structurelle de deux jours (les deux snapshots viennent du même serveur). */

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { CleEtablissement } from '../etablissement/etablissement.dto.js';
 import type { StatutEnvoi } from '../database/schema.js';
 import type { DeltaModifs } from '../validation/validation.diff.js';
-import { estSemaineIso } from '../validation/semaine.js';
+import { estSemaineIso } from '@creche-planner/shared-semaine';
 
 /**
  * Brouillon **régénérable** du mail de service (`GET .../brouillon`). Lecture seule :

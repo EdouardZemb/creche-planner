@@ -4,7 +4,7 @@ import {
   calculerDelta,
   extraireSemaine,
 } from './validation.diff.js';
-import { joursDeLaSemaine } from './semaine.js';
+import { joursDeLaSemaine } from '@creche-planner/shared-semaine';
 
 const JOURS_W27 = joursDeLaSemaine('2026-W27'); // 2026-06-29 … 2026-07-05
 
@@ -18,34 +18,9 @@ const absence = (date: string) => ({
   certificatMaladie: false,
 });
 
-describe('extraireSemaine', () => {
-  it('ne retient que les entrées datées dans la fenêtre de la semaine', () => {
-    const saisie = {
-      complementMinutes: 30, // scalaire mensuel : hors périmètre jour
-      absences: [
-        absence('2026-06-29'), // dans la semaine
-        absence('2026-06-15'), // hors semaine
-      ],
-    };
-    const snap = extraireSemaine([saisie], JOURS_W27);
-    expect(Object.keys(snap)).toEqual(['2026-06-29']);
-    expect(snap['2026-06-29']?.absences).toHaveLength(1);
-  });
-
-  it('fusionne les saisies des deux mois d’une semaine à cheval', () => {
-    const juin = { absences: [absence('2026-06-30')] };
-    const juillet = { joursSupplementaires: [{ date: '2026-07-02' }] };
-    const snap = extraireSemaine([juin, juillet], JOURS_W27);
-    expect(Object.keys(snap).sort()).toEqual(['2026-06-30', '2026-07-02']);
-    expect(snap['2026-07-02']?.joursSupplementaires).toHaveLength(1);
-  });
-
-  it('ignore les entrées sans date et les saisies nulles/absentes', () => {
-    const saisie = { absences: [{ preavisJours: 0 }] }; // pas de `date`
-    expect(extraireSemaine([saisie, null, undefined], JOURS_W27)).toEqual({});
-  });
-});
-
+// `extraireSemaine` (extraction de la fenêtre) est désormais testé dans
+// `@creche-planner/shared-semaine` (`fenetre.spec.ts`) ; il sert ici uniquement à
+// construire les snapshots `avant`/`apres` du diff propre à la validation.
 describe('calculerDelta / aDesModifs', () => {
   it('snapshot identique ⇒ aucun jour modifié (validation simple)', () => {
     const saisie = { absences: [absence('2026-06-29')] };

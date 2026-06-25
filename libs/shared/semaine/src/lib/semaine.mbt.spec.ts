@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
+  estSemaineIso,
   joursDeLaSemaine,
   moisDeLaSemaine,
   parseSemaineIso,
@@ -115,13 +116,25 @@ describe('MBT semaine ISO ↔ mois / jours', () => {
     });
   });
 
-  // --- Classes d'erreur ----------------------------------------------------
-  describe('formes invalides', () => {
-    it.each([['2026-W00'], ['2026-W54'], ['2026-27'], ['2026W27'], ['abc']])(
-      'parseSemaineIso(%s) lève',
+  // --- Formes valides / invalides ------------------------------------------
+  describe('estSemaineIso / parseSemaineIso', () => {
+    it.each([['2026-W01'], ['2026-W27'], ['2026-W53'], ['0001-W09']])(
+      'estSemaineIso(%s) = true',
       (valeur) => {
+        expect(estSemaineIso(valeur)).toBe(true);
+      },
+    );
+
+    it.each([['2026-W00'], ['2026-W54'], ['2026-27'], ['2026W27'], ['abc']])(
+      'estSemaineIso(%s) = false et parseSemaineIso lève',
+      (valeur) => {
+        expect(estSemaineIso(valeur)).toBe(false);
         expect(() => parseSemaineIso(valeur)).toThrow();
       },
     );
+
+    it('semaineIsoDeDate lève sur une date invalide', () => {
+      expect(() => semaineIsoDeDate('pas-une-date')).toThrow();
+    });
   });
 });

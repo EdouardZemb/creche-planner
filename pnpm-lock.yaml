@@ -368,6 +368,9 @@ importers:
       '@creche-planner/shared-kernel':
         specifier: workspace:*
         version: link:../../libs/shared-kernel
+      '@creche-planner/shared-semaine':
+        specifier: workspace:*
+        version: link:../../libs/shared/semaine
       '@nestjs/common':
         specifier: ^11.1.27
         version: 11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -916,6 +919,12 @@ importers:
         version: 2.8.1
 
   libs/shared-kernel:
+    dependencies:
+      tslib:
+        specifier: ^2.3.0
+        version: 2.8.1
+
+  libs/shared/semaine:
     dependencies:
       tslib:
         specifier: ^2.3.0
