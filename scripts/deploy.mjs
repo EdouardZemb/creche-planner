@@ -113,9 +113,9 @@ const COMPOSE = [
   ...COMPOSE_FILES.flatMap((f) => ['-f', f]),
 ];
 // Sous-ensemble de services passé à `up -d --wait` (Porte 2 ET rollback). VIDE en
-// prod (= pile entière). Le STAGING ne lève que les 6 services applicatifs (leurs
+// prod (= pile entière). Le STAGING ne lève que les services applicatifs (leurs
 // depends_on tirent l'infra), pas l'observabilité lourde :
-//   DEPLOY_UP_SERVICES="web api-gateway svc-referentiel svc-foyer svc-planification svc-tarification"
+//   DEPLOY_UP_SERVICES="web api-gateway svc-referentiel svc-foyer svc-planification svc-tarification svc-notifications"
 const UP_SERVICES = (process.env.DEPLOY_UP_SERVICES ?? '')
   .trim()
   .split(/\s+/)
@@ -366,7 +366,7 @@ function resoudreRef() {
 /**
  * Version actuellement DÉPLOYÉE (cible du rollback), lue AVANT toute mutation
  * depuis les labels OCI du CONTENEUR gateway en place. Priorité :
- * `.image.version` (semver de train — couvre les 6 services, rollback uniforme) >
+ * `.image.version` (semver de train — couvre tous les services, rollback uniforme) >
  * `.image.revision` (SHA). '' si aucun conteneur (1er déploiement) ⇒ pas de
  * rollback possible. Un override explicite `DEPLOY_PREVIOUS_TAG` court-circuite la
  * détection (utile en test, ou si l'opérateur connaît la cible).
@@ -490,7 +490,7 @@ async function main() {
   await creerDeploiement(ref);
 
   // Porte 2 — démarrage (healthcheck = porte via --wait). UP_SERVICES vide en prod
-  // (pile entière) ; en staging, seulement les 6 services applicatifs.
+  // (pile entière) ; en staging, seulement les services applicatifs.
   console.log('\n▶ Porte 2 — démarrage de la pile (up -d --wait)');
   if (
     porteEchoue(

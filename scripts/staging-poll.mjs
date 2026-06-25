@@ -57,6 +57,7 @@ const REGISTRE = 'ghcr.io/edouardzemb/creche-planner';
 const PROJETS_DEPLOYABLES = [
   'api-gateway',
   'svc-foyer',
+  'svc-notifications',
   'svc-planification',
   'svc-referentiel',
   'svc-tarification',
@@ -115,7 +116,7 @@ export function agregerDigests(digestsParRef) {
 }
 
 /**
- * Digest AGRÉGÉ des 6 images déployables au tag `:main`. '' si la sonde d'AU MOINS une
+ * Digest AGRÉGÉ des images déployables au tag `:main`. '' si la sonde d'AU MOINS une
  * image échoue → le tick est abandonné proprement (marqueur intact, réessai au prochain)
  * plutôt que de marquer un état partiel/faux.
  */
@@ -170,7 +171,9 @@ function main() {
     process.exit(1);
   }
   const local = marqueurLocal();
-  console.log(`  digest distant : ${distant} (agrégat des 6 images)`);
+  console.log(
+    `  digest distant : ${distant} (agrégat des ${PROJETS_DEPLOYABLES.length} images)`,
+  );
   console.log(`  digest déployé : ${local || '(aucun — 1er run)'}`);
 
   if (distant === local && !FORCE) {

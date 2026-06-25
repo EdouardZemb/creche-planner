@@ -5,7 +5,8 @@
 #     -f docker-compose.yml -f docker-compose.staging.yml pull
 #   docker compose --env-file .env.staging \
 #     -f docker-compose.yml -f docker-compose.staging.yml up -d --wait \
-#       web api-gateway svc-referentiel svc-foyer svc-planification svc-tarification
+#       web api-gateway svc-referentiel svc-foyer svc-planification svc-tarification \
+#       svc-notifications
 #
 # POURQUOI un staging ? `:main` est construit/poussé à chaque merge (build-images)
 # mais n'était JAMAIS déployé ni fumé sur une pile en marche avant la prod (seul
@@ -22,8 +23,8 @@
 #     joignable depuis le LAN. Pas de Caddy, pas de cloudflared : RIEN d'exposé
 #     publiquement (la topologie pull-based « zéro port entrant » est préservée).
 #
-# EMPREINTE « LEAN » : on ne lance que les 6 services APPLICATIFS (+ leurs deps
-# infra : 4 Postgres, NATS, otel-collector→tempo tirés par depends_on). On NE
+# EMPREINTE « LEAN » : on ne lance que les 7 services APPLICATIFS (+ leurs deps
+# infra : 5 Postgres, NATS, otel-collector→tempo tirés par depends_on). On NE
 # double PAS l'observabilité lourde (Prometheus/Grafana/Alertmanager/blackbox) :
 # la prod la porte déjà, et le but du staging est de valider que `:main` boote et
 # passe les smokes — pas d'exploiter un 2e SOC. Le sous-ensemble `up` est le MÊME
@@ -53,6 +54,9 @@ services:
   postgres-tarification:
     restart: unless-stopped
 
+  postgres-notifications:
+    restart: unless-stopped
+
   nats:
     restart: unless-stopped
 
@@ -77,6 +81,15 @@ services:
 
   svc-tarification:
     image: ghcr.io/edouardzemb/creche-planner/svc-tarification:${IMAGE_TAG:-main}
+    restart: unless-stopped
+
+  # Lot 7 — svc-notifications consomme l'image GHCR `:main` (sans cet override il
+  # serait RECONSTRUIT depuis la source sur le serveur, brisant la parité d'artefact).
+  # Aucun secret : envoi e-mail en DRY-RUN par défaut (config.ts), pas de SMTP en
+  # staging. La gateway en dépend déjà (depends_on, base) ; on l'ajoute aussi au
+  # sous-ensemble `up` de .env.staging pour que sa santé soit explicitement attendue.
+  svc-notifications:
+    image: ghcr.io/edouardzemb/creche-planner/svc-notifications:${IMAGE_TAG:-main}
     restart: unless-stopped
 
   # --- Gateway (BFF) : image GHCR + port LOOPBACK pour les smokes --------------

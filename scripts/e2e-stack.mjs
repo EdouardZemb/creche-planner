@@ -42,6 +42,7 @@ const SERVICES = [
   'svc-foyer',
   'svc-planification',
   'svc-tarification',
+  'svc-notifications',
 ];
 
 /**
@@ -114,7 +115,9 @@ async function main() {
     } else {
       console.log('\n▼ Arrêt de la pile (docker compose down -v)');
       // On ne masque pas une erreur de teardown, mais on n'écrase pas le code Playwright.
-      await executer('docker', ['compose', 'down', '-v']).catch(() => {});
+      await executer('docker', ['compose', 'down', '-v']).catch(() => {
+        /* teardown best-effort : on n'écrase pas le code Playwright */
+      });
     }
   }
 
