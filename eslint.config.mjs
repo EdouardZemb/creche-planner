@@ -232,6 +232,13 @@ export default [
       '**/vite.config.*.timestamp*',
       '.stryker-tmp',
       '**/.stryker-tmp',
+      // Fichiers GÉNÉRÉS (openapi-typescript, AQ-10) : sortie déterministe
+      // comparée à l'octet près en CI (job openapi-types-drift). Aucun
+      // formateur/linter ne doit y toucher — sinon lint-staged (qui tourne avec
+      // CETTE config racine) réécrit le fichier (ex. consistent-indexed-object-style)
+      // et fait diverger le diff. Miroir de `.prettierignore` et de la config
+      // ESLint web-locale (apps/web/eslint.config.mjs).
+      '**/*.gen.ts',
     ],
   },
 ];
