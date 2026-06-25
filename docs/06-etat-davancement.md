@@ -1480,3 +1480,43 @@ les 3 derniers → mapping codé `mode → clé` (`CRECHE_PSU → CRECHE_HIRONDE
 `<SVC>_DATABASE_URL` (notifications → 5437) ; (b) le job `openapi-types-drift` impose d'**ignorer
 `**/\*.gen.ts`dans la config ESLint racine** (utilisée par lint-staged), sinon`eslint --fix`réécrit le
 fichier généré au commit ; (c) le surrogate`can-i-deploy.mjs`(ADR-0005) tient une liste codée`PROVIDERS_ATTENDUS` à laquelle **ajouter chaque nouveau provider**.
+
+### 23.bis Suite — Édition hebdomadaire des besoins depuis la notification (4 phases)
+
+> **Problème** : aujourd'hui une notification hebdo ne permet QUE de **valider** une semaine telle quelle.
+> L'utilisateur veut, **directement depuis la notification**, **éditer les besoins de la semaine pour tous
+> les enfants et tous les établissements concernés**, puis valider. La notification doit donc ouvrir une
+> **vue hebdomadaire consolidée et éditable** du foyer. **Décisions produit** (2026-06-25) : (1) périmètre =
+> **uniquement la semaine notifiée** (pas de navigation) ; (2) la **validation reste par enfant/contrat**
+> (comportement actuel), simplement présentée dans la vue consolidée ; (3) **1 mail par établissement**
+> regroupant tous les enfants concernés (change la granularité d'envoi du Lot 6). Découpage en **4 phases**,
+> 1 phase = 1 PR.
+
+- **Phase 1 — Lecture agrégée de la semaine éditable** (BFF, read-only) :
+  - **Lib partagée** `@creche-planner/shared-semaine` (`libs/shared/semaine`, `type:domain`/`context:shared`,
+    sans dépendance) : **promotion** du mapping pur semaine ISO ↔ mois/jours (`joursDeLaSemaine`,
+    `moisDeLaSemaine`, `semaineIsoDeDate`, `estSemaineIso`, `parseSemaineIso`) **et** de l'extraction de la
+    fenêtre d'une semaine (`extraireSemaine` + types `SaisieJour`/`SnapshotSemaine`) **hors de
+    `svc-notifications`**, pour les rendre consommables par le **BFF gateway** (cette phase) et
+    `svc-planification` (phase 2) sans duplication. `svc-notifications` pointe désormais sur la lib ;
+    `validation.diff` garde le **diff propre à la validation** et **réexporte** `extraireSemaine`/types pour
+    ses consommateurs internes (`schema.ts`, `brouillonService.ts`, `validation.service.ts`). Tests purs
+    (oracle + property) déplacés dans la lib, **100 % de couverture**. **Aucun changement de comportement.**
+  - **Route BFF** `GET /api/v1/notifications/semaine/:foyerId/:semaineIso/besoins` (`ValidationsController`) :
+    vue consolidée éditable d'un foyer. Agrège les **contrats actifs** sur la semaine (mêmes bornes que le
+    scheduler : `valide_du ≤ dimanche ET (valide_au null OU valide_au ≥ lundi)`) et, pour chaque contrat, ses
+    **besoins datés** extraits de la/des saisie(s) mensuelle(s) **réelle(s)** (`simule=false`, lues via
+    `lirePlanning`), rattachés à leur **établissement** (mapping `mode → clé` recalculé côté gateway).
+    Agrégation = fonction **pure** `agregerSemaineBesoins` + filtre pur `estContratActifSurSemaine` ; **DTO de
+    sortie Zod**. La route ne tape que des endpoints amont **déjà contractés Pact** (`listerContrats`,
+    `lirePlanning`, `listerEtablissements`) → **aucun nouveau provider/consumer Pact**, rien à changer dans
+    `can-i-deploy`. **Hand-typée côté web** (`types/bff.ts` : `SemaineBesoins` & co + `api.lireSemaineBesoins`)
+    — hors OpenAPI (le document gateway est **hand-authored** dans `contracts-kernel`, non scanné des
+    contrôleurs → pas de drift). Tests : aggregateur pur (oracle, semaine à cheval, mode inconnu, établissement
+    absent de l'annuaire) + orchestration contrôleur (400 sur semaine ISO invalide, lecture des seuls actifs
+    sur les 2 mois, relais d'erreur amont). **Piège reproduit** : suppression de `semaine.ts` → `dist` périmé
+    (`tsc --build` partagé) provoque des `TS6305`/`TS7006` fantômes → **rebuild `nx build` avant typecheck**
+    (acquis Lots 5-6).
+  - **Phases 2-4 à venir** : (2) écriture hebdo `PUT …/plannings/semaine/:semaineIso` (fusion
+    read-modify-write dans le mois, svc-planification) ; (3) écran web éditeur consolidé ; (4) mail récap
+    **agrégé par établissement** (remplace l'envoi par-contrat du Lot 6).
