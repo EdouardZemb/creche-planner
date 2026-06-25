@@ -34,6 +34,7 @@ const PROVIDERS_ATTENDUS = [
   'svc-referentiel',
   'svc-planification',
   'svc-tarification',
+  'svc-notifications',
 ];
 
 /** @type {string[]} */
