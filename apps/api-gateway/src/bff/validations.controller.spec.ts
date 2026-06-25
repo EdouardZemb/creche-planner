@@ -93,3 +93,74 @@ describe('ValidationsController · semaineBesoins', () => {
     ).rejects.toMatchObject({ status: 502 });
   });
 });
+
+describe('ValidationsController · aValider', () => {
+  const notif = (contratId: string) => ({
+    contratId,
+    foyerId: 'foyer-1',
+    semaineIso: '2026-W28',
+    statut: 'A_VALIDER' as const,
+    notifieeLe: '2026-06-23T06:00:00.000Z',
+  });
+
+  it('refuse l’absence du paramètre foyer (400, sans appel amont)', () => {
+    const listerAValider = vi.fn();
+    const listerContrats = vi.fn();
+    const controller = new ValidationsController(
+      { listerAValider } as unknown as NotificationsClient,
+      { listerContrats } as unknown as PlanificationClient,
+    );
+
+    expect(() => controller.aValider(undefined)).toThrow(BadRequestException);
+    expect(listerAValider).not.toHaveBeenCalled();
+    expect(listerContrats).not.toHaveBeenCalled();
+  });
+
+  it('enrichit chaque notification de l’enfant et du mode (jointure contrats)', async () => {
+    const zoe = contrat({ id: 'c-zoe', enfant: 'Zoé', mode: 'CRECHE_PSU' });
+    const mia = contrat({ id: 'c-mia', enfant: 'Mia', mode: 'CANTINE' });
+    const listerAValider = vi
+      .fn()
+      .mockResolvedValue([notif('c-zoe'), notif('c-mia')]);
+    const listerContrats = vi.fn().mockResolvedValue([zoe, mia]);
+    const controller = new ValidationsController(
+      { listerAValider } as unknown as NotificationsClient,
+      { listerContrats } as unknown as PlanificationClient,
+    );
+
+    const vue = await controller.aValider('foyer-1');
+
+    expect(listerContrats).toHaveBeenCalledWith('foyer-1');
+    expect(vue).toEqual([
+      { ...notif('c-zoe'), enfant: 'Zoé', mode: 'CRECHE_PSU' },
+      { ...notif('c-mia'), enfant: 'Mia', mode: 'CANTINE' },
+    ]);
+  });
+
+  it('relaie sans enrichir une notification dont le contrat n’est plus listé', async () => {
+    const listerAValider = vi.fn().mockResolvedValue([notif('c-disparu')]);
+    const listerContrats = vi.fn().mockResolvedValue([]);
+    const controller = new ValidationsController(
+      { listerAValider } as unknown as NotificationsClient,
+      { listerContrats } as unknown as PlanificationClient,
+    );
+
+    const vue = await controller.aValider('foyer-1');
+
+    expect(vue).toEqual([notif('c-disparu')]);
+    expect(vue[0]).not.toHaveProperty('enfant');
+  });
+
+  it('propage une erreur amont en HttpException (relais)', async () => {
+    const listerAValider = vi.fn().mockRejectedValue(new Error('HTTP 503'));
+    const listerContrats = vi.fn().mockResolvedValue([]);
+    const controller = new ValidationsController(
+      { listerAValider } as unknown as NotificationsClient,
+      { listerContrats } as unknown as PlanificationClient,
+    );
+
+    await expect(controller.aValider('foyer-1')).rejects.toMatchObject({
+      status: 503,
+    });
+  });
+});

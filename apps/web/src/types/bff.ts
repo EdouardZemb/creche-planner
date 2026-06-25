@@ -204,13 +204,20 @@ export type StatutNotification =
   | 'VALIDEE'
   | 'VALIDEE_AVEC_MODIFS';
 
-/** Une semaine à valider (indicateur in-app). */
+/**
+ * Une semaine à valider (indicateur in-app). Enrichie par le BFF (jointure avec les
+ * contrats du foyer) du prénom de l'enfant et du mode de garde, pour distinguer N lignes
+ * d'une même semaine dans l'encart. `enfant`/`mode` sont absents si le contrat n'est plus
+ * listé côté BFF (l'écran retombe alors sur le libellé de repli « Planning de la … »).
+ */
 export interface NotificationAValider {
   contratId: string;
   foyerId: string;
   semaineIso: string; // `YYYY-Www`
   statut: StatutNotification;
   notifieeLe: string; // ISO 8601
+  enfant?: string; // prénom du contrat (enrichi BFF)
+  mode?: string; // mode de garde (chaîne libre ; passer par libelleMode)
 }
 
 /** Un jour modifié entre le snapshot de notification et la relecture. */

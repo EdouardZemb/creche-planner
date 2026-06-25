@@ -1634,3 +1634,23 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
   conservée. Vérifié au rendu réel **desktop + mobile (375px)** : boutons alignés (mêmes `left`/`right` sur les
   7 rangées), zéro retour à la ligne, ellipsis OK, aucun débordement horizontal. lint/typecheck/test/build web
   **verts** (293 tests, +2 sur `formaterDateCourtFr`).
+
+- **Correctif UI/BFF — lignes de l'encart de validation distinguées par enfant + mode** (BFF + `apps/web`) :
+  quand un foyer avait **plusieurs contrats** à valider pour la **même semaine**, l'`EncartValidation` affichait
+  **N lignes identiques** « Planning de la semaine 28 (2026) » (aucun repère enfant/mode), et — pire — l'état
+  était **indexé sur la `semaineIso` seule** : valider un contrat **désactivait les boutons de TOUS** les
+  contrats de la semaine, et le message de succès ne nommait pas l'enfant. Correctif : (1) **BFF** —
+  `GET /api/v1/notifications/a-valider` **enrichit** chaque notification par **jointure** avec `listerContrats`
+  (déjà contracté Pact → **aucun nouveau provider/état**, même technique que `agregerSemaineBesoins`) :
+  ajoute `enfant` + `mode` (relais tel quel si le contrat n'est plus listé, repli côté écran). Type web
+  `NotificationAValider` étendu **à la main** (route hors OpenAPI → pas de drift). (2) **Web** — chaque ligne
+  affiche « **{prénom} — {libelleMode(mode)} · semaine N (AAAA)** » (repli « Planning de la … » sans
+  enrichissement), `enCours` ré-indexé par **`contratId`** (valider un contrat ne désactive plus que **son**
+  bouton), message de succès **nominatif** (« Zoé — semaine 28 (2026) validé »). (3) **A11y** —
+  `aria-label` **distincts** par bouton « Valider »/« Éditer » incluant prénom + mode + semaine (cibles uniques,
+  même esprit que les libellés datés de `EditeurContratSemaine`) ; posés **seulement** quand la notif est
+  enrichie pour conserver le libellé visible comme nom accessible sinon. Tests : `validations.controller.spec`
+  (+4 : enrichissement, contrat disparu non enrichi, 400 sans `foyer`, relais d'erreur), `EncartValidation.test`
+  (+2 : deux contrats même semaine → libellés/aria distincts, validation d'un contrat n'affecte pas l'autre +
+  message nominatif). lint/typecheck/test/build web + api-gateway **verts** (295 tests web, 67 api-gateway, Pact
+  inchangé).
