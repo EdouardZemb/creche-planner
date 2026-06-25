@@ -145,6 +145,49 @@ describe('agregerSemaineBesoins', () => {
     expect(Object.keys(besoins).sort()).toEqual(['2026-06-30', '2026-07-02']);
   });
 
+  it('propage la semaine-type (planning de base) selon le mode', () => {
+    const vue = agregerSemaineBesoins({
+      semaineIso: '2026-W27',
+      jours: JOURS_W27,
+      contrats: [
+        {
+          contrat: {
+            ...contrat({ id: 'c-creche', mode: 'CRECHE_PSU' }),
+            semaineType: {
+              MARDI: [
+                {
+                  debutHeures: 8,
+                  debutMinutes: 0,
+                  finHeures: 17,
+                  finMinutes: 0,
+                },
+              ],
+            },
+          } as ContratVue,
+          saisies: [{}],
+        },
+        {
+          contrat: {
+            ...contrat({ id: 'c-cantine', mode: 'CANTINE' }),
+            semaineAbcm: { JEUDI: { cantine: true } },
+          } as ContratVue,
+          saisies: [{}],
+        },
+      ],
+      annuaire: [HIRONDELLES, ABCM],
+    });
+
+    const creche = vue.contrats.find((c) => c.contratId === 'c-creche');
+    expect(creche?.semaineType?.['MARDI']).toEqual([
+      { debutHeures: 8, debutMinutes: 0, finHeures: 17, finMinutes: 0 },
+    ]);
+    expect(creche?.semaineAbcm).toBeUndefined();
+
+    const cantine = vue.contrats.find((c) => c.contratId === 'c-cantine');
+    expect(cantine?.semaineAbcm?.['JEUDI']).toEqual({ cantine: true });
+    expect(cantine?.semaineType).toBeUndefined();
+  });
+
   it('ignore un mode inconnu (défensif) sans le faire apparaître', () => {
     const vue = agregerSemaineBesoins({
       semaineIso: '2026-W27',

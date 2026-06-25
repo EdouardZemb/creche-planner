@@ -52,6 +52,12 @@ const VUE: SemaineBesoins = {
       enfant: 'Léa',
       mode: 'CRECHE_PSU',
       etablissementCle: 'CRECHE_HIRONDELLES',
+      // Planning de base : gardée le mardi 08:00–17:00 (affiché sans ouvrir la saisie).
+      semaineType: {
+        MARDI: [
+          { debutHeures: 8, debutMinutes: 0, finHeures: 17, finMinutes: 0 },
+        ],
+      },
       besoins: {
         '2026-06-29': {
           joursSupplementaires: [],
@@ -152,6 +158,13 @@ describe('EditeurSemaine', () => {
     expect(screen.getByText('École ABCM')).toBeInTheDocument();
     expect(screen.getByText(/Léa — Crèche PSU/)).toBeInTheDocument();
     expect(screen.getByText(/Tom — Cantine/)).toBeInTheDocument();
+  });
+
+  it('affiche les horaires planifiés (semaine-type) sans ouvrir la saisie', async () => {
+    rendre();
+    // Le mardi 30/06 n'a aucune exception → l'horaire de base du contrat s'affiche
+    // directement dans la rangée du jour (« Gardé 08:00–17:00 »).
+    expect(await screen.findByText('Gardé 08:00–17:00')).toBeInTheDocument();
   });
 
   it('appelle ecrireSemaineBesoins après l’édition d’un jour (debounce)', async () => {

@@ -1605,3 +1605,13 @@ fichier généré au commit ; (c) le surrogate`can-i-deploy.mjs`(ADR-0005) tient
     **verts**. **Piège reproduit** : `tsc --build --emitDeclarationOnly` en état incrémental cassé n'émet pas le
     `.d.ts` de l'app → cascade `TS6305`/`TS7006` fantômes → **rebuild `tsconfig.app.json` (clean dist) avant
     typecheck** (variante du piège dist périmé Lots 5-6).
+
+- **Amélioration UX — horaires planifiés visibles sans ouvrir la saisie** (BFF + `apps/web`) : l'éditeur hebdo
+  n'affichait que les **entrées datées** (exceptions) et tombait sur « — » pour un jour normal, car le **planning
+  de base** du contrat (semaine-type) n'était pas propagé. Le BFF récupérait pourtant déjà cette donnée via le
+  `passthrough` de `listerContrats` puis la **jetait**. Correctif : `agregerSemaineBesoins` propage désormais la
+  **semaine-type selon le mode** (`semaineType` crèche : `jour → PlageHoraire[]` ; `semaineAbcm` ABCM : `jour →
+{cantine,periMatin,periSoir}`), lue **défensivement** (`safeParse` → champ omis si absent, retombe sur « — »).
+  L'`EditeurContratSemaine` enrichit `resume(date)` : une exception datée prime, sinon il affiche l'horaire de
+  base (« Gardé 08:30–17:00 » crèche, services ABCM) directement dans la rangée du jour. Données déjà présentes
+  en staging (vérifié). Routes hors OpenAPI/Pact → aucun drift ni contrat à toucher.
