@@ -1361,7 +1361,7 @@ des `svc-*` ; configs CI/observabilité validées par leurs binaires (`otelcol`/
   alertes visibles dans l'UI `:9093` ; brancher un receiver dans `docker/alertmanager.yml` si besoin.
 - **Non poussé** : branches mergées dans `main` local, **push à la main** par l'auteur.
 
-## 23. Feature Notifications & validation hebdomadaire (✅ Lots 0→6 livrés — feature complète)
+## 23. Feature Notifications & validation hebdomadaire (✅ Lots 0→7 livrés — feature complète & déployée)
 
 > Première **action sortante vers un tiers réel** (e-mail crèche / école). Objectif : chaque **mardi**,
 > notifier le parent pour **valider le planning de la semaine N+1** (e-mail + indicateur in-app) ; en cas
@@ -1454,9 +1454,26 @@ les 3 derniers → mapping codé `mode → clé` (`CRECHE_PSU → CRECHE_HIRONDE
   L'envoi réel ne s'active **qu'en prod** via `docker-compose.server.yml` en posant `NOTIF_EMAIL_DRY_RUN=false`
   **explicitement** (`.env.server.example` documente la bascule et recommande de cantonner l'allowlist à une
   adresse de test pendant le rodage).
-
-**Reste hors périmètre feature** : le **déploiement prod** de `svc-notifications` (le service n'est pas encore
-dans `docker-compose.server.yml`) relève d'un lot d'infra séparé.
+- **Lot 7 — Câblage du déploiement (staging + prod)** (PR #64) : les Lots 0→6 livraient le code mais
+  `svc-notifications` n'était câblé dans **aucun** fichier de déploiement (ni `docker-compose.staging.yml`, ni
+  `docker-compose.server.yml`, ni le poller). Résultat : les écrans web + BFF étaient déployés (portés par
+  `web`/`api-gateway`) mais le **backend ne tournait nulle part** sur staging/prod, et un merge ne touchant que
+  `svc-notifications` ne déclenchait **aucun redéploiement staging** (le poller n'agrégeait que 6 images).
+  Ce lot ajoute : le service `svc-notifications` aux **deux** overrides de déploiement (il consomme l'**image
+  GHCR** — `image:` prime sur `build:`, sinon reconstruction locale = rupture de parité), `postgres-notifications`
+  - son exporter (avec **secret `PG_NOTIFICATIONS_PWD`** en prod) ; le **mapping** `NOTIF_*`/`SMTP_*` dans
+    `docker-compose.server.yml` (**`NOTIF_EMAIL_DRY_RUN=true` par défaut**, lien « valider » = `SERVER_ORIGIN`,
+    mot de passe Gmail réutilisé d'Alertmanager) ; `svc-notifications` dans `PROJETS_DEPLOYABLES` du poller
+    (`scripts/staging-poll.mjs`) et dans `DEPLOY_UP_SERVICES` (`.env.staging.example`) ; la **sonde blackbox**
+    `svc-notifications:3006/api/health/live` + le **scrape Postgres** de la base notifications dans
+    `docker/prometheus.yml` ; et la synchronisation des listes de services de `smoke-stack` / `e2e-stack`.
+    **Deux pièges d'infra CI** (mêmes angles morts que le Lot 3) corrigés dans `config-validation` : ajouter le
+    dummy `PG_NOTIFICATIONS_PWD` au step « merge prod `config -q` », et **booter `postgres-exporter-notifications`**
+    dans le step « pile observabilité » (sinon sa nouvelle cible Prometheus reste `DOWN` et casse l'assertion
+    « toutes les cibles UP » ; le job `blackbox` n'est pas concerné, toutes ses cibles scrapant le même
+    `blackbox-exporter:9115` via relabeling). **À faire hors PR avant le rollout** : poser `PG_NOTIFICATIONS_PWD`
+    dans `.env.server` + `.env.server.enc` (sops, fail-closed `:?`) et garantir l'existence de l'image au tag prod ;
+    ajouter `svc-notifications` au `DEPLOY_UP_SERVICES` du `.env.staging` (gitignored) du clone de staging.
 
 **Pièges d'infra CI rencontrés au Lot 3** (à reproduire pour tout nouveau `svc-*`/contrat) : (a) la
 **vérification Pact provider** exige un Postgres `services:` dédié dans `.github/workflows/ci.yml` + un
