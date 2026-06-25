@@ -870,6 +870,7 @@ jobs:
           PG_FOYER_PWD: ci
           PG_PLANIFICATION_PWD: ci
           PG_TARIFICATION_PWD: ci
+          PG_NOTIFICATIONS_PWD: ci
           GRAFANA_ADMIN_PWD: ci
           SERVER_ORIGIN: https://config-validation.invalid
           SERVER_DOMAIN: config-validation.invalid
