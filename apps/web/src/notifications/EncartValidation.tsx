@@ -4,6 +4,7 @@ import type { NotificationAValider } from '../types/bff';
 import { messageErreur } from '../utils/erreurs';
 import { useNotifications } from './useNotifications';
 import { RelectureEnvoi } from './RelectureEnvoi';
+import { EditeurSemaine } from './EditeurSemaine';
 
 /** Rend `2026-W27` en libellé lisible « semaine 27 (2026) ». */
 function libelleSemaine(semaineIso: string): string {
@@ -28,6 +29,8 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
   // Semaine validée AVEC modifications : on propose alors d'envoyer le récap au
   // service concerné (relecture + envoi du Lot 6). `null` tant qu'aucune ne le requiert.
   const [aEnvoyer, setAEnvoyer] = useState<NotificationAValider | null>(null);
+  // Semaine en cours d'édition (vue hebdo consolidée du foyer). `null` = repliée.
+  const [semaineEditee, setSemaineEditee] = useState<string | null>(null);
 
   // Chargement initial ou aucune semaine à valider : pas d'encart.
   if (loading && !data) return null;
@@ -84,19 +87,47 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
             }}
           >
             <span>Planning de la {libelleSemaine(n.semaineIso)}</span>
-            <button
-              type="button"
-              className="btn"
-              disabled={enCours === n.semaineIso}
-              onClick={() => {
-                void valider(n);
-              }}
-            >
-              {enCours === n.semaineIso ? 'Validation…' : 'Valider'}
-            </button>
+            <span style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn secondaire"
+                aria-expanded={semaineEditee === n.semaineIso}
+                onClick={() => {
+                  setSemaineEditee((s) =>
+                    s === n.semaineIso ? null : n.semaineIso,
+                  );
+                }}
+              >
+                {semaineEditee === n.semaineIso
+                  ? 'Fermer l’éditeur'
+                  : 'Éditer la semaine'}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={enCours === n.semaineIso}
+                onClick={() => {
+                  void valider(n);
+                }}
+              >
+                {enCours === n.semaineIso ? 'Validation…' : 'Valider'}
+              </button>
+            </span>
           </li>
         ))}
       </ul>
+
+      {/* Éditeur hebdomadaire consolidé (foyer + semaine), ouvert à la demande.
+          La validation reste par contrat, présentée à l'intérieur de l'éditeur. */}
+      {semaineEditee !== null && (
+        <EditeurSemaine
+          foyerId={foyerId}
+          semaineIso={semaineEditee}
+          onFermer={() => {
+            setSemaineEditee(null);
+          }}
+        />
+      )}
 
       {aEnvoyer && (
         <RelectureEnvoi

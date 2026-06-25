@@ -25,6 +25,13 @@ import { useSaisieServeur } from './useSaisieServeur';
 import { LegendePlanning } from './LegendePlanning';
 import { ChoixPortee, type Portee } from './ChoixPortee';
 import { couleurAjoute, couleurRetire } from './couleursPlanning';
+import {
+  ARRIVEE_DEFAUT,
+  DEPART_DEFAUT,
+  versHhmm,
+  plageDepuisHeures,
+  plageValide,
+} from './heures';
 
 export interface CalendrierCrecheProps {
   contrat: ContratLocal;
@@ -45,42 +52,6 @@ interface EtatAbsence extends PlageHoraire {
 
 interface EtatJourSup extends PlageHoraire {
   date: string;
-}
-
-/** Heures d'arrivée/départ par défaut (à défaut de plage de contrat). */
-const ARRIVEE_DEFAUT = '09:00';
-const DEPART_DEFAUT = '16:30';
-
-/** `HH:MM` ← heures/minutes. */
-function versHhmm(heures: number, minutes: number): string {
-  return `${String(heures).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-}
-
-/** `HH:MM` → minutes depuis minuit (0 si vide/invalide). */
-function minutesDeHhmm(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return (h ?? 0) * 60 + (m ?? 0);
-}
-
-/** Plage horaire (API) depuis deux heures `HH:MM`. */
-function plageDepuisHeures(arrivee: string, depart: string): PlageHoraire {
-  const a = arrivee.split(':').map(Number);
-  const d = depart.split(':').map(Number);
-  return {
-    debutHeures: a[0] ?? 0,
-    debutMinutes: a[1] ?? 0,
-    finHeures: d[0] ?? 0,
-    finMinutes: d[1] ?? 0,
-  };
-}
-
-/** Vrai si la plage est cohérente (départ strictement après arrivée). */
-function plageValide(arrivee: string, depart: string): boolean {
-  return (
-    arrivee !== '' &&
-    depart !== '' &&
-    minutesDeHhmm(depart) > minutesDeHhmm(arrivee)
-  );
 }
 
 /** Calendrier mensuel crèche PSU : jours gardés, absences (retraits), ajouts. */
