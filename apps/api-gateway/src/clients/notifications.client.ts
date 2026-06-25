@@ -72,9 +72,20 @@ const deltaJourSchema = z.object({
 /** Jours modifiés affichés dans la relecture. */
 const deltaModifsSchema = z.object({ jours: z.array(deltaJourSchema) });
 
-/** Brouillon régénérable du mail au service (Lot 6). */
-const brouillonSchema = z.object({
+/** Un enfant du foyer concerné par le récap agrégé (diff figé du Lot 4). */
+const enfantBrouillonSchema = z.object({
   contratId: z.string(),
+  enfant: z.string(),
+  deltaModifs: deltaModifsSchema,
+});
+
+/**
+ * Brouillon régénérable du mail **agrégé par établissement** (édition hebdo, Phase 4) :
+ * un seul mail par établissement regroupant tous les enfants du foyer dont la semaine
+ * a été validée avec modifications.
+ */
+const brouillonEtablissementSchema = z.object({
+  foyerId: z.string(),
   semaineIso: z.string(),
   etablissementCle: z.enum(['CRECHE_HIRONDELLES', 'ABCM']),
   etablissementLibelle: z.string(),
@@ -82,18 +93,20 @@ const brouillonSchema = z.object({
   sujet: z.string(),
   corps: z.string(),
   texte: z.string(),
-  deltaModifs: deltaModifsSchema,
+  enfants: z.array(enfantBrouillonSchema),
   dryRun: z.boolean(),
 });
 
-export type BrouillonVue = z.infer<typeof brouillonSchema>;
+export type BrouillonEtablissementVue = z.infer<
+  typeof brouillonEtablissementSchema
+>;
 
 /** Statut d'un envoi de récap au service. */
 const statutEnvoiSchema = z.enum(['EN_COURS', 'ENVOYE', 'ECHEC', 'DRY_RUN']);
 
-/** Résultat d'un envoi (Lot 6) : issue réelle de l'action sortante. */
-const envoiResultatSchema = z.object({
-  contratId: z.string(),
+/** Résultat d'un envoi agrégé : issue réelle de l'action sortante par établissement. */
+const envoiEtablissementResultatSchema = z.object({
+  foyerId: z.string(),
   semaineIso: z.string(),
   etablissementCle: z.enum(['CRECHE_HIRONDELLES', 'ABCM']),
   destinataire: z.string(),
@@ -103,7 +116,9 @@ const envoiResultatSchema = z.object({
   envoyeLe: z.string().nullable(),
 });
 
-export type EnvoiResultat = z.infer<typeof envoiResultatSchema>;
+export type EnvoiEtablissementResultat = z.infer<
+  typeof envoiEtablissementResultatSchema
+>;
 
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
@@ -212,15 +227,19 @@ export class NotificationsClient {
     );
   }
 
-  /** GET `/api/validations/:contratId/:semaineIso/brouillon` — régénère le brouillon. */
-  async lireBrouillon(
-    contratId: string,
+  /**
+   * GET `/api/validations/semaine/:foyerId/:semaineIso/etablissements/:cle/brouillon`
+   * — régénère le brouillon **agrégé par établissement** (tous les enfants du foyer).
+   */
+  async lireBrouillonEtablissement(
+    foyerId: string,
     semaineIso: string,
-  ): Promise<BrouillonVue> {
+    cle: string,
+  ): Promise<BrouillonEtablissementVue> {
     const base = loadConfig().notificationsUrl;
     const url =
-      `${base}/api/validations/${encodeURIComponent(contratId)}` +
-      `/${encodeURIComponent(semaineIso)}/brouillon`;
+      `${base}/api/validations/semaine/${encodeURIComponent(foyerId)}` +
+      `/${encodeURIComponent(semaineIso)}/etablissements/${encodeURIComponent(cle)}/brouillon`;
     this.logger.debug(`GET ${url}`);
     return executerResilient(
       'svc-notifications',
@@ -229,20 +248,24 @@ export class NotificationsClient {
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }
-        return brouillonSchema.parse(await reponse.json());
+        return brouillonEtablissementSchema.parse(await reponse.json());
       },
       this.breaker,
       OPTIONS,
     );
   }
 
-  /** POST `/api/envois` — envoie réellement le récap au service (idempotent). */
-  async envoyerRecap(
-    contratId: string,
+  /**
+   * POST `/api/envois/etablissement` — envoie réellement le récap **agrégé par
+   * établissement** au service (idempotent sur `(foyer, semaine, établissement)`).
+   */
+  async envoyerRecapEtablissement(
+    foyerId: string,
     semaineIso: string,
-  ): Promise<EnvoiResultat> {
+    cle: string,
+  ): Promise<EnvoiEtablissementResultat> {
     const base = loadConfig().notificationsUrl;
-    const url = `${base}/api/envois`;
+    const url = `${base}/api/envois/etablissement`;
     this.logger.debug(`POST ${url}`);
     return executerResilient(
       'svc-notifications',
@@ -250,12 +273,12 @@ export class NotificationsClient {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contratId, semaineIso }),
+          body: JSON.stringify({ foyerId, semaineIso, cle }),
         });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }
-        return envoiResultatSchema.parse(await reponse.json());
+        return envoiEtablissementResultatSchema.parse(await reponse.json());
       },
       this.breaker,
       OPTIONS,

@@ -58,30 +58,31 @@
       }
     },
     {
-      "description": "un envoi du récap au service",
+      "description": "un envoi du récap agrégé par établissement",
       "providerStates": [
         {
-          "name": "une semaine validée est prête à envoyer au service"
+          "name": "un récap agrégé par établissement est prêt à envoyer au service"
         }
       ],
       "request": {
         "body": {
-          "contratId": "55555555-0000-4000-8000-000000000000",
+          "cle": "CRECHE_HIRONDELLES",
+          "foyerId": "22222222-2222-4222-8222-222222222222",
           "semaineIso": "2026-W10"
         },
         "headers": {
           "Content-Type": "application/json; charset=utf-8"
         },
         "method": "POST",
-        "path": "/api/envois"
+        "path": "/api/envois/etablissement"
       },
       "response": {
         "body": {
-          "contratId": "55555555-0000-4000-8000-000000000000",
           "destinataire": "contact-creche@example.org",
           "envoyeLe": "2026-03-09T08:00:00.000Z",
           "erreur": null,
           "etablissementCle": "CRECHE_HIRONDELLES",
+          "foyerId": "22222222-2222-4222-8222-222222222222",
           "messageId": null,
           "semaineIso": "2026-W10",
           "statut": "DRY_RUN"
@@ -91,14 +92,6 @@
         },
         "matchingRules": {
           "body": {
-            "$.contratId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.destinataire": {
               "combine": "AND",
               "matchers": [
@@ -116,6 +109,14 @@
               ]
             },
             "$.etablissementCle": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.foyerId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -410,26 +411,39 @@
       }
     },
     {
-      "description": "une régénération du brouillon de mail au service",
+      "description": "une régénération du brouillon agrégé par établissement",
       "providerStates": [
         {
-          "name": "un brouillon de mail de service est disponible"
+          "name": "un brouillon de mail agrégé par établissement est disponible"
         }
       ],
       "request": {
         "method": "GET",
-        "path": "/api/validations/55555555-0000-4000-8000-000000000000/2026-W10/brouillon"
+        "path": "/api/validations/semaine/22222222-2222-4222-8222-222222222222/2026-W10/etablissements/CRECHE_HIRONDELLES/brouillon"
       },
       "response": {
         "body": {
-          "contratId": "55555555-0000-4000-8000-000000000000",
           "corps": "<p>Bonjour Crèche Les Hirondelles,</p>",
           "destinataire": "contact-creche@example.org",
           "dryRun": true,
+          "enfants": [
+            {
+              "contratId": "55555555-0000-4000-8000-000000000000",
+              "deltaModifs": {
+                "jours": [
+                  {
+                    "date": "2026-03-04"
+                  }
+                ]
+              },
+              "enfant": "Léa"
+            }
+          ],
           "etablissementCle": "CRECHE_HIRONDELLES",
           "etablissementLibelle": "Crèche Les Hirondelles",
+          "foyerId": "22222222-2222-4222-8222-222222222222",
           "semaineIso": "2026-W10",
-          "sujet": "Planning de Léa — semaine 2026-W10 : modifications",
+          "sujet": "Plannings modifiés — semaine 2026-W10",
           "texte": "Bonjour Crèche Les Hirondelles,"
         },
         "headers": {
@@ -437,14 +451,6 @@
         },
         "matchingRules": {
           "body": {
-            "$.contratId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.corps": {
               "combine": "AND",
               "matchers": [
@@ -469,6 +475,48 @@
                 }
               ]
             },
+            "$.enfants": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.enfants[*].contratId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.enfants[*].deltaModifs.jours": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.enfants[*].deltaModifs.jours[*].date": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.enfants[*].enfant": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.etablissementCle": {
               "combine": "AND",
               "matchers": [
@@ -478,6 +526,14 @@
               ]
             },
             "$.etablissementLibelle": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.foyerId": {
               "combine": "AND",
               "matchers": [
                 {

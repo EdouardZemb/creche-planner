@@ -26,9 +26,11 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
   const { data, loading } = useNotifications(foyerId, version);
   const [enCours, setEnCours] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  // Semaine validée AVEC modifications : on propose alors d'envoyer le récap au
-  // service concerné (relecture + envoi du Lot 6). `null` tant qu'aucune ne le requiert.
-  const [aEnvoyer, setAEnvoyer] = useState<NotificationAValider | null>(null);
+  // Semaine validée AVEC modifications : on propose alors d'envoyer les récaps **agrégés
+  // par établissement** (Phase 4) au foyer pour cette semaine. `null` tant qu'aucune ne
+  // le requiert. On retient la semaine (le récap est désormais foyer + établissement,
+  // plus contrat).
+  const [aEnvoyer, setAEnvoyer] = useState<string | null>(null);
   // Semaine en cours d'édition (vue hebdo consolidée du foyer). `null` = repliée.
   const [semaineEditee, setSemaineEditee] = useState<string | null>(null);
 
@@ -48,9 +50,9 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
           ? `Planning de la ${libelleSemaine(n.semaineIso)} validé (avec modifications).`
           : `Planning de la ${libelleSemaine(n.semaineIso)} validé.`,
       );
-      // Avec modifications, on doit prévenir le service : on garde la semaine pour
-      // proposer la relecture/envoi (pas d'envoi automatique — relecture obligatoire).
-      setAEnvoyer(avecModifs ? n : null);
+      // Avec modifications, on doit prévenir les services : on garde la semaine pour
+      // proposer la relecture/envoi agrégé (pas d'envoi automatique — relecture obligatoire).
+      setAEnvoyer(avecModifs ? n.semaineIso : null);
       setVersion((v) => v + 1);
     } catch (err) {
       setMessage(messageErreur(err));
@@ -129,11 +131,8 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
         />
       )}
 
-      {aEnvoyer && (
-        <RelectureEnvoi
-          contratId={aEnvoyer.contratId}
-          semaineIso={aEnvoyer.semaineIso}
-        />
+      {aEnvoyer !== null && (
+        <RelectureEnvoi foyerId={foyerId} semaineIso={aEnvoyer} />
       )}
     </section>
   );

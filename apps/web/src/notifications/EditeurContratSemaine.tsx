@@ -28,7 +28,6 @@ import {
   plageValide,
   formaterPlage,
 } from '../planning/heures';
-import { RelectureEnvoi } from './RelectureEnvoi';
 import { useEcritureSemaine } from './useEcritureSemaine';
 
 // Édition des besoins **datés** d'un contrat sur la seule semaine notifiée.
@@ -159,6 +158,13 @@ export interface EditeurContratSemaineProps {
   semaineIso: string;
   /** Notifie le parent qu'une écriture a abouti (rafraîchir un éventuel coût). */
   onEnregistre?: () => void;
+  /**
+   * Notifie le parent du statut d'une validation de ce contrat. Le récap au service
+   * étant **agrégé par établissement** (Phase 4), c'est l'éditeur parent qui décide
+   * d'afficher la relecture/envoi pour le foyer dès qu'un contrat passe en
+   * `VALIDEE_AVEC_MODIFS`.
+   */
+  onValide?: (statut: StatutNotification) => void;
 }
 
 /**
@@ -171,6 +177,7 @@ export function EditeurContratSemaine({
   jours,
   semaineIso,
   onEnregistre,
+  onValide,
 }: EditeurContratSemaineProps) {
   const handleEnregistre = useCallback(() => {
     onEnregistre?.();
@@ -361,7 +368,6 @@ export function EditeurContratSemaine({
   );
 
   // --- Validation par contrat (comportement inchangé) -----------------------
-  const [validation, setValidation] = useState<StatutNotification | null>(null);
   const [messageValidation, setMessageValidation] = useState<string | null>(
     null,
   );
@@ -372,18 +378,18 @@ export function EditeurContratSemaine({
     setMessageValidation(null);
     try {
       const r = await api.validerSemaine(contrat.contratId, semaineIso);
-      setValidation(r.statut);
       setMessageValidation(
         r.statut === 'VALIDEE_AVEC_MODIFS'
           ? 'Semaine validée (avec modifications).'
           : 'Semaine validée.',
       );
+      onValide?.(r.statut);
     } catch (err) {
       setMessageValidation(messageErreur(err));
     } finally {
       setEnValidation(false);
     }
-  }, [contrat.contratId, semaineIso]);
+  }, [contrat.contratId, semaineIso, onValide]);
 
   const etatStatut =
     etatSave === 'enregistre' || etatSave === 'erreur' ? etatSave : 'idle';
@@ -468,9 +474,9 @@ export function EditeurContratSemaine({
         )}
       </div>
 
-      {validation === 'VALIDEE_AVEC_MODIFS' && (
-        <RelectureEnvoi contratId={contrat.contratId} semaineIso={semaineIso} />
-      )}
+      {/* Le récap au service est désormais **agrégé par établissement** (Phase 4) :
+          il est rendu une seule fois par l'éditeur parent (`EditeurSemaine`) dès qu'un
+          contrat passe en `VALIDEE_AVEC_MODIFS`, et non plus par contrat ici. */}
 
       {/* Modale d'édition d'un jour (champs selon le mode du contrat). */}
       {dialogDate !== null && (

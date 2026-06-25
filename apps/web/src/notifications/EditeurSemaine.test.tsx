@@ -5,7 +5,7 @@ import { EditeurSemaine } from './EditeurSemaine';
 import type {
   SemaineBesoins,
   ValidationResultat,
-  Brouillon,
+  BrouillonEtablissement,
 } from '../types/bff';
 
 vi.mock('../api/client', () => ({
@@ -13,8 +13,8 @@ vi.mock('../api/client', () => ({
     lireSemaineBesoins: vi.fn(),
     ecrireSemaineBesoins: vi.fn(),
     validerSemaine: vi.fn(),
-    lireBrouillon: vi.fn(),
-    envoyerRecap: vi.fn(),
+    lireBrouillonEtablissement: vi.fn(),
+    envoyerRecapEtablissement: vi.fn(),
   },
   ApiError: class ApiError extends Error {},
 }));
@@ -81,25 +81,46 @@ const VUE: SemaineBesoins = {
   ],
 };
 
-const BROUILLON: Brouillon = {
-  contratId: 'c-lea',
-  semaineIso: '2026-W27',
-  etablissementCle: 'CRECHE_HIRONDELLES',
-  etablissementLibelle: 'Crèche Les Hirondelles',
-  destinataire: 'contact-creche@example.org',
-  sujet: 'Planning de Léa — semaine 2026-W27 : modifications',
-  corps: '<p>Bonjour</p>',
-  texte: 'Bonjour',
-  deltaModifs: { jours: [{ date: '2026-06-29', avant: null, apres: {} }] },
-  dryRun: true,
-};
+/** Brouillon agrégé par établissement, paramétré par la clé demandée. */
+function brouillonPour(cle: string): BrouillonEtablissement {
+  const concerne = cle === 'CRECHE_HIRONDELLES';
+  return {
+    foyerId: 'foyer-1',
+    semaineIso: '2026-W27',
+    etablissementCle: cle as BrouillonEtablissement['etablissementCle'],
+    etablissementLibelle:
+      cle === 'CRECHE_HIRONDELLES' ? 'Crèche Les Hirondelles' : 'École ABCM',
+    destinataire:
+      cle === 'CRECHE_HIRONDELLES'
+        ? 'contact-creche@example.org'
+        : 'contact-abcm@example.org',
+    sujet: 'Plannings modifiés — semaine 2026-W27',
+    corps: '<p>Bonjour</p>',
+    texte: 'Bonjour',
+    // Seule la crèche a un enfant concerné dans ces tests.
+    enfants: concerne
+      ? [
+          {
+            contratId: 'c-lea',
+            enfant: 'Léa',
+            deltaModifs: {
+              jours: [{ date: '2026-06-29', avant: null, apres: {} }],
+            },
+          },
+        ]
+      : [],
+    dryRun: true,
+  };
+}
 
 describe('EditeurSemaine', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.lireSemaineBesoins).mockResolvedValue(VUE);
     vi.mocked(api.ecrireSemaineBesoins).mockResolvedValue(undefined);
-    vi.mocked(api.lireBrouillon).mockResolvedValue(BROUILLON);
+    vi.mocked(api.lireBrouillonEtablissement).mockImplementation(
+      (_foyerId, _semaineIso, cle) => Promise.resolve(brouillonPour(cle)),
+    );
   });
 
   function rendre() {
@@ -189,9 +210,15 @@ describe('EditeurSemaine', () => {
     expect(
       await screen.findByText(/validée \(avec modifications\)/i),
     ).toBeInTheDocument();
-    // Le récap au service apparaît (RelectureEnvoi).
+    // Le récap **agrégé par établissement** apparaît (RelectureEnvoi), avec un bloc
+    // d'envoi pour la crèche (seul établissement concerné ici).
     expect(
-      await screen.findByText(/Envoyer le récapitulatif au service/i),
+      await screen.findByText(/Envoyer les récapitulatifs aux services/i),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', {
+        name: /Envoyer le récapitulatif à Crèche Les Hirondelles/i,
+      }),
     ).toBeInTheDocument();
   });
 });

@@ -278,15 +278,27 @@ export interface SemaineBesoins {
   contrats: ContratBesoinsSemaine[];
 }
 
-// ---- Notifications : mail au service (relecture + envoi, Lot 6) ------------
+// ---- Notifications : mail au service AGRÉGÉ par établissement (Phase 4) -----
+//
+// Granularité de l'édition hebdo : un seul mail par établissement regroupant tous
+// les enfants du foyer dont la semaine a été validée avec modifications (remplace
+// l'envoi par-contrat du Lot 6).
+
+/** Un enfant du foyer concerné par le récap d'un établissement (diff figé du Lot 4). */
+export interface EnfantBrouillon {
+  contratId: string;
+  enfant: string;
+  deltaModifs: DeltaModifs;
+}
 
 /**
- * Brouillon régénérable du mail adressé au service (crèche / école ABCM) après
- * relecture humaine. `dryRun` indique qu'un envoi réel serait neutralisé (bac à
- * sable ou destinataire hors allowlist) → bandeau d'avertissement avant l'envoi.
+ * Brouillon régénérable du mail **agrégé par établissement** adressé au service
+ * (crèche / école ABCM) après relecture humaine. `dryRun` indique qu'un envoi réel
+ * serait neutralisé (bac à sable ou destinataire hors allowlist) → bandeau
+ * d'avertissement avant l'envoi. `enfants` vide ⇒ rien à envoyer pour cet établissement.
  */
-export interface Brouillon {
-  contratId: string;
+export interface BrouillonEtablissement {
+  foyerId: string;
   semaineIso: string;
   etablissementCle: CleEtablissement;
   etablissementLibelle: string;
@@ -294,16 +306,16 @@ export interface Brouillon {
   sujet: string;
   corps: string; // HTML rendu, figé à l'envoi
   texte: string; // aperçu texte brut
-  deltaModifs: DeltaModifs;
+  enfants: EnfantBrouillon[];
   dryRun: boolean;
 }
 
 /** Statut d'un envoi de récap au service. */
 export type StatutEnvoi = 'EN_COURS' | 'ENVOYE' | 'ECHEC' | 'DRY_RUN';
 
-/** Résultat d'un envoi (action sortante réelle, idempotente). */
-export interface EnvoiResultat {
-  contratId: string;
+/** Résultat d'un envoi agrégé par établissement (action sortante réelle, idempotente). */
+export interface EnvoiEtablissementResultat {
+  foyerId: string;
   semaineIso: string;
   etablissementCle: CleEtablissement;
   destinataire: string;

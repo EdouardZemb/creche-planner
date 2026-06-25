@@ -81,6 +81,30 @@ export function cleEtablissementPourMode(
   return MODE_VERS_CLE[mode];
 }
 
+/**
+ * Pipe de validation du paramètre de chemin `:cle` (clé d'établissement). Rejette une
+ * clé hors `CLES_ETABLISSEMENT` en `400` au format homogène `[{ champ, message }]`,
+ * et **renarrow** la valeur vers `CleEtablissement` pour les contrôleurs.
+ */
+@Injectable()
+export class CleEtablissementPipe implements PipeTransform<
+  string,
+  CleEtablissement
+> {
+  transform(value: string): CleEtablissement {
+    const connue = CLES_ETABLISSEMENT.find((c) => c === value);
+    if (!connue) {
+      throw new BadRequestException([
+        {
+          champ: 'cle',
+          message: `clé d'établissement inconnue (attendu ${CLES_ETABLISSEMENT.join(' | ')}) : ${value}`,
+        },
+      ]);
+    }
+    return connue;
+  }
+}
+
 /** Pipe générique : valide le corps de requête contre un schéma Zod (→ 400). */
 @Injectable()
 export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {

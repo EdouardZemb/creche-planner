@@ -17,16 +17,21 @@ const ETAT_ETABLISSEMENTS = 'des établissements destinataires existent';
 const ETAT_ETABLISSEMENT_EDITABLE = 'un établissement crèche modifiable existe';
 const ETAT_SEMAINE_A_VALIDER = 'une semaine est à valider pour un foyer';
 const ETAT_SEMAINE_VALIDABLE = 'une semaine A_VALIDER existe pour validation';
-const ETAT_BROUILLON = 'un brouillon de mail de service est disponible';
-const ETAT_ENVOI = 'une semaine validée est prête à envoyer au service';
+const ETAT_BROUILLON =
+  'un brouillon de mail agrégé par établissement est disponible';
+const ETAT_ENVOI =
+  'un récap agrégé par établissement est prêt à envoyer au service';
 
 /** Id figé de la ligne crèche seedée par le stateHandler. */
 const CRECHE_ID = '99999999-9999-4999-8999-999999999999';
 
 /** Identifiants figés des semaines à valider seedées (partagés avec le consumer). */
 const NOTIF_ID = '88888888-8888-4888-8888-888888888888';
+const NOTIF_ID_2 = '88888888-8888-4888-8888-888888888889';
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
 const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
+const CONTRAT_ID_2 = '55555555-0000-4000-8000-000000000001';
+const CLE = 'CRECHE_HIRONDELLES';
 const SEMAINE = '2026-W10';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-notifications) → racine du dépôt à ../../.
@@ -146,16 +151,36 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
           snapshot = '{}'::jsonb
       `;
     };
-    // Seede de quoi régénérer/envoyer un brouillon : le contrat (read model,
-    // mode → établissement), la semaine validée avec un delta, et l'établissement
-    // crèche. Idempotent. Pour l'envoi, on purge d'abord la trace `envoi_mail` afin
-    // que la vérification reparte d'un envoi neuf (statut DRY_RUN attendu).
-    const seedBrouillon = async (): Promise<void> => {
-      await seedCreche();
+    // Seede de quoi régénérer/envoyer un brouillon **agrégé par établissement** : deux
+    // contrats crèche du même foyer (mode → CRECHE_HIRONDELLES), chacun avec une semaine
+    // validée avec un delta, et l'établissement crèche. Idempotent. Pour l'envoi, on
+    // purge d'abord la trace `envoi_etablissement` afin que la vérification reparte d'un
+    // envoi neuf (statut DRY_RUN attendu).
+    const delta = (date: string): string =>
+      JSON.stringify({
+        jours: [
+          {
+            date,
+            avant: null,
+            apres: {
+              joursSupplementaires: [],
+              absences: [{ date }],
+              exceptions: [],
+              joursAlsh: [],
+            },
+          },
+        ],
+      });
+    const seedContratValide = async (
+      notifId: string,
+      contratId: string,
+      enfant: string,
+      date: string,
+    ): Promise<void> => {
       await db`
         insert into contrat (id, foyer_id, enfant, mode, valide_du, valide_au)
         values (
-          ${CONTRAT_ID}, ${FOYER_ID}, 'Léa', 'CRECHE_PSU', '2026-01-01', null
+          ${contratId}, ${FOYER_ID}, ${enfant}, 'CRECHE_PSU', '2026-01-01', null
         )
         on conflict (id) do update set
           enfant = excluded.enfant, mode = excluded.mode
@@ -164,33 +189,26 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
         insert into notification_hebdo (
           id, contrat_id, foyer_id, semaine_iso, type, statut, snapshot, delta_modifs
         ) values (
-          ${NOTIF_ID}, ${CONTRAT_ID}, ${FOYER_ID}, ${SEMAINE},
+          ${notifId}, ${contratId}, ${FOYER_ID}, ${SEMAINE},
           'VALIDATION_HEBDO', 'VALIDEE_AVEC_MODIFS', '{}'::jsonb,
-          ${JSON.stringify({
-            jours: [
-              {
-                date: '2026-03-04',
-                avant: null,
-                apres: {
-                  joursSupplementaires: [],
-                  absences: [{ date: '2026-03-04' }],
-                  exceptions: [],
-                  joursAlsh: [],
-                },
-              },
-            ],
-          })}::jsonb
+          ${delta(date)}::jsonb
         )
         on conflict (contrat_id, semaine_iso, type) do update set
           statut = 'VALIDEE_AVEC_MODIFS',
           delta_modifs = excluded.delta_modifs
       `;
     };
+    const seedBrouillon = async (): Promise<void> => {
+      await seedCreche();
+      await seedContratValide(NOTIF_ID, CONTRAT_ID, 'Léa', '2026-03-04');
+      await seedContratValide(NOTIF_ID_2, CONTRAT_ID_2, 'Tom', '2026-03-05');
+    };
     const seedEnvoi = async (): Promise<void> => {
       await seedBrouillon();
       await db`
-        delete from envoi_mail
-        where contrat_id = ${CONTRAT_ID} and semaine_iso = ${SEMAINE}
+        delete from envoi_etablissement
+        where foyer_id = ${FOYER_ID} and semaine_iso = ${SEMAINE}
+          and etablissement_cle = ${CLE}
       `;
     };
     await new Verifier({
