@@ -15,6 +15,7 @@ import { ContratsPage } from './foyer/ContratsPage';
 import { PlanningPage } from './planning/PlanningPage';
 import { CoutsAnnuelsPage } from './couts/CoutsAnnuelsPage';
 import { EtablissementsPage } from './etablissements/EtablissementsPage';
+import { PastilleAValider } from './notifications/PastilleAValider';
 import { getFoyerId, setFoyerId, effacerFoyerId } from './utils/store';
 import { seReconnecter } from './utils/reconnexion';
 import { api } from './api/client';
@@ -79,7 +80,10 @@ function Entete() {
         {id && (
           <>
             <NavLink to={`/foyers/${id}/contrats`}>Contrats</NavLink>
-            <NavLink to={`/foyers/${id}/planning`}>Planning</NavLink>
+            <NavLink to={`/foyers/${id}/planning`}>
+              Planning
+              <PastilleAValider foyerId={id} />
+            </NavLink>
             <NavLink to={`/foyers/${id}/couts`}>Coûts annuels</NavLink>
           </>
         )}

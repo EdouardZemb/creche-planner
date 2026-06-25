@@ -56,7 +56,7 @@ vi.mock('./api/client', () => {
     }
   }
   return {
-    api: { lireFoyer: vi.fn(), listerFoyers: vi.fn() },
+    api: { lireFoyer: vi.fn(), listerFoyers: vi.fn(), listerAValider: vi.fn() },
     ApiError,
     AuthExpiredError,
   };
@@ -76,6 +76,7 @@ import { App } from './App';
 const mockedApi = api as unknown as {
   lireFoyer: ReturnType<typeof vi.fn>;
   listerFoyers: ReturnType<typeof vi.fn>;
+  listerAValider: ReturnType<typeof vi.fn>;
 };
 
 const FOYER_ID = 'f1';
@@ -95,6 +96,8 @@ describe('App — coquille de navigation', () => {
     localStorage.clear();
     mockedApi.lireFoyer.mockResolvedValue(dossierFactice);
     mockedApi.listerFoyers.mockResolvedValue([]);
+    // Pastille de validation (Lot 4) dans la nav : rien à valider par défaut.
+    mockedApi.listerAValider.mockResolvedValue([]);
   });
 
   it('Accueil : un foyer mémorisé redirige vers son planning sans appel de découverte', async () => {

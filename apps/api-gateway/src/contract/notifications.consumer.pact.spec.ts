@@ -14,6 +14,14 @@ import { MatchersV3, PactV3 } from '@pact-foundation/pact';
  */
 const ETAT_ETABLISSEMENTS = 'des établissements destinataires existent';
 const ETAT_ETABLISSEMENT_EDITABLE = 'un établissement crèche modifiable existe';
+const ETAT_SEMAINE_A_VALIDER = 'une semaine est à valider pour un foyer';
+const ETAT_SEMAINE_VALIDABLE = 'une semaine A_VALIDER existe pour validation';
+
+/** Identifiants figés partagés avec les stateHandlers de la vérification provider. */
+const FOYER_ID = '22222222-2222-4222-8222-222222222222';
+const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
+// Semaine entièrement dans un mois (mars) : une seule relecture amont côté provider.
+const SEMAINE = '2026-W10';
 
 // nx lance vitest avec cwd = racine du projet (apps/api-gateway) → racine du dépôt à ../../.
 const PACTS_DIR = resolve(process.cwd(), '../../pacts');
@@ -101,6 +109,69 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
       expect(reponse.status).toBe(200);
       const corps = (await reponse.json()) as { emailService: string };
       expect(corps.emailService).toBe('nouvelle@example.org');
+    });
+  });
+
+  it('liste les semaines à valider d’un foyer (GET /api/validations/a-valider)', async () => {
+    provider
+      .given(ETAT_SEMAINE_A_VALIDER)
+      .uponReceiving('une lecture des semaines à valider d’un foyer')
+      .withRequest({
+        method: 'GET',
+        path: '/api/validations/a-valider',
+        query: { foyer: FOYER_ID },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: MatchersV3.eachLike({
+          contratId: string(CONTRAT_ID),
+          foyerId: string(FOYER_ID),
+          semaineIso: string(SEMAINE),
+          statut: string('A_VALIDER'),
+          notifieeLe: string('2026-06-23T06:00:00.000Z'),
+        }),
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/validations/a-valider?foyer=${FOYER_ID}`,
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { semaineIso: string }[];
+      expect(corps[0]?.semaineIso).toBe(SEMAINE);
+    });
+  });
+
+  it('valide une semaine (POST /api/validations/:contratId/:semaineIso)', async () => {
+    provider
+      .given(ETAT_SEMAINE_VALIDABLE)
+      .uponReceiving('la validation d’une semaine A_VALIDER')
+      .withRequest({
+        method: 'POST',
+        path: `/api/validations/${CONTRAT_ID}/${SEMAINE}`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        // Provider sans svc-planification : relecture dégradée ⇒ snapshot inchangé
+        // ⇒ statut VALIDEE, sans delta.
+        body: {
+          contratId: string(CONTRAT_ID),
+          semaineIso: string(SEMAINE),
+          statut: string('VALIDEE'),
+          deltaModifs: null,
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/validations/${CONTRAT_ID}/${SEMAINE}`,
+        { method: 'POST' },
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { statut: string };
+      expect(corps.statut).toBe('VALIDEE');
     });
   });
 });

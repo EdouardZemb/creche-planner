@@ -12,6 +12,7 @@ import { loadConfig } from './config.js';
 import * as schema from './database/schema.js';
 import { ConsumersModule } from './consumers/consumers.module.js';
 import { EtablissementModule } from './etablissement/etablissement.module.js';
+import { ValidationModule } from './validation/validation.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { EtablissementModule } from './etablissement/etablissement.module.js';
     HealthModule,
     ConsumersModule,
     EtablissementModule,
+    ValidationModule,
   ],
 })
 export class AppModule {}
