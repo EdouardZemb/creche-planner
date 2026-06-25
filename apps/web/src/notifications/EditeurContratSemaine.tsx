@@ -341,13 +341,21 @@ export function EditeurContratSemaine({
     [mode, absenceParDate, jourSupParDate, alshParDate, exceptionParDate],
   );
 
+  // Affiche l'horaire EFFECTIF du jour, sans ouvrir la saisie : une exception datée
+  // (absence / jour ajouté / ajustement) prime ; à défaut, on retombe sur le planning
+  // de BASE du contrat (semaine-type) pour ce jour de la semaine ; sinon « — ».
   const resume = useCallback(
     (date: string): string => {
+      const jour = jourSemaineDeIso(date);
       if (mode === 'CRECHE_PSU') {
         const abs = absenceParDate.get(date);
         if (abs) return `Absent (${formaterPlage(abs)})`;
         const sup = jourSupParDate.get(date);
         if (sup) return `Jour ajouté (${formaterPlage(sup)})`;
+        const base = contrat.semaineType?.[jour];
+        if (base && base.length > 0) {
+          return `Gardé ${base.map(formaterPlage).join(', ')}`;
+        }
         return '—';
       }
       if (mode === 'ALSH') {
@@ -357,14 +365,28 @@ export function EditeurContratSemaine({
         return j.repas ? 'Journée + repas' : 'Journée';
       }
       const e = exceptionParDate.get(date);
-      if (!e) return '—';
-      if (mode === 'CANTINE') return e.cantine ? 'Cantine' : 'Sans cantine';
+      const base = contrat.semaineAbcm?.[jour];
+      if (mode === 'CANTINE') {
+        if (e) return e.cantine ? 'Cantine' : 'Sans cantine';
+        return base?.cantine ? 'Cantine' : '—';
+      }
+      const matin = e ? (e.periMatin ?? false) : (base?.periMatin ?? false);
+      const soir = e ? (e.periSoir ?? false) : (base?.periSoir ?? false);
       const parts: string[] = [];
-      if (e.periMatin) parts.push('matin');
-      if (e.periSoir) parts.push('soir');
-      return parts.length > 0 ? `Péri ${parts.join(' + ')}` : 'Sans péri';
+      if (matin) parts.push('matin');
+      if (soir) parts.push('soir');
+      if (parts.length > 0) return `Péri ${parts.join(' + ')}`;
+      return e ? 'Sans péri' : '—';
     },
-    [mode, absenceParDate, jourSupParDate, alshParDate, exceptionParDate],
+    [
+      mode,
+      absenceParDate,
+      jourSupParDate,
+      alshParDate,
+      exceptionParDate,
+      contrat.semaineType,
+      contrat.semaineAbcm,
+    ],
   );
 
   // --- Validation par contrat (comportement inchangé) -----------------------

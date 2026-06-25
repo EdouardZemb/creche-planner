@@ -54,6 +54,35 @@ const saisieJourSchema = z.object({
 /** Besoins de la semaine d'un contrat : jour `YYYY-MM-DD` → entrées (jours vides omis). */
 const besoinsSchema = z.record(z.string(), saisieJourSchema);
 
+/** Une plage horaire de la semaine-type crèche (planning de base). */
+const plageHoraireSchema = z.object({
+  debutHeures: z.number(),
+  debutMinutes: z.number(),
+  finHeures: z.number(),
+  finMinutes: z.number(),
+});
+
+/**
+ * Semaine-type **crèche** : jour de la semaine (`LUNDI`…) → plages horaires gardées.
+ * Clé laissée en `string` (lenient) : on ne valide que la forme des valeurs, l'écran
+ * indexe par jour. C'est le planning de BASE, affiché pour voir les horaires
+ * planifiés sans ouvrir la saisie.
+ */
+const semaineTypeCrecheSchema = z.record(
+  z.string(),
+  z.array(plageHoraireSchema),
+);
+
+/** Semaine-type **ABCM** : jour d'école → services inscrits (planning de base). */
+const semaineAbcmSchema = z.record(
+  z.string(),
+  z.object({
+    cantine: z.boolean().optional(),
+    periMatin: z.boolean().optional(),
+    periSoir: z.boolean().optional(),
+  }),
+);
+
 /** Établissement destinataire concerné par la semaine (annuaire). */
 const etablissementConcerneSchema = z.object({
   cle: z.enum(CLES_ETABLISSEMENT),
@@ -68,6 +97,11 @@ const contratBesoinsSchema = z.object({
   mode: z.enum(MODES),
   etablissementCle: z.enum(CLES_ETABLISSEMENT),
   besoins: besoinsSchema,
+  // Planning de BASE (semaine-type) du contrat : l'un OU l'autre selon le mode.
+  // Permet à l'écran d'afficher les horaires planifiés d'un jour normal sans entrer
+  // dans la saisie (les entrées datées de `besoins` restent les exceptions du jour).
+  semaineType: semaineTypeCrecheSchema.optional(),
+  semaineAbcm: semaineAbcmSchema.optional(),
 });
 
 /**
@@ -130,6 +164,18 @@ export function agregerSemaineBesoins(input: {
     const etablissementCle = MODE_VERS_CLE[contrat.mode];
     clesConcernees.add(etablissementCle);
     const besoins: SnapshotSemaine = extraireSemaine(saisies, input.jours);
+    // La semaine-type (planning de base) transite via le `passthrough` de
+    // `listerContrats` ; on la lit défensivement et on ne garde que celle du mode
+    // (un parse en échec ⇒ `undefined` ⇒ champ omis, l'écran retombe sur « — »).
+    const brut = contrat as unknown as Record<string, unknown>;
+    const semaineType =
+      contrat.mode === 'CRECHE_PSU'
+        ? semaineTypeCrecheSchema.safeParse(brut['semaineType']).data
+        : undefined;
+    const semaineAbcm =
+      contrat.mode === 'CRECHE_PSU'
+        ? undefined
+        : semaineAbcmSchema.safeParse(brut['semaineAbcm']).data;
     return [
       {
         contratId: contrat.id,
@@ -137,6 +183,8 @@ export function agregerSemaineBesoins(input: {
         mode: contrat.mode,
         etablissementCle,
         besoins,
+        ...(semaineType ? { semaineType } : {}),
+        ...(semaineAbcm ? { semaineAbcm } : {}),
       },
     ];
   });

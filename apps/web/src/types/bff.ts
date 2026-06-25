@@ -264,6 +264,13 @@ export interface ContratBesoinsSemaine {
   mode: Mode;
   etablissementCle: CleEtablissement;
   besoins: BesoinsSemaine;
+  /**
+   * Planning de BASE (semaine-type) du contrat, fourni selon le mode : permet
+   * d'afficher les horaires planifiés d'un jour normal sans ouvrir la saisie. Les
+   * entrées datées de `besoins` restent les exceptions qui priment sur cette base.
+   */
+  semaineType?: SemaineTypeCreche;
+  semaineAbcm?: SemaineAbcm;
 }
 
 /**
