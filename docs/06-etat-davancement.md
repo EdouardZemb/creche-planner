@@ -1361,7 +1361,7 @@ des `svc-*` ; configs CI/observabilité validées par leurs binaires (`otelcol`/
   alertes visibles dans l'UI `:9093` ; brancher un receiver dans `docker/alertmanager.yml` si besoin.
 - **Non poussé** : branches mergées dans `main` local, **push à la main** par l'auteur.
 
-## 23. Feature Notifications & validation hebdomadaire (🚧 en cours — Lots 0→3 livrés)
+## 23. Feature Notifications & validation hebdomadaire (🚧 en cours — Lots 0→4 livrés)
 
 > Première **action sortante vers un tiers réel** (e-mail crèche / école). Objectif : chaque **mardi**,
 > notifier le parent pour **valider le planning de la semaine N+1** (e-mail + indicateur in-app) ; en cas
@@ -1396,9 +1396,25 @@ les 3 derniers → mapping codé `mode → clé` (`CRECHE_PSU → CRECHE_HIRONDE
   web `etablissements/` (formulaire e-mail + règle de préavis, `useActionState`, a11y), OpenAPI +
   `EtablissementVue`/`PreavisRegle` (types web dérivés régénérés). Tests : DTO Zod + mapping, contrôleur,
   **Pact** consumer (gateway) + provider (notifications), web.
+- **Lot 4 — Validation hebdo + indicateur in-app** (PR #61) : table `notification_hebdo` (snapshot des jours
+  de la semaine N+1 + `delta_modifs`, `UNIQUE(contrat_id, semaine_iso, type)`, migration **générée** 0003).
+  Le planning amont est **mensuel et sans notion de semaine ni de validation** : ce lot l'ajoute via deux
+  **modules purs** — mapping semaine ISO `YYYY-Www` ↔ mois/jours (arithmétique UTC, **chevauchement de 2
+  mois** géré) et **diff jour-par-jour** snapshot↔relecture. Client interne de **relecture du planning**
+  (cloné du repli `svc-tarification`, `PLANIFICATION_URL`) avec **dégradation propre** : une relecture
+  indisponible conserve le snapshot (statut `VALIDEE` sans faux positif) plutôt que de planter. Endpoints
+  `GET /api/validations/a-valider?foyer=` et `POST /api/validations/:contratId/:semaineIso` (**idempotent** :
+  revalider renvoie l'état figé ; `VALIDEE` / `VALIDEE_AVEC_MODIFS` selon le diff). La méthode `notifier()`
+  (snapshot + insert idempotent) est **exposée pour le scheduler du Lot 5**. BFF `GET /api/v1/notifications/a-valider`
+  - `POST /api/v1/notifications/validations/...`. Web : hook `useNotifications`, **encart « Valider la semaine
+    suivante »** en tête du planning (masqué s'il n'y a rien) et **pastille** de compteur dans la navigation.
+    Tests : **property test** du mapping (`semaine.mbt.spec.ts`), diff, idempotence, relecture dégradée, web
+    (encart + pastille), **Pact** consumer + provider. Les types web des routes notifications sont **saisis à
+    la main** (comme la saisie de planning) : ces routes ne sont pas décrites dans l'OpenAPI de la gateway, il
+    n'y a donc rien à dériver — `openapi-types-drift` reste vert.
 
-**Lots restants** : Lot 4 (validation hebdo + indicateur in-app), Lot 5 (scheduler du mardi + mail récap
-parent), Lot 6 (mail au service : relecture + envoi réel + journal).
+**Lots restants** : Lot 5 (scheduler du mardi + mail récap parent — appellera `ValidationService.notifier()`),
+Lot 6 (mail au service : relecture + envoi réel + journal).
 
 **Pièges d'infra CI rencontrés au Lot 3** (à reproduire pour tout nouveau `svc-*`/contrat) : (a) la
 **vérification Pact provider** exige un Postgres `services:` dédié dans `.github/workflows/ci.yml` + un
