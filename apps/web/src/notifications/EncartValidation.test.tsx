@@ -59,6 +59,28 @@ const A_VALIDER: NotificationAValider[] = [
   },
 ];
 
+/** Deux contrats du même foyer pour la **même semaine** (enrichis enfant + mode). */
+const A_VALIDER_DEUX: NotificationAValider[] = [
+  {
+    contratId: 'c-zoe',
+    foyerId: 'foyer-1',
+    semaineIso: '2026-W28',
+    statut: 'A_VALIDER',
+    notifieeLe: '2026-06-23T06:00:00.000Z',
+    enfant: 'Zoé',
+    mode: 'CRECHE_PSU',
+  },
+  {
+    contratId: 'c-mia',
+    foyerId: 'foyer-1',
+    semaineIso: '2026-W28',
+    statut: 'A_VALIDER',
+    notifieeLe: '2026-06-23T06:00:00.000Z',
+    enfant: 'Mia',
+    mode: 'CANTINE',
+  },
+];
+
 const SEMAINE_BESOINS = {
   semaineIso: '2026-W27',
   jours: [
@@ -145,6 +167,68 @@ describe('EncartValidation', () => {
     });
     expect(
       await screen.findByText(/validé \(avec modifications\)/i),
+    ).toBeInTheDocument();
+  });
+
+  it('distingue chaque ligne par enfant + mode quand plusieurs contrats partagent la semaine', async () => {
+    vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER_DEUX);
+    render(<EncartValidation foyerId="foyer-1" />);
+
+    // Chaque ligne identifie sans ambiguïté l'enfant et le mode (pas deux libellés
+    // identiques « Planning de la semaine 28 »).
+    expect(
+      await screen.findByText(/Zoé — Crèche PSU · semaine 28 \(2026\)/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Mia — Cantine · semaine 28 \(2026\)/),
+    ).toBeInTheDocument();
+    // Boutons « Valider » ciblés par aria-label distinct (a11y).
+    expect(
+      screen.getByRole('button', {
+        name: 'Valider la semaine 28 (2026) — Zoé, Crèche PSU',
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', {
+        name: 'Valider la semaine 28 (2026) — Mia, Cantine',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('valider un contrat ne désactive que SON bouton (indexation par contrat)', async () => {
+    vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER_DEUX);
+    // Validation de Zoé suspendue : on observe l'état « en cours » sans le résoudre.
+    let resoudre!: (v: ValidationResultat) => void;
+    vi.mocked(api.validerSemaine).mockReturnValue(
+      new Promise<ValidationResultat>((r) => {
+        resoudre = r;
+      }),
+    );
+    render(<EncartValidation foyerId="foyer-1" />);
+
+    const validerZoe = await screen.findByRole('button', {
+      name: 'Valider la semaine 28 (2026) — Zoé, Crèche PSU',
+    });
+    const validerMia = screen.getByRole('button', {
+      name: 'Valider la semaine 28 (2026) — Mia, Cantine',
+    });
+    fireEvent.click(validerZoe);
+
+    // Le bouton de Zoé passe « en cours » (désactivé) ; celui de Mia reste actif.
+    await waitFor(() => {
+      expect(validerZoe).toBeDisabled();
+    });
+    expect(validerMia).not.toBeDisabled();
+
+    resoudre({
+      contratId: 'c-zoe',
+      semaineIso: '2026-W28',
+      statut: 'VALIDEE',
+      deltaModifs: null,
+    });
+    // Le message nomme l'enfant validé.
+    expect(
+      await screen.findByText(/Zoé — semaine 28 \(2026\) validé/),
     ).toBeInTheDocument();
   });
 

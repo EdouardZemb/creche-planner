@@ -42,6 +42,18 @@ const envoiEtablissementSchema = z.object({
 });
 
 /**
+ * Une semaine à valider **enrichie** (jointure BFF avec les contrats du foyer) du prénom
+ * de l'enfant et du mode de garde — pour distinguer plusieurs lignes d'une même semaine
+ * dans l'encart de validation. `enfant`/`mode` sont absents si le contrat n'est plus listé
+ * (la notification reste affichée avec son libellé de repli). Hand-typé hors OpenAPI : le
+ * type web `NotificationAValider` est tenu à jour en miroir, sans drift attendu.
+ */
+export interface NotificationAValiderEnrichie extends NotificationAValiderVue {
+  enfant?: string;
+  mode?: string;
+}
+
+/**
  * Façade BFF `/api/v1/notifications` : validation hebdomadaire du planning (Lot 4).
  * Agrège `svc-notifications`. Lecture des semaines à valider d'un foyer (indicateur
  * in-app) et validation d'une semaine. La forme fine des paramètres (UUID, semaine
@@ -108,15 +120,36 @@ export class ValidationsController {
     });
   }
 
-  /** Liste les semaines à valider d'un foyer : `?foyer=<uuid>`. */
+  /**
+   * Liste les semaines à valider d'un foyer : `?foyer=<uuid>`. **Enrichit** chaque
+   * notification (jointure BFF avec les contrats du foyer via `listerContrats`, déjà
+   * contracté Pact) du prénom de l'enfant et du mode de garde, pour distinguer N lignes
+   * d'une même semaine dans l'encart. Si un contrat n'est plus listé, la notification est
+   * relayée telle quelle (l'écran retombe sur son libellé de repli). Aucun nouveau
+   * contrat amont — on réutilise `listerContrats` (comme `semaineBesoins`).
+   */
   @Get('a-valider')
-  aValider(@Query('foyer') foyer?: string): Promise<NotificationAValiderVue[]> {
+  aValider(
+    @Query('foyer') foyer?: string,
+  ): Promise<NotificationAValiderEnrichie[]> {
     if (!foyer) {
       throw new BadRequestException([
         { champ: 'foyer', message: 'paramètre « foyer » requis' },
       ]);
     }
-    return relayer(() => this.notifications.listerAValider(foyer));
+    return relayer(async () => {
+      const [notifs, contrats] = await Promise.all([
+        this.notifications.listerAValider(foyer),
+        this.planification.listerContrats(foyer),
+      ]);
+      const parId = new Map(contrats.map((c) => [c.id, c]));
+      return notifs.map((n) => {
+        const contrat = parId.get(n.contratId);
+        return contrat
+          ? { ...n, enfant: contrat.enfant, mode: contrat.mode }
+          : n;
+      });
+    });
   }
 
   /** Valide la semaine `:semaineIso` du contrat `:contratId`. */
