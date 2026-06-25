@@ -16,7 +16,10 @@ import {
   type EtablissementVue,
 } from '../etablissement/etablissement.service.js';
 import { cleEtablissementPourMode } from '../etablissement/etablissement.dto.js';
-import { joursDeLaSemaine, semaineIsoDeDate } from '../validation/semaine.js';
+import {
+  joursDeLaSemaine,
+  semaineIsoDeDate,
+} from '@creche-planner/shared-semaine';
 import { recapMardi } from '../email/templates/recapMardi.js';
 import { CLOCK, type Clock } from './clock.js';
 import {

@@ -17,7 +17,10 @@ import {
   extraireSemaine,
   type DeltaModifs,
 } from './validation.diff.js';
-import { joursDeLaSemaine, moisDeLaSemaine } from './semaine.js';
+import {
+  joursDeLaSemaine,
+  moisDeLaSemaine,
+} from '@creche-planner/shared-semaine';
 import type {
   NotificationAValiderVue,
   ValidationResultat,

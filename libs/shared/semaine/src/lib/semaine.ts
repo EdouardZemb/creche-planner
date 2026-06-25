@@ -1,11 +1,13 @@
 /**
  * Mapping pur **semaine ISO ↔ mois / jours**. Le planning amont
  * (`svc-planification`) est stocké **par mois** (`planning_mois`, JSONB) ; la
- * validation hebdomadaire raisonne en **semaine ISO 8601** (`YYYY-Www`). Ce module
- * fait le pont — sans dépendance ni effet de bord, donc testable par propriétés
- * (`semaine.mbt.spec.ts`) : il convertit une semaine en ses 7 jours calendaires
- * (lundi→dimanche) et en l'ensemble des **mois** qu'elle recouvre (1, ou **2** quand
- * la semaine est à cheval sur deux mois — le cas qui justifie ce module).
+ * validation hebdomadaire (`svc-notifications`) et l'édition hebdomadaire (BFF
+ * gateway, `svc-planification`) raisonnent en **semaine ISO 8601** (`YYYY-Www`). Ce
+ * module fait le pont — sans dépendance ni effet de bord, donc testable par
+ * propriétés (`semaine.mbt.spec.ts`) : il convertit une semaine en ses 7 jours
+ * calendaires (lundi→dimanche) et en l'ensemble des **mois** qu'elle recouvre (1,
+ * ou **2** quand la semaine est à cheval sur deux mois — le cas qui justifie ce
+ * module).
  *
  * Toute l'arithmétique se fait en **UTC** : on ne manipule que des dates
  * calendaires (`YYYY-MM-DD`), jamais d'instants — l'heure locale du serveur ne doit

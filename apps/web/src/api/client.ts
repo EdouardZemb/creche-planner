@@ -15,6 +15,7 @@ import type {
   ValidationResultat,
   Brouillon,
   EnvoiResultat,
+  SemaineBesoins,
 } from '../types/bff';
 
 // Client HTTP du BFF. Base URL configurable via VITE_API_BASE_URL (défaut '/api',
@@ -270,6 +271,20 @@ export const api = {
         ...(opts.signal ? { signal: opts.signal } : {}),
       },
     ).then((r) => lire<NotificationAValider[]>(r));
+  },
+
+  lireSemaineBesoins(
+    foyerId: string,
+    semaineIso: string,
+    opts: RequeteOptions = {},
+  ): Promise<SemaineBesoins> {
+    return requete(
+      `${BASE}/v1/notifications/semaine/${encodeURIComponent(foyerId)}/${encodeURIComponent(semaineIso)}/besoins`,
+      {
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<SemaineBesoins>(r));
   },
 
   validerSemaine(

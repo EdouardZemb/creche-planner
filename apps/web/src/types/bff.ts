@@ -220,6 +220,51 @@ export interface ValidationResultat {
   deltaModifs: DeltaModifs | null;
 }
 
+// ---- Notifications : vue hebdomadaire consolidée éditable ------------------
+//
+// Hand-typé : la route BFF `GET /api/v1/notifications/semaine/:foyerId/:semaineIso/
+// besoins` n'est pas décrite dans l'OpenAPI de la gateway (agrégation orientée
+// écran de svc-planification + svc-notifications) → rien à dériver.
+
+/** Entrées datées d'un jour (mêmes catégories que la saisie mensuelle). */
+export interface SaisieJourBesoins {
+  joursSupplementaires: JourSupplementaire[];
+  absences: AbsenceCreche[];
+  exceptions: ExceptionAbcm[];
+  joursAlsh: JourAlsh[];
+}
+
+/** Besoins d'une semaine : jour `YYYY-MM-DD` → entrées (jours vides omis). */
+export type BesoinsSemaine = Record<string, SaisieJourBesoins>;
+
+/** Établissement destinataire concerné par la semaine (récap mail à venir). */
+export interface EtablissementConcerne {
+  cle: CleEtablissement;
+  libelle: string;
+  preavisRegle: PreavisRegle;
+}
+
+/** Un contrat actif de la semaine, avec ses besoins datés et son établissement. */
+export interface ContratBesoinsSemaine {
+  contratId: string;
+  enfant: string;
+  mode: Mode;
+  etablissementCle: CleEtablissement;
+  besoins: BesoinsSemaine;
+}
+
+/**
+ * Vue consolidée d'une semaine éditable du foyer : les 7 jours, les établissements
+ * concernés et les contrats actifs avec leurs besoins, groupables à l'écran par
+ * enfant → établissement/mode. Ouverte depuis une notification A_VALIDER.
+ */
+export interface SemaineBesoins {
+  semaineIso: string; // `YYYY-Www`
+  jours: string[]; // 7 jours `YYYY-MM-DD`, lundi → dimanche
+  etablissements: EtablissementConcerne[];
+  contrats: ContratBesoinsSemaine[];
+}
+
 // ---- Notifications : mail au service (relecture + envoi, Lot 6) ------------
 
 /**

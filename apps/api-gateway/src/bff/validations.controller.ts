@@ -9,14 +9,26 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import {
+  estSemaineIso,
+  joursDeLaSemaine,
+  moisDeLaSemaine,
+} from '@creche-planner/shared-semaine';
+import {
   NotificationsClient,
   type BrouillonVue,
   type EnvoiResultat,
   type NotificationAValiderVue,
   type ValidationResultat,
 } from '../clients/notifications.client.js';
+import { PlanificationClient } from '../clients/planification.client.js';
 import { valider } from './bff.dto.js';
 import { relayer } from './relais.js';
+import {
+  agregerSemaineBesoins,
+  estContratActifSurSemaine,
+  type ContratAvecSaisies,
+  type SemaineBesoinsVue,
+} from './semaine-besoins.js';
 
 /**
  * Corps minimal de la demande d'envoi (`POST …/envois`). La forme fine (UUID, semaine
@@ -35,7 +47,64 @@ const envoiSchema = z.object({
  */
 @Controller({ path: 'notifications', version: '1' })
 export class ValidationsController {
-  constructor(private readonly notifications: NotificationsClient) {}
+  constructor(
+    private readonly notifications: NotificationsClient,
+    private readonly planification: PlanificationClient,
+  ) {}
+
+  /**
+   * Vue hebdomadaire **consolidée et éditable** d'un foyer (lecture seule) : pour la
+   * semaine `:semaineIso`, agrège les contrats actifs du foyer (mêmes bornes que le
+   * scheduler de notification) et, pour chacun, ses besoins datés extraits de la/des
+   * saisie(s) mensuelle(s) réelle(s) (`simule=false`), rattachés à leur établissement.
+   * Sert d'écran d'édition ouvert depuis une notification A_VALIDER.
+   */
+  @Get('semaine/:foyerId/:semaineIso/besoins')
+  semaineBesoins(
+    @Param('foyerId') foyerId: string,
+    @Param('semaineIso') semaineIso: string,
+  ): Promise<SemaineBesoinsVue> {
+    if (!estSemaineIso(semaineIso)) {
+      throw new BadRequestException([
+        {
+          champ: 'semaineIso',
+          message: 'semaine ISO attendue au format YYYY-Www',
+        },
+      ]);
+    }
+    const jours = joursDeLaSemaine(semaineIso);
+    const mois = moisDeLaSemaine(semaineIso);
+    return relayer(async () => {
+      const [contrats, annuaire] = await Promise.all([
+        this.planification.listerContrats(foyerId),
+        this.notifications.listerEtablissements(),
+      ]);
+      const actifs = contrats.filter((c) =>
+        estContratActifSurSemaine(c, jours),
+      );
+      const avecSaisies: ContratAvecSaisies[] = await Promise.all(
+        actifs.map(async (contrat) => {
+          const saisies = await Promise.all(
+            mois.map(async (m) => {
+              const { saisie } = await this.planification.lirePlanning(
+                contrat.id,
+                m,
+                false,
+              );
+              return saisie;
+            }),
+          );
+          return { contrat, saisies };
+        }),
+      );
+      return agregerSemaineBesoins({
+        semaineIso,
+        jours,
+        contrats: avecSaisies,
+        annuaire,
+      });
+    });
+  }
 
   /** Liste les semaines à valider d'un foyer : `?foyer=<uuid>`. */
   @Get('a-valider')
