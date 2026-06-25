@@ -1,0 +1,1 @@
+DROP TABLE "envoi_mail" CASCADE;

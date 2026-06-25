@@ -8,19 +8,23 @@ import type {
   ResultatEnvoi,
 } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
-import { contrat, envoiMail, notificationHebdo } from '../database/schema.js';
+import {
+  contrat,
+  envoiEtablissement,
+  notificationHebdo,
+} from '../database/schema.js';
 import type { DeltaModifs } from '../validation/validation.diff.js';
 
 /**
- * Tests du service d'envoi **sans Postgres** : base factice multi-tables qui honore le
- * sous-ensemble utilisé — `select().from(table).where(and(eq…))`,
+ * Tests du service d'envoi **agrégé par établissement** sans Postgres : base factice
+ * multi-tables qui honore le sous-ensemble utilisé — `select().from(table).where(and(eq…))`,
  * `insert(table).values().onConflictDoNothing(target[]).returning()` (réservation
  * idempotente du slot), `update(table).set().where(eq…)`. Le mailer et l'annuaire sont
  * mockés : **aucun** SMTP réel n'est jamais ouvert (dry-run/échec simulés).
  */
 type Ligne = Record<string, unknown>;
 
-/** Nom de propriété TS d'une colonne dans sa table (ex. `contrat_id` → `contratId`). */
+/** Nom de propriété TS d'une colonne dans sa table (ex. `foyer_id` → `foyerId`). */
 function cleDe(table: Table, colonne: Column): string {
   const entree = Object.entries(getTableColumns(table)).find(
     ([, c]) => c === colonne,
@@ -76,7 +80,7 @@ function fakeBase(): { db: Database; stores: Map<Table, Ligne[]> } {
   const stores = new Map<Table, Ligne[]>([
     [contrat, []],
     [notificationHebdo, []],
-    [envoiMail, []],
+    [envoiEtablissement, []],
   ]);
   const lignesDe = (table: Table): Ligne[] => stores.get(table) ?? [];
   const filtrer = (table: Table, condition: unknown): Ligne[] => {
@@ -126,68 +130,85 @@ function fakeBase(): { db: Database; stores: Map<Table, Ligne[]> } {
   return { db, stores };
 }
 
-const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
+const CONTRAT_LEA = '55555555-0000-4000-8000-000000000000';
+const CONTRAT_TOM = '55555555-0000-4000-8000-000000000001';
 const SEMAINE = '2026-W27';
+const CLE = 'CRECHE_HIRONDELLES' as const;
 
 const ETAB = {
-  cle: 'CRECHE_HIRONDELLES' as const,
+  cle: CLE,
   libelle: 'Crèche Les Hirondelles',
   emailService: 'contact-creche@example.org',
   preavisRegle: { type: 'JOURS_OUVRES' as const, valeur: 2 },
   actif: true,
 };
 
-const DELTA: DeltaModifs = {
-  jours: [
-    {
-      date: '2026-06-29',
-      avant: null,
-      apres: {
-        joursSupplementaires: [],
-        absences: [{ date: '2026-06-29' }],
-        exceptions: [],
-        joursAlsh: [],
+function deltaJour(date: string): DeltaModifs {
+  return {
+    jours: [
+      {
+        date,
+        avant: null,
+        apres: {
+          joursSupplementaires: [],
+          absences: [{ date }],
+          exceptions: [],
+          joursAlsh: [],
+        },
       },
-    },
-  ],
-};
+    ],
+  };
+}
 
-/** Seede un contrat + une semaine notifiée (avec delta) dans la base factice. */
-function seed(
+/** Seede un contrat + sa semaine notifiée (statut/delta paramétrables). */
+function seedContrat(
   stores: Map<Table, Ligne[]>,
-  options: { mode?: string; delta?: DeltaModifs | null } = {},
+  options: {
+    id: string;
+    enfant: string;
+    mode?: string;
+    statut?: string;
+    delta?: DeltaModifs | null;
+    date?: string;
+  },
 ): void {
   stores.get(contrat)?.push({
-    id: CONTRAT_ID,
+    id: options.id,
     foyerId: FOYER_ID,
-    enfant: 'Léa',
+    enfant: options.enfant,
     mode: options.mode ?? 'CRECHE_PSU',
     valideDu: '2026-01-01',
     valideAu: null,
     updatedAt: new Date(),
   });
   stores.get(notificationHebdo)?.push({
-    id: 'n1',
-    contratId: CONTRAT_ID,
+    id: `n-${options.id}`,
+    contratId: options.id,
     foyerId: FOYER_ID,
     semaineIso: SEMAINE,
     type: 'VALIDATION_HEBDO',
-    statut: 'VALIDEE_AVEC_MODIFS',
+    statut: options.statut ?? 'VALIDEE_AVEC_MODIFS',
     notifieeLe: new Date(),
     valideeLe: new Date(),
     snapshot: {},
-    deltaModifs: options.delta === undefined ? DELTA : options.delta,
+    deltaModifs:
+      options.delta === undefined
+        ? deltaJour(options.date ?? '2026-06-29')
+        : options.delta,
     createdAt: new Date(),
     updatedAt: new Date(),
   });
 }
 
-function fakeEtablissements(etab = ETAB): {
+function fakeEtablissements(etab: typeof ETAB | null = ETAB): {
   service: EtablissementService;
   mock: ReturnType<typeof vi.fn>;
 } {
-  const mock = vi.fn(() => Promise.resolve(etab));
+  // `null` simule un établissement absent (`parCle` renvoie `undefined` en prod) ;
+  // `!etab` couvre les deux. On évite `undefined` ici : passé explicitement, il
+  // réactiverait la valeur par défaut du paramètre.
+  const mock = vi.fn(() => Promise.resolve(etab ?? undefined));
   return {
     service: { parCle: mock } as unknown as EtablissementService,
     mock,
@@ -206,7 +227,7 @@ function fakeMailer(resultat: ResultatEnvoi | Error): {
   return { mailer: { envoyer: mock } as unknown as MailerService, mock };
 }
 
-describe('EnvoiService.brouillon', () => {
+describe('EnvoiService.brouillon (agrégé par établissement)', () => {
   beforeEach(() => {
     delete process.env['NOTIF_EMAIL_DRY_RUN'];
     delete process.env['NOTIF_EMAIL_ALLOWLIST'];
@@ -216,34 +237,81 @@ describe('EnvoiService.brouillon', () => {
     delete process.env['NOTIF_EMAIL_ALLOWLIST'];
   });
 
-  it('résout le destinataire et rend le récap (dry-run actif par défaut)', async () => {
+  it('agrège tous les enfants du foyer concernés (dry-run actif par défaut)', async () => {
     const { db, stores } = fakeBase();
-    seed(stores);
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa', date: '2026-06-29' });
+    seedContrat(stores, { id: CONTRAT_TOM, enfant: 'Tom', date: '2026-07-01' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const brouillon = await service.brouillon(CONTRAT_ID, SEMAINE);
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, CLE);
 
-    expect(brouillon.etablissementCle).toBe('CRECHE_HIRONDELLES');
+    expect(brouillon.etablissementCle).toBe(CLE);
     expect(brouillon.destinataire).toBe('contact-creche@example.org');
-    expect(brouillon.sujet).toContain('Léa');
+    expect(brouillon.enfants).toHaveLength(2);
+    expect(brouillon.enfants.map((e) => e.enfant)).toEqual(['Léa', 'Tom']);
+    expect(brouillon.corps).toContain('Léa');
+    expect(brouillon.corps).toContain('Tom');
     expect(brouillon.corps).toContain('29/06/2026');
-    expect(brouillon.deltaModifs.jours).toHaveLength(1);
-    // Pas de NOTIF_EMAIL_DRY_RUN=false → bac à sable actif.
+    expect(brouillon.corps).toContain('01/07/2026');
     expect(brouillon.dryRun).toBe(true);
+  });
+
+  it('n’inclut que les contrats VALIDEE_AVEC_MODIFS de l’établissement visé', async () => {
+    const { db, stores } = fakeBase();
+    // Léa : crèche, validée avec modifs → incluse.
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    // Tom : crèche mais seulement VALIDEE (sans modifs) → exclu.
+    seedContrat(stores, {
+      id: CONTRAT_TOM,
+      enfant: 'Tom',
+      statut: 'VALIDEE',
+      delta: null,
+    });
+    // Zoé : mode ABCM (autre établissement) → exclue de la crèche.
+    seedContrat(stores, {
+      id: '55555555-0000-4000-8000-000000000002',
+      enfant: 'Zoé',
+      mode: 'CANTINE',
+    });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer } = fakeMailer({ messageId: null, dryRun: true });
+    const service = new EnvoiService(db, etablissements, mailer);
+
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, CLE);
+
+    expect(brouillon.enfants.map((e) => e.enfant)).toEqual(['Léa']);
+  });
+
+  it('rend un récap vide (aucun enfant) sans modification du foyer', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, {
+      id: CONTRAT_LEA,
+      enfant: 'Léa',
+      statut: 'VALIDEE',
+      delta: null,
+    });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer } = fakeMailer({ messageId: null, dryRun: true });
+    const service = new EnvoiService(db, etablissements, mailer);
+
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, CLE);
+
+    expect(brouillon.enfants).toHaveLength(0);
+    expect(brouillon.corps).toContain('Aucune modification');
   });
 
   it('dry-run effectif quand le destinataire est hors allowlist', async () => {
     process.env['NOTIF_EMAIL_DRY_RUN'] = 'false';
     process.env['NOTIF_EMAIL_ALLOWLIST'] = 'autre@example.org';
     const { db, stores } = fakeBase();
-    seed(stores);
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const brouillon = await service.brouillon(CONTRAT_ID, SEMAINE);
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, CLE);
 
     expect(brouillon.dryRun).toBe(true);
   });
@@ -252,57 +320,38 @@ describe('EnvoiService.brouillon', () => {
     process.env['NOTIF_EMAIL_DRY_RUN'] = 'false';
     process.env['NOTIF_EMAIL_ALLOWLIST'] = 'contact-creche@example.org';
     const { db, stores } = fakeBase();
-    seed(stores);
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const brouillon = await service.brouillon(CONTRAT_ID, SEMAINE);
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, CLE);
 
     expect(brouillon.dryRun).toBe(false);
   });
 
-  it('404 si le contrat est inconnu', async () => {
-    const { db } = fakeBase();
-    const { service: etablissements } = fakeEtablissements();
-    const { mailer } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
-
-    await expect(service.brouillon(CONTRAT_ID, SEMAINE)).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
-  });
-
-  it('404 si la semaine n’a jamais été notifiée', async () => {
+  it('404 si l’établissement destinataire est inconnu', async () => {
     const { db, stores } = fakeBase();
-    stores.get(contrat)?.push({
-      id: CONTRAT_ID,
-      foyerId: FOYER_ID,
-      enfant: 'Léa',
-      mode: 'CRECHE_PSU',
-      valideDu: '2026-01-01',
-      valideAu: null,
-      updatedAt: new Date(),
-    });
-    const { service: etablissements } = fakeEtablissements();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    const { service: etablissements } = fakeEtablissements(null);
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    await expect(service.brouillon(CONTRAT_ID, SEMAINE)).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      service.brouillon(FOYER_ID, SEMAINE, CLE),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
-describe('EnvoiService.envoyer', () => {
+describe('EnvoiService.envoyer (agrégé par établissement)', () => {
   it('dry-run : journalise DRY_RUN sans messageId et appelle le mailer une fois', async () => {
     const { db, stores } = fakeBase();
-    seed(stores);
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const resultat = await service.envoyer(CONTRAT_ID, SEMAINE);
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, CLE);
 
     expect(resultat.statut).toBe('DRY_RUN');
     expect(resultat.messageId).toBeNull();
@@ -312,7 +361,7 @@ describe('EnvoiService.envoyer', () => {
     expect(mock).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'contact-creche@example.org' }),
     );
-    const lignes = stores.get(envoiMail) ?? [];
+    const lignes = stores.get(envoiEtablissement) ?? [];
     expect(lignes).toHaveLength(1);
     expect(lignes[0]?.['statut']).toBe('DRY_RUN');
     expect(lignes[0]?.['envoyeLe']).toBeInstanceOf(Date);
@@ -322,21 +371,23 @@ describe('EnvoiService.envoyer', () => {
 
   it('envoi réel : journalise ENVOYE avec le messageId', async () => {
     const { db, stores } = fakeBase();
-    seed(stores);
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer } = fakeMailer({ messageId: '<msg-1@test>', dryRun: false });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const resultat = await service.envoyer(CONTRAT_ID, SEMAINE);
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, CLE);
 
     expect(resultat.statut).toBe('ENVOYE');
     expect(resultat.messageId).toBe('<msg-1@test>');
-    expect((stores.get(envoiMail) ?? [])[0]?.['statut']).toBe('ENVOYE');
+    expect((stores.get(envoiEtablissement) ?? [])[0]?.['statut']).toBe(
+      'ENVOYE',
+    );
   });
 
   it('idempotent : un second envoi ne ré-émet rien et renvoie l’existant', async () => {
     const { db, stores } = fakeBase();
-    seed(stores);
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer, mock } = fakeMailer({
       messageId: '<msg-1@test>',
@@ -344,45 +395,30 @@ describe('EnvoiService.envoyer', () => {
     });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const premier = await service.envoyer(CONTRAT_ID, SEMAINE);
-    const second = await service.envoyer(CONTRAT_ID, SEMAINE);
+    const premier = await service.envoyer(FOYER_ID, SEMAINE, CLE);
+    const second = await service.envoyer(FOYER_ID, SEMAINE, CLE);
 
     expect(mock).toHaveBeenCalledTimes(1);
     expect(second.statut).toBe('ENVOYE');
     expect(second.messageId).toBe(premier.messageId);
-    expect(stores.get(envoiMail) ?? []).toHaveLength(1);
+    expect(stores.get(envoiEtablissement) ?? []).toHaveLength(1);
   });
 
   it('échec SMTP : journalise ECHEC avec le motif et ne renvoie pas de messageId', async () => {
     const { db, stores } = fakeBase();
-    seed(stores);
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer, mock } = fakeMailer(new Error('SMTP 535 auth refusée'));
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const resultat = await service.envoyer(CONTRAT_ID, SEMAINE);
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, CLE);
 
     expect(mock).toHaveBeenCalledTimes(1);
     expect(resultat.statut).toBe('ECHEC');
     expect(resultat.messageId).toBeNull();
     expect(resultat.erreur).toContain('SMTP 535');
-    const ligne = (stores.get(envoiMail) ?? [])[0];
+    const ligne = (stores.get(envoiEtablissement) ?? [])[0];
     expect(ligne?.['statut']).toBe('ECHEC');
     expect(ligne?.['erreur']).toContain('SMTP 535');
-  });
-
-  it('envoie même sans modification (delta vide) — récap « aucune modification »', async () => {
-    const { db, stores } = fakeBase();
-    seed(stores, { delta: { jours: [] } });
-    const { service: etablissements } = fakeEtablissements();
-    const { mailer } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
-
-    const resultat = await service.envoyer(CONTRAT_ID, SEMAINE);
-
-    expect(resultat.statut).toBe('DRY_RUN');
-    expect((stores.get(envoiMail) ?? [])[0]?.['corps']).toContain(
-      'Aucune modification',
-    );
   });
 });

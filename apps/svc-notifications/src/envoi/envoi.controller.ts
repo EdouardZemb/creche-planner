@@ -8,43 +8,58 @@ import {
   ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
-import { ZodValidationPipe } from '../etablissement/etablissement.dto.js';
+import {
+  CleEtablissementPipe,
+  ZodValidationPipe,
+} from '../etablissement/etablissement.dto.js';
 import { SemaineIsoPipe } from '../validation/validation.dto.js';
-import { envoiSchema, type EnvoiDto } from './envoi.dto.js';
-import type { BrouillonVue, EnvoiResultat } from './envoi.dto.js';
+import type { CleEtablissement } from '../etablissement/etablissement.dto.js';
+import {
+  envoiEtablissementSchema,
+  type EnvoiEtablissementDto,
+} from './envoi.dto.js';
+import type {
+  BrouillonEtablissementVue,
+  EnvoiEtablissementResultat,
+} from './envoi.dto.js';
 import { EnvoiService } from './envoi.service.js';
 
 /**
- * Mail de récapitulatif au **service** concerné (Lot 6) — l'action sortante réelle,
- * encadrée par une **relecture humaine**. Deux endpoints :
+ * Mail de récapitulatif **agrégé par établissement** (édition hebdo, Phase 4) — l'action
+ * sortante réelle, encadrée par une **relecture humaine**. Granularité : **un seul mail
+ * par établissement** regroupant tous les enfants du foyer dont la semaine a été validée
+ * avec modifications (remplace l'envoi par-contrat du Lot 6). Deux endpoints :
  *
- * - `GET /validations/:contratId/:semaineIso/brouillon` : régénère le brouillon
- *   (lecture seule, ré-générable) pour la relecture avant envoi ;
- * - `POST /envois` : déclenche l'envoi réel **après** le clic « Envoyer » (idempotent
- *   via la clé d'unicité d'`envoi_mail`, garde-fous dry-run/allowlist du mailer).
+ * - `GET /validations/semaine/:foyerId/:semaineIso/etablissements/:cle/brouillon` :
+ *   régénère le brouillon agrégé (lecture seule) pour la relecture avant envoi ;
+ * - `POST /envois/etablissement` : déclenche l'envoi réel **après** le clic « Envoyer »
+ *   (idempotent via la clé d'unicité `(foyer, semaine, établissement)`, garde-fous
+ *   dry-run/allowlist du mailer).
  *
- * La forme des paramètres (UUID, semaine ISO, corps) est vérifiée par des pipes ; la
- * résolution du destinataire, l'idempotence et le journal vivent dans le service.
+ * La forme des paramètres (UUID, semaine ISO, clé d'établissement, corps) est vérifiée
+ * par des pipes ; l'agrégation, l'idempotence et le journal vivent dans le service.
  */
 @Controller()
 export class EnvoiController {
   constructor(private readonly envois: EnvoiService) {}
 
-  /** Régénère le brouillon du mail de service pour relecture (lecture seule). */
-  @Get('validations/:contratId/:semaineIso/brouillon')
+  /** Régénère le brouillon agrégé du mail de service pour relecture (lecture seule). */
+  @Get('validations/semaine/:foyerId/:semaineIso/etablissements/:cle/brouillon')
   brouillon(
-    @Param('contratId', ParseUUIDPipe) contratId: string,
+    @Param('foyerId', ParseUUIDPipe) foyerId: string,
     @Param('semaineIso', SemaineIsoPipe) semaineIso: string,
-  ): Promise<BrouillonVue> {
-    return this.envois.brouillon(contratId, semaineIso);
+    @Param('cle', CleEtablissementPipe) cle: CleEtablissement,
+  ): Promise<BrouillonEtablissementVue> {
+    return this.envois.brouillon(foyerId, semaineIso, cle);
   }
 
-  /** Envoie réellement le récap au service (après relecture). Idempotent. */
-  @Post('envois')
+  /** Envoie réellement le récap agrégé au service (après relecture). Idempotent. */
+  @Post('envois/etablissement')
   @HttpCode(HttpStatus.OK)
   envoyer(
-    @Body(new ZodValidationPipe(envoiSchema)) dto: EnvoiDto,
-  ): Promise<EnvoiResultat> {
-    return this.envois.envoyer(dto.contratId, dto.semaineIso);
+    @Body(new ZodValidationPipe(envoiEtablissementSchema))
+    dto: EnvoiEtablissementDto,
+  ): Promise<EnvoiEtablissementResultat> {
+    return this.envois.envoyer(dto.foyerId, dto.semaineIso, dto.cle);
   }
 }

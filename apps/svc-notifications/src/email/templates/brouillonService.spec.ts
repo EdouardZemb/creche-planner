@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { brouillonService } from './brouillonService.js';
+import { brouillonServiceAgrege } from './brouillonService.js';
 import type { SaisieJour } from '../../validation/validation.diff.js';
 
 /** Sous-ensemble des catégories d'un jour, renseignées au cas par cas. */
@@ -21,81 +21,109 @@ function jour(partiel: JourPartiel): SaisieJour {
 }
 
 const BASE = {
-  enfant: 'Léa',
   semaineIso: '2026-W27',
   etablissementLibelle: 'Crèche Les Hirondelles',
 } as const;
 
-describe('brouillonService', () => {
-  it('rend le sujet, l’en-tête établissement et le récap des jours modifiés', () => {
-    const message = brouillonService({
+describe('brouillonServiceAgrege', () => {
+  it('rend le sujet, l’en-tête établissement et un bloc par enfant', () => {
+    const message = brouillonServiceAgrege({
       ...BASE,
-      deltaModifs: {
-        jours: [
-          { date: '2026-06-29', avant: null, apres: jour({ absences: [{}] }) },
-          {
-            date: '2026-07-01',
-            avant: null,
-            apres: jour({ joursSupplementaires: [{}, {}] }),
+      enfants: [
+        {
+          enfant: 'Léa',
+          deltaModifs: {
+            jours: [
+              {
+                date: '2026-06-29',
+                avant: null,
+                apres: jour({ absences: [{}] }),
+              },
+            ],
           },
-        ],
-      },
+        },
+        {
+          enfant: 'Tom',
+          deltaModifs: {
+            jours: [
+              {
+                date: '2026-07-01',
+                avant: null,
+                apres: jour({ joursSupplementaires: [{}, {}] }),
+              },
+            ],
+          },
+        },
+      ],
     });
 
-    expect(message.subject).toBe(
-      'Planning de Léa — semaine 2026-W27 : modifications',
-    );
+    expect(message.subject).toBe('Plannings modifiés — semaine 2026-W27');
     expect(message.html).toContain('Crèche Les Hirondelles');
+    // Les deux enfants apparaissent, chacun avec ses jours.
+    expect(message.text).toContain('Léa :');
     expect(message.text).toContain('29/06/2026 : 1 absence');
+    expect(message.text).toContain('Tom :');
     expect(message.text).toContain('01/07/2026 : 2 jours supplémentaires');
+    expect(message.html).toContain('<strong>Léa</strong>');
+    expect(message.html).toContain('<strong>Tom</strong>');
   });
 
   it('décrit une journée retirée du planning (apres absent)', () => {
-    const message = brouillonService({
+    const message = brouillonServiceAgrege({
       ...BASE,
-      deltaModifs: {
-        jours: [
-          { date: '2026-06-30', avant: jour({ absences: [{}] }), apres: null },
-        ],
-      },
+      enfants: [
+        {
+          enfant: 'Léa',
+          deltaModifs: {
+            jours: [
+              {
+                date: '2026-06-30',
+                avant: jour({ absences: [{}] }),
+                apres: null,
+              },
+            ],
+          },
+        },
+      ],
     });
 
     expect(message.text).toContain('30/06/2026 : journée retirée du planning');
   });
 
-  it('indique l’absence de modification quand le delta est vide', () => {
-    const message = brouillonService({
-      ...BASE,
-      deltaModifs: { jours: [] },
-    });
+  it('indique l’absence de modification quand aucun enfant n’est concerné', () => {
+    const message = brouillonServiceAgrege({ ...BASE, enfants: [] });
 
     expect(message.text).toContain('Aucune modification déclarée');
     expect(message.html).toContain('Aucune modification déclarée');
   });
 
   it('cumule plusieurs catégories d’un même jour', () => {
-    const message = brouillonService({
+    const message = brouillonServiceAgrege({
       ...BASE,
-      deltaModifs: {
-        jours: [
-          {
-            date: '2026-06-29',
-            avant: null,
-            apres: jour({ absences: [{}], joursAlsh: [{}, {}, {}] }),
+      enfants: [
+        {
+          enfant: 'Léa',
+          deltaModifs: {
+            jours: [
+              {
+                date: '2026-06-29',
+                avant: null,
+                apres: jour({ absences: [{}], joursAlsh: [{}, {}, {}] }),
+              },
+            ],
           },
-        ],
-      },
+        },
+      ],
     });
 
     expect(message.text).toContain('1 absence, 3 jours ALSH');
   });
 
   it('échappe le prénom et le libellé dans le HTML (anti-injection)', () => {
-    const message = brouillonService({
-      enfant: '<b>x</b>',
+    const message = brouillonServiceAgrege({
       semaineIso: '2026-W27',
       etablissementLibelle: 'École & Cie <i>',
-      deltaModifs: { jours: [] },
+      enfants: [{ enfant: '<b>x</b>', deltaModifs: { jours: [] } }],
     });
 
     expect(message.html).toContain('&lt;b&gt;x&lt;/b&gt;');

@@ -36,6 +36,20 @@
       "when": 1782378336944,
       "tag": "0004_envoi_mail",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782401625530,
+      "tag": "0005_drop_envoi_mail",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782401643430,
+      "tag": "0006_envoi_etablissement",
+      "breakpoints": true
     }
   ]
 }

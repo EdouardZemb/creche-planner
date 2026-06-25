@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { api } from '../api/client';
-import type { ContratBesoinsSemaine } from '../types/bff';
+import type { ContratBesoinsSemaine, StatutNotification } from '../types/bff';
 import { useAsync } from '../hooks/useAsync';
 import { EditeurContratSemaine } from './EditeurContratSemaine';
+import { RelectureEnvoi } from './RelectureEnvoi';
 
 /** Rend `2026-W27` en libellé lisible « semaine 27 (2026) ». */
 function libelleSemaine(semaineIso: string): string {
@@ -36,6 +37,15 @@ export function EditeurSemaine({
     (signal) => api.lireSemaineBesoins(foyerId, semaineIso, { signal }),
     [foyerId, semaineIso],
   );
+
+  // Dès qu'un contrat est validé AVEC modifications, on propose la relecture/envoi des
+  // récaps **agrégés par établissement** (Phase 4) — un seul mail par établissement.
+  const [aEnvoyer, setAEnvoyer] = useState(false);
+  const surValidation = (statut: StatutNotification): void => {
+    if (statut === 'VALIDEE_AVEC_MODIFS') {
+      setAEnvoyer(true);
+    }
+  };
 
   // Regroupe les contrats par établissement, en conservant l'ordre de l'annuaire
   // renvoyé par le BFF (établissements concernés de la semaine).
@@ -104,11 +114,17 @@ export function EditeurSemaine({
                 contrat={contrat}
                 jours={data.jours}
                 semaineIso={semaineIso}
+                onValide={surValidation}
                 {...(onEnregistre ? { onEnregistre } : {})}
               />
             ))}
           </div>
         ))}
+
+      {/* Récap au service **agrégé par établissement** (1 mail par établissement
+          regroupant tous les enfants concernés du foyer), proposé après une
+          validation avec modifications. */}
+      {aEnvoyer && <RelectureEnvoi foyerId={foyerId} semaineIso={semaineIso} />}
     </section>
   );
 }

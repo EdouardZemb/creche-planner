@@ -1570,4 +1570,38 @@ fichier généré au commit ; (c) le surrogate`can-i-deploy.mjs`(ADR-0005) tient
     (ouverture de l'éditeur ; mocks `api.lireSemaineBesoins`/`ecrireSemaineBesoins` ajoutés). lint/typecheck/
     test/build web **verts** (290 tests). **Hors OpenAPI** (routes hand-typées) → aucun drift, aucun nouveau
     provider Pact, rien à toucher côté déploiement.
-  - **Phase 4 à venir** : mail récap **agrégé par établissement** (remplace l'envoi par-contrat du Lot 6).
+- **Phase 4 — Mail récap agrégé par établissement** (`svc-notifications` + BFF + `apps/web`) :
+  - **Granularité d'envoi changée** (décision produit) : **1 mail par établissement** regroupant **tous les
+    enfants du foyer** dont la semaine a été validée `VALIDEE_AVEC_MODIFS`, en **remplacement** de l'envoi
+    **par-contrat** du Lot 6 (retiré : endpoints, service, table, types, tests, interactions Pact).
+  - **Table `envoi_etablissement`** (migrations **générées** `0005_drop_envoi_mail` + `0006_envoi_etablissement`,
+    jamais à la main) `UNIQUE(foyer_id, semaine_iso, etablissement_cle)`, colonnes preuve **figées à l'insert**
+    (`destinataire`/`sujet`/`corps`), statut `EN_COURS|ENVOYE|DRY_RUN|ECHEC`. Idempotence via slot
+    `onConflictDoNothing` (un second clic ne ré-émet pas). Drizzle-kit nécessitant un TTY pour arbitrer
+    drop-vs-rename, la migration a été **scindée en deux passes non ambiguës** (drop puis create).
+  - **Template pur** `brouillonServiceAgrege` (ex-`brouillonService`, **étendu multi-enfant**) : un bloc par
+    enfant + ses jours modifiés, sujet `Plannings modifiés — semaine YYYY-Www`, échappement HTML conservé.
+  - **Service** `EnvoiService.brouillon(foyer, semaine, cle)` / `envoyer(...)` : résout l'établissement (404 si
+    clé inconnue), rassemble en **2 requêtes** (notifications `VALIDEE_AVEC_MODIFS` du foyer + contrats du foyer
+    joints en mémoire) les enfants dont `MODE_VERS_CLE[mode] = cle` et le **delta non vide**, ordre déterministe
+    (prénom). Corps **régénéré côté service** (jamais repris du client). Garde-fous dry-run/allowlist du Lot 2.
+  - **Endpoints** svc : `GET /validations/semaine/:foyerId/:semaineIso/etablissements/:cle/brouillon`
+    (pipes UUID/semaine/`CleEtablissementPipe`) + `POST /envois/etablissement` (`envoiEtablissementSchema`).
+    **BFF** : routes jumelles sous `/api/v1/notifications/*` (relais résilient). **Web** :
+    `api.lireBrouillonEtablissement`/`envoyerRecapEtablissement` + types `BrouillonEtablissement`/`EnfantBrouillon`/
+    `EnvoiEtablissementResultat` (hand-typés, hors OpenAPI → aucun drift).
+  - **Web** : `RelectureEnvoi` réécrit **par établissement** (foyer + semaine) — découvre les établissements
+    **concernés** en chargeant le brouillon agrégé des 2 clés et n'affiche un bloc (1 enfant min.) que pour
+    ceux-là ; bandeau **DRY-RUN** + **confirmation** conservés ; bouton/aria-label datés par établissement
+    (cibles uniques). Monté une seule fois au niveau **foyer** (par `EditeurSemaine` via `onValide`, et par
+    l'`EncartValidation` sur sa propre validation) ; la `RelectureEnvoi` par-contrat de l'`EditeurContratSemaine`
+    est retirée.
+  - **Tests** : brouillon agrégé multi-enfant + filtre `VALIDEE_AVEC_MODIFS`/établissement (svc), idempotence
+    `(foyer, semaine, cle)`, dry-run/ENVOYE/ECHEC, template, web (3 composants), **Pact** consumer+provider
+    réécrits (2 interactions agrégées ; états provider seedent foyer + **2 contrats validés avec deltas** +
+    établissement ; purge `envoi_etablissement`). **Pact fichier régénéré de zéro** (PactV3 fusionne →
+    suppression manuelle avant régénération pour purger les interactions par-contrat). Paire Pact
+    api-gateway↔svc-notifications **inchangée** → rien à ajouter dans `can-i-deploy`. lint/typecheck/test/build
+    **verts**. **Piège reproduit** : `tsc --build --emitDeclarationOnly` en état incrémental cassé n'émet pas le
+    `.d.ts` de l'app → cascade `TS6305`/`TS7006` fantômes → **rebuild `tsconfig.app.json` (clean dist) avant
+    typecheck** (variante du piège dist périmé Lots 5-6).

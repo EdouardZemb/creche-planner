@@ -22,7 +22,7 @@ import type {
  * Lot 0 = scaffold : on ne pose que les **tables d'infra latentes** communes au
  * template (idempotence de consommation + outbox transactionnelle). Les tables
  * métier (`contrat`, `notification_hebdo`, `etablissement_destinataire`,
- * `envoi_mail`) arrivent aux lots suivants par migrations incrémentales.
+ * `envoi_etablissement`) arrivent aux lots suivants par migrations incrémentales.
  */
 
 // --- Read model : Planification (projeté depuis le stream PLANIFICATION) ----
@@ -192,24 +192,27 @@ export const STATUTS_ENVOI = [
 export type StatutEnvoi = (typeof STATUTS_ENVOI)[number];
 
 /**
- * Journal de l'**action sortante réelle** (cœur du Lot 6) : le mail récapitulatif
- * envoyé au service concerné (crèche / école ABCM) après relecture humaine. C'est la
+ * Journal de l'**action sortante réelle** : le mail récapitulatif **agrégé par
+ * établissement** envoyé au service concerné (crèche / école ABCM) après relecture
+ * humaine. Granularité de la feature d'édition hebdo (Phase 4) : **un seul mail par
+ * établissement**, regroupant **tous les enfants du foyer** dont la semaine a été
+ * validée avec modifications (remplace l'envoi par-contrat du Lot 6). C'est la
  * première I/O vers un tiers réel : la ligne en porte la **preuve** (`destinataire`
  * figé, `sujet`, `corps` rendu) et le **résultat** (`statut`, `message_id`/`erreur`).
  *
- * La clé `UNIQUE(contrat_id, semaine_iso, etablissement_cle)` garantit l'idempotence :
+ * La clé `UNIQUE(foyer_id, semaine_iso, etablissement_cle)` garantit l'idempotence :
  * un second clic « Envoyer » (ou un rejeu) ne ré-émet pas le même récap — l'insert
  * `onConflictDoNothing` ne réserve le slot qu'une fois, et l'appelant renvoie alors
  * l'envoi déjà journalisé. `destinataire`/`sujet`/`corps` sont **figés** à l'insert :
  * ils prouvent ce qui a réellement été adressé, indépendamment d'une édition ultérieure
  * de l'annuaire ou du planning.
  */
-export const envoiMail = pgTable(
-  'envoi_mail',
+export const envoiEtablissement = pgTable(
+  'envoi_etablissement',
   {
     id: uuid('id').primaryKey(),
-    /** Contrat concerné (read model `contrat`). */
-    contratId: uuid('contrat_id').notNull(),
+    /** Foyer concerné (regroupe tous les enfants du récap). */
+    foyerId: uuid('foyer_id').notNull(),
     /** Semaine ISO 8601 du récap, format `YYYY-Www`. */
     semaineIso: varchar('semaine_iso', { length: 8 }).notNull(),
     /** Clé de l'établissement destinataire (`CRECHE_HIRONDELLES` | `ABCM`). */
@@ -233,8 +236,8 @@ export const envoiMail = pgTable(
       .defaultNow(),
   },
   (table) => [
-    unique('envoi_mail_contrat_semaine_etab_uq').on(
-      table.contratId,
+    unique('envoi_etablissement_foyer_semaine_etab_uq').on(
+      table.foyerId,
       table.semaineIso,
       table.etablissementCle,
     ),
@@ -285,6 +288,6 @@ export const outbox = pgTable('outbox', {
 export type ContratRow = typeof contrat.$inferSelect;
 export type EtablissementRow = typeof etablissementDestinataire.$inferSelect;
 export type NotificationHebdoRow = typeof notificationHebdo.$inferSelect;
-export type EnvoiMailRow = typeof envoiMail.$inferSelect;
+export type EnvoiEtablissementRow = typeof envoiEtablissement.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;

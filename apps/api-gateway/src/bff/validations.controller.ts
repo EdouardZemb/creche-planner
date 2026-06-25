@@ -15,8 +15,8 @@ import {
 } from '@creche-planner/shared-semaine';
 import {
   NotificationsClient,
-  type BrouillonVue,
-  type EnvoiResultat,
+  type BrouillonEtablissementVue,
+  type EnvoiEtablissementResultat,
   type NotificationAValiderVue,
   type ValidationResultat,
 } from '../clients/notifications.client.js';
@@ -31,12 +31,14 @@ import {
 } from './semaine-besoins.js';
 
 /**
- * Corps minimal de la demande d'envoi (`POST …/envois`). La forme fine (UUID, semaine
- * ISO) est revalidée par le service amont ; ici on s'assure des champs requis.
+ * Corps minimal de la demande d'envoi agrégé (`POST …/envois/etablissement`). La forme
+ * fine (UUID, semaine ISO, clé d'établissement) est revalidée par le service amont ;
+ * ici on s'assure des champs requis.
  */
-const envoiSchema = z.object({
-  contratId: z.string().min(1),
+const envoiEtablissementSchema = z.object({
+  foyerId: z.string().min(1),
   semaineIso: z.string().min(1),
+  cle: z.string().min(1),
 });
 
 /**
@@ -128,23 +130,33 @@ export class ValidationsController {
     );
   }
 
-  /** Régénère le brouillon de mail au service (relecture avant envoi, Lot 6). */
-  @Get('validations/:contratId/:semaineIso/brouillon')
+  /**
+   * Régénère le brouillon **agrégé par établissement** (relecture avant envoi) : un seul
+   * mail par établissement regroupant tous les enfants du foyer validés avec modifications.
+   */
+  @Get('semaine/:foyerId/:semaineIso/etablissements/:cle/brouillon')
   brouillon(
-    @Param('contratId') contratId: string,
+    @Param('foyerId') foyerId: string,
     @Param('semaineIso') semaineIso: string,
-  ): Promise<BrouillonVue> {
+    @Param('cle') cle: string,
+  ): Promise<BrouillonEtablissementVue> {
     return relayer(() =>
-      this.notifications.lireBrouillon(contratId, semaineIso),
+      this.notifications.lireBrouillonEtablissement(foyerId, semaineIso, cle),
     );
   }
 
-  /** Envoie réellement le récap au service (après relecture, Lot 6). Idempotent. */
-  @Post('envois')
-  envoyer(@Body() corps: unknown): Promise<EnvoiResultat> {
-    const { contratId, semaineIso } = valider(envoiSchema, corps);
+  /**
+   * Envoie réellement le récap **agrégé par établissement** au service (après relecture).
+   * Idempotent sur `(foyer, semaine, établissement)`.
+   */
+  @Post('envois/etablissement')
+  envoyer(@Body() corps: unknown): Promise<EnvoiEtablissementResultat> {
+    const { foyerId, semaineIso, cle } = valider(
+      envoiEtablissementSchema,
+      corps,
+    );
     return relayer(() =>
-      this.notifications.envoyerRecap(contratId, semaineIso),
+      this.notifications.envoyerRecapEtablissement(foyerId, semaineIso, cle),
     );
   }
 }

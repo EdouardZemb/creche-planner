@@ -7,8 +7,8 @@ vi.mock('../api/client', () => ({
   api: {
     listerAValider: vi.fn(),
     validerSemaine: vi.fn(),
-    lireBrouillon: vi.fn(),
-    envoyerRecap: vi.fn(),
+    lireBrouillonEtablissement: vi.fn(),
+    envoyerRecapEtablissement: vi.fn(),
     // Ouvrir l'éditeur hebdomadaire (Phase 3) charge la vue consolidée.
     lireSemaineBesoins: vi.fn(),
     ecrireSemaineBesoins: vi.fn(),
@@ -18,19 +18,36 @@ vi.mock('../api/client', () => ({
 
 import { api } from '../api/client';
 
-/** Brouillon par défaut renvoyé à la `RelectureEnvoi` montée après une validation. */
-const BROUILLON = {
-  contratId: '55555555-0000-4000-8000-000000000000',
-  semaineIso: '2026-W27',
-  etablissementCle: 'CRECHE_HIRONDELLES' as const,
-  etablissementLibelle: 'Crèche Les Hirondelles',
-  destinataire: 'contact-creche@example.org',
-  sujet: 'Planning de Léa — semaine 2026-W27 : modifications',
-  corps: '<p>Bonjour</p>',
-  texte: 'Bonjour',
-  deltaModifs: { jours: [{ date: '2026-07-01', avant: null, apres: {} }] },
-  dryRun: true,
-};
+/** Brouillon agrégé renvoyé à la `RelectureEnvoi` montée après une validation. */
+function brouillonPour(cle: string) {
+  return {
+    foyerId: 'foyer-1',
+    semaineIso: '2026-W27',
+    etablissementCle: cle as 'CRECHE_HIRONDELLES' | 'ABCM',
+    etablissementLibelle:
+      cle === 'CRECHE_HIRONDELLES' ? 'Crèche Les Hirondelles' : 'École ABCM',
+    destinataire:
+      cle === 'CRECHE_HIRONDELLES'
+        ? 'contact-creche@example.org'
+        : 'contact-abcm@example.org',
+    sujet: 'Plannings modifiés — semaine 2026-W27',
+    corps: '<p>Bonjour</p>',
+    texte: 'Bonjour',
+    enfants:
+      cle === 'CRECHE_HIRONDELLES'
+        ? [
+            {
+              contratId: '55555555-0000-4000-8000-000000000000',
+              enfant: 'Léa',
+              deltaModifs: {
+                jours: [{ date: '2026-07-01', avant: null, apres: {} }],
+              },
+            },
+          ]
+        : [],
+    dryRun: true,
+  };
+}
 
 const A_VALIDER: NotificationAValider[] = [
   {
@@ -74,7 +91,9 @@ const SEMAINE_BESOINS = {
 describe('EncartValidation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(api.lireBrouillon).mockResolvedValue(BROUILLON);
+    vi.mocked(api.lireBrouillonEtablissement).mockImplementation(
+      (_foyerId, _semaineIso, cle) => Promise.resolve(brouillonPour(cle)),
+    );
     vi.mocked(api.lireSemaineBesoins).mockResolvedValue(SEMAINE_BESOINS);
   });
 

@@ -14,8 +14,8 @@ import type {
   MajEtablissement,
   NotificationAValider,
   ValidationResultat,
-  Brouillon,
-  EnvoiResultat,
+  BrouillonEtablissement,
+  EnvoiEtablissementResultat,
   SemaineBesoins,
 } from '../types/bff';
 
@@ -322,30 +322,32 @@ export const api = {
     ).then((r) => lire<ValidationResultat>(r));
   },
 
-  lireBrouillon(
-    contratId: string,
+  lireBrouillonEtablissement(
+    foyerId: string,
     semaineIso: string,
+    cle: string,
     opts: RequeteOptions = {},
-  ): Promise<Brouillon> {
+  ): Promise<BrouillonEtablissement> {
     return requete(
-      `${BASE}/v1/notifications/validations/${encodeURIComponent(contratId)}/${encodeURIComponent(semaineIso)}/brouillon`,
+      `${BASE}/v1/notifications/semaine/${encodeURIComponent(foyerId)}/${encodeURIComponent(semaineIso)}/etablissements/${encodeURIComponent(cle)}/brouillon`,
       {
         headers: entetes(false),
         ...(opts.signal ? { signal: opts.signal } : {}),
       },
-    ).then((r) => lire<Brouillon>(r));
+    ).then((r) => lire<BrouillonEtablissement>(r));
   },
 
-  envoyerRecap(
-    contratId: string,
+  envoyerRecapEtablissement(
+    foyerId: string,
     semaineIso: string,
+    cle: string,
     opts: RequeteOptions = {},
-  ): Promise<EnvoiResultat> {
-    return requete(`${BASE}/v1/notifications/envois`, {
+  ): Promise<EnvoiEtablissementResultat> {
+    return requete(`${BASE}/v1/notifications/envois/etablissement`, {
       method: 'POST',
       headers: entetes(true),
-      body: JSON.stringify({ contratId, semaineIso }),
+      body: JSON.stringify({ foyerId, semaineIso, cle }),
       ...(opts.signal ? { signal: opts.signal } : {}),
-    }).then((r) => lire<EnvoiResultat>(r));
+    }).then((r) => lire<EnvoiEtablissementResultat>(r));
   },
 };
