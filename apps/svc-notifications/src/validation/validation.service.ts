@@ -52,15 +52,20 @@ export class ValidationService {
    * insère une ligne `A_VALIDER`. Idempotent via `onConflictDoNothing` sur la clé
    * d'unicité — un second tick (ou une seconde réplica) ne crée pas de doublon ni
    * n'écrase un snapshot déjà posé. Utilisé par le scheduler du mardi (Lot 5).
+   *
+   * Renvoie `true` **uniquement** si la ligne a été créée par cet appel (le
+   * `returning` est vide en cas de conflit), ce qui sert au scheduler de signal
+   * exactly-once : seul le créateur envoie le mail récap, pas les ticks/réplicas
+   * suivants.
    */
-  async notifier(params: NotifierParams): Promise<void> {
+  async notifier(params: NotifierParams): Promise<boolean> {
     const { contratId, foyerId, semaineIso } = params;
     const plannings = await this.relire(contratId, semaineIso);
     const snapshot = extraireSemaine(
       plannings ?? [],
       joursDeLaSemaine(semaineIso),
     );
-    await this.db
+    const insere = await this.db
       .insert(notificationHebdo)
       .values({
         id: randomUUID(),
@@ -77,10 +82,15 @@ export class ValidationService {
           notificationHebdo.semaineIso,
           notificationHebdo.type,
         ],
-      });
+      })
+      .returning({ id: notificationHebdo.id });
+    const cree = insere.length > 0;
     this.logger.log(
-      `Semaine ${semaineIso} notifiée pour le contrat ${contratId}`,
+      cree
+        ? `Semaine ${semaineIso} notifiée pour le contrat ${contratId}`
+        : `Semaine ${semaineIso} déjà notifiée pour le contrat ${contratId} — ignoré`,
     );
+    return cree;
   }
 
   /** Liste les semaines `A_VALIDER` d'un foyer (indicateur in-app), triées par semaine. */

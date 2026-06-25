@@ -8,8 +8,8 @@ import { notificationHebdo } from '../database/schema.js';
 
 /**
  * Tests du service de validation hebdo **sans Postgres** : base factice à état qui
- * honore le sous-ensemble utilisé — `insert().values().onConflictDoNothing(target[])`
- * (idempotence du scheduler), `select().from().where(and(eq…))`,
+ * honore le sous-ensemble utilisé — `insert().values().onConflictDoNothing(target[]).returning()`
+ * (idempotence + signal exactly-once du scheduler), `select().from().where(and(eq…))`,
  * `update().set().where(and(eq…))`. Les prédicats `and(eq(col,val))` sont évalués en
  * lisant récursivement les `queryChunks` drizzle (colonne + paramètre lié). Le client
  * de relecture du planning est mocké (vitest) pour piloter le diff.
@@ -85,10 +85,16 @@ function fakeBase(): { db: Database; lignes: Ligne[] } {
           const cle = (l: Ligne) =>
             cibles.map((c) => l[cleDe(notificationHebdo, c)]).join('|');
           const clef = cle(valeurs);
-          if (!lignes.some((l) => cle(l) === clef)) {
+          const existe = lignes.some((l) => cle(l) === clef);
+          if (!existe) {
             lignes.push({ ...DEFAUTS, ...valeurs });
           }
-          return Promise.resolve();
+          // `returning()` ne renvoie la ligne que si elle vient d'être insérée
+          // (vide en cas de conflit) — c'est le signal exactly-once du scheduler.
+          return {
+            returning: () =>
+              Promise.resolve(existe ? [] : [{ id: valeurs['id'] }]),
+          };
         },
       }),
     }),
@@ -151,12 +157,13 @@ describe('ValidationService.notifier', () => {
     });
     const service = new ValidationService(db, client);
 
-    await service.notifier({
+    const cree = await service.notifier({
       contratId: CONTRAT_ID,
       foyerId: FOYER_ID,
       semaineIso: SEMAINE,
     });
 
+    expect(cree).toBe(true);
     expect(lignes).toHaveLength(1);
     expect(lignes[0]).toMatchObject({
       contratId: CONTRAT_ID,
@@ -175,22 +182,24 @@ describe('ValidationService.notifier', () => {
     });
   });
 
-  it('idempotent : un second tick ne crée pas de doublon', async () => {
+  it('idempotent : un second tick ne crée pas de doublon et renvoie false', async () => {
     const { db, lignes } = fakeBase();
     const { client } = fakeClient({});
     const service = new ValidationService(db, client);
 
-    await service.notifier({
+    const premier = await service.notifier({
       contratId: CONTRAT_ID,
       foyerId: FOYER_ID,
       semaineIso: SEMAINE,
     });
-    await service.notifier({
+    const second = await service.notifier({
       contratId: CONTRAT_ID,
       foyerId: FOYER_ID,
       semaineIso: SEMAINE,
     });
 
+    expect(premier).toBe(true);
+    expect(second).toBe(false);
     expect(lignes).toHaveLength(1);
   });
 });

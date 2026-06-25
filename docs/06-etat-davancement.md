@@ -1361,7 +1361,7 @@ des `svc-*` ; configs CI/observabilité validées par leurs binaires (`otelcol`/
   alertes visibles dans l'UI `:9093` ; brancher un receiver dans `docker/alertmanager.yml` si besoin.
 - **Non poussé** : branches mergées dans `main` local, **push à la main** par l'auteur.
 
-## 23. Feature Notifications & validation hebdomadaire (🚧 en cours — Lots 0→4 livrés)
+## 23. Feature Notifications & validation hebdomadaire (🚧 en cours — Lots 0→5 livrés)
 
 > Première **action sortante vers un tiers réel** (e-mail crèche / école). Objectif : chaque **mardi**,
 > notifier le parent pour **valider le planning de la semaine N+1** (e-mail + indicateur in-app) ; en cas
@@ -1412,9 +1412,27 @@ les 3 derniers → mapping codé `mode → clé` (`CRECHE_PSU → CRECHE_HIRONDE
     (encart + pastille), **Pact** consumer + provider. Les types web des routes notifications sont **saisis à
     la main** (comme la saisie de planning) : ces routes ne sont pas décrites dans l'OpenAPI de la gateway, il
     n'y a donc rien à dériver — `openapi-types-drift` reste vert.
+- **Lot 5 — Scheduler du mardi + mail récap parent** (PR #62, `affb0f4`) : `scheduler/scheduler.hebdo.ts`
+  reprend le **pattern maison** `setInterval` + garde de réentrance d'`OutboxRelay` (pas de dépendance
+  `@nestjs/schedule`/Bull), tick ~60 s. La fenêtre « **mardi à/au-delà de l'heure de déclenchement** » est
+  décidée en **`Europe/Paris`** via `Intl.DateTimeFormat` (jamais l'heure UTC du serveur), avec une **horloge
+  injectable** (`scheduler/clock.ts`, token `CLOCK`) que les tests pilotent — la logique n'appelle jamais
+  `new Date()`. À déclenchement, pour chaque **contrat actif** sur la semaine N+1 (chevauchement de validité),
+  il appelle `ValidationService.notifier()` (snapshot + insert idempotent `onConflictDoNothing`). L'**exactly-once
+  multi-réplica** repose sur la clé `UNIQUE(contrat_id, semaine_iso, type)` : `notifier()` ne renvoie `true`
+  que si la ligne a été **créée par cet appel** (`returning` vide en cas de conflit), et **seul** ce créateur
+  envoie le mail — un second tick le même mardi n'envoie rien. Le mail récap parent est rendu par un **template
+  pur** (`email/templates/recapMardi.ts`, html + text) : « Valider le planning de la semaine `YYYY-Www` » +
+  lien profond + **rappel de préavis résolu par établissement** (2 j ouvrés crèche / jeudi 12h ABCM).
+  `EmailModule.forRoot` est câblé dans `app.module.ts` ; la config SMTP vit dans `config.ts` avec les
+  **garde-fous** `NOTIF_EMAIL_DRY_RUN` (**défaut `true`**, désactivé seulement par un `false` explicite) et
+  `NOTIF_EMAIL_ALLOWLIST` (CSV) — réutilise le secret Gmail déjà provisionné (`ALERTMANAGER_SMTP_PASSWORD`),
+  documenté dans `.env.server.example`. Tests : **horloge mockée** (mardi 08:01 Paris ⇒ création + appel mailer ;
+  lundi / avant l'heure ⇒ no-op ; second tick ⇒ ni doublon ni mail ; résolution crèche vs ABCM ; aucun contrat
+  ⇒ rien), template pur, config, valeur de retour de `notifier()`. Transport `nodemailer` jamais sollicité
+  (dry-run / mocks).
 
-**Lots restants** : Lot 5 (scheduler du mardi + mail récap parent — appellera `ValidationService.notifier()`),
-Lot 6 (mail au service : relecture + envoi réel + journal).
+**Lots restants** : Lot 6 (mail au service : relecture + envoi réel + journal `envoi_mail`).
 
 **Pièges d'infra CI rencontrés au Lot 3** (à reproduire pour tout nouveau `svc-*`/contrat) : (a) la
 **vérification Pact provider** exige un Postgres `services:` dédié dans `.github/workflows/ci.yml` + un
