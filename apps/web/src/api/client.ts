@@ -6,6 +6,7 @@ import type {
   ContratVue,
   ContratLocal,
   EcrirePlanning,
+  EcrireSemaineBesoins,
   LirePlanningReponse,
   CoutMoisVue,
   CoutAnnuelVue,
@@ -188,6 +189,25 @@ export const api = {
         method: 'PUT',
         headers: entetes(true),
         body: JSON.stringify(corps),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<void>(r));
+  },
+
+  ecrireSemaineBesoins(
+    contratId: string,
+    semaineIso: string,
+    besoins: EcrireSemaineBesoins,
+    simule = false,
+    opts: RequeteOptions = {},
+  ): Promise<void> {
+    const q = simule ? '?simule=true' : '';
+    return requete(
+      `${BASE}/v1/contrats/${encodeURIComponent(contratId)}/plannings/semaine/${encodeURIComponent(semaineIso)}${q}`,
+      {
+        method: 'PUT',
+        headers: entetes(true),
+        body: JSON.stringify(besoins),
         ...(opts.signal ? { signal: opts.signal } : {}),
       },
     ).then((r) => lire<void>(r));

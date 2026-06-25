@@ -174,6 +174,19 @@ export interface EcrirePlanning {
   joursAlsh?: JourAlsh[]; // ALSH
 }
 
+/**
+ * Corps d'une **édition hebdomadaire** : uniquement les catégories datées d'un
+ * contrat pour la semaine éditée (les scalaires mensuels `complementMinutes`/`pai`
+ * sont hors périmètre, cf. `PUT .../plannings/semaine/:semaineIso`). Le service
+ * fusionne ces besoins dans le/les mois recouverts sans écraser le reste.
+ */
+export interface EcrireSemaineBesoins {
+  joursSupplementaires?: JourSupplementaire[];
+  absences?: AbsenceCreche[];
+  exceptions?: ExceptionAbcm[];
+  joursAlsh?: JourAlsh[];
+}
+
 /** Réponse de lecture d'une saisie de planning : la saisie stockée ou `null`. */
 export interface LirePlanningReponse {
   saisie: EcrirePlanning | null;

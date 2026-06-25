@@ -206,6 +206,38 @@ export class PlanificationClient {
     );
   }
 
+  /**
+   * PUT `/api/contrats/:id/plannings/semaine/:semaineIso` — édite les besoins
+   * d'une seule semaine (fusion read-modify-write côté service ; 204 attendu).
+   */
+  async ecrireSemaine(
+    contratId: string,
+    semaineIso: string,
+    simule: boolean,
+    corps: SaisiePlanning,
+  ): Promise<void> {
+    const base = loadConfig().planificationUrl;
+    const url =
+      `${base}/api/contrats/${encodeURIComponent(contratId)}` +
+      `/plannings/semaine/${encodeURIComponent(semaineIso)}?simule=${simule ? 'true' : 'false'}`;
+    this.logger.debug(`PUT ${url}`);
+    await executerResilient(
+      'svc-planification',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(corps),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
   /** GET `/api/contrats/:id/plannings/:mois` — saisie enregistrée d'un mois. */
   async lirePlanning(
     contratId: string,

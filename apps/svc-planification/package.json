@@ -93,6 +93,7 @@
     "@creche-planner/shared-kernel": "workspace:*",
     "@creche-planner/nest-commons": "workspace:*",
     "@creche-planner/observability": "workspace:*",
+    "@creche-planner/shared-semaine": "workspace:*",
     "@nestjs/common": "^11.1.27",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.1.27",

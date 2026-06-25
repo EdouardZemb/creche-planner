@@ -379,6 +379,85 @@ describe('PlanificationService.ecrirePlanning', () => {
   });
 });
 
+describe('PlanificationService.ecrireSemaine', () => {
+  /** Besoins datés d'une semaine : un jour supplémentaire crèche. */
+  function jourSup(date: string): EcrirePlanningDto {
+    return {
+      joursSupplementaires: [
+        { date, debutHeures: 9, debutMinutes: 0, finHeures: 12, finMinutes: 0 },
+      ],
+    };
+  }
+
+  it('mono-mois : un seul read→merge→write (réutilise ecrirePlanning)', async () => {
+    const service = new PlanificationService({} as Database, referentielVide);
+    // Mois courant vide ; on espionne lecture/écriture (la fusion pure est testée à part).
+    const lire = vi.spyOn(service, 'lirePlanning').mockResolvedValue(null);
+    const ecrire = vi
+      .spyOn(service, 'ecrirePlanning')
+      .mockResolvedValue(undefined);
+
+    await service.ecrireSemaine(
+      CONTRAT_ID,
+      '2026-W11',
+      false,
+      jourSup('2026-03-12'),
+    );
+
+    expect(lire).toHaveBeenCalledTimes(1);
+    expect(lire).toHaveBeenCalledWith(CONTRAT_ID, '2026-03', false);
+    expect(ecrire).toHaveBeenCalledTimes(1);
+    const appel = ecrire.mock.calls[0];
+    expect(appel?.[1]).toBe('2026-03');
+    expect(appel?.[2]).toBe(false);
+    expect(appel?.[3]?.joursSupplementaires?.[0]?.date).toBe('2026-03-12');
+  });
+
+  it('à cheval 2 mois : un read→merge→write par mois, jours routés vers LEUR mois', async () => {
+    const service = new PlanificationService({} as Database, referentielVide);
+    vi.spyOn(service, 'lirePlanning').mockResolvedValue(null);
+    const ecrire = vi
+      .spyOn(service, 'ecrirePlanning')
+      .mockResolvedValue(undefined);
+
+    // 2026-W14 = 30,31 mars | 01→05 avril. Besoins sur les deux mois.
+    const besoins: EcrirePlanningDto = {
+      joursSupplementaires: [
+        ...(jourSup('2026-03-31').joursSupplementaires ?? []),
+        ...(jourSup('2026-04-02').joursSupplementaires ?? []),
+      ],
+    };
+    await service.ecrireSemaine(CONTRAT_ID, '2026-W14', false, besoins);
+
+    expect(ecrire).toHaveBeenCalledTimes(2);
+    const parMois = new Map(
+      ecrire.mock.calls.map((c): [string, EcrirePlanningDto] => [c[1], c[3]]),
+    );
+    // Mars ne reçoit que le 31 ; avril que le 02.
+    expect(
+      (parMois.get('2026-03')?.joursSupplementaires ?? []).map((j) => j.date),
+    ).toEqual(['2026-03-31']);
+    expect(
+      (parMois.get('2026-04')?.joursSupplementaires ?? []).map((j) => j.date),
+    ).toEqual(['2026-04-02']);
+  });
+
+  it('propage le 404 du contrat (via lirePlanning) sans rien écrire', async () => {
+    const service = new PlanificationService({} as Database, referentielVide);
+    vi.spyOn(service, 'lirePlanning').mockRejectedValue(
+      new NotFoundException('contrat introuvable'),
+    );
+    const ecrire = vi
+      .spyOn(service, 'ecrirePlanning')
+      .mockResolvedValue(undefined);
+
+    await expect(
+      service.ecrireSemaine(CONTRAT_ID, '2026-W11', false, {}),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(ecrire).not.toHaveBeenCalled();
+  });
+});
+
 describe('PlanificationService.creerContrat', () => {
   it('insère le contrat + l’outbox ContratCree (même transaction)', async () => {
     const { db, insertValues } = fakeDbTransaction(true);

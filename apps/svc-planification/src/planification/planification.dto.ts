@@ -135,6 +135,21 @@ export const ecrirePlanningSchema = z.object({
 });
 export type EcrirePlanningDto = z.infer<typeof ecrirePlanningSchema>;
 
+/**
+ * Corps d'une **édition hebdomadaire** : uniquement les catégories **datées** d'un
+ * contrat pour la semaine éditée. Les scalaires mensuels (`complementMinutes`,
+ * `pai`) ne sont **pas** rattachables à un jour → hors périmètre d'une édition de
+ * semaine (la fusion ne les touche pas, cf. `fusionnerSemaineDansMois`). Réutilise
+ * les mêmes schémas d'items que `ecrirePlanningSchema`.
+ */
+export const ecrireSemaineSchema = z.object({
+  joursSupplementaires: z.array(jourSupplementaireSchema).optional(),
+  absences: z.array(absenceCrecheSchema).optional(),
+  exceptions: z.array(exceptionAbcmSchema).optional(),
+  joursAlsh: z.array(jourAlshSchema).optional(),
+});
+export type EcrireSemaineDto = z.infer<typeof ecrireSemaineSchema>;
+
 export { ISO_MOIS };
 
 /** Pipe générique : valide le corps de requête contre un schéma Zod (→ 400). */
