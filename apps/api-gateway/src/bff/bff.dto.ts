@@ -49,6 +49,13 @@ export const modifierContratSchema = creerContratSchema;
 /** Corps d'écriture de planning : relayé tel quel au service propriétaire. */
 export const ecrirePlanningSchema = z.object({}).passthrough();
 
+// Semaine ISO `YYYY-Www` (01-53). La validation profonde reste au service.
+const SEMAINE_ISO = /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/;
+/** Semaine ISO au format `YYYY-Www`. */
+export const semaineIsoSchema = z
+  .string()
+  .regex(SEMAINE_ISO, 'semaine attendue au format YYYY-Www');
+
 /** Heure du jour `HH:MM` (00:00 → 23:59), pour la règle de préavis « jour + heure ». */
 const HEURE = /^([01]\d|2[0-3]):[0-5]\d$/;
 

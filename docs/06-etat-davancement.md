@@ -1517,6 +1517,26 @@ fichier généré au commit ; (c) le surrogate`can-i-deploy.mjs`(ADR-0005) tient
     sur les 2 mois, relais d'erreur amont). **Piège reproduit** : suppression de `semaine.ts` → `dist` périmé
     (`tsc --build` partagé) provoque des `TS6305`/`TS7006` fantômes → **rebuild `nx build` avant typecheck**
     (acquis Lots 5-6).
-  - **Phases 2-4 à venir** : (2) écriture hebdo `PUT …/plannings/semaine/:semaineIso` (fusion
-    read-modify-write dans le mois, svc-planification) ; (3) écran web éditeur consolidé ; (4) mail récap
-    **agrégé par établissement** (remplace l'envoi par-contrat du Lot 6).
+- **Phase 2 — Écriture hebdo : fusion read-modify-write dans le mois** (`svc-planification`) :
+  - **Fonction pure** `fusionnerSemaineDansMois(saisieMois, joursSemaine, besoinsSemaine)`
+    (`fusion-semaine.ts`) : retire des **catégories datées** (`joursSupplementaires`, `absences`,
+    `exceptions`, `joursAlsh`) les entrées dont la `date ∈ fenêtre`, puis ré-insère les `besoinsSemaine` de
+    la fenêtre. **Préserve** les scalaires mensuels (`complementMinutes`, `pai`), les entrées datées **hors
+    semaine** et toute clé non datée. **Forme canonique** (catégorie vide omise, jamais `[]`) → upsert/diff
+    stables ; **idempotente**. Réutilise `CATEGORIES_DATEES` de `@creche-planner/shared-semaine`. Tests :
+    oracles (mono-mois, à cheval 2 mois, suppression, mois vide, idempotence) **+ propriétés fast-check**
+    (scalaires intacts, jours hors-semaine préservés, fenêtre = exactement les besoins, idempotence).
+  - **Service** `PlanificationService.ecrireSemaine(contratId, semaineIso, simule, besoins)` : pour **chaque
+    mois** de `moisDeLaSemaine`, relit (`lirePlanning`, garde aussi le 404 contrat), **fusionne** la part de
+    la semaine appartenant à CE mois (`jour.slice(0,7) === mois`), puis **ré-upsert** via le chemin existant
+    `ecrirePlanning` → émet `PlanningModifie` **par mois** (semaine à cheval ⇒ 2 upserts + 2 events). Les
+    besoins d'un autre mois ne contaminent jamais le mois courant (double filtrage fenêtre).
+  - **Endpoint** `PUT /api/contrats/:id/plannings/semaine/:semaineIso?simule=` (`ecrireSemaineSchema` =
+    catégories datées seules, mêmes items que `ecrirePlanningSchema` ; garde `estSemaineIso` → 400 sur forme
+    invalide). **BFF** `PUT /api/v1/contrats/:id/plannings/semaine/:semaineIso` (relais + `semaineIsoSchema`).
+    **Web** `api.ecrireSemaineBesoins(contratId, semaineIso, besoins, simule?)` + type `EcrireSemaineBesoins`
+    (hand-typé, hors OpenAPI). **Pact** : nouvelle interaction consumer (PUT → 204) sur l'état **existant**
+    `ETAT_CONTRAT_EXISTE` (aucun nouveau provider/état, rien à changer dans `can-i-deploy`). **Piège
+    reproduit** : `nx build svc-planification` **avant** typecheck (dist partagé périmé → `TS6305`).
+  - **Phases 3-4 à venir** : (3) écran web éditeur consolidé ; (4) mail récap **agrégé par établissement**
+    (remplace l'envoi par-contrat du Lot 6).

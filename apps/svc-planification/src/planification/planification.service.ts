@@ -38,7 +38,15 @@ import {
   planningMois,
   type ContratRow,
 } from '../database/schema.js';
+import {
+  joursDeLaSemaine,
+  moisDeLaSemaine,
+} from '@creche-planner/shared-semaine';
 import { ReferentielClient } from './referentiel.client.js';
+import {
+  fusionnerSemaineDansMois,
+  type BesoinsSemaine,
+} from './fusion-semaine.js';
 import type {
   CreerContratDto,
   EcrirePlanningDto,
@@ -320,6 +328,31 @@ export class PlanificationService {
         traceId: traceIdCourant(),
       });
     });
+  }
+
+  /**
+   * Enregistre une **édition limitée à une semaine** sans écraser le reste du
+   * mois. Le planning est stocké par mois et `ecrirePlanning` remplace tout le
+   * mois : on relit donc chaque mois recouvert par la semaine, on **fusionne** la
+   * part de la semaine appartenant à CE mois (préserve les autres jours, les
+   * scalaires mensuels et l'autre mois), puis on ré-upsert (réutilise le chemin
+   * `ecrirePlanning` → émet `PlanningModifie`). Une semaine à cheval sur deux mois
+   * ⇒ deux upserts + deux events (atomique par mois). 404 si le contrat n'existe pas.
+   */
+  async ecrireSemaine(
+    contratId: string,
+    semaineIso: string,
+    simule: boolean,
+    besoins: BesoinsSemaine,
+  ): Promise<void> {
+    const jours = joursDeLaSemaine(semaineIso);
+    for (const mois of moisDeLaSemaine(semaineIso)) {
+      const joursDuMois = jours.filter((jour) => jour.slice(0, 7) === mois);
+      // `lirePlanning` garde aussi l'existence du contrat (404 sinon).
+      const courant = await this.lirePlanning(contratId, mois, simule);
+      const fusion = fusionnerSemaineDansMois(courant, joursDuMois, besoins);
+      await this.ecrirePlanning(contratId, mois, simule, fusion);
+    }
   }
 
   /**

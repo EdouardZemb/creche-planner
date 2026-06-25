@@ -21,6 +21,7 @@ import {
   ecrirePlanningSchema,
   modifierContratSchema,
   moisSchema,
+  semaineIsoSchema,
   valider,
 } from './bff.dto.js';
 import { relayer } from './relais.js';
@@ -98,6 +99,31 @@ export class ContratsController {
     const planning = valider(ecrirePlanningSchema, corps);
     await relayer(() =>
       this.planification.ecrirePlanning(id, mois, simule === 'true', planning),
+    );
+  }
+
+  /**
+   * Édite les besoins d'une seule semaine (réel par défaut, simulé si
+   * `?simule=true`) sans écraser le reste du/des mois. Corps relayé tel quel ;
+   * la fusion read-modify-write est faite par `svc-planification`.
+   */
+  @Put(':id/plannings/semaine/:semaineIso')
+  @HttpCode(204)
+  async ecrireSemaine(
+    @Param('id') id: string,
+    @Param('semaineIso') semaineIso: string,
+    @Query('simule') simule: string | undefined,
+    @Body() corps: unknown,
+  ): Promise<void> {
+    valider(semaineIsoSchema, semaineIso);
+    const besoins = valider(ecrirePlanningSchema, corps);
+    await relayer(() =>
+      this.planification.ecrireSemaine(
+        id,
+        semaineIso,
+        simule === 'true',
+        besoins,
+      ),
     );
   }
 }

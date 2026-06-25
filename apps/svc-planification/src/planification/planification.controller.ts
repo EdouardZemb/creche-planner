@@ -13,14 +13,17 @@ import {
   Query,
 } from '@nestjs/common';
 import type { PrestationMois } from '@creche-planner/planification-domain';
+import { estSemaineIso } from '@creche-planner/shared-semaine';
 import {
   creerContratSchema,
   ecrirePlanningSchema,
+  ecrireSemaineSchema,
   modifierContratSchema,
   ISO_MOIS,
   ZodValidationPipe,
   type CreerContratDto,
   type EcrirePlanningDto,
+  type EcrireSemaineDto,
   type ModifierContratDto,
 } from './planification.dto.js';
 import {
@@ -93,6 +96,28 @@ export class PlanificationController {
   }
 
   /**
+   * Édite les besoins d'**une seule semaine** (réel par défaut) sans écraser le
+   * reste du/des mois : relit, fusionne la semaine, ré-upsert chaque mois recouvert
+   * → émet `PlanningModifie` par mois. Corps = catégories datées de la semaine.
+   */
+  @Put('contrats/:id/plannings/semaine/:semaineIso')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async ecrireSemaine(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('semaineIso') semaineIso: string,
+    @Body(new ZodValidationPipe(ecrireSemaineSchema)) dto: EcrireSemaineDto,
+    @Query('simule') simule?: string,
+  ): Promise<void> {
+    this.exigerSemaine(semaineIso);
+    await this.planification.ecrireSemaine(
+      id,
+      semaineIso,
+      simule === 'true',
+      dto,
+    );
+  }
+
+  /**
    * Lit la saisie de planning enregistrée d'un mois (réelle ou simulée) pour
    * réhydrater les calendriers de l'app. Renvoie `{ saisie: null }` si aucune
    * saisie n'existe encore pour ce mois.
@@ -158,5 +183,13 @@ export class PlanificationController {
       );
     }
     return mois;
+  }
+
+  private exigerSemaine(semaineIso: string): void {
+    if (!estSemaineIso(semaineIso)) {
+      throw new BadRequestException(
+        'paramètre « semaineIso » requis au format YYYY-Www',
+      );
+    }
   }
 }

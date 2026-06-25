@@ -362,6 +362,45 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
     });
   });
 
+  it('édite les besoins d’une semaine (PUT .../plannings/semaine/:iso → 204)', async () => {
+    // Le contrat existe (ETAT_CONTRAT_EXISTE). Le service relit le mois (vide),
+    // fusionne la semaine et ré-upsert → 204. Corps = catégories datées seules.
+    const besoins = {
+      joursSupplementaires: [
+        {
+          date: '2026-03-10', // dans 2026-W11 (tout mars).
+          debutHeures: 9,
+          debutMinutes: 0,
+          finHeures: 12,
+          finMinutes: 0,
+        },
+      ],
+    };
+    provider
+      .given(ETAT_CONTRAT_EXISTE)
+      .uponReceiving('une édition des besoins d’une semaine (réel)')
+      .withRequest({
+        method: 'PUT',
+        path: `/api/contrats/${CONTRAT_ID}/plannings/semaine/2026-W11`,
+        query: { simule: 'false' },
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: besoins,
+      })
+      .willRespondWith({ status: 204 });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/contrats/${CONTRAT_ID}/plannings/semaine/2026-W11?simule=false`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify(besoins),
+        },
+      );
+      expect(reponse.status).toBe(204);
+    });
+  });
+
   it('relit un mois sans saisie → { saisie: null } (200)', async () => {
     // Le contrat existe mais aucun planning n'a été enregistré : le service
     // répond 200 avec `{ saisie: null }` (et NON 204) — cf. lirePlanning.
