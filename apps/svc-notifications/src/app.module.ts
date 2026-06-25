@@ -15,6 +15,7 @@ import * as schema from './database/schema.js';
 import { ConsumersModule } from './consumers/consumers.module.js';
 import { EtablissementModule } from './etablissement/etablissement.module.js';
 import { ValidationModule } from './validation/validation.module.js';
+import { EnvoiModule } from './envoi/envoi.module.js';
 import { SchedulerModule } from './scheduler/scheduler.module.js';
 
 /**
@@ -56,6 +57,7 @@ function optionsMailer(): OptionsMailer {
     ConsumersModule,
     EtablissementModule,
     ValidationModule,
+    EnvoiModule,
     SchedulerModule,
   ],
 })

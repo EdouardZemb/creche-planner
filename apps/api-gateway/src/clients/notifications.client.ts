@@ -62,6 +62,49 @@ const validationResultatSchema = z.object({
 
 export type ValidationResultat = z.infer<typeof validationResultatSchema>;
 
+/** Un jour modifié (diff figé du Lot 4), relayé tel quel au front. */
+const deltaJourSchema = z.object({
+  date: z.string(),
+  avant: z.unknown(),
+  apres: z.unknown(),
+});
+
+/** Jours modifiés affichés dans la relecture. */
+const deltaModifsSchema = z.object({ jours: z.array(deltaJourSchema) });
+
+/** Brouillon régénérable du mail au service (Lot 6). */
+const brouillonSchema = z.object({
+  contratId: z.string(),
+  semaineIso: z.string(),
+  etablissementCle: z.enum(['CRECHE_HIRONDELLES', 'ABCM']),
+  etablissementLibelle: z.string(),
+  destinataire: z.string(),
+  sujet: z.string(),
+  corps: z.string(),
+  texte: z.string(),
+  deltaModifs: deltaModifsSchema,
+  dryRun: z.boolean(),
+});
+
+export type BrouillonVue = z.infer<typeof brouillonSchema>;
+
+/** Statut d'un envoi de récap au service. */
+const statutEnvoiSchema = z.enum(['EN_COURS', 'ENVOYE', 'ECHEC', 'DRY_RUN']);
+
+/** Résultat d'un envoi (Lot 6) : issue réelle de l'action sortante. */
+const envoiResultatSchema = z.object({
+  contratId: z.string(),
+  semaineIso: z.string(),
+  etablissementCle: z.enum(['CRECHE_HIRONDELLES', 'ABCM']),
+  destinataire: z.string(),
+  statut: statutEnvoiSchema,
+  messageId: z.string().nullable(),
+  erreur: z.string().nullable(),
+  envoyeLe: z.string().nullable(),
+});
+
+export type EnvoiResultat = z.infer<typeof envoiResultatSchema>;
+
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
   retries: 1,
@@ -163,6 +206,56 @@ export class NotificationsClient {
           throw new Error('HTTP ' + reponse.status);
         }
         return validationResultatSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** GET `/api/validations/:contratId/:semaineIso/brouillon` — régénère le brouillon. */
+  async lireBrouillon(
+    contratId: string,
+    semaineIso: string,
+  ): Promise<BrouillonVue> {
+    const base = loadConfig().notificationsUrl;
+    const url =
+      `${base}/api/validations/${encodeURIComponent(contratId)}` +
+      `/${encodeURIComponent(semaineIso)}/brouillon`;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-notifications',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return brouillonSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** POST `/api/envois` — envoie réellement le récap au service (idempotent). */
+  async envoyerRecap(
+    contratId: string,
+    semaineIso: string,
+  ): Promise<EnvoiResultat> {
+    const base = loadConfig().notificationsUrl;
+    const url = `${base}/api/envois`;
+    this.logger.debug(`POST ${url}`);
+    return executerResilient(
+      'svc-notifications',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contratId, semaineIso }),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return envoiResultatSchema.parse(await reponse.json());
       },
       this.breaker,
       OPTIONS,

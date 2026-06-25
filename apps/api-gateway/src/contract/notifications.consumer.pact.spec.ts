@@ -16,6 +16,8 @@ const ETAT_ETABLISSEMENTS = 'des établissements destinataires existent';
 const ETAT_ETABLISSEMENT_EDITABLE = 'un établissement crèche modifiable existe';
 const ETAT_SEMAINE_A_VALIDER = 'une semaine est à valider pour un foyer';
 const ETAT_SEMAINE_VALIDABLE = 'une semaine A_VALIDER existe pour validation';
+const ETAT_BROUILLON = 'un brouillon de mail de service est disponible';
+const ETAT_ENVOI = 'une semaine validée est prête à envoyer au service';
 
 /** Identifiants figés partagés avec les stateHandlers de la vérification provider. */
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
@@ -172,6 +174,79 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
       expect(reponse.status).toBe(200);
       const corps = (await reponse.json()) as { statut: string };
       expect(corps.statut).toBe('VALIDEE');
+    });
+  });
+
+  it('régénère le brouillon de mail au service (GET …/brouillon)', async () => {
+    provider
+      .given(ETAT_BROUILLON)
+      .uponReceiving('une régénération du brouillon de mail au service')
+      .withRequest({
+        method: 'GET',
+        path: `/api/validations/${CONTRAT_ID}/${SEMAINE}/brouillon`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          contratId: string(CONTRAT_ID),
+          semaineIso: string(SEMAINE),
+          etablissementCle: string('CRECHE_HIRONDELLES'),
+          etablissementLibelle: string('Crèche Les Hirondelles'),
+          destinataire: string('contact-creche@example.org'),
+          sujet: string('Planning de Léa — semaine 2026-W10 : modifications'),
+          corps: string('<p>Bonjour Crèche Les Hirondelles,</p>'),
+          texte: string('Bonjour Crèche Les Hirondelles,'),
+          // Provider en dry-run par défaut (aucun SMTP réel pendant la vérif).
+          dryRun: boolean(true),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/validations/${CONTRAT_ID}/${SEMAINE}/brouillon`,
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { destinataire: string };
+      expect(corps.destinataire).toBe('contact-creche@example.org');
+    });
+  });
+
+  it('envoie le récap au service (POST /api/envois)', async () => {
+    provider
+      .given(ETAT_ENVOI)
+      .uponReceiving('un envoi du récap au service')
+      .withRequest({
+        method: 'POST',
+        path: '/api/envois',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: { contratId: CONTRAT_ID, semaineIso: SEMAINE },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        // Provider en dry-run par défaut ⇒ statut DRY_RUN, aucun messageId.
+        body: {
+          contratId: string(CONTRAT_ID),
+          semaineIso: string(SEMAINE),
+          etablissementCle: string('CRECHE_HIRONDELLES'),
+          destinataire: string('contact-creche@example.org'),
+          statut: string('DRY_RUN'),
+          messageId: null,
+          erreur: null,
+          envoyeLe: string('2026-03-09T08:00:00.000Z'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(`${mockServer.url}/api/envois`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ contratId: CONTRAT_ID, semaineIso: SEMAINE }),
+      });
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { statut: string };
+      expect(corps.statut).toBe('DRY_RUN');
     });
   });
 });

@@ -13,6 +13,8 @@ import type {
   MajEtablissement,
   NotificationAValider,
   ValidationResultat,
+  Brouillon,
+  EnvoiResultat,
 } from '../types/bff';
 
 // Client HTTP du BFF. Base URL configurable via VITE_API_BASE_URL (défaut '/api',
@@ -283,5 +285,32 @@ export const api = {
         ...(opts.signal ? { signal: opts.signal } : {}),
       },
     ).then((r) => lire<ValidationResultat>(r));
+  },
+
+  lireBrouillon(
+    contratId: string,
+    semaineIso: string,
+    opts: RequeteOptions = {},
+  ): Promise<Brouillon> {
+    return requete(
+      `${BASE}/v1/notifications/validations/${encodeURIComponent(contratId)}/${encodeURIComponent(semaineIso)}/brouillon`,
+      {
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<Brouillon>(r));
+  },
+
+  envoyerRecap(
+    contratId: string,
+    semaineIso: string,
+    opts: RequeteOptions = {},
+  ): Promise<EnvoiResultat> {
+    return requete(`${BASE}/v1/notifications/envois`, {
+      method: 'POST',
+      headers: entetes(true),
+      body: JSON.stringify({ contratId, semaineIso }),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<EnvoiResultat>(r));
   },
 };

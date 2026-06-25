@@ -17,6 +17,8 @@ const ETAT_ETABLISSEMENTS = 'des établissements destinataires existent';
 const ETAT_ETABLISSEMENT_EDITABLE = 'un établissement crèche modifiable existe';
 const ETAT_SEMAINE_A_VALIDER = 'une semaine est à valider pour un foyer';
 const ETAT_SEMAINE_VALIDABLE = 'une semaine A_VALIDER existe pour validation';
+const ETAT_BROUILLON = 'un brouillon de mail de service est disponible';
+const ETAT_ENVOI = 'une semaine validée est prête à envoyer au service';
 
 /** Id figé de la ligne crèche seedée par le stateHandler. */
 const CRECHE_ID = '99999999-9999-4999-8999-999999999999';
@@ -144,6 +146,53 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
           snapshot = '{}'::jsonb
       `;
     };
+    // Seede de quoi régénérer/envoyer un brouillon : le contrat (read model,
+    // mode → établissement), la semaine validée avec un delta, et l'établissement
+    // crèche. Idempotent. Pour l'envoi, on purge d'abord la trace `envoi_mail` afin
+    // que la vérification reparte d'un envoi neuf (statut DRY_RUN attendu).
+    const seedBrouillon = async (): Promise<void> => {
+      await seedCreche();
+      await db`
+        insert into contrat (id, foyer_id, enfant, mode, valide_du, valide_au)
+        values (
+          ${CONTRAT_ID}, ${FOYER_ID}, 'Léa', 'CRECHE_PSU', '2026-01-01', null
+        )
+        on conflict (id) do update set
+          enfant = excluded.enfant, mode = excluded.mode
+      `;
+      await db`
+        insert into notification_hebdo (
+          id, contrat_id, foyer_id, semaine_iso, type, statut, snapshot, delta_modifs
+        ) values (
+          ${NOTIF_ID}, ${CONTRAT_ID}, ${FOYER_ID}, ${SEMAINE},
+          'VALIDATION_HEBDO', 'VALIDEE_AVEC_MODIFS', '{}'::jsonb,
+          ${JSON.stringify({
+            jours: [
+              {
+                date: '2026-03-04',
+                avant: null,
+                apres: {
+                  joursSupplementaires: [],
+                  absences: [{ date: '2026-03-04' }],
+                  exceptions: [],
+                  joursAlsh: [],
+                },
+              },
+            ],
+          })}::jsonb
+        )
+        on conflict (contrat_id, semaine_iso, type) do update set
+          statut = 'VALIDEE_AVEC_MODIFS',
+          delta_modifs = excluded.delta_modifs
+      `;
+    };
+    const seedEnvoi = async (): Promise<void> => {
+      await seedBrouillon();
+      await db`
+        delete from envoi_mail
+        where contrat_id = ${CONTRAT_ID} and semaine_iso = ${SEMAINE}
+      `;
+    };
     await new Verifier({
       provider: 'svc-notifications',
       providerBaseUrl: `http://localhost:${PORT}`,
@@ -154,6 +203,8 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
         [ETAT_ETABLISSEMENT_EDITABLE]: seedCreche,
         [ETAT_SEMAINE_A_VALIDER]: seedSemaineAValider,
         [ETAT_SEMAINE_VALIDABLE]: seedSemaineAValider,
+        [ETAT_BROUILLON]: seedBrouillon,
+        [ETAT_ENVOI]: seedEnvoi,
       },
     }).verifyProvider();
   });

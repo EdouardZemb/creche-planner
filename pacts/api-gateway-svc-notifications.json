@@ -58,6 +58,95 @@
       }
     },
     {
+      "description": "un envoi du récap au service",
+      "providerStates": [
+        {
+          "name": "une semaine validée est prête à envoyer au service"
+        }
+      ],
+      "request": {
+        "body": {
+          "contratId": "55555555-0000-4000-8000-000000000000",
+          "semaineIso": "2026-W10"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "POST",
+        "path": "/api/envois"
+      },
+      "response": {
+        "body": {
+          "contratId": "55555555-0000-4000-8000-000000000000",
+          "destinataire": "contact-creche@example.org",
+          "envoyeLe": "2026-03-09T08:00:00.000Z",
+          "erreur": null,
+          "etablissementCle": "CRECHE_HIRONDELLES",
+          "messageId": null,
+          "semaineIso": "2026-W10",
+          "statut": "DRY_RUN"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.contratId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.destinataire": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.envoyeLe": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.etablissementCle": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.semaineIso": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.statut": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "une lecture de la liste des établissements",
       "providerStates": [
         {
@@ -310,6 +399,113 @@
               "matchers": [
                 {
                   "match": "integer"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une régénération du brouillon de mail au service",
+      "providerStates": [
+        {
+          "name": "un brouillon de mail de service est disponible"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/validations/55555555-0000-4000-8000-000000000000/2026-W10/brouillon"
+      },
+      "response": {
+        "body": {
+          "contratId": "55555555-0000-4000-8000-000000000000",
+          "corps": "<p>Bonjour Crèche Les Hirondelles,</p>",
+          "destinataire": "contact-creche@example.org",
+          "dryRun": true,
+          "etablissementCle": "CRECHE_HIRONDELLES",
+          "etablissementLibelle": "Crèche Les Hirondelles",
+          "semaineIso": "2026-W10",
+          "sujet": "Planning de Léa — semaine 2026-W10 : modifications",
+          "texte": "Bonjour Crèche Les Hirondelles,"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.contratId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.corps": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.destinataire": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.dryRun": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.etablissementCle": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.etablissementLibelle": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.semaineIso": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sujet": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.texte": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }

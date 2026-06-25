@@ -1361,7 +1361,7 @@ des `svc-*` ; configs CI/observabilité validées par leurs binaires (`otelcol`/
   alertes visibles dans l'UI `:9093` ; brancher un receiver dans `docker/alertmanager.yml` si besoin.
 - **Non poussé** : branches mergées dans `main` local, **push à la main** par l'auteur.
 
-## 23. Feature Notifications & validation hebdomadaire (🚧 en cours — Lots 0→5 livrés)
+## 23. Feature Notifications & validation hebdomadaire (✅ Lots 0→6 livrés — feature complète)
 
 > Première **action sortante vers un tiers réel** (e-mail crèche / école). Objectif : chaque **mardi**,
 > notifier le parent pour **valider le planning de la semaine N+1** (e-mail + indicateur in-app) ; en cas
@@ -1431,8 +1431,32 @@ les 3 derniers → mapping codé `mode → clé` (`CRECHE_PSU → CRECHE_HIRONDE
   lundi / avant l'heure ⇒ no-op ; second tick ⇒ ni doublon ni mail ; résolution crèche vs ABCM ; aucun contrat
   ⇒ rien), template pur, config, valeur de retour de `notifier()`. Transport `nodemailer` jamais sollicité
   (dry-run / mocks).
+- **Lot 6 — Mail au service : relecture + envoi réel + journal** (PR #63) : **première action sortante vers un
+  tiers réel**, encadrée par une **relecture humaine obligatoire**. Table `envoi_mail` (migration **générée** 0004) journalise chaque envoi avec `destinataire`/`sujet`/`corps` **figés à l'insert** (preuve de ce qui a été
+  adressé, indépendant d'une édition ultérieure de l'annuaire/planning), un `statut`
+  (`EN_COURS`/`ENVOYE`/`DRY_RUN`/`ECHEC`) et `message_id`/`erreur`/`envoye_le`. La clé
+  `UNIQUE(contrat_id, semaine_iso, etablissement_cle)` garantit l'**idempotence** : un second clic « Envoyer »
+  renvoie l'envoi déjà journalisé **sans ré-émettre**. Un **template pur** (`email/templates/brouillonService.ts`,
+  html + text) rend le récap des modifications (`delta_modifs` du Lot 4) sous un en-tête nommant l'établissement,
+  l'enfant et la semaine — c'est ce contenu qui est figé dans `corps`. Deux endpoints : `GET
+/api/validations/:contratId/:semaineIso/brouillon` (**lecture seule, régénérable** ; destinataire résolu via
+  l'annuaire × le **mode du contrat** ; expose un `dryRun` **effectif** = bac à sable global **ou** destinataire
+  hors allowlist, qui pilote le bandeau d'avertissement du front) et `POST /api/envois` qui **réserve d'abord le
+  slot** `EN_COURS` (insert idempotent) **puis** sollicite `MailerService.envoyer` (garde-fous du Lot 2) avant de
+  figer l'issue — le corps est **régénéré côté service** au moment de l'envoi, jamais repris du client. BFF
+  `GET /api/v1/notifications/validations/.../brouillon` + `POST /api/v1/notifications/envois`. Web :
+  `RelectureEnvoi.tsx` (destinataire **en évidence**, diff des modifications, aperçu du message, **bandeau
+  « DRY-RUN actif »**, bouton « Envoyer » **désactivé tant que le brouillon n'est pas chargé** et **confirmation
+  explicite** via `ModaleConfirmation` avant l'action sortante), monté dans l'encart de validation après une
+  validation **avec modifications**. Tests : brouillon (résolution destinataire, 404), **dry-run**, **idempotence
+  `envoi_mail`**, **échec SMTP ⇒ `ECHEC`**, flux web, **Pact** consumer + provider (états seedant
+  contrat + semaine validée + établissement). **Jamais de vrai SMTP** en test (transport mocké + dry-run forcé).
+  L'envoi réel ne s'active **qu'en prod** via `docker-compose.server.yml` en posant `NOTIF_EMAIL_DRY_RUN=false`
+  **explicitement** (`.env.server.example` documente la bascule et recommande de cantonner l'allowlist à une
+  adresse de test pendant le rodage).
 
-**Lots restants** : Lot 6 (mail au service : relecture + envoi réel + journal `envoi_mail`).
+**Reste hors périmètre feature** : le **déploiement prod** de `svc-notifications` (le service n'est pas encore
+dans `docker-compose.server.yml`) relève d'un lot d'infra séparé.
 
 **Pièges d'infra CI rencontrés au Lot 3** (à reproduire pour tout nouveau `svc-*`/contrat) : (a) la
 **vérification Pact provider** exige un Postgres `services:` dédié dans `.github/workflows/ci.yml` + un
