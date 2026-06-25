@@ -447,6 +447,81 @@ h3 {
   top: 1rem;
 }
 
+/* ---- Rangées « jour » de l'éditeur hebdo (mobile-first) ------------------ */
+/* Chaque jour est une grille à 3 colonnes [jour | résumé | action]. La colonne
+   action garde une largeur fixe (et le bouton la remplit) pour que « Saisir » /
+   « Modifier » s'alignent strictement d'une rangée à l'autre ; le résumé, de
+   longueur très variable (« — », « Gardé 08:30–17:00 », « Absent (…) »…), occupe
+   la colonne souple `1fr` et reste sur UNE seule ligne, tronqué par ellipsis.
+   Base mobile : libellé de jour abrégé (« Lun. 06/07 »), colonne action étroite. */
+.jours-liste {
+  list-style: none;
+  margin: 0.25rem 0;
+  padding: 0;
+}
+
+.jour-rangee {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 4.75rem;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  padding: 0.3rem 0;
+}
+
+/* Fin séparateur entre jours (lisibilité de la liste). */
+.jour-rangee + .jour-rangee {
+  border-top: 1px solid var(--bordure);
+}
+
+.jour-libelle {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Le libellé long (« Lundi 06/07/2026 ») est réservé au desktop ; sur mobile on
+   n'affiche que l'abrégé (cf. min-width: 768px qui inverse les deux). */
+.jour-libelle-long {
+  display: none;
+}
+
+.jour-resume {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.82rem;
+}
+
+/* Le bouton remplit la colonne action fixe → bords gauche/droit alignés sur
+   toutes les rangées. Padding horizontal réduit (la cible tactile de 2.75rem de
+   haut héritée de .btn est conservée). */
+.jour-action {
+  width: 100%;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .jour-rangee {
+    grid-template-columns: 11rem minmax(0, 1fr) 6rem;
+    gap: 0.5rem 0.75rem;
+  }
+
+  /* Desktop : on a la place pour le libellé daté complet. */
+  .jour-libelle-court {
+    display: none;
+  }
+
+  .jour-libelle-long {
+    display: inline;
+  }
+
+  .jour-action {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
 /* ---- Accessibilité : focus visible clavier ------------------------------- */
 :focus-visible {
   outline: 3px solid var(--bleu);

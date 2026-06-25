@@ -22,6 +22,17 @@ export const LIBELLES_JOURS: Record<JourSemaine, string> = {
   DIMANCHE: 'Dimanche',
 };
 
+/** Libellés abrégés (mobile : place limitée). */
+export const LIBELLES_JOURS_COURT: Record<JourSemaine, string> = {
+  LUNDI: 'Lun.',
+  MARDI: 'Mar.',
+  MERCREDI: 'Mer.',
+  JEUDI: 'Jeu.',
+  VENDREDI: 'Ven.',
+  SAMEDI: 'Sam.',
+  DIMANCHE: 'Dim.',
+};
+
 /** Mois courant au format YYYY-MM. */
 export function moisCourant(): string {
   const d = new Date();
@@ -67,4 +78,12 @@ export function formaterDateFr(iso: string): string {
   const jj = String(d).padStart(2, '0');
   const mm = String(m).padStart(2, '0');
   return `${jj}/${mm}/${y}`;
+}
+
+/** Date « YYYY-MM-DD » → « 15/06 » (jour/mois, sans année — affichage mobile). */
+export function formaterDateCourtFr(iso: string): string {
+  const [, m, d] = partsIso(iso);
+  const jj = String(d).padStart(2, '0');
+  const mm = String(m).padStart(2, '0');
+  return `${jj}/${mm}`;
 }

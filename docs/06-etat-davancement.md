@@ -1615,3 +1615,22 @@ fichier généré au commit ; (c) le surrogate`can-i-deploy.mjs`(ADR-0005) tient
   L'`EditeurContratSemaine` enrichit `resume(date)` : une exception datée prime, sinon il affiche l'horaire de
   base (« Gardé 08:30–17:00 » crèche, services ABCM) directement dans la rangée du jour. Données déjà présentes
   en staging (vérifié). Routes hors OpenAPI/Pact → aucun drift ni contrat à toucher.
+
+- **Amélioration UI — rangées par jour : une seule ligne + boutons alignés (responsive)** (`apps/web`,
+  CSS-only côté présentation) : depuis l'ajout des horaires planifiés, `resume(date)` a une **longueur très
+  variable** (« — », « Gardé 08:30–17:00 », « Absent (09:00–16:30) », « Jour ajouté (…) », « Péri matin +
+  soir »…). Les rangées étant un `flex` + `flexWrap`, la position du bouton **suivait** le texte et **passait
+  à la ligne** → boutons « Saisir »/« Modifier » désalignés. Correctif : chaque rangée passe en **CSS Grid à
+  3 colonnes** `[jour] [résumé 1fr] [action]` (classe `.jour-rangee` dans `styles.css`). La **colonne action
+  est de largeur fixe** et le bouton la **remplit** (`width:100%`) → boutons strictement alignés (bords gauche
+  ET droit) d'une rangée à l'autre ; le **résumé** occupe `minmax(0,1fr)` avec `white-space:nowrap;
+overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronqué proprement si trop long.
+  **Responsive mobile-first** (feuille de style, requises pour les media queries — impossible en inline) :
+  base mobile = libellé jour **abrégé** « Lun. 06/07 » (helpers `LIBELLES_JOURS_COURT` + `formaterDateCourtFr`
+  dans `utils/dates.ts`) + colonne action étroite + bouton compact ; dès **768px** = libellé daté complet
+  « Lundi 06/07/2026 » + colonne jour fixe `11rem`. La **bascule court/long est purement CSS** (deux `<span>`
+  togglés, pas de JS). **A11y inchangée** : l'`aria-label` du bouton garde **toujours** la date complète
+  (« Modifier le Lundi 06/07/2026 ») → tests `EditeurSemaine.test` verts sans changement. Cible tactile 2.75rem
+  conservée. Vérifié au rendu réel **desktop + mobile (375px)** : boutons alignés (mêmes `left`/`right` sur les
+  7 rangées), zéro retour à la ligne, ellipsis OK, aucun débordement horizontal. lint/typecheck/test/build web
+  **verts** (293 tests, +2 sur `formaterDateCourtFr`).
