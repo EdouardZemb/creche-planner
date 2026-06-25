@@ -73,14 +73,29 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      postgres-notifications:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: notifications
+          POSTGRES_PASSWORD: notifications
+          POSTGRES_DB: notifications
+        ports:
+          - '5437:5432'
+        options: >-
+          --health-cmd "pg_isready -U notifications -d notifications"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       # Consommées par les vérifications Pact provider (apps/svc-foyer,
-      # apps/svc-referentiel, apps/svc-planification, apps/svc-tarification). `CI`
-      # est positionné automatiquement par GitHub Actions → vérifications bloquantes.
+      # apps/svc-referentiel, apps/svc-planification, apps/svc-tarification,
+      # apps/svc-notifications). `CI` est positionné automatiquement par GitHub
+      # Actions → vérifications bloquantes.
       DATABASE_URL: postgres://foyer:foyer@localhost:5434/foyer
       REFERENTIEL_DATABASE_URL: postgres://referentiel:referentiel@localhost:5433/referentiel
       PLANIFICATION_DATABASE_URL: postgres://planification:planification@localhost:5435/planification
       TARIFICATION_DATABASE_URL: postgres://tarification:tarification@localhost:5436/tarification
+      NOTIFICATIONS_DATABASE_URL: postgres://notifications:notifications@localhost:5437/notifications
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:

@@ -11,6 +11,7 @@ import {
 import { loadConfig } from './config.js';
 import * as schema from './database/schema.js';
 import { ConsumersModule } from './consumers/consumers.module.js';
+import { EtablissementModule } from './etablissement/etablissement.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ConsumersModule } from './consumers/consumers.module.js';
     }),
     HealthModule,
     ConsumersModule,
+    EtablissementModule,
   ],
 })
 export class AppModule {}

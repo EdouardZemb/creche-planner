@@ -1360,3 +1360,48 @@ des `svc-*` ; configs CI/observabilité validées par leurs binaires (`otelcol`/
 - **Notification Alertmanager** : aucun canal externe (Slack/e-mail) configuré en contexte solo —
   alertes visibles dans l'UI `:9093` ; brancher un receiver dans `docker/alertmanager.yml` si besoin.
 - **Non poussé** : branches mergées dans `main` local, **push à la main** par l'auteur.
+
+## 23. Feature Notifications & validation hebdomadaire (🚧 en cours — Lots 0→3 livrés)
+
+> Première **action sortante vers un tiers réel** (e-mail crèche / école). Objectif : chaque **mardi**,
+> notifier le parent pour **valider le planning de la semaine N+1** (e-mail + indicateur in-app) ; en cas
+> de modification, relire un **brouillon récapitulatif** puis **envoyer un mail au service** concerné.
+> Plan détaillé approuvé hors dépôt ; découpage en **7 lots mergeables** (chacun PR + CI verte).
+
+**Architecture** — nouveau microservice `apps/svc-notifications` (6e service, **base dédiée**, cloné de
+`svc-tarification`). Il consomme le stream NATS `PLANIFICATION` pour projeter un read-model des contrats,
+héberge l'état de validation hebdo, la **config des établissements** et le journal d'envois, ainsi que le
+scheduler du mardi et l'**unique** dépendance e-mail. Justification : l'effet de bord « e-mail vers un
+tiers » doit être **isolé, tracé et coupable** (dry-run par défaut + allowlist). La lib e-mail vit dans
+`libs/nest-commons/src/lib/mailer/` (`EmailModule.forRoot`), importée **seulement** par notifications.
+
+**Divergences produit gardées en tête** : (1) il n'existe **pas de mode « ABCM »** —
+`MODES_CONTRAT = ['CRECHE_PSU','PERISCOLAIRE','CANTINE','ALSH']` ; ABCM est l'**établissement** regroupant
+les 3 derniers → mapping codé `mode → clé` (`CRECHE_PSU → CRECHE_HIRONDELLES` ; sinon `ABCM`). (2) Le
+**préavis** diverge par établissement (2 j ouvrés crèche RM-03 ; jeudi 12h ABCM RM-07) → modélisé en
+**paramètre `preavisRegle`** par établissement, pas en constante.
+
+**Lots livrés** :
+
+- **Lot 0 — Scaffold** (PR #57, `33b57a6`) : service `svc-notifications`, tables d'infra latentes
+  (`processed_event` + `outbox`), entrées `docker-compose`.
+- **Lot 1 — Read-model contrats** (PR #58, `de3c5a0`) : consumer JetStream idempotent abonné au seul
+  stream `PLANIFICATION` (`ContratCree/Modifie/Supprime` → table `contrat`), migration 0001.
+- **Lot 2 — Lib mailer dry-run** (PR #59, `056f0f3`) : `EmailModule.forRoot` + `MailerService.envoyer`
+  (nodemailer), **garde-fous dry-run + allowlist** court-circuitant le transport (retour
+  `{messageId:null,dryRun:true}`).
+- **Lot 3 — Config établissements** (PR #60) : table `etablissement_destinataire` (migration **générée**
+  0002), module `etablissement` (lister + upsert par clé, **seed idempotent** des 2 établissements au
+  démarrage), client résilient `NotificationsClient` + BFF `GET/PUT /api/v1/etablissements/{cle}`, écran
+  web `etablissements/` (formulaire e-mail + règle de préavis, `useActionState`, a11y), OpenAPI +
+  `EtablissementVue`/`PreavisRegle` (types web dérivés régénérés). Tests : DTO Zod + mapping, contrôleur,
+  **Pact** consumer (gateway) + provider (notifications), web.
+
+**Lots restants** : Lot 4 (validation hebdo + indicateur in-app), Lot 5 (scheduler du mardi + mail récap
+parent), Lot 6 (mail au service : relecture + envoi réel + journal).
+
+**Pièges d'infra CI rencontrés au Lot 3** (à reproduire pour tout nouveau `svc-*`/contrat) : (a) la
+**vérification Pact provider** exige un Postgres `services:` dédié dans `.github/workflows/ci.yml` + un
+`<SVC>_DATABASE_URL` (notifications → 5437) ; (b) le job `openapi-types-drift` impose d'**ignorer
+`**/\*.gen.ts`dans la config ESLint racine** (utilisée par lint-staged), sinon`eslint --fix`réécrit le
+fichier généré au commit ; (c) le surrogate`can-i-deploy.mjs`(ADR-0005) tient une liste codée`PROVIDERS_ATTENDUS` à laquelle **ajouter chaque nouveau provider**.

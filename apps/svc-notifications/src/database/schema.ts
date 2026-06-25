@@ -1,4 +1,11 @@
-import { jsonb, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  jsonb,
+  pgTable,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 /**
  * Schéma Drizzle du service **Notifications** (base dédiée). Notifications est
@@ -36,6 +43,52 @@ export const contrat = pgTable('contrat', {
   valideDu: varchar('valide_du', { length: 10 }).notNull(),
   /** Fin de validité ISO `YYYY-MM-DD` (incluse), `null` si période ouverte. */
   valideAu: varchar('valide_au', { length: 10 }),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// --- Annuaire des établissements destinataires ------------------------------
+
+/**
+ * Règle de **préavis** d'un établissement (Lot 3). Modélisée comme paramètre par
+ * établissement plutôt qu'en constante « 3 jours ouvrés », car elle **diverge** :
+ * 2 jours ouvrés côté crèche (RM-03) vs « jeudi 12h » côté ABCM (RM-07). Sert à
+ * l'affichage et au garde-fou de la validation hebdo (le scheduler du mardi n'en
+ * dépend pas). Union discriminée par `type` (état invalide irreprésentable).
+ */
+export type PreavisRegle =
+  | { readonly type: 'JOURS_OUVRES'; readonly valeur: number }
+  | {
+      readonly type: 'JOUR_HEURE';
+      readonly jour: string;
+      readonly heure: string;
+    };
+
+/**
+ * Annuaire de contacts **propre au domaine notifications** (ce n'est PAS le
+ * référentiel tarifaire). Une ligne par établissement destinataire d'un mail de
+ * service, identifiée par une `cle` stable (`CRECHE_HIRONDELLES` | `ABCM`). Le
+ * mapping `mode → cle` (codé : `CRECHE_PSU → CRECHE_HIRONDELLES` ;
+ * `PERISCOLAIRE`/`CANTINE`/`ALSH` → `ABCM`) résout l'établissement à partir du
+ * mode du contrat — rappel : il n'existe pas de mode « ABCM ». Seedée des 2
+ * établissements au démarrage ; éditable via `PUT /etablissements/:cle`.
+ */
+export const etablissementDestinataire = pgTable('etablissement_destinataire', {
+  id: uuid('id').primaryKey(),
+  /** Clé métier stable et unique (`CRECHE_HIRONDELLES` | `ABCM`). */
+  cle: varchar('cle', { length: 32 }).notNull().unique(),
+  /** Libellé lisible (ex. « Crèche Les Hirondelles »). */
+  libelle: varchar('libelle', { length: 200 }).notNull(),
+  /** Adresse e-mail du service destinataire des récapitulatifs. */
+  emailService: varchar('email_service', { length: 320 }).notNull(),
+  /** Règle de préavis propre à l'établissement (cf. `PreavisRegle`). */
+  preavisRegle: jsonb('preavis_regle').$type<PreavisRegle>().notNull(),
+  /** Établissement actif (un établissement inactif n'est plus notifié). */
+  actif: boolean('actif').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -83,5 +136,6 @@ export const outbox = pgTable('outbox', {
 });
 
 export type ContratRow = typeof contrat.$inferSelect;
+export type EtablissementRow = typeof etablissementDestinataire.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;

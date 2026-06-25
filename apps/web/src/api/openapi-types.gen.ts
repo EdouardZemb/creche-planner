@@ -401,6 +401,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/etablissements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lister les établissements destinataires
+         * @description Annuaire des établissements (crèche / ABCM) destinataires des mails de service, avec leur règle de préavis.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Établissements destinataires. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EtablissementVue"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/etablissements/{cle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Mettre à jour un établissement destinataire (upsert par clé) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    cle: "CRECHE_HIRONDELLES" | "ABCM";
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: email */
+                        emailService: string;
+                        preavisRegle: components["schemas"]["PreavisRegle"];
+                        libelle?: string;
+                        actif?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Établissement mis à jour. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EtablissementVue"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -439,6 +526,28 @@ export interface components {
             valideDu: string;
             /** Format: date */
             valideAu: string | null;
+        };
+        /** @description Règle de préavis d’un établissement (union discriminée par `type`). */
+        PreavisRegle: {
+            /** @enum {string} */
+            type: "JOURS_OUVRES";
+            valeur: number;
+        } | {
+            /** @enum {string} */
+            type: "JOUR_HEURE";
+            /** @enum {string} */
+            jour: "LUNDI" | "MARDI" | "MERCREDI" | "JEUDI" | "VENDREDI" | "SAMEDI" | "DIMANCHE";
+            heure: string;
+        };
+        /** @description Établissement destinataire d’un mail de service (annuaire notifications). */
+        EtablissementVue: {
+            /** @enum {string} */
+            cle: "CRECHE_HIRONDELLES" | "ABCM";
+            libelle: string;
+            /** Format: email */
+            emailService: string;
+            preavisRegle: components["schemas"]["PreavisRegle"];
+            actif: boolean;
         };
         /** @description Ligne de coût (débit ou crédit) en centimes. */
         Ligne: {

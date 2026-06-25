@@ -9,6 +9,8 @@ import type {
   LirePlanningReponse,
   CoutMoisVue,
   CoutAnnuelVue,
+  EtablissementVue,
+  MajEtablissement,
 } from '../types/bff';
 
 // Client HTTP du BFF. Base URL configurable via VITE_API_BASE_URL (défaut '/api',
@@ -231,5 +233,25 @@ export const api = {
       headers: entetes(false),
       ...(opts.signal ? { signal: opts.signal } : {}),
     }).then((r) => lire<CoutAnnuelVue>(r));
+  },
+
+  listerEtablissements(opts: RequeteOptions = {}): Promise<EtablissementVue[]> {
+    return requete(`${BASE}/v1/etablissements`, {
+      headers: entetes(false),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<EtablissementVue[]>(r));
+  },
+
+  mettreAJourEtablissement(
+    cle: string,
+    saisie: MajEtablissement,
+    opts: RequeteOptions = {},
+  ): Promise<EtablissementVue> {
+    return requete(`${BASE}/v1/etablissements/${encodeURIComponent(cle)}`, {
+      method: 'PUT',
+      headers: entetes(true),
+      body: JSON.stringify(saisie),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<EtablissementVue>(r));
   },
 };

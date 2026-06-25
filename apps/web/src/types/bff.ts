@@ -48,6 +48,21 @@ export type CoutAnnuelVue = ReponseJson<'/api/v1/couts/annuel', 'get', 200>;
 /** Dossier foyer (foyer + enfants) — dérivé de la réponse 201 de `POST /api/v1/foyers`. */
 export type DossierFoyerVue = ReponseJson<'/api/v1/foyers', 'post', 201>;
 
+/** Règle de préavis d'un établissement — dérivée de `components.schemas.PreavisRegle`. */
+export type PreavisRegle = SchemaComposant<'PreavisRegle'>;
+
+/** Établissement destinataire — dérivé de `components.schemas.EtablissementVue`. */
+export type EtablissementVue = SchemaComposant<'EtablissementVue'>;
+
+/** Clé d'un établissement — dérivée du champ `cle` d'`EtablissementVue`. */
+export type CleEtablissement = EtablissementVue['cle'];
+
+/** Corps d'upsert d'un établissement — dérivé du requestBody de `PUT /api/v1/etablissements/{cle}`. */
+export type MajEtablissement = CorpsRequeteJson<
+  '/api/v1/etablissements/{cle}',
+  'put'
+>;
+
 // ---- Saisies d'écriture dérivables : corps de création de foyer ------------
 
 /** Corps de création d'un foyer (EUROS) — dérivé du requestBody de `POST /api/v1/foyers`. */
