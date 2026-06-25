@@ -3,6 +3,7 @@ import { ContratsController } from './contrats.controller.js';
 import { CoutsController } from './couts.controller.js';
 import { FoyersController } from './foyers.controller.js';
 import { NotificationsController } from './notifications.controller.js';
+import { ValidationsController } from './validations.controller.js';
 
 /**
  * Module BFF : contrôleurs d'agrégation orientés écran (`/api/v1/*`). Les clients
@@ -14,6 +15,7 @@ import { NotificationsController } from './notifications.controller.js';
     ContratsController,
     CoutsController,
     NotificationsController,
+    ValidationsController,
   ],
 })
 export class BffModule {}

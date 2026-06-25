@@ -4,6 +4,60 @@
   },
   "interactions": [
     {
+      "description": "la validation d’une semaine A_VALIDER",
+      "providerStates": [
+        {
+          "name": "une semaine A_VALIDER existe pour validation"
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/api/validations/55555555-0000-4000-8000-000000000000/2026-W10"
+      },
+      "response": {
+        "body": {
+          "contratId": "55555555-0000-4000-8000-000000000000",
+          "deltaModifs": null,
+          "semaineIso": "2026-W10",
+          "statut": "VALIDEE"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.contratId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.semaineIso": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.statut": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "une lecture de la liste des établissements",
       "providerStates": [
         {
@@ -73,6 +127,93 @@
               ]
             },
             "$[*].preavisRegle.type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une lecture des semaines à valider d’un foyer",
+      "providerStates": [
+        {
+          "name": "une semaine est à valider pour un foyer"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/validations/a-valider",
+        "query": {
+          "foyer": [
+            "22222222-2222-4222-8222-222222222222"
+          ]
+        }
+      },
+      "response": {
+        "body": [
+          {
+            "contratId": "55555555-0000-4000-8000-000000000000",
+            "foyerId": "22222222-2222-4222-8222-222222222222",
+            "notifieeLe": "2026-06-23T06:00:00.000Z",
+            "semaineIso": "2026-W10",
+            "statut": "A_VALIDER"
+          }
+        ],
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].contratId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].notifieeLe": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].semaineIso": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].statut": {
               "combine": "AND",
               "matchers": [
                 {

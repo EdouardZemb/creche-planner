@@ -32,6 +32,36 @@ export type EtablissementVue = z.infer<typeof etablissementVueSchema>;
 /** Corps d'upsert relayé tel quel au service (validé en amont par la gateway). */
 export type SaisieEtablissement = Readonly<Record<string, unknown>>;
 
+/** Statut d'une validation hebdomadaire renvoyé par `svc-notifications`. */
+const statutSchema = z.enum(['A_VALIDER', 'VALIDEE', 'VALIDEE_AVEC_MODIFS']);
+
+/** Une semaine à valider (indicateur in-app). */
+const notificationAValiderSchema = z.object({
+  contratId: z.string(),
+  foyerId: z.string(),
+  semaineIso: z.string(),
+  statut: statutSchema,
+  notifieeLe: z.string(),
+});
+
+export type NotificationAValiderVue = z.infer<
+  typeof notificationAValiderSchema
+>;
+
+/**
+ * Résultat d'une validation. `deltaModifs` (forme libre de svc-notifications) n'est
+ * pas redéclaré champ par champ ici : la gateway le **relaie** tel quel (validation
+ * profonde côté service), seul son caractère nullable est contraint.
+ */
+const validationResultatSchema = z.object({
+  contratId: z.string(),
+  semaineIso: z.string(),
+  statut: statutSchema,
+  deltaModifs: z.record(z.string(), z.unknown()).nullable(),
+});
+
+export type ValidationResultat = z.infer<typeof validationResultatSchema>;
+
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
   retries: 1,
@@ -88,6 +118,51 @@ export class NotificationsClient {
           throw new Error('HTTP ' + reponse.status);
         }
         return etablissementVueSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** GET `/api/validations/a-valider?foyer=` — semaines à valider d'un foyer. */
+  async listerAValider(foyerId: string): Promise<NotificationAValiderVue[]> {
+    const base = loadConfig().notificationsUrl;
+    const url = `${base}/api/validations/a-valider?foyer=${encodeURIComponent(foyerId)}`;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-notifications',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return z.array(notificationAValiderSchema).parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** POST `/api/validations/:contratId/:semaineIso` — valide une semaine. */
+  async validerSemaine(
+    contratId: string,
+    semaineIso: string,
+  ): Promise<ValidationResultat> {
+    const base = loadConfig().notificationsUrl;
+    const url =
+      `${base}/api/validations/${encodeURIComponent(contratId)}` +
+      `/${encodeURIComponent(semaineIso)}`;
+    this.logger.debug(`POST ${url}`);
+    return executerResilient(
+      'svc-notifications',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'POST',
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return validationResultatSchema.parse(await reponse.json());
       },
       this.breaker,
       OPTIONS,

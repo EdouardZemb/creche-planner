@@ -179,6 +179,47 @@ export interface LirePlanningReponse {
   saisie: EcrirePlanning | null;
 }
 
+// ---- Notifications : validation hebdomadaire (Lot 4) -----------------------
+//
+// Hand-typé (comme la saisie de planning) : les routes BFF
+// `/api/v1/notifications/*` ne sont pas décrites dans l'OpenAPI de la gateway —
+// il n'y a donc rien à dériver. svc-notifications en est la spécification.
+
+/** Statut de la validation d'une semaine. */
+export type StatutNotification =
+  | 'A_VALIDER'
+  | 'VALIDEE'
+  | 'VALIDEE_AVEC_MODIFS';
+
+/** Une semaine à valider (indicateur in-app). */
+export interface NotificationAValider {
+  contratId: string;
+  foyerId: string;
+  semaineIso: string; // `YYYY-Www`
+  statut: StatutNotification;
+  notifieeLe: string; // ISO 8601
+}
+
+/** Un jour modifié entre le snapshot de notification et la relecture. */
+export interface DeltaJour {
+  date: string; // `YYYY-MM-DD`
+  avant: unknown;
+  apres: unknown;
+}
+
+/** Jours modifiés à la validation (forme libre relayée par la gateway). */
+export interface DeltaModifs {
+  jours: DeltaJour[];
+}
+
+/** Résultat d'une validation de semaine. */
+export interface ValidationResultat {
+  contratId: string;
+  semaineIso: string;
+  statut: StatutNotification;
+  deltaModifs: DeltaModifs | null;
+}
+
 // Contrat enrichi conservé côté client (le BFF ne renvoie pas la semaine-type ;
 // on la mémorise pour piloter le calendrier). Voir utils/store.ts.
 export interface ContratLocal extends ContratVue {

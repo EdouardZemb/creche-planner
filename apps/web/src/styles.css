@@ -317,6 +317,23 @@ h3 {
   color: var(--ambre);
 }
 
+/* Pastille de notification (compteur « à valider ») dans la navigation. */
+.pastille {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  margin-left: 0.35rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  background: var(--rouge);
+  color: #fff;
+}
+
 .statut-enregistre {
   background: #dcfce7;
   color: var(--vert);

@@ -9,6 +9,7 @@ import { libelleMode } from '../utils/libelles';
 import { Badge } from '../ui/Badge';
 import { EtatVide } from '../ui/EtatVide';
 import { PanneauCoutMois } from '../couts/PanneauCoutMois';
+import { EncartValidation } from '../notifications/EncartValidation';
 import { CalendrierCreche } from './CalendrierCreche';
 import { CalendrierAbcm } from './CalendrierAbcm';
 import type { ContratLocal } from '../types/bff';
@@ -161,6 +162,10 @@ export function PlanningPage() {
       <h1 style={{ fontSize: '1.25rem', margin: '0 0 1rem' }}>
         Planning mensuel
       </h1>
+
+      {/* Encart de validation hebdomadaire (Lot 4) : ne s'affiche que s'il y a une
+          semaine à valider pour ce foyer. */}
+      <EncartValidation foyerId={id} />
 
       {/* Barre de contrôles */}
       <div

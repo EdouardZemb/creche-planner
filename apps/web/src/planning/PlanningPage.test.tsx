@@ -13,6 +13,8 @@ vi.mock('../api/client', () => ({
     ecrirePlanning: vi.fn(),
     lirePlanning: vi.fn(),
     modifierContrat: vi.fn(),
+    listerAValider: vi.fn(),
+    validerSemaine: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -89,6 +91,8 @@ describe('PlanningPage', () => {
     // Par défaut : aucun contrat (lu via l'API GET /api/v1/contrats?foyer=).
     vi.mocked(api.listerContrats).mockResolvedValue([]);
     vi.mocked(api.lirePlanning).mockResolvedValue({ saisie: null });
+    // Encart de validation (Lot 4) : rien à valider par défaut.
+    vi.mocked(api.listerAValider).mockResolvedValue([]);
   });
 
   it('affiche le chargement puis le titre', async () => {

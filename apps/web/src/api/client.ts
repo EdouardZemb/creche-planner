@@ -11,6 +11,8 @@ import type {
   CoutAnnuelVue,
   EtablissementVue,
   MajEtablissement,
+  NotificationAValider,
+  ValidationResultat,
 } from '../types/bff';
 
 // Client HTTP du BFF. Base URL configurable via VITE_API_BASE_URL (défaut '/api',
@@ -253,5 +255,33 @@ export const api = {
       body: JSON.stringify(saisie),
       ...(opts.signal ? { signal: opts.signal } : {}),
     }).then((r) => lire<EtablissementVue>(r));
+  },
+
+  listerAValider(
+    foyerId: string,
+    opts: RequeteOptions = {},
+  ): Promise<NotificationAValider[]> {
+    return requete(
+      `${BASE}/v1/notifications/a-valider?foyer=${encodeURIComponent(foyerId)}`,
+      {
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<NotificationAValider[]>(r));
+  },
+
+  validerSemaine(
+    contratId: string,
+    semaineIso: string,
+    opts: RequeteOptions = {},
+  ): Promise<ValidationResultat> {
+    return requete(
+      `${BASE}/v1/notifications/validations/${encodeURIComponent(contratId)}/${encodeURIComponent(semaineIso)}`,
+      {
+        method: 'POST',
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<ValidationResultat>(r));
   },
 };

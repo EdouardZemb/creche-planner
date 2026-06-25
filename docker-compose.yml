@@ -351,6 +351,8 @@ services:
       PORT: '3006'
       DATABASE_URL: postgres://notifications:notifications@postgres-notifications:5432/notifications
       NATS_URL: nats://nats:4222
+      # Relecture du planning pour le diff de validation hebdomadaire (Lot 4).
+      PLANIFICATION_URL: http://svc-planification:3004
       OTEL_SERVICE_NAME: svc-notifications
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:

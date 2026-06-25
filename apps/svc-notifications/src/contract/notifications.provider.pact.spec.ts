@@ -15,9 +15,17 @@ import postgres, { type Sql } from 'postgres';
  */
 const ETAT_ETABLISSEMENTS = 'des établissements destinataires existent';
 const ETAT_ETABLISSEMENT_EDITABLE = 'un établissement crèche modifiable existe';
+const ETAT_SEMAINE_A_VALIDER = 'une semaine est à valider pour un foyer';
+const ETAT_SEMAINE_VALIDABLE = 'une semaine A_VALIDER existe pour validation';
 
 /** Id figé de la ligne crèche seedée par le stateHandler. */
 const CRECHE_ID = '99999999-9999-4999-8999-999999999999';
+
+/** Identifiants figés des semaines à valider seedées (partagés avec le consumer). */
+const NOTIF_ID = '88888888-8888-4888-8888-888888888888';
+const FOYER_ID = '22222222-2222-4222-8222-222222222222';
+const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
+const SEMAINE = '2026-W10';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-notifications) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
@@ -119,6 +127,23 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
           actif = excluded.actif
       `;
     };
+    // Upsert idempotent d'une semaine A_VALIDER (remise à l'état initial à chaque
+    // interaction : la validation peut faire passer la ligne à VALIDEE).
+    const seedSemaineAValider = async (): Promise<void> => {
+      await db`
+        insert into notification_hebdo (
+          id, contrat_id, foyer_id, semaine_iso, type, statut, snapshot
+        ) values (
+          ${NOTIF_ID}, ${CONTRAT_ID}, ${FOYER_ID}, ${SEMAINE},
+          'VALIDATION_HEBDO', 'A_VALIDER', '{}'::jsonb
+        )
+        on conflict (contrat_id, semaine_iso, type) do update set
+          statut = 'A_VALIDER',
+          validee_le = null,
+          delta_modifs = null,
+          snapshot = '{}'::jsonb
+      `;
+    };
     await new Verifier({
       provider: 'svc-notifications',
       providerBaseUrl: `http://localhost:${PORT}`,
@@ -127,6 +152,8 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
       stateHandlers: {
         [ETAT_ETABLISSEMENTS]: seedCreche,
         [ETAT_ETABLISSEMENT_EDITABLE]: seedCreche,
+        [ETAT_SEMAINE_A_VALIDER]: seedSemaineAValider,
+        [ETAT_SEMAINE_VALIDABLE]: seedSemaineAValider,
       },
     }).verifyProvider();
   });

@@ -3,9 +3,14 @@ import {
   jsonb,
   pgTable,
   timestamp,
+  unique,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import type {
+  DeltaModifs,
+  SnapshotSemaine,
+} from '../validation/validation.diff.js';
 
 /**
  * Schéma Drizzle du service **Notifications** (base dédiée). Notifications est
@@ -94,6 +99,78 @@ export const etablissementDestinataire = pgTable('etablissement_destinataire', {
     .defaultNow(),
 });
 
+// --- État de validation hebdomadaire ----------------------------------------
+
+/**
+ * Type métier (versionné implicitement) d'une notification hebdomadaire. Une seule
+ * valeur au Lot 4 (`VALIDATION_HEBDO`) — la colonne `type` la matérialise pour
+ * autoriser plus tard d'autres familles de rappels sans toucher la clé d'unicité.
+ */
+export const TYPE_VALIDATION_HEBDO = 'VALIDATION_HEBDO';
+
+/**
+ * Statut de la validation d'une semaine pour un contrat :
+ * - `A_VALIDER` : notifiée, en attente de l'accusé du parent (indicateur in-app) ;
+ * - `VALIDEE` : validée sans modification du planning depuis le snapshot ;
+ * - `VALIDEE_AVEC_MODIFS` : validée alors que la relecture diffère du snapshot
+ *   (le `delta_modifs` porte alors les jours changés).
+ */
+export const STATUTS_NOTIFICATION = [
+  'A_VALIDER',
+  'VALIDEE',
+  'VALIDEE_AVEC_MODIFS',
+] as const;
+export type StatutNotification = (typeof STATUTS_NOTIFICATION)[number];
+
+/**
+ * État de la **validation hebdomadaire** du planning d'un contrat (cœur du Lot 4).
+ * Le planning amont (`svc-planification`) est stocké **par mois** et **n'a aucune
+ * notion de semaine ni de validation** : cette table porte donc, côté notifications,
+ * le snapshot des jours de la semaine N+1 figé au moment de la notification du mardi
+ * (Lot 5) et, à la validation, le `delta_modifs` issu du diff avec une relecture du
+ * planning. La clé `UNIQUE(contrat_id, semaine_iso, type)` garantit l'idempotence du
+ * scheduler (un seul enregistrement par semaine) et sert de clé d'indicateur in-app.
+ */
+export const notificationHebdo = pgTable(
+  'notification_hebdo',
+  {
+    id: uuid('id').primaryKey(),
+    /** Contrat concerné (read model `contrat`). */
+    contratId: uuid('contrat_id').notNull(),
+    /** Foyer du contrat (filtre de la liste « à valider » par foyer). */
+    foyerId: uuid('foyer_id').notNull(),
+    /** Semaine ISO 8601 concernée, format `YYYY-Www` (ex. `2026-W27`). */
+    semaineIso: varchar('semaine_iso', { length: 8 }).notNull(),
+    /** Famille de notification (`VALIDATION_HEBDO`, cf. `TYPE_VALIDATION_HEBDO`). */
+    type: varchar('type', { length: 32 }).notNull(),
+    /** Statut courant (cf. `STATUTS_NOTIFICATION`). */
+    statut: varchar('statut', { length: 32 }).notNull(),
+    /** Horodatage de la notification (création de la ligne). */
+    notifieeLe: timestamp('notifiee_le', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** Horodatage de la validation par le parent (`null` tant que `A_VALIDER`). */
+    valideeLe: timestamp('validee_le', { withTimezone: true }),
+    /** Snapshot des jours de la semaine au moment de la notification (diff de base). */
+    snapshot: jsonb('snapshot').$type<SnapshotSemaine>().notNull(),
+    /** Jours modifiés entre le snapshot et la relecture à la validation (si modifs). */
+    deltaModifs: jsonb('delta_modifs').$type<DeltaModifs>(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique('notification_hebdo_contrat_semaine_type_uq').on(
+      table.contratId,
+      table.semaineIso,
+      table.type,
+    ),
+  ],
+);
+
 // --- Idempotence de consommation --------------------------------------------
 
 /**
@@ -137,5 +214,6 @@ export const outbox = pgTable('outbox', {
 
 export type ContratRow = typeof contrat.$inferSelect;
 export type EtablissementRow = typeof etablissementDestinataire.$inferSelect;
+export type NotificationHebdoRow = typeof notificationHebdo.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;
