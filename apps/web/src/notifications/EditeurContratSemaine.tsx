@@ -13,7 +13,9 @@ import type {
 import {
   jourSemaineDeIso,
   formaterDateFr,
+  formaterDateCourtFr,
   LIBELLES_JOURS,
+  LIBELLES_JOURS_COURT,
 } from '../utils/dates';
 import { libelleMode } from '../utils/libelles';
 import { messageErreur } from '../utils/erreurs';
@@ -438,27 +440,24 @@ export function EditeurContratSemaine({
         )}
       </div>
 
-      <ul style={{ listStyle: 'none', margin: '0.25rem 0', padding: 0 }}>
+      <ul className="jours-liste">
         {jours.map((date) => {
-          const libelleJour = `${LIBELLES_JOURS[jourSemaineDeIso(date)]} ${formaterDateFr(date)}`;
+          const jour = jourSemaineDeIso(date);
+          // Libellé complet (desktop + aria-label daté, dont des tests dépendent)
+          // et libellé abrégé (mobile, place limitée) ; la bascule visible se fait
+          // en CSS via deux <span> (cf. .jour-libelle-court / -long dans styles.css).
+          const libelleJour = `${LIBELLES_JOURS[jour]} ${formaterDateFr(date)}`;
+          const libelleCourt = `${LIBELLES_JOURS_COURT[jour]} ${formaterDateCourtFr(date)}`;
           return (
-            <li
-              key={date}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: '0.5rem',
-                padding: '0.2rem 0',
-              }}
-            >
-              <span style={{ minWidth: '11rem' }}>{libelleJour}</span>
-              <span className="muted" style={{ fontSize: '0.82rem' }}>
-                {resume(date)}
+            <li key={date} className="jour-rangee">
+              <span className="jour-libelle">
+                <span className="jour-libelle-court">{libelleCourt}</span>
+                <span className="jour-libelle-long">{libelleJour}</span>
               </span>
+              <span className="muted jour-resume">{resume(date)}</span>
               <button
                 type="button"
-                className="btn secondaire"
+                className="btn secondaire jour-action"
                 onClick={() => {
                   ouvrir(date);
                 }}
