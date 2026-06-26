@@ -50,6 +50,13 @@
       "when": 1782401643430,
       "tag": "0006_envoi_etablissement",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782468086360,
+      "tag": "0007_foyer_parent",
+      "breakpoints": true
     }
   ]
 }

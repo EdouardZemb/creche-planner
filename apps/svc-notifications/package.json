@@ -88,6 +88,7 @@
     ]
   },
   "dependencies": {
+    "@creche-planner/contracts-foyer": "workspace:*",
     "@creche-planner/contracts-planification": "workspace:*",
     "@creche-planner/shared-kernel": "workspace:*",
     "@creche-planner/nest-commons": "workspace:*",

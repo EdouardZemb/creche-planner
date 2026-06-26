@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { loadConfig } from '../config.js';
 import { EtablissementModule } from '../etablissement/etablissement.module.js';
 import { ValidationModule } from '../validation/validation.module.js';
+import { DestinatairesModule } from '../destinataires/destinataires.module.js';
 import { CLOCK, horlogeSysteme } from './clock.js';
 import { SchedulerHebdo } from './scheduler.hebdo.js';
 import { OPTIONS_SCHEDULER } from './scheduler.options.js';
@@ -11,11 +12,12 @@ import { OPTIONS_SCHEDULER } from './scheduler.options.js';
  * module global `EmailModule` (câblé dans `AppModule`) et le client Drizzle par
  * `DatabaseModule` ; ce module n'apporte que l'horloge système (`CLOCK`, mockée en
  * test), les options de déclenchement et le scheduler lui-même. Il réutilise
- * `ValidationService` (notification idempotente) et `EtablissementService`
- * (résolution du préavis du mail) via leurs modules.
+ * `ValidationService` (notification idempotente), `EtablissementService`
+ * (résolution du préavis du mail) et `DestinatairesService` (e-mails des parents
+ * actifs du foyer, PR4) via leurs modules.
  */
 @Module({
-  imports: [ValidationModule, EtablissementModule],
+  imports: [ValidationModule, EtablissementModule, DestinatairesModule],
   providers: [
     SchedulerHebdo,
     { provide: CLOCK, useValue: horlogeSysteme },

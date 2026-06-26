@@ -54,6 +54,38 @@ export const contrat = pgTable('contrat', {
     .defaultNow(),
 });
 
+// --- Read model : Parents du foyer (projeté depuis le stream FOYER) ----------
+
+/**
+ * Projection des **parents** d'un foyer (events `foyer.ParentAjoute.v1` /
+ * `ParentModifie.v1` / `ParentRetire.v1`, stream `FOYER`, émis par `svc-foyer`).
+ * Notifications projette ce read model pour **router le récap hebdomadaire vers les
+ * bons destinataires** : à l'envoi, on résout les e-mails des parents **actifs** du
+ * foyer (cf. `DestinatairesService`) plutôt que l'unique adresse globale
+ * `NOTIF_EMAIL_PARENT` (conservée en repli, dépréciation progressive).
+ *
+ * `parent_id` est la clé (l'identité du parent côté svc-foyer). `Ajoute`/`Modifie`
+ * portent l'état complet (upsert) ; `Retire` est un **soft-delete** (`actif = false`,
+ * la ligne est conservée). Alimenté idempotemment via `processed_event`. On ne projette
+ * pas `prenom`/`nom` : seul l'`email` (et `principal`, pour l'ordre des destinataires)
+ * sert l'envoi.
+ */
+export const foyerParent = pgTable('foyer_parent', {
+  /** Identité du parent amont (PK, = `parent.id` de svc-foyer). */
+  parentId: uuid('parent_id').primaryKey(),
+  /** Foyer de rattachement (filtre de résolution des destinataires). */
+  foyerId: uuid('foyer_id').notNull(),
+  /** Adresse e-mail destinataire du récap (PII). */
+  email: varchar('email', { length: 320 }).notNull(),
+  /** Destinataire « par défaut » du foyer (placé en tête de la liste `to`). */
+  principal: boolean('principal').notNull().default(false),
+  /** Parent actif (un parent retiré reste en base avec `actif = false`). */
+  actif: boolean('actif').notNull().default(true),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // --- Annuaire des établissements destinataires ------------------------------
 
 /**
@@ -286,6 +318,7 @@ export const outbox = pgTable('outbox', {
 });
 
 export type ContratRow = typeof contrat.$inferSelect;
+export type FoyerParentRow = typeof foyerParent.$inferSelect;
 export type EtablissementRow = typeof etablissementDestinataire.$inferSelect;
 export type NotificationHebdoRow = typeof notificationHebdo.$inferSelect;
 export type EnvoiEtablissementRow = typeof envoiEtablissement.$inferSelect;

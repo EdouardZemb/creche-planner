@@ -4,6 +4,11 @@ import {
   CONTRAT_MODIFIE_TYPE,
   CONTRAT_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-planification';
+import {
+  PARENT_AJOUTE_TYPE,
+  PARENT_MODIFIE_TYPE,
+  PARENT_RETIRE_TYPE,
+} from '@creche-planner/contracts-foyer';
 import { ProjectionService } from './projection.service.js';
 import type { Database } from '../database/database.types.js';
 
@@ -31,6 +36,7 @@ function fakeDb(marqueurInsere: boolean): Database {
         onConflictDoUpdate: () => Promise.resolve(),
       }),
     }),
+    update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
     delete: () => ({ where: () => Promise.resolve() }),
   };
   return {
@@ -92,6 +98,38 @@ function evenementContratSupprime(id: string): unknown {
     occurredAt: '2026-10-01T00:00:00.000Z',
     traceId: 'trace-3',
     payload: { contratId: CONTRAT_ID },
+  };
+}
+
+const PARENT_ID = '88888888-8888-4888-8888-888888888888';
+
+function evenementParent(type: string, id: string): unknown {
+  return {
+    id,
+    type,
+    source: 'svc-foyer',
+    version: 1,
+    occurredAt: '2026-09-15T00:00:00.000Z',
+    traceId: 'trace-p',
+    payload: {
+      foyerId: FOYER_ID,
+      parentId: PARENT_ID,
+      email: 'maman@test.fr',
+      principal: true,
+      actif: true,
+    },
+  };
+}
+
+function evenementParentRetire(id: string): unknown {
+  return {
+    id,
+    type: PARENT_RETIRE_TYPE,
+    source: 'svc-foyer',
+    version: 1,
+    occurredAt: '2026-09-16T00:00:00.000Z',
+    traceId: 'trace-pr',
+    payload: { foyerId: FOYER_ID, parentId: PARENT_ID },
   };
 }
 
@@ -184,6 +222,77 @@ describe('ProjectionService.traiter (Notifications)', () => {
       projection.traiter(
         'PLANIFICATION',
         evenementContratSupprime('66666666-6666-4666-8666-666666666666'),
+      ),
+    ).resolves.toBe(true);
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('projette un ParentAjoute valide (stream FOYER) et acquitte', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementParent(
+          PARENT_AJOUTE_TYPE,
+          '11111111-1111-4111-8111-111111111111',
+        ),
+      ),
+    ).resolves.toBe(true);
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('projette un ParentModifie valide (même payload d’état) et acquitte', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementParent(
+          PARENT_MODIFIE_TYPE,
+          '22222222-2222-4222-8222-aaaaaaaaaaaa',
+        ),
+      ),
+    ).resolves.toBe(true);
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('applique un ParentRetire valide (soft-delete) et acquitte', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementParentRetire('33333333-3333-4333-8333-333333333333'),
+      ),
+    ).resolves.toBe(true);
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('NAK (re-livraison) si le payload ParentAjoute est invalide', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter('FOYER', {
+        ...(evenementParent(
+          PARENT_AJOUTE_TYPE,
+          '44444444-4444-4444-8444-444444444444',
+        ) as Record<string, unknown>),
+        payload: { foyerId: 'pas-un-uuid' },
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('idempotent : un ParentAjoute doublon (marqueur présent) n’upsert pas mais acquitte', async () => {
+    const db = fakeDb(false); // marquerTraite renvoie vide ⇒ doublon
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementParent(
+          PARENT_AJOUTE_TYPE,
+          '55555555-5555-4555-8555-555555555555',
+        ),
       ),
     ).resolves.toBe(true);
     expect(db.transaction).toHaveBeenCalledTimes(1);

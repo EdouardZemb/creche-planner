@@ -1656,7 +1656,7 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
   message nominatif). lint/typecheck/test/build web + api-gateway **verts** (295 tests web, 67 api-gateway, Pact
   inchangé).
 
-## 24. Feature Parents du foyer (🚧 PR 1/8 livrée)
+## 24. Feature Parents du foyer (🚧 PR 4/8 livrée — objectif fonctionnel atteint)
 
 > **Objectif** : adresser le récap hebdomadaire (et les futures notifications) **aux parents du foyer
 > concerné** au lieu de l'unique adresse globale `NOTIF_EMAIL_PARENT`. Modéliser proprement des **parents**
@@ -1698,18 +1698,36 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
     avant typecheck (dist partagé → `TS6305`) ; `format:check` inclut les `.md`. **Tension notée (hors
     périmètre)** : e-mail globalement unique + soft-delete ⇒ un e-mail retiré reste « réservé » (ré-ajout →
     409), à traiter plus tard si nécessaire.
-- **PR 2 — api-gateway / BFF + OpenAPI** : `FoyerClient.parents()/…` + `foyersParEmail()`,
+- **PR 2 — api-gateway / BFF + OpenAPI** (✅ livrée, #76) : `FoyerClient.parents()/…` + `foyersParEmail()`,
   `DossierFoyerVue.parents`, endpoints BFF (orchestration création + CRUD), OpenAPI hand-authored
-  (`gateway.openapi.ts` + maj test « N routes » + régénération `openapi-types.gen.ts` → gate
+  (`gateway.openapi.ts` + maj test « N routes » 10→12 + régénération `openapi-types.gen.ts` → gate
   `openapi-types-drift`), Pact consumer api-gateway→svc-foyer enrichi (+ provider states parent côté
   svc-foyer). **Sans enforcement.**
-- **PR 3 — web** : bloc « Parents » dans `FoyerFormPage` (liste répétable e-mail + identité, add/edit/remove,
-  validation e-mail, a11y comme `EtablissementsPage`), types BFF (auto), tests RTL.
-- **PR 4 — svc-notifications : projection NATS + envoi groupé** : table locale `foyer_parent` + migration,
-  consumer durable `notifications-foyer` sur le stream `FOYER` (projection idempotente via `processed_event`),
-  résolution des destinataires par foyer, **récap groupé par foyer** + adaptation `recapMardi`, **repli
-  `NOTIF_EMAIL_PARENT`** + warning. **← objectif fonctionnel (mail aux parents) atteint ici, sans toucher à
-  l'auth.**
+- **PR 3 — web** (✅ livrée, #77) : bloc « Parents » dans `FoyerFormPage` (liste répétable e-mail + identité,
+  add/edit/remove, validation e-mail, a11y comme `EtablissementsPage`), types BFF (auto), tests RTL. Parents
+  **facultatifs** (foyer créable sans parent ; pas d'attribut HTML `required`, seulement `aria-required` +
+  validation BFF).
+- **PR 4 — svc-notifications : projection NATS + envoi groupé** (✅ livrée) :
+  - **Schéma local `foyer_parent`** (`parent_id` PK, `foyer_id`, `email`, `principal`, `actif`, `updated_at`)
+    - migration **générée** `0007_foyer_parent` (table neuve → aucun arbitrage drop-vs-rename). On ne projette
+      que ce qui sert l'envoi (`email`/`principal`/`actif`), pas `prenom`/`nom`.
+  - **Consumer durable `notifications-foyer`** sur le stream `FOYER` (ajouté à `ABONNEMENTS` à côté de
+    `notifications-planification`) ; `ProjectionService` aiguille `foyer.Parent{Ajoute,Modifie,Retire}.v1` :
+    `Ajoute`/`Modifie` = upsert de l'état (même payload), `Retire` = **soft-delete** `actif=false`. Idempotence
+    via `processed_event` (rejeu at-least-once = no-op).
+  - **`DestinatairesService.emailsActifs(foyerId)`** : e-mails des parents **actifs** du foyer, `principal`
+    en tête puis tri alpha. Liste vide ⇒ repli côté scheduler.
+  - **Récap regroupé par foyer** : l'idempotence `notification_hebdo` reste **par contrat** (Lot 5 intact,
+    exactly-once `UNIQUE(contrat_id, semaine_iso, type)`) ; seuls les contrats **fraîchement notifiés** sont
+    regroupés par `foyerId` pour envoyer **un seul** mail listant tous les enfants. `recapMardi` adapté pour
+    accepter une **liste d'enfants** (préavis distincts dédupliqués, énumération singulier/pluriel).
+  - **Destinataires `to`** = e-mails des parents actifs (joints en liste SMTP). **Repli `NOTIF_EMAIL_PARENT`**
+    - **warning** si le foyer n'a aucun parent (dépréciation progressive). **Garde-fous `MailerService`
+      intacts** (dry-run par défaut + allowlist) ; mail établissement (`envoi.service.ts`) **non touché**.
+  - Dépendance workspace `@creche-planner/contracts-foyer` ajoutée à svc-notifications (events parent). Tests :
+    projection idempotente (routing + contenu + soft-delete), scheduler groupé, repli, résolution des
+    destinataires. lint/typecheck/test/build **verts**. **← objectif fonctionnel (mail aux parents) atteint
+    ici, sans toucher à l'auth.**
 - **PR 5 — identité au BFF (guard B1, observe-only)** : validation JWT Cloudflare Access (JWKS/team
   domain/`aud`) → `request.identite.email`, mode dev injectable verrouillé hors prod, `verifierConfigProduction`
   étendu. **N'autorise/ne refuse encore rien** (pose l'identité + journalise).

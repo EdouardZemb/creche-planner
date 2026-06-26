@@ -21,6 +21,7 @@ import {
   semaineIsoDeDate,
 } from '@creche-planner/shared-semaine';
 import { recapMardi } from '../email/templates/recapMardi.js';
+import { DestinatairesService } from '../destinataires/destinataires.service.js';
 import { CLOCK, type Clock } from './clock.js';
 import {
   OPTIONS_SCHEDULER,
@@ -41,9 +42,14 @@ const MARDI = 'Tue';
  * Le cas échéant, pour chaque contrat **actif** sur la semaine N+1, il fige (via
  * `ValidationService.notifier`) une ligne `notification_hebdo` idempotente — la clé
  * `UNIQUE(contrat_id, semaine_iso, type)` garantit l'exactly-once multi-réplica : la
- * 1ʳᵉ écriture gagne, les ticks/réplicas suivants sont des no-op. **Seules** les
- * lignes nouvellement créées déclenchent l'envoi du mail récap au parent (Lot 2,
- * dry-run par défaut), de sorte qu'un second tick le même mardi n'envoie rien.
+ * 1ʳᵉ écriture gagne, les ticks/réplicas suivants sont des no-op. L'idempotence reste
+ * **par contrat** ; **l'envoi**, lui, est **regroupé par foyer** (PR4 parents-foyer) :
+ * un unique mail récap liste tous les enfants/contrats fraîchement notifiés du foyer
+ * et part vers les e-mails des **parents actifs** (read model `foyer_parent`), avec
+ * repli sur `NOTIF_EMAIL_PARENT` + warning si le foyer n'a aucun parent (dépréciation
+ * progressive). Un second tick le même mardi ne crée aucune ligne neuve → n'envoie
+ * rien. Les garde-fous du `MailerService` (dry-run par défaut, allowlist) restent en
+ * vigueur.
  *
  * L'horloge est injectée (`CLOCK`) : les tests poussent un instant précis sans
  * dépendre de l'horloge réelle ni du fuseau du serveur.
@@ -62,6 +68,7 @@ export class SchedulerHebdo
     @Inject(OPTIONS_SCHEDULER) private readonly options: OptionsScheduler,
     private readonly validation: ValidationService,
     private readonly etablissements: EtablissementService,
+    private readonly destinataires: DestinatairesService,
     private readonly mailer: MailerService,
   ) {}
 
@@ -90,6 +97,10 @@ export class SchedulerHebdo
         return;
       }
       const annuaire = await this.annuaireParCle();
+      // Idempotence **par contrat** (clé UNIQUE notification_hebdo) : on fige chaque
+      // contrat et on retient ceux que CET appel a réellement notifiés (les ticks /
+      // réplicas suivants renvoient `false` → rien à renvoyer).
+      const frais: ContratRow[] = [];
       for (const c of contrats) {
         const cree = await this.validation.notifier({
           contratId: c.id,
@@ -97,8 +108,17 @@ export class SchedulerHebdo
           semaineIso,
         });
         if (cree) {
-          await this.envoyerRecap(c, semaineIso, annuaire);
+          frais.push(c);
         }
+      }
+      // Envoi **regroupé par foyer** : un seul mail récap par foyer fraîchement notifié.
+      for (const [foyerId, contratsFoyer] of this.grouperParFoyer(frais)) {
+        await this.envoyerRecapFoyer(
+          foyerId,
+          contratsFoyer,
+          semaineIso,
+          annuaire,
+        );
       }
     } catch (erreur) {
       this.logger.warn(
@@ -182,28 +202,64 @@ export class SchedulerHebdo
     return new Map(liste.map((e) => [e.cle, e]));
   }
 
-  /** Compose et envoie le mail récap du mardi pour un contrat fraîchement notifié. */
-  private async envoyerRecap(
-    c: ContratRow,
+  /** Regroupe les contrats fraîchement notifiés par foyer (préserve l'ordre d'arrivée). */
+  private grouperParFoyer(contrats: ContratRow[]): Map<string, ContratRow[]> {
+    const parFoyer = new Map<string, ContratRow[]>();
+    for (const c of contrats) {
+      const liste = parFoyer.get(c.foyerId);
+      if (liste) {
+        liste.push(c);
+      } else {
+        parFoyer.set(c.foyerId, [c]);
+      }
+    }
+    return parFoyer;
+  }
+
+  /**
+   * Compose et envoie **un** mail récap du mardi pour un foyer, regroupant tous ses
+   * contrats fraîchement notifiés. Destinataires = e-mails des parents **actifs** du
+   * foyer ; **repli** sur `NOTIF_EMAIL_PARENT` + warning si le foyer n'en a aucun
+   * (dépréciation progressive). Les garde-fous du `MailerService` s'appliquent au `to`.
+   */
+  private async envoyerRecapFoyer(
+    foyerId: string,
+    contratsFoyer: ContratRow[],
     semaineIso: string,
     annuaire: Map<string, EtablissementVue>,
   ): Promise<void> {
-    const etab = this.etablissementPourMode(c.mode, annuaire);
+    const enfants = contratsFoyer.map((c) => {
+      const etab = this.etablissementPourMode(c.mode, annuaire);
+      return {
+        enfant: c.enfant,
+        etablissementLibelle: etab?.libelle ?? null,
+        preavisRegle: etab?.preavisRegle ?? null,
+      };
+    });
     const message = recapMardi({
-      enfant: c.enfant,
+      enfants,
       semaineIso,
       lienApp: `${this.options.appUrl}/planning?semaine=${semaineIso}`,
-      etablissementLibelle: etab?.libelle ?? null,
-      preavisRegle: etab?.preavisRegle ?? null,
     });
+
+    const emails = await this.destinataires.emailsActifs(foyerId);
+    const repli = emails.length === 0;
+    if (repli) {
+      this.logger.warn(
+        `Foyer ${foyerId} sans parent destinataire — repli sur NOTIF_EMAIL_PARENT (${this.options.emailParent}, déprécié)`,
+      );
+    }
+    // `MessageMail.to` est un `string` : on joint les parents en liste SMTP standard.
+    const to = repli ? this.options.emailParent : emails.join(', ');
+
     const resultat = await this.mailer.envoyer({
-      to: this.options.emailParent,
+      to,
       subject: message.subject,
       html: message.html,
       text: message.text,
     });
     this.logger.log(
-      `Récap mardi ${resultat.dryRun ? '(dry-run) ' : ''}pour ${c.enfant} — semaine ${semaineIso}`,
+      `Récap mardi ${resultat.dryRun ? '(dry-run) ' : ''}foyer ${foyerId} (${String(enfants.length)} enfant(s), ${repli ? 'repli' : `${String(emails.length)} parent(s)`}) — semaine ${semaineIso}`,
     );
   }
 

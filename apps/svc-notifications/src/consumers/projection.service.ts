@@ -8,9 +8,17 @@ import {
   CONTRAT_MODIFIE_TYPE,
   CONTRAT_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-planification';
+import {
+  parentAjouteEventSchema,
+  parentModifieEventSchema,
+  parentRetireEventSchema,
+  PARENT_AJOUTE_TYPE,
+  PARENT_MODIFIE_TYPE,
+  PARENT_RETIRE_TYPE,
+} from '@creche-planner/contracts-foyer';
 import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
-import { contrat, processedEvent } from '../database/schema.js';
+import { contrat, foyerParent, processedEvent } from '../database/schema.js';
 
 /** Transaction Drizzle (type du callback `db.transaction`). */
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -27,6 +35,11 @@ type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
  * il ne consomme pas `PlanningModifie` et n'a aucun client de repli vers
  * `svc-planification` : tout ce dont il a besoin tient dans les payloads
  * `ContratCree`/`ContratModifie`/`ContratSupprime`.
+ *
+ * Depuis la PR4 « parents du foyer », il projette aussi le read model `foyer_parent`
+ * depuis le stream `FOYER` (`foyer.Parent{Ajoute,Modifie,Retire}.v1`) pour résoudre
+ * les destinataires du récap hebdo. Le `switch` sur `type` aiguille indifféremment
+ * les deux streams (l'idempotence reste pilotée par `processed_event`).
  */
 @Injectable()
 export class ProjectionService {
@@ -55,6 +68,23 @@ export class ProjectionService {
           return true;
         case CONTRAT_SUPPRIME_TYPE:
           await this.appliquerContratSupprime(stream, donnees);
+          return true;
+        case PARENT_AJOUTE_TYPE:
+          await this.appliquerParentEtat(
+            stream,
+            donnees,
+            parentAjouteEventSchema,
+          );
+          return true;
+        case PARENT_MODIFIE_TYPE:
+          await this.appliquerParentEtat(
+            stream,
+            donnees,
+            parentModifieEventSchema,
+          );
+          return true;
+        case PARENT_RETIRE_TYPE:
+          await this.appliquerParentRetire(stream, donnees);
           return true;
         default:
           return true; // type non consommé par Notifications : acquitté
@@ -195,6 +225,70 @@ export class ProjectionService {
       }
       const p = evt.payload;
       await tx.delete(contrat).where(eq(contrat.id, p.contratId));
+    });
+  }
+
+  /**
+   * `ParentAjoute`/`ParentModifie` : upsert de l'état complet du parent dans le read
+   * model local `foyer_parent` (clé = `parent_id`). Les deux événements transportent
+   * le même payload (`parentEtatPayloadSchema`) et se projettent à l'identique : un
+   * `ParentModifie` reçu avant son `ParentAjoute` (désordre transitoire) crée la
+   * ligne. On ne projette que ce qui sert l'envoi (`email`, `principal`, `actif`),
+   * pas `prenom`/`nom`. Idempotent via `processed_event`.
+   */
+  private async appliquerParentEtat(
+    stream: string,
+    donnees: unknown,
+    schema: typeof parentAjouteEventSchema,
+  ): Promise<void> {
+    const evt = schema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      const p = evt.payload;
+      await tx
+        .insert(foyerParent)
+        .values({
+          parentId: p.parentId,
+          foyerId: p.foyerId,
+          email: p.email,
+          principal: p.principal,
+          actif: p.actif,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: foyerParent.parentId,
+          set: {
+            foyerId: p.foyerId,
+            email: p.email,
+            principal: p.principal,
+            actif: p.actif,
+            updatedAt: new Date(),
+          },
+        });
+    });
+  }
+
+  /**
+   * `ParentRetire` : retrait **soft-delete** côté svc-foyer → on bascule la ligne
+   * locale en `actif = false` (la résolution des destinataires ne retient que les
+   * parents actifs). La ligne est conservée (historique). Un retrait d'un parent
+   * jamais projeté est un no-op. Idempotent via `processed_event`.
+   */
+  private async appliquerParentRetire(
+    stream: string,
+    donnees: unknown,
+  ): Promise<void> {
+    const evt = parentRetireEventSchema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      await tx
+        .update(foyerParent)
+        .set({ actif: false, updatedAt: new Date() })
+        .where(eq(foyerParent.parentId, evt.payload.parentId));
     });
   }
 
