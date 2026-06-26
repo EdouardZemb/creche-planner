@@ -5,9 +5,14 @@ import {
   CONTRAT_MODIFIE_TYPE,
   CONTRAT_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-planification';
+import {
+  PARENT_AJOUTE_TYPE,
+  PARENT_MODIFIE_TYPE,
+  PARENT_RETIRE_TYPE,
+} from '@creche-planner/contracts-foyer';
 import { ProjectionService } from './projection.service.js';
 import type { Database } from '../database/database.types.js';
-import { contrat, processedEvent } from '../database/schema.js';
+import { contrat, foyerParent, processedEvent } from '../database/schema.js';
 
 /**
  * Test d'**intégration** de la chaîne « événement → projection » du read model
@@ -100,6 +105,16 @@ function fakeBaseEnMemoire(): {
           } else {
             lignesDe(table).push({ ...valeurs });
           }
+          return Promise.resolve();
+        },
+      }),
+    }),
+    update: (table: Table) => ({
+      set: (valeurs: Ligne) => ({
+        where: (condition: unknown) => {
+          lignesDe(table)
+            .filter(filtreEq(table, condition))
+            .forEach((l) => Object.assign(l, valeurs));
           return Promise.resolve();
         },
       }),
@@ -287,6 +302,141 @@ describe('Projection ContratSupprime', () => {
     expect(lignesDe(contrat)).toHaveLength(0);
     expect(
       lignesDe(processedEvent).filter((l) => l['id'] === ID_EVT_SUPPR),
+    ).toHaveLength(1);
+  });
+});
+
+const PARENT_ID = '88888888-8888-4888-8888-888888888888';
+
+function evenementParent(
+  type: string,
+  id: string,
+  surcharge: Record<string, unknown> = {},
+): unknown {
+  return {
+    id,
+    type,
+    source: 'svc-foyer',
+    version: 1,
+    occurredAt: '2026-09-15T00:00:00.000Z',
+    traceId: 'trace-p',
+    payload: {
+      foyerId: FOYER_ID,
+      parentId: PARENT_ID,
+      email: 'maman@test.fr',
+      principal: true,
+      actif: true,
+      ...surcharge,
+    },
+  };
+}
+
+function evenementParentRetire(id: string): unknown {
+  return {
+    id,
+    type: PARENT_RETIRE_TYPE,
+    source: 'svc-foyer',
+    version: 1,
+    occurredAt: '2026-09-16T00:00:00.000Z',
+    traceId: 'trace-pr',
+    payload: { foyerId: FOYER_ID, parentId: PARENT_ID },
+  };
+}
+
+describe('Projection foyer_parent (parents du foyer, stream FOYER)', () => {
+  it('ParentAjoute projette l’état destinataire (email/principal/actif)', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementParent(
+          PARENT_AJOUTE_TYPE,
+          '11111111-1111-4111-8111-111111111111',
+        ),
+      ),
+    ).resolves.toBe(true);
+
+    expect(lignesDe(foyerParent)).toHaveLength(1);
+    expect(lignesDe(foyerParent)[0]).toMatchObject({
+      parentId: PARENT_ID,
+      foyerId: FOYER_ID,
+      email: 'maman@test.fr',
+      principal: true,
+      actif: true,
+    });
+    expect(lignesDe(processedEvent)).toHaveLength(1);
+  });
+
+  it('idempotence REJOUÉE : la même enveloppe ParentAjoute ré-livrée est un no-op', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    const ID = '11111111-1111-4111-8111-111111111111';
+    await projection.traiter('FOYER', evenementParent(PARENT_AJOUTE_TYPE, ID));
+
+    await projection.traiter(
+      'FOYER',
+      evenementParent(PARENT_AJOUTE_TYPE, ID, { email: 'autre@test.fr' }),
+    );
+
+    expect(lignesDe(foyerParent)).toHaveLength(1);
+    expect(lignesDe(foyerParent)[0]).toMatchObject({ email: 'maman@test.fr' });
+    expect(lignesDe(processedEvent)).toHaveLength(1);
+  });
+
+  it('ParentModifie (id différent) met à jour la ligne du parent (upsert)', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    await projection.traiter(
+      'FOYER',
+      evenementParent(
+        PARENT_AJOUTE_TYPE,
+        '11111111-1111-4111-8111-111111111111',
+      ),
+    );
+
+    await projection.traiter(
+      'FOYER',
+      evenementParent(
+        PARENT_MODIFIE_TYPE,
+        '22222222-2222-4222-8222-bbbbbbbbbbbb',
+        { email: 'maman.nouvelle@test.fr', principal: false },
+      ),
+    );
+
+    expect(lignesDe(foyerParent)).toHaveLength(1);
+    expect(lignesDe(foyerParent)[0]).toMatchObject({
+      email: 'maman.nouvelle@test.fr',
+      principal: false,
+    });
+    expect(lignesDe(processedEvent)).toHaveLength(2);
+  });
+
+  it('ParentRetire bascule actif=false (soft-delete) ; le rejeu est un no-op', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    await projection.traiter(
+      'FOYER',
+      evenementParent(
+        PARENT_AJOUTE_TYPE,
+        '11111111-1111-4111-8111-111111111111',
+      ),
+    );
+    const ID_RETIRE = '33333333-3333-4333-8333-333333333333';
+
+    await expect(
+      projection.traiter('FOYER', evenementParentRetire(ID_RETIRE)),
+    ).resolves.toBe(true);
+    expect(lignesDe(foyerParent)).toHaveLength(1);
+    expect(lignesDe(foyerParent)[0]).toMatchObject({ actif: false });
+
+    // Rejeu de la MÊME enveloppe : marqueur déjà posé ⇒ aucune nouvelle écriture.
+    await expect(
+      projection.traiter('FOYER', evenementParentRetire(ID_RETIRE)),
+    ).resolves.toBe(true);
+    expect(
+      lignesDe(processedEvent).filter((l) => l['id'] === ID_RETIRE),
     ).toHaveLength(1);
   });
 });

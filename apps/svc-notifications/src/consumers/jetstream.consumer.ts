@@ -18,6 +18,9 @@ import { ProjectionService } from './projection.service.js';
 /** Streams amont consommés par Notifications, et leur consommateur durable. */
 const ABONNEMENTS: readonly { stream: string; durable: string }[] = [
   { stream: 'PLANIFICATION', durable: 'notifications-planification' },
+  // Parents du foyer (PR4) : projette `foyer_parent` pour router le récap hebdo
+  // vers les bons destinataires. Stream déjà publié par svc-foyer (cf. tarification).
+  { stream: 'FOYER', durable: 'notifications-foyer' },
 ];
 
 const DELAI_BIND_MS = 5000;

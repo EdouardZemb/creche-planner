@@ -2,26 +2,37 @@ import type { PreavisRegle } from '../../database/schema.js';
 
 /**
  * Template **pur** du mail récapitulatif du mardi (aucune I/O, aucune horloge), donc
- * testable comme une fonction. Le mardi, le parent reçoit l'invitation à **valider le
- * planning de la semaine N+1** : titre « Valider le planning de la semaine YYYY-Www »,
- * lien profond vers le front et rappel de **préavis propre à l'établissement** (2 jours
- * ouvrés crèche RM-03 / jeudi 12h ABCM RM-07). Le préavis est facultatif : si
- * l'établissement n'a pu être résolu (mode inconnu, annuaire indisponible), le mail est
- * émis sans la ligne de rappel plutôt que d'échouer.
+ * testable comme une fonction. Le mardi, les parents du foyer reçoivent l'invitation à
+ * **valider le planning de la semaine N+1** : titre « Valider le planning de la semaine
+ * YYYY-Www », lien profond vers le front et rappel de **préavis propre à
+ * l'établissement** (2 jours ouvrés crèche RM-03 / jeudi 12h ABCM RM-07).
+ *
+ * Depuis la PR4 « parents du foyer », un **seul** mail est adressé **par foyer** et
+ * regroupe **tous les enfants** (contrats) fraîchement notifiés de la semaine — d'où la
+ * liste `enfants`. Chaque enfant porte son établissement/préavis ; les rappels de
+ * préavis identiques (deux enfants dans la même crèche) sont **dédupliqués**. Le
+ * préavis reste facultatif : un établissement non résolu n'ajoute pas de ligne plutôt
+ * que d'échouer.
  */
 
-/** Paramètres de rendu du récap du mardi. */
-export interface RecapMardiParams {
+/** Un enfant/contrat du foyer concerné par le récap de la semaine. */
+export interface RecapMardiEnfant {
   /** Prénom de l'enfant du contrat (affiché tel quel, échappé). */
   readonly enfant: string;
-  /** Semaine ISO concernée (`YYYY-Www`, ex. `2026-W27`). */
-  readonly semaineIso: string;
-  /** Lien profond vers l'écran de validation du front. */
-  readonly lienApp: string;
   /** Libellé de l'établissement destinataire (`null` si non résolu). */
   readonly etablissementLibelle: string | null;
   /** Règle de préavis de l'établissement (`null` si non résolue). */
   readonly preavisRegle: PreavisRegle | null;
+}
+
+/** Paramètres de rendu du récap du mardi (regroupé par foyer). */
+export interface RecapMardiParams {
+  /** Enfants/contrats du foyer notifiés cette semaine (au moins un). */
+  readonly enfants: readonly RecapMardiEnfant[];
+  /** Semaine ISO concernée (`YYYY-Www`, ex. `2026-W27`). */
+  readonly semaineIso: string;
+  /** Lien profond vers l'écran de validation du front. */
+  readonly lienApp: string;
 }
 
 /** Message rendu prêt pour `MailerService.envoyer` (sujet + corps HTML et texte). */
@@ -67,30 +78,65 @@ function rappelPreavis(
   return `Pensez à signaler tout changement avant ${jourLisible(regle.jour)} ${regle.heure}${ou}.`;
 }
 
-/** Rend le mail récap du mardi (sujet + HTML + texte) pour une semaine et un contrat. */
-export function recapMardi(params: RecapMardiParams): MessageRendu {
-  const { enfant, semaineIso, lienApp, etablissementLibelle, preavisRegle } =
-    params;
-  const subject = `Valider le planning de la semaine ${semaineIso}`;
-  const preavis = rappelPreavis(preavisRegle, etablissementLibelle);
+/** Rappels de préavis **distincts** des enfants (deux mêmes établissements ⇒ une ligne). */
+function preavisDistincts(enfants: readonly RecapMardiEnfant[]): string[] {
+  const vus = new Set<string>();
+  const lignes: string[] = [];
+  for (const e of enfants) {
+    const preavis = rappelPreavis(e.preavisRegle, e.etablissementLibelle);
+    if (preavis !== null && !vus.has(preavis)) {
+      vus.add(preavis);
+      lignes.push(preavis);
+    }
+  }
+  return lignes;
+}
 
-  const enfantHtml = echapper(enfant);
+/** Énumère « A », « A et B », « A, B et C » à partir d'une liste de libellés. */
+function enumerer(noms: readonly string[]): string {
+  if (noms.length <= 1) {
+    return noms[0] ?? '';
+  }
+  const debut = noms.slice(0, -1).join(', ');
+  return `${debut} et ${noms[noms.length - 1]}`;
+}
+
+/**
+ * Rend le mail récap du mardi (sujet + HTML + texte) pour une semaine et l'ensemble
+ * des enfants/contrats d'un foyer notifiés cette semaine.
+ */
+export function recapMardi(params: RecapMardiParams): MessageRendu {
+  const { enfants, semaineIso, lienApp } = params;
+  const subject = `Valider le planning de la semaine ${semaineIso}`;
+  const preavis = preavisDistincts(enfants);
+  const pluriel = enfants.length > 1;
+
+  const noms = enfants.map((e) => e.enfant);
+  const phraseTexte = pluriel
+    ? `Les plannings de ${enumerer(noms)} pour la semaine ${semaineIso} sont à valider.`
+    : `Le planning de ${enumerer(noms)} pour la semaine ${semaineIso} est à valider.`;
+
+  const nomsHtml = enfants.map((e) => `<strong>${echapper(e.enfant)}</strong>`);
   const lienHtml = echapper(lienApp);
+  const phraseHtml = pluriel
+    ? `Les plannings de ${enumerer(nomsHtml)} pour la semaine <strong>${semaineIso}</strong> sont à valider.`
+    : `Le planning de ${enumerer(nomsHtml)} pour la semaine <strong>${semaineIso}</strong> est à valider.`;
+
   const html = [
     '<p>Bonjour,</p>',
-    `<p>Le planning de <strong>${enfantHtml}</strong> pour la semaine <strong>${semaineIso}</strong> est à valider.</p>`,
+    `<p>${phraseHtml}</p>`,
     `<p><a href="${lienHtml}">${subject}</a></p>`,
-    ...(preavis ? [`<p>${echapper(preavis)}</p>`] : []),
+    ...preavis.map((p) => `<p>${echapper(p)}</p>`),
     '<p>— Crèche Planner</p>',
   ].join('\n');
 
   const text = [
     'Bonjour,',
     '',
-    `Le planning de ${enfant} pour la semaine ${semaineIso} est à valider.`,
+    phraseTexte,
     '',
     `${subject} : ${lienApp}`,
-    ...(preavis ? ['', preavis] : []),
+    ...(preavis.length > 0 ? ['', ...preavis] : []),
     '',
     '— Crèche Planner',
   ].join('\n');
