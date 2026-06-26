@@ -108,6 +108,29 @@ export class PlanificationClient {
     );
   }
 
+  /**
+   * GET `/api/contrats/:id` — cœur d'un contrat (dont son `foyerId`). Sert la
+   * **résolution contrat → foyer** du guard d'appartenance (PR7) : les routes
+   * `/contrats/:id/...` ne portent qu'un `contratId`. 404 → erreur propagée.
+   */
+  async contrat(id: string): Promise<ContratVue> {
+    const base = loadConfig().planificationUrl;
+    const url = `${base}/api/contrats/${encodeURIComponent(id)}`;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-planification',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return contratVueSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
   /** GET `/api/contrats?foyer=` — liste les contrats d'un foyer (config incluse). */
   async listerContrats(foyerId: string): Promise<ContratVue[]> {
     const base = loadConfig().planificationUrl;

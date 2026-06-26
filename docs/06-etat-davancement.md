@@ -1656,7 +1656,7 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
   message nominatif). lint/typecheck/test/build web + api-gateway **verts** (295 tests web, 67 api-gateway, Pact
   inchangé).
 
-## 24. Feature Parents du foyer (🚧 PR 6/8 livrée — provisioning admin + sélection foyer web)
+## 24. Feature Parents du foyer (🚧 PR 7/8 livrée — enforcement de l'autorisation par foyer)
 
 > **Objectif** : adresser le récap hebdomadaire (et les futures notifications) **aux parents du foyer
 > concerné** au lieu de l'unique adresse globale `NOTIF_EMAIL_PARENT`. Modéliser proprement des **parents**
@@ -1780,9 +1780,42 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
     (null/permissif/admin/borné/panne), parsing `ADMIN_EMAILS`, RTL (gating `FoyerFormPage`, sélecteur 0/1/N,
     cache invalidé, lien « Nouveau foyer » masqué), `MoiContext` (résolu/repli/défaut). lint/typecheck/test/
     build **verts**. **Toujours sans refus dur d'appartenance.**
-- **PR 7 — enforcement de l'autorisation par foyer (derrière flag)** : guard d'appartenance 403 sur **toutes**
-  les routes portant un `foyerId` (inventaire exhaustif ; admin bypass), activé après back-fill vérifié, tests
-  d'accès refusé cross-foyer.
+- **PR 7 — enforcement de l'autorisation par foyer (derrière flag)** (✅ livrée) :
+  - **`AppartenanceGuard`** (`APP_GUARD`, enregistré **en dernier**, après `AdminGuard`, car il lit
+    `request.identite`) : sur **toute** route portant un `foyerId`, dérive le foyer ciblé, le compare à
+    l'ensemble autorisé (`FoyerClient.foyersParEmail`, parents **actifs**) et **refuse (403)** hors de cet
+    ensemble. Transforme le « AURAIT REFUSÉ » observe-only de PR5 en **refus réel**.
+  - **Inventaire exhaustif déclaratif** : décorateur **`@FoyerScope('<source>')`** posé sur chaque route
+    concernée — l'inventaire vit **dans le code** des contrôleurs (une route sans décorateur n'est pas
+    soumise à l'autorisation par foyer). Sources : `param:id` (`/foyers/:id`, `/foyers/:id/parents[/…]`),
+    `param:foyerId` (`/notifications/semaine/:foyerId/…`), `query:foyer` (`/contrats?foyer=`,
+    `/couts?foyer=`, `/couts/annuel`, `/notifications/a-valider`), `body:foyerId` (`POST /contrats`,
+    `POST /notifications/envois/etablissement`), et **`contrat:id`/`contrat:contratId`** pour les routes ne
+    portant qu'un **contratId** (`/contrats/:id[/plannings/…]`, `/notifications/validations/:contratId/…`),
+    **résolu en foyer** via un nouvel endpoint **`GET /api/contrats/:id`** de `svc-planification`
+    (`PlanificationClient.contrat()` ; +1 interaction Pact, état `ETAT_CONTRAT_EXISTE` réutilisé, **pas** de
+    nouvelle paire). Routes **hors périmètre** (sans `@FoyerScope`) : `POST /foyers` (amorçage, `@AdminSeulement`),
+    `GET /foyers` (liste « mode hérité », ne porte pas un foyerId unique — gap résiduel documenté), `/moi`,
+    annuaire `/etablissements`.
+  - **Derrière le flag `FOYER_AUTHZ_ENFORCE` (opt-in, défaut désactivé)** — `config.foyerAuthzEnforce` :
+    **off** ⇒ **observe-only** (journalise « AURAIT REFUSÉ », laisse passer — **prod actuelle inchangée**,
+    zéro 403) ; **`=1`** (après back-fill PR6 vérifié) ⇒ **refus réel 403**. À n'activer en prod qu'après
+    confirmation humaine (un mauvais réglage verrouillerait des foyers).
+  - **Garde-fous anti-verrouillage** : **route non scopée** → passe ; **aucune identité établie** → passe
+    (l'auth machine `TokenAuthGuard` + Cloudflare Access au bord restent les barrières — décision : ne pas
+    verrouiller un déploiement où l'identité n'est pas encore câblée) ; **admin** (∈ `ADMIN_EMAILS`) →
+    **bypass** (provisioning). **Fail-closed** : en mode enforce, si la résolution échoue (svc-foyer /
+    svc-planification indisponible, contrat introuvable) on **refuse** plutôt que d'ouvrir un trou ; en
+    observe-only l'échec est seulement journalisé.
+  - **Refactor** : la logique d'appartenance (observe + enforce) est **centralisée** dans `AppartenanceGuard` ;
+    `IdentiteGuard` ne fait plus que **poser l'identité** (l'heuristique `foyerIdDemande` est remplacée par le
+    décorateur, plus précise — elle couvre aussi `param:foyerId` et `body:foyerId`). Une seule résolution
+    `foyersParEmail` par requête.
+  - Tests : extraction `@FoyerScope` (param/query/body/contrat, valeur absente/vide/non-chaîne), guard
+    (route non scopée, sans identité, admin bypass, observe autorisé/refusé/erreur, enforce
+    autorisé/refusé/fail-closed, résolution `contrat→foyer` autorisée/refusée/404), flag `FOYER_AUTHZ_ENFORCE`,
+    Pact consumer `GET /api/contrats/:id`. lint/typecheck/test/build **verts**. **L'enforcement n'est PAS
+    activé** (flag off) — activation en prod = décision humaine séparée (PR8/déploiement).
 - **PR 8 — config / déploiement / doc** : dépréciation `NOTIF_EMAIL_PARENT`, config CF Access + `ADMIN_EMAILS`
   - secrets `.env.server.enc` / staging, finalisation doc. `can-i-deploy` inchangé (option NATS → pas de
     nouvelle paire).

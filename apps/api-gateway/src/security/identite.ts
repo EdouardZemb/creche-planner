@@ -6,11 +6,13 @@ export interface Identite {
   readonly email: string;
 }
 
-/** Requête HTTP enrichie par le guard d'identité (observe-only en PR5). */
+/** Requête HTTP enrichie par le guard d'identité, lue par le guard d'appartenance. */
 export interface RequeteIdentifiable {
   readonly headers: Record<string, string | string[] | undefined>;
   readonly params?: Record<string, string | undefined>;
   readonly query?: Record<string, unknown>;
+  /** Corps déjà parsé (body-parser tourne avant les guards). Source `body:…`. */
+  readonly body?: Record<string, unknown>;
   readonly url?: string;
   /** Posée par `IdentiteGuard` quand une identité a pu être établie. */
   identite?: Identite;
@@ -78,27 +80,4 @@ export function entete(
 ): string | undefined {
   const brut = headers[nom];
   return Array.isArray(brut) ? brut[0] : brut;
-}
-
-/**
- * `foyerId` que la requête cible, pour la journalisation observe-only :
- * - `?foyer=<uuid>` (contrats, coûts) ;
- * - sinon le param `:id` d'une route `/foyers/:id[/...]`.
- *
- * Un `:id` de contrat (`/contrats/:id/...`) n'est **pas** un foyerId → ignoré.
- */
-export function foyerIdDemande(req: RequeteIdentifiable): string | undefined {
-  const parFiltre = req.query?.['foyer'];
-  if (typeof parFiltre === 'string' && parFiltre.length > 0) {
-    return parFiltre;
-  }
-  const id = req.params?.['id'];
-  if (
-    typeof id === 'string' &&
-    id.length > 0 &&
-    (req.url ?? '').includes('/foyers/')
-  ) {
-    return id;
-  }
-  return undefined;
 }

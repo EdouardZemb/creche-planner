@@ -151,3 +151,36 @@ describe('loadConfig — allowlist admin (PR6)', () => {
     ]);
   });
 });
+
+/**
+ * PR7 (enforcement appartenance) — `FOYER_AUTHZ_ENFORCE` : flag opt-in,
+ * désactivé par défaut (observe-only). N'est `true` que posé explicitement à `1`.
+ */
+describe('loadConfig — flag d’enforcement par foyer (PR7)', () => {
+  let envInitial: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    envInitial = { ...process.env };
+    delete process.env['FOYER_AUTHZ_ENFORCE'];
+  });
+
+  afterEach(() => {
+    process.env = envInitial;
+  });
+
+  it('désactivé par défaut (observe-only)', () => {
+    expect(loadConfig().foyerAuthzEnforce).toBe(false);
+  });
+
+  it('activé uniquement sur la valeur exacte « 1 »', () => {
+    process.env['FOYER_AUTHZ_ENFORCE'] = '1';
+    expect(loadConfig().foyerAuthzEnforce).toBe(true);
+  });
+
+  it('ignore toute autre valeur (« true », « 0 », vide)', () => {
+    for (const v of ['true', '0', '', 'oui']) {
+      process.env['FOYER_AUTHZ_ENFORCE'] = v;
+      expect(loadConfig().foyerAuthzEnforce).toBe(false);
+    }
+  });
+});

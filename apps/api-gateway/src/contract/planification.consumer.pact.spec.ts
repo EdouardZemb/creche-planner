@@ -33,6 +33,12 @@ const CONTRAT_ID = '11111111-1111-1111-1111-111111111111';
 const FOYER_LISTE_ID = '22222222-2222-2222-2222-222222222222';
 
 /**
+ * Foyer figé porté par le contrat seedé sous `ETAT_CONTRAT_EXISTE` (même valeur
+ * que le stateHandler provider). Sert la résolution contrat → foyer (PR7).
+ */
+const FOYER_CONTRAT_ID = '22222222-2222-2222-2222-222222222222';
+
+/**
  * Foyer du body de modification. Distinct de `FOYER_LISTE_ID` car ce champ-là
  * traverse la validation Zod du corps (`z.string().uuid()`), STRICTE en Zod 4 :
  * elle n'accepte qu'un UUID RFC (version 1-8, variant 8-b). Les IDs « 2222… »
@@ -239,6 +245,40 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
       expect(reponse.status).toBe(201);
       const corps = (await reponse.json()) as { id: string; mode: string };
       expect(corps.mode).toBe('CANTINE');
+    });
+  });
+
+  it('lit le cœur d’un contrat par id (GET /api/contrats/:id → foyerId)', async () => {
+    // Résolution contrat → foyer du guard d'appartenance (PR7). Réutilise l'état
+    // « un contrat de garde modifiable existe » (contrat CONTRAT_ID, foyer figé).
+    provider
+      .given(ETAT_CONTRAT_EXISTE)
+      .uponReceiving('une lecture du cœur d’un contrat par id')
+      .withRequest({
+        method: 'GET',
+        path: `/api/contrats/${CONTRAT_ID}`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          id: uuid(CONTRAT_ID),
+          foyerId: uuid(FOYER_CONTRAT_ID),
+          enfant: MatchersV3.string('Mia'),
+          mode: MatchersV3.string('CRECHE_PSU'),
+          valideDu: MatchersV3.string('2026-01-01'),
+          valideAu: MatchersV3.string('2026-07-31'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/contrats/${CONTRAT_ID}`,
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { id: string; foyerId: string };
+      expect(corps.id).toBe(CONTRAT_ID);
+      expect(corps.foyerId).toBe(FOYER_CONTRAT_ID);
     });
   });
 

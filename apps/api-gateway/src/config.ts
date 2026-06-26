@@ -63,6 +63,18 @@ export interface GatewayConfig {
    * lorsqu'un opérateur pose volontairement `ADMIN_EMAILS` (déploiement PR8).
    */
   readonly adminEmails: readonly string[];
+  /**
+   * **Enforcement de l'autorisation par foyer** (PR7) — `FOYER_AUTHZ_ENFORCE=1`.
+   *
+   * **Opt-in, désactivé par défaut** (`false`). Tant qu'il vaut `false`, le
+   * `AppartenanceGuard` reste **observe-only** : il journalise « AURAIT REFUSÉ »
+   * mais laisse passer (comportement legacy, prod actuelle inchangée). Posé à `1`
+   * — **uniquement après le back-fill des e-mails parents (PR6)** — il transforme
+   * l'observation en **refus réel (403)** sur toute route portant un `foyerId`.
+   * Un mauvais réglage (activé avant back-fill) verrouillerait des foyers : à
+   * n'activer en prod qu'après vérification (décision humaine, doc 24).
+   */
+  readonly foyerAuthzEnforce: boolean;
 }
 
 /** Normalise une variable d'env : trim, et chaîne vide/blanche → `undefined`. */
@@ -159,5 +171,6 @@ export function loadConfig(): GatewayConfig {
       devHeaderAutorise: process.env['NODE_ENV'] !== 'production',
     },
     adminEmails: parseAdminEmails(process.env['ADMIN_EMAILS']),
+    foyerAuthzEnforce: process.env['FOYER_AUTHZ_ENFORCE'] === '1',
   };
 }
