@@ -195,6 +195,31 @@ export class PlanificationService {
   }
 
   /**
+   * Lit le **cœur** d'un contrat (sans la configuration mode-spécifique) à partir
+   * de son id. Sert la **résolution contrat → foyer** de l'autorisation par foyer
+   * côté gateway (le guard d'appartenance n'a en main qu'un `contratId` sur les
+   * routes `/contrats/:id/...`). 404 si le contrat n'existe pas.
+   */
+  async lireContrat(id: string): Promise<ContratVue> {
+    const lignes = await this.db
+      .select()
+      .from(contrat)
+      .where(eq(contrat.id, id));
+    const ligne = lignes[0];
+    if (!ligne) {
+      throw new NotFoundException(`contrat introuvable : ${id}`);
+    }
+    return {
+      id: ligne.id,
+      foyerId: ligne.foyerId,
+      enfant: ligne.enfant,
+      mode: ligne.mode,
+      valideDu: ligne.valideDu,
+      valideAu: ligne.valideAu,
+    };
+  }
+
+  /**
    * Met à jour les champs d'un contrat (enfant, mode, dates de validité, semaine
    * type / inscriptions, heures, nbMensualités selon le mode) + émet `ContratModifie`
    * dans la même transaction (outbox). **Cascade** : les plannings mensuels saisis

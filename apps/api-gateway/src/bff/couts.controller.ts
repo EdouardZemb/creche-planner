@@ -5,6 +5,7 @@ import {
   type CoutMoisVue,
 } from '../clients/tarification.client.js';
 import { moisSchema, valider } from './bff.dto.js';
+import { FoyerScope } from '../security/foyer-scope.decorator.js';
 import { relayer } from './relais.js';
 
 /**
@@ -17,6 +18,7 @@ export class CoutsController {
 
   /** Coût consolidé d'un mois pour un foyer. */
   @Get()
+  @FoyerScope('query:foyer')
   cout(
     @Query('foyer') foyer: string | undefined,
     @Query('mois') mois: string | undefined,
@@ -33,6 +35,7 @@ export class CoutsController {
 
   /** Coût consolidé d'une année pour un foyer. */
   @Get('annuel')
+  @FoyerScope('query:foyer')
   annuel(
     @Query('foyer') foyer: string | undefined,
     @Query('annee') annee: string | undefined,

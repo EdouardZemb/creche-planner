@@ -52,6 +52,15 @@ export class PlanificationController {
     return this.planification.listerContrats(foyerId);
   }
 
+  /**
+   * Lit le cœur d'un contrat (dont son `foyerId`) — sert la **résolution
+   * contrat → foyer** de l'autorisation par foyer côté gateway (PR7). 404 si absent.
+   */
+  @Get('contrats/:id')
+  lireContrat(@Param('id', ParseUUIDPipe) id: string): Promise<ContratVue> {
+    return this.planification.lireContrat(id);
+  }
+
   /** Crée un contrat de garde → insère + émet `ContratCree` dans la transaction. */
   @Post('contrats')
   @HttpCode(HttpStatus.CREATED)

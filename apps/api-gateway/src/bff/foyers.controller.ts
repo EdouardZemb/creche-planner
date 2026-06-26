@@ -22,6 +22,7 @@ import {
   valider,
 } from './bff.dto.js';
 import { AdminSeulement } from '../security/admin.decorator.js';
+import { FoyerScope } from '../security/foyer-scope.decorator.js';
 import { relayer } from './relais.js';
 
 /** Vue agrégée d'un dossier foyer (identité + enfants + parents rattachés). */
@@ -47,7 +48,11 @@ interface DossierFoyerVue {
 export class FoyersController {
   constructor(private readonly foyers: FoyerClient) {}
 
-  /** Crée un foyer puis rattache ses enfants et parents (orchestration, admin). */
+  /**
+   * Crée un foyer puis rattache ses enfants et parents (orchestration, admin).
+   * **Pas de `@FoyerScope`** : amorçage (le foyer n'existe pas encore) ; l'accès
+   * est borné par `@AdminSeulement()` (provisioning admin, PR6).
+   */
   @Post()
   @AdminSeulement()
   creer(@Body() corps: unknown): Promise<DossierFoyerVue> {
@@ -71,7 +76,12 @@ export class FoyersController {
     });
   }
 
-  /** Liste les foyers existants (découverte du foyer déjà configuré). */
+  /**
+   * Liste les foyers existants (découverte « mode hérité », email inconnu).
+   * **Pas de `@FoyerScope`** : ne porte pas de `foyerId` unique (renvoie tout).
+   * Gap résiduel connu — une fois l'identité câblée, le web borne via `/moi` ;
+   * restreindre cette liste relève d'un suivi (cf. doc 24 §24, PR7).
+   */
   @Get()
   lister(): Promise<FoyerVue[]> {
     return relayer(() => this.foyers.lister());
@@ -79,6 +89,7 @@ export class FoyersController {
 
   /** Lit un foyer, ses enfants et ses parents. */
   @Get(':id')
+  @FoyerScope('param:id')
   lire(@Param('id') id: string): Promise<DossierFoyerVue> {
     return relayer(async () => {
       const [foyer, enfants, parents] = await Promise.all([
@@ -92,6 +103,7 @@ export class FoyersController {
 
   /** Liste les parents actifs d'un foyer. */
   @Get(':id/parents')
+  @FoyerScope('param:id')
   listerParents(@Param('id') id: string): Promise<ParentVue[]> {
     return relayer(() => this.foyers.parents(id));
   }
@@ -99,6 +111,7 @@ export class FoyersController {
   /** Rattache un parent au foyer (admin). */
   @Post(':id/parents')
   @AdminSeulement()
+  @FoyerScope('param:id')
   @HttpCode(HttpStatus.CREATED)
   ajouterParent(
     @Param('id') id: string,
@@ -111,6 +124,7 @@ export class FoyersController {
   /** Édite un parent (champs fournis uniquement, admin). */
   @Put(':id/parents/:parentId')
   @AdminSeulement()
+  @FoyerScope('param:id')
   modifierParent(
     @Param('id') id: string,
     @Param('parentId') parentId: string,
@@ -123,6 +137,7 @@ export class FoyersController {
   /** Retire un parent (soft-delete côté `svc-foyer`, admin). */
   @Delete(':id/parents/:parentId')
   @AdminSeulement()
+  @FoyerScope('param:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   retirerParent(
     @Param('id') id: string,
