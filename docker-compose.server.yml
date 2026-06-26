@@ -196,6 +196,32 @@ services:
       # versionné) transforme le défaut implicite en décision tracée. La RETIRER
       # le jour où GATEWAY_TOKEN est activé ci-dessus.
       GATEWAY_AUTH_DISABLED: '1'
+      #
+      # --- Feature « parents du foyer » : identité / autorisation (PR5-7) ------
+      # Tout est OPT-IN : ces variables PASSENT depuis .env.server(.enc) si elles y
+      # sont définies, sinon elles arrivent VIDES → comportement actuel inchangé,
+      # ZÉRO 403 introduit. Activation = poser les valeurs dans .env.server.enc
+      # (sops, cf. doc 29) puis recréer ce conteneur — AUCUNE ré-édition de ce
+      # fichier. Détail + runbook de mise en service : docs/06 §24 (PR8).
+      #
+      # PR5 — identité B1 (Cloudflare Access). Team domain (issuer + base JWKS) et
+      # tag `aud` de l'application CF. Vides → validation JWT inactive (le guard
+      # d'identité ne pose aucune identité ; comportement legacy). Non secrets au
+      # sens strict, mais PII-adjacents → versionnés chiffrés dans .env.server.enc.
+      # NB : le garde-fou de boot `verifierConfigProduction` qui les EXIGE en prod
+      # est court-circuité par GATEWAY_AUTH_DISABLED=1 ci-dessus ; le guard, lui,
+      # les consomme dès qu'elles sont posées (indépendant de cette échappatoire).
+      CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
+      CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
+      # PR6 — provisioning admin. CSV d'e-mails admin (PII → .env.server.enc). Vide
+      # ⇒ gating admin DÉSACTIVÉ (idiome repo, cf. GATEWAY_TOKEN). Posé ⇒ 403 sur
+      # création de foyer + écritures parents pour tout e-mail vérifié hors liste.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # PR7 — enforcement de l'autorisation par foyer. `=1` ⇒ refus réel 403 sur
+      # les routes scopées foyer ; vide/absent ⇒ observe-only (journalise « AURAIT
+      # REFUSÉ », laisse passer). N'ACTIVER (`=1`) qu'APRÈS back-fill des parents
+      # vérifié (sinon des foyers seraient verrouillés) — DÉCISION HUMAINE, doc 24.
+      FOYER_AUTHZ_ENFORCE: ${FOYER_AUTHZ_ENFORCE:-}
 
   # --- Front : plus de port LAN direct (servi via Caddy) ---------------------
   web:

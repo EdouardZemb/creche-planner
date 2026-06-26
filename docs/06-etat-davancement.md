@@ -1656,7 +1656,7 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
   message nominatif). lint/typecheck/test/build web + api-gateway **verts** (295 tests web, 67 api-gateway, Pact
   inchangé).
 
-## 24. Feature Parents du foyer (🚧 PR 7/8 livrée — enforcement de l'autorisation par foyer)
+## 24. Feature Parents du foyer (✅ COMPLÈTE — 8/8 PR livrées)
 
 > **Objectif** : adresser le récap hebdomadaire (et les futures notifications) **aux parents du foyer
 > concerné** au lieu de l'unique adresse globale `NOTIF_EMAIL_PARENT`. Modéliser proprement des **parents**
@@ -1816,6 +1816,56 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
     autorisé/refusé/fail-closed, résolution `contrat→foyer` autorisée/refusée/404), flag `FOYER_AUTHZ_ENFORCE`,
     Pact consumer `GET /api/contrats/:id`. lint/typecheck/test/build **verts**. **L'enforcement n'est PAS
     activé** (flag off) — activation en prod = décision humaine séparée (PR8/déploiement).
-- **PR 8 — config / déploiement / doc** : dépréciation `NOTIF_EMAIL_PARENT`, config CF Access + `ADMIN_EMAILS`
-  - secrets `.env.server.enc` / staging, finalisation doc. `can-i-deploy` inchangé (option NATS → pas de
-    nouvelle paire).
+- **PR 8 — config / déploiement / doc** (✅ livrée) :
+  - **Dépréciation `NOTIF_EMAIL_PARENT`** : marquée `@deprecated` dans
+    `apps/svc-notifications/src/config.ts` (champ `email.parent`) et dans `.env.server.example` — adresse
+    globale désormais **de repli uniquement** (le récap part aux parents actifs du foyer depuis PR4). **Chemin
+    de retrait documenté** : peupler les parents de **tous** les foyers (écran admin ou
+    `scripts/backfill-parents.mjs`), vérifier qu'aucun `warn` « repli » n'apparaît plus sur un cycle hebdo,
+    **puis** retirer la variable. **Conservée** tant que la couverture parents n'est pas totale (aucun envoi
+    perdu). Comportement **inchangé** par cette PR (documentation + repli déjà en place).
+  - **Câblage config (opt-in, prod inchangée)** : `docker-compose.server.yml` passe désormais à l'api-gateway,
+    en **pass-through** `${VAR:-}`, les quatre leviers de la feature : `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD`
+    (PR5, identité B1), `ADMIN_EMAILS` (PR6, provisioning), `FOYER_AUTHZ_ENFORCE` (PR7, enforcement).
+    **Tous vides/absents par défaut ⇒ comportement legacy, ZÉRO 403** (vérifié : `docker compose config` rend
+    `CF_ACCESS_*=""`, `ADMIN_EMAILS=""`, `FOYER_AUTHZ_ENFORCE=""`). **Activer = définir les valeurs dans
+    `.env.server(.enc)` puis recréer le conteneur — AUCUNE ré-édition du Compose.** Le garde-fou de boot
+    `verifierConfigProduction` (qui exige `CF_ACCESS_*` en prod) reste court-circuité par
+    `GATEWAY_AUTH_DISABLED=1` (gateway non exposée) ; le guard d'identité, lui, consomme `CF_ACCESS_*` dès
+    qu'elles sont posées. `.env.server.example` documente les 4 variables (où trouver team domain / `aud` dans
+    Zero Trust, opt-in de chacune). **`.env.server.enc` NON modifié ici** (clé age serveur-only + valeurs prod
+    réelles + activation du flag = **décision humaine**, geste sur serveur — cf. runbook ci-dessous).
+  - **Staging** : identité **désactivée** (loopback sans Cloudflare → pas de JWT CF). Aucune variable ajoutée
+    côté `docker-compose.staging.yml` ; `.env.staging.example` documente que CF/admin/flag restent OFF et que
+    l'en-tête de dev `X-Dev-User-Email` n'est **pas** accepté en staging (images `NODE_ENV=production`).
+  - **CI** : toucher `docker-compose*.yml` **déclenche** désormais le job `config-validation` (filtre
+    `docker-compose*.yml`) — il ne « skippe » plus ; le merge prod **et** staging reste valide (les nouvelles
+    vars sont en pass-through, jamais en `${VAR:?}` requis). **`can-i-deploy` INCHANGÉ** : projection NATS ⇒
+    aucune nouvelle paire Pact ; `PROVIDERS_ATTENDUS` reste `[svc-foyer, svc-referentiel, svc-planification,
+svc-tarification, svc-notifications]`, seul consumer `api-gateway` (l'endpoint `GET /api/contrats/:id` de
+    PR7 est sur la paire existante `api-gateway→svc-planification`).
+
+### 24.1 Mise en service de l'isolation par foyer (runbook — DÉCISION HUMAINE)
+
+> Tout le câblage est livré **OFF**. Activer l'isolation par foyer en prod est un **geste opérateur tracé**,
+> à faire **dans l'ordre** (l'enforcement EN DERNIER, après vérification du back-fill — sinon des foyers
+> seraient verrouillés). Secrets via sops/age (doc 29) ; jamais de clair commité.
+
+1. **Configurer Cloudflare Access** (tableau de bord Zero Trust) : une application Access protégeant le
+   service ; relever le **team domain** et le tag **AUD** de l'application.
+2. **Poser l'identité (PR5)** : ajouter `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` à `.env.server.enc`
+   (`bash scripts/sops-edit.sh`), committer le `.enc`, recréer le conteneur `api-gateway` (`--no-deps
+--force-recreate`, doc 29). Effet : le guard pose l'identité et **journalise** « AURAIT REFUSÉ » sans
+   refuser (observe-only). **Observer les logs** : confirmer que les identités attendues sont résolues.
+3. **Provisionner les parents** : via l'écran web admin (après étape 4 pour le gating) ou
+   `scripts/backfill-parents.mjs` (dry-run par défaut, `--apply` pour écrire ; cible svc-foyer direct → émet
+   l'outbox → projection notifications + résolution `email→foyers`). **Couvrir TOUS les foyers.**
+4. **Activer le gating admin (PR6)** : poser `ADMIN_EMAILS` (CSV) dans `.env.server.enc`, recréer la gateway.
+   Effet : 403 sur création de foyer + écritures parents hors allowlist. (Les lectures restent ouvertes
+   jusqu'à l'étape 5.)
+5. **Vérifier puis activer l'enforcement (PR7)** : s'assurer qu'**aucun** foyer légitime n'apparaît en
+   « AURAIT REFUSÉ » dans les logs observe-only (back-fill complet). **Alors seulement** poser
+   `FOYER_AUTHZ_ENFORCE=1` dans `.env.server.enc` et recréer la gateway → **refus réel 403** cross-foyer.
+   Rollback = retirer la variable (ou `=0`) et recréer.
+6. **Retirer `NOTIF_EMAIL_PARENT`** une fois la couverture parents totale confirmée (plus aucun `warn` de
+   repli sur un cycle hebdo).
