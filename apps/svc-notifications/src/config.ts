@@ -11,7 +11,25 @@ export interface EmailConfig {
   readonly user: string;
   readonly password: string;
   readonly from: string;
-  /** Adresse du parent destinataire du récap du mardi. */
+  /**
+   * **DÉPRÉCIÉ** — adresse globale **de repli** du récap du mardi (`NOTIF_EMAIL_PARENT`).
+   *
+   * (Marqueur de prose volontaire, **sans** balise `@deprecated` : le champ reste
+   * activement — et légitimement — lu comme repli, on ne veut pas que chaque lecture
+   * sanctionnée déclenche la règle lint `no-deprecated`.)
+   *
+   * Depuis la feature « parents du foyer » (PR4), le récap est adressé aux **parents
+   * actifs du foyer** concerné (projection NATS `foyer_parent`, cf.
+   * `DestinatairesService`). Cette adresse n'est utilisée qu'en **repli**, et
+   * **uniquement** si un foyer notifié n'a encore **aucun** parent avec e-mail — auquel
+   * cas le scheduler journalise aussi un `warn` (cf. `scheduler.hebdo.ts`).
+   *
+   * **Chemin de migration / retrait** : peupler les parents de **tous** les foyers
+   * (écran web admin, ou `scripts/backfill-parents.mjs`), vérifier qu'aucun `warn`
+   * « repli NOTIF_EMAIL_PARENT » n'apparaît plus sur un cycle hebdo, **puis** retirer la
+   * variable de `.env.server(.enc)` et ce champ. Conservée tant que la couverture
+   * parents n'est pas totale, pour ne perdre aucun envoi.
+   */
   readonly parent: string;
   /** Bac à sable : si `true`, aucun transport SMTP n'est sollicité (défaut). */
   readonly dryRun: boolean;
