@@ -39,7 +39,11 @@ const RACINE = resolve(process.cwd(), '../..');
 const BUNDLE = resolve(RACINE, 'apps/svc-notifications/dist/main.js');
 const PACT_FILE = resolve(RACINE, 'pacts/api-gateway-svc-notifications.json');
 
-const PORT = Number(process.env['PACT_PROVIDER_PORT'] ?? 3998);
+// Port dédié (3995) : distinct des autres providers pact (référentiel 3996,
+// planification 3997, tarification 3998, foyer 3999) pour éviter une collision
+// `EADDRINUSE` quand plusieurs vérifications provider tournent en parallèle dans le
+// même job CI (cas d'un changement large « affected », ex. mise à jour du lockfile).
+const PORT = Number(process.env['PACT_PROVIDER_PORT'] ?? 3995);
 const DATABASE_URL =
   process.env['NOTIFICATIONS_DATABASE_URL'] ??
   'postgres://notifications:notifications@localhost:5437/notifications';
