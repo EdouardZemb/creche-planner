@@ -14,10 +14,19 @@ import { MatchersV3, PactV3 } from '@pact-foundation/pact';
 const FOYER_REFERENCE_ID = '11111111-1111-4111-8111-111111111111';
 const ETAT_FOYER_T3 = 'un foyer de référence T3 existe';
 
+// Parents (PR2) : un foyer « sans parent » (cible d'un ajout) et un foyer
+// « avec un parent » (cible des lecture/édition/retrait). Les e-mails diffèrent
+// pour ne pas heurter l'unicité **globale** `lower(email)` entre interactions.
+const PARENT_REFERENCE_ID = '33333333-3333-4333-8333-333333333333';
+const EMAIL_PARENT_NOUVEAU = 'camille.martin@example.test';
+const EMAIL_PARENT_EXISTANT = 'alex.dupont@example.test';
+const ETAT_FOYER_SANS_PARENT = 'un foyer de référence T3 sans parent';
+const ETAT_FOYER_AVEC_PARENT = 'un foyer de référence T3 avec un parent';
+
 // nx lance vitest avec cwd = racine du projet (apps/api-gateway) → racine du dépôt à ../../.
 const PACTS_DIR = resolve(process.cwd(), '../../pacts');
 
-const { uuid, integer, decimal, string, eachLike } = MatchersV3;
+const { uuid, integer, decimal, string, boolean, eachLike } = MatchersV3;
 
 const provider = new PactV3({
   consumer: 'api-gateway',
@@ -198,6 +207,166 @@ describe('Pact consumer · api-gateway → svc-foyer', () => {
       expect(reponse.status).toBe(201);
       const corps = (await reponse.json()) as { foyerId: string };
       expect(corps.foyerId).toBe(FOYER_REFERENCE_ID);
+    });
+  });
+
+  it('rattache un parent au foyer de référence', async () => {
+    provider
+      .given(ETAT_FOYER_SANS_PARENT, {
+        foyerId: FOYER_REFERENCE_ID,
+        email: EMAIL_PARENT_NOUVEAU,
+      })
+      .uponReceiving('un rattachement de parent au foyer de référence')
+      .withRequest({
+        method: 'POST',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/parents`,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          email: EMAIL_PARENT_NOUVEAU,
+          prenom: 'Camille',
+          nom: 'Martin',
+          principal: true,
+          ordre: 0,
+        },
+      })
+      .willRespondWith({
+        status: 201,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          id: uuid(PARENT_REFERENCE_ID),
+          foyerId: uuid(FOYER_REFERENCE_ID),
+          prenom: string('Camille'),
+          nom: string('Martin'),
+          email: string(EMAIL_PARENT_NOUVEAU),
+          principal: boolean(true),
+          ordre: integer(0),
+          actif: boolean(true),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/parents`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({
+            email: EMAIL_PARENT_NOUVEAU,
+            prenom: 'Camille',
+            nom: 'Martin',
+            principal: true,
+            ordre: 0,
+          }),
+        },
+      );
+      expect(reponse.status).toBe(201);
+      const corps = (await reponse.json()) as { foyerId: string };
+      expect(corps.foyerId).toBe(FOYER_REFERENCE_ID);
+    });
+  });
+
+  it('liste les parents actifs du foyer de référence', async () => {
+    provider
+      .given(ETAT_FOYER_AVEC_PARENT, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_REFERENCE_ID,
+        email: EMAIL_PARENT_EXISTANT,
+      })
+      .uponReceiving('une liste des parents du foyer de référence')
+      .withRequest({
+        method: 'GET',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/parents`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: eachLike({
+          id: uuid(PARENT_REFERENCE_ID),
+          foyerId: uuid(FOYER_REFERENCE_ID),
+          prenom: string('Alex'),
+          nom: string('Dupont'),
+          email: string(EMAIL_PARENT_EXISTANT),
+          principal: boolean(false),
+          ordre: integer(0),
+          actif: boolean(true),
+        }),
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/parents`,
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { foyerId: string }[];
+      expect(Array.isArray(corps)).toBe(true);
+      expect(corps.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('édite un parent du foyer de référence', async () => {
+    provider
+      .given(ETAT_FOYER_AVEC_PARENT, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_REFERENCE_ID,
+        email: EMAIL_PARENT_EXISTANT,
+      })
+      .uponReceiving('une édition de parent du foyer de référence')
+      .withRequest({
+        method: 'PUT',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}`,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: { prenom: 'Alexandra', principal: true },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          id: uuid(PARENT_REFERENCE_ID),
+          foyerId: uuid(FOYER_REFERENCE_ID),
+          prenom: string('Alexandra'),
+          nom: string('Dupont'),
+          email: string(EMAIL_PARENT_EXISTANT),
+          principal: boolean(true),
+          ordre: integer(0),
+          actif: boolean(true),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ prenom: 'Alexandra', principal: true }),
+        },
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { prenom: string };
+      expect(corps.prenom).toBe('Alexandra');
+    });
+  });
+
+  it('retire un parent du foyer de référence (204)', async () => {
+    provider
+      .given(ETAT_FOYER_AVEC_PARENT, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_REFERENCE_ID,
+        email: EMAIL_PARENT_EXISTANT,
+      })
+      .uponReceiving('un retrait de parent du foyer de référence')
+      .withRequest({
+        method: 'DELETE',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}`,
+      })
+      .willRespondWith({ status: 204 });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}`,
+        { method: 'DELETE' },
+      );
+      expect(reponse.status).toBe(204);
     });
   });
 });

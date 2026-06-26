@@ -8,7 +8,34 @@ import { z } from 'zod';
  * services amont : `[{ champ, message }]`.
  */
 
-/** Création orchestrée d'un foyer + ses enfants. */
+/**
+ * Rattachement d'un parent au foyer (frontière BFF). `email` requis ; le reste
+ * est une identité douce optionnelle. La validation profonde (unicité, défauts
+ * `principal`/`ordre`) reste chez `svc-foyer`.
+ */
+export const ajouterParentSchema = z.object({
+  email: z.email('adresse e-mail invalide'),
+  prenom: z.string().min(1).max(200).optional(),
+  nom: z.string().min(1).max(200).optional(),
+  principal: z.boolean().optional(),
+  ordre: z.number().int().min(0).optional(),
+});
+
+/**
+ * Édition d'un parent (`PUT`) : tous les champs optionnels (upsert partiel) ;
+ * `prenom`/`nom` acceptent `null` pour effacer l'identité douce, `actif` réactive
+ * un parent retiré (soft-delete).
+ */
+export const modifierParentSchema = z.object({
+  email: z.email('adresse e-mail invalide').optional(),
+  prenom: z.string().min(1).max(200).nullable().optional(),
+  nom: z.string().min(1).max(200).nullable().optional(),
+  principal: z.boolean().optional(),
+  ordre: z.number().int().min(0).optional(),
+  actif: z.boolean().optional(),
+});
+
+/** Création orchestrée d'un foyer + ses enfants + ses parents. */
 export const creerDossierFoyerSchema = z.object({
   ressourcesMensuelles: z.number().nonnegative(),
   rfr: z.number().nonnegative(),
@@ -22,6 +49,7 @@ export const creerDossierFoyerSchema = z.object({
       }),
     )
     .default([]),
+  parents: z.array(ajouterParentSchema).default([]),
 });
 export type CreerDossierFoyer = z.infer<typeof creerDossierFoyerSchema>;
 

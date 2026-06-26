@@ -61,6 +61,33 @@ export const gatewayOpenApiDocument = {
         },
         required: ['id', 'foyerId', 'prenom', 'dateNaissance'],
       },
+      ParentVue: {
+        type: 'object',
+        description:
+          'Vue projetée d’un parent rattaché à un foyer (destinataire des ' +
+          'notifications ; e-mail = PII). `prenom`/`nom` sont une identité ' +
+          'douce optionnelle (nullable).',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          foyerId: { type: 'string', format: 'uuid' },
+          prenom: { type: ['string', 'null'] },
+          nom: { type: ['string', 'null'] },
+          email: { type: 'string', format: 'email' },
+          principal: { type: 'boolean' },
+          ordre: { type: 'integer' },
+          actif: { type: 'boolean' },
+        },
+        required: [
+          'id',
+          'foyerId',
+          'prenom',
+          'nom',
+          'email',
+          'principal',
+          'ordre',
+          'actif',
+        ],
+      },
       ContratVue: {
         type: 'object',
         description: 'Vue projetée d’un contrat de garde.',
@@ -272,6 +299,22 @@ export const gatewayOpenApiDocument = {
                       required: ['prenom', 'dateNaissance'],
                     },
                   },
+                  parents: {
+                    type: 'array',
+                    description:
+                      'Parents rattachés à la création (optionnel ; défaut []).',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        email: { type: 'string', format: 'email' },
+                        prenom: { type: 'string' },
+                        nom: { type: 'string' },
+                        principal: { type: 'boolean' },
+                        ordre: { type: 'integer', minimum: 0 },
+                      },
+                      required: ['email'],
+                    },
+                  },
                 },
                 required: [
                   'ressourcesMensuelles',
@@ -297,8 +340,12 @@ export const gatewayOpenApiDocument = {
                       type: 'array',
                       items: { $ref: '#/components/schemas/EnfantVue' },
                     },
+                    parents: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/ParentVue' },
+                    },
                   },
-                  required: ['foyer', 'enfants'],
+                  required: ['foyer', 'enfants', 'parents'],
                 },
               },
             },
@@ -330,13 +377,161 @@ export const gatewayOpenApiDocument = {
                       type: 'array',
                       items: { $ref: '#/components/schemas/EnfantVue' },
                     },
+                    parents: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/ParentVue' },
+                    },
                   },
-                  required: ['foyer', 'enfants'],
+                  required: ['foyer', 'enfants', 'parents'],
                 },
               },
             },
           },
           '404': { description: 'Foyer inconnu.' },
+        },
+      },
+    },
+    '/api/v1/foyers/{id}/parents': {
+      get: {
+        summary: 'Lister les parents actifs d’un foyer',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Parents actifs du foyer (liste vide si aucun).',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/ParentVue' },
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        summary: 'Rattacher un parent au foyer',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Parent à rattacher. `email` requis ; `prenom`/`nom` ' +
+                  'identité douce optionnelle ; `principal`/`ordre` ont un ' +
+                  'défaut côté service.',
+                properties: {
+                  email: { type: 'string', format: 'email' },
+                  prenom: { type: 'string' },
+                  nom: { type: 'string' },
+                  principal: { type: 'boolean' },
+                  ordre: { type: 'integer', minimum: 0 },
+                },
+                required: ['email'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Parent rattaché.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ParentVue' },
+              },
+            },
+          },
+          '409': { description: 'Adresse e-mail déjà utilisée.' },
+        },
+      },
+    },
+    '/api/v1/foyers/{id}/parents/{parentId}': {
+      put: {
+        summary: 'Éditer un parent (champs fournis uniquement)',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'parentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Champs éditables d’un parent (tous optionnels). ' +
+                  '`prenom`/`nom` acceptent null pour effacer l’identité ' +
+                  'douce ; `actif` réactive un parent retiré.',
+                properties: {
+                  email: { type: 'string', format: 'email' },
+                  prenom: { type: ['string', 'null'] },
+                  nom: { type: ['string', 'null'] },
+                  principal: { type: 'boolean' },
+                  ordre: { type: 'integer', minimum: 0 },
+                  actif: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Parent mis à jour.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ParentVue' },
+              },
+            },
+          },
+          '404': { description: 'Parent inconnu.' },
+          '409': { description: 'Adresse e-mail déjà utilisée.' },
+        },
+      },
+      delete: {
+        summary: 'Retirer un parent (soft-delete)',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'parentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '204': { description: 'Parent retiré (pas de contenu).' },
+          '404': { description: 'Parent inconnu.' },
         },
       },
     },

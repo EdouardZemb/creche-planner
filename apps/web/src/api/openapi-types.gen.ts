@@ -130,6 +130,15 @@ export interface paths {
                             /** Format: date */
                             dateNaissance: string;
                         }[];
+                        /** @description Parents rattachés à la création (optionnel ; défaut []). */
+                        parents?: {
+                            /** Format: email */
+                            email: string;
+                            prenom?: string;
+                            nom?: string;
+                            principal?: boolean;
+                            ordre?: number;
+                        }[];
                     };
                 };
             };
@@ -143,6 +152,7 @@ export interface paths {
                         "application/json": {
                             foyer: components["schemas"]["FoyerVue"];
                             enfants: components["schemas"]["EnfantVue"][];
+                            parents: components["schemas"]["ParentVue"][];
                         };
                     };
                 };
@@ -182,6 +192,7 @@ export interface paths {
                         "application/json": {
                             foyer: components["schemas"]["FoyerVue"];
                             enfants: components["schemas"]["EnfantVue"][];
+                            parents: components["schemas"]["ParentVue"][];
                         };
                     };
                 };
@@ -197,6 +208,177 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/foyers/{id}/parents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lister les parents actifs d’un foyer */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Parents actifs du foyer (liste vide si aucun). */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ParentVue"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Rattacher un parent au foyer */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: email */
+                        email: string;
+                        prenom?: string;
+                        nom?: string;
+                        principal?: boolean;
+                        ordre?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Parent rattaché. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ParentVue"];
+                    };
+                };
+                /** @description Adresse e-mail déjà utilisée. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/foyers/{id}/parents/{parentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Éditer un parent (champs fournis uniquement) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    parentId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: email */
+                        email?: string;
+                        prenom?: string | null;
+                        nom?: string | null;
+                        principal?: boolean;
+                        ordre?: number;
+                        actif?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Parent mis à jour. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ParentVue"];
+                    };
+                };
+                /** @description Parent inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Adresse e-mail déjà utilisée. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        /** Retirer un parent (soft-delete) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    parentId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Parent retiré (pas de contenu). */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Parent inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -513,6 +695,20 @@ export interface components {
             prenom: string;
             /** Format: date */
             dateNaissance: string;
+        };
+        /** @description Vue projetée d’un parent rattaché à un foyer (destinataire des notifications ; e-mail = PII). `prenom`/`nom` sont une identité douce optionnelle (nullable). */
+        ParentVue: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            foyerId: string;
+            prenom: string | null;
+            nom: string | null;
+            /** Format: email */
+            email: string;
+            principal: boolean;
+            ordre: number;
+            actif: boolean;
         };
         /** @description Vue projetée d’un contrat de garde. */
         ContratVue: {

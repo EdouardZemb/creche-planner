@@ -55,6 +55,7 @@ const dossierFactice: DossierFoyerVue = {
       dateNaissance: '2023-03-12',
     },
   ],
+  parents: [],
 };
 
 function rendu() {

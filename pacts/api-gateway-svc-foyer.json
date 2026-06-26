@@ -78,6 +78,140 @@
       }
     },
     {
+      "description": "un rattachement de parent au foyer de référence",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 sans parent",
+          "params": {
+            "email": "camille.martin@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "email": "camille.martin@example.test",
+          "nom": "Martin",
+          "ordre": 0,
+          "prenom": "Camille",
+          "principal": true
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "POST",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111/parents"
+      },
+      "response": {
+        "body": {
+          "actif": true,
+          "email": "camille.martin@example.test",
+          "foyerId": "11111111-1111-4111-8111-111111111111",
+          "id": "33333333-3333-4333-8333-333333333333",
+          "nom": "Martin",
+          "ordre": 0,
+          "prenom": "Camille",
+          "principal": true
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.actif": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.nom": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.ordre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.prenom": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.principal": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 201
+      }
+    },
+    {
+      "description": "un retrait de parent du foyer de référence",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 avec un parent",
+          "params": {
+            "email": "alex.dupont@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "parentId": "33333333-3333-4333-8333-333333333333"
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111/parents/33333333-3333-4333-8333-333333333333"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
       "description": "une création de foyer de référence",
       "request": {
         "body": {
@@ -369,6 +503,234 @@
               "matchers": [
                 {
                   "match": "integer"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une liste des parents du foyer de référence",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 avec un parent",
+          "params": {
+            "email": "alex.dupont@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "parentId": "33333333-3333-4333-8333-333333333333"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111/parents"
+      },
+      "response": {
+        "body": [
+          {
+            "actif": true,
+            "email": "alex.dupont@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "id": "33333333-3333-4333-8333-333333333333",
+            "nom": "Dupont",
+            "ordre": 0,
+            "prenom": "Alex",
+            "principal": false
+          }
+        ],
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].actif": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$[*].nom": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].ordre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].prenom": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].principal": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une édition de parent du foyer de référence",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 avec un parent",
+          "params": {
+            "email": "alex.dupont@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "parentId": "33333333-3333-4333-8333-333333333333"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "prenom": "Alexandra",
+          "principal": true
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "PUT",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111/parents/33333333-3333-4333-8333-333333333333"
+      },
+      "response": {
+        "body": {
+          "actif": true,
+          "email": "alex.dupont@example.test",
+          "foyerId": "11111111-1111-4111-8111-111111111111",
+          "id": "33333333-3333-4333-8333-333333333333",
+          "nom": "Dupont",
+          "ordre": 0,
+          "prenom": "Alexandra",
+          "principal": true
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.actif": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.nom": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.ordre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.prenom": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.principal": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }
