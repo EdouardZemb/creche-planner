@@ -10,7 +10,7 @@ import {
   type ErreurChamp,
 } from '../utils/erreurs';
 import { Abbr } from '../ui/Abbr';
-import type { CreerEnfant } from '../types/bff';
+import type { CreerEnfant, CreerParent } from '../types/bff';
 
 interface EtatEnfant {
   /** Id stable pour la `key` React, indépendant de la position dans la liste. */
@@ -23,6 +23,46 @@ let compteurEnfant = 0;
 function nouvelEnfant(prenom = '', dateNaissance = ''): EtatEnfant {
   compteurEnfant += 1;
   return { id: `enfant-${compteurEnfant}`, prenom, dateNaissance };
+}
+
+interface EtatParent {
+  /** Id stable pour la `key` React, indépendant de la position dans la liste. */
+  id: string;
+  email: string;
+  prenom: string;
+  nom: string;
+}
+
+let compteurParent = 0;
+function nouveauParent(email = '', prenom = '', nom = ''): EtatParent {
+  compteurParent += 1;
+  return { id: `parent-${compteurParent}`, email, prenom, nom };
+}
+
+/**
+ * Le BFF valide le tableau `parents` envoyé et renvoie ses erreurs indexées par
+ * position (`parents.<i>.<champ>`, cf. `path.join('.')`). Comme on ne transmet
+ * pas les lignes vides, cet index ne correspond pas à la position dans l'état du
+ * formulaire : on le retraduit vers l'id stable de la ligne (`parent.<id>.<champ>`)
+ * pour relier le message au bon champ via `aria-describedby`. Les autres erreurs
+ * (champs scalaires du foyer) passent inchangées.
+ */
+function retraduireErreurParent(
+  erreur: ErreurChamp,
+  idsEnvoyes: readonly string[],
+): ErreurChamp {
+  const correspondance = /^parents\.(\d+)\.(.+)$/.exec(erreur.champ);
+  if (correspondance) {
+    const index = Number(correspondance[1]);
+    const id = idsEnvoyes[index];
+    if (id !== undefined) {
+      return {
+        champ: `parent.${id}.${correspondance[2]}`,
+        message: erreur.message,
+      };
+    }
+  }
+  return erreur;
 }
 
 // Valeurs de démonstration : pré-remplissage actif hors build de production
@@ -39,6 +79,11 @@ function defautEnfants(): EtatEnfant[] {
     ? [nouvelEnfant('Mia', '2024-12-08'), nouvelEnfant('Zoé', '2023-03-12')]
     : [nouvelEnfant()];
 }
+function defautParents(): EtatParent[] {
+  return DEMO
+    ? [nouveauParent('parent.demo@example.com', 'Camille', 'Martin')]
+    : [nouveauParent()];
+}
 
 export function FoyerFormPage() {
   useTitrePage('Nouveau foyer');
@@ -51,6 +96,7 @@ export function FoyerFormPage() {
   const [nbEnfantsACharge, setNbEnfantsACharge] = useState(DEFAUT_NB_ENFANTS);
   const [nbParts, setNbParts] = useState(DEFAUT_NB_PARTS);
   const [enfants, setEnfants] = useState<EtatEnfant[]>(defautEnfants);
+  const [parents, setParents] = useState<EtatParent[]>(defautParents);
   const [chargement, setChargement] = useState(false);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
@@ -83,6 +129,24 @@ export function FoyerFormPage() {
     );
   }
 
+  function ajouterParent() {
+    setParents((prev) => [...prev, nouveauParent()]);
+  }
+
+  function supprimerParent(id: string) {
+    setParents((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  function mettreAJourParent(
+    id: string,
+    champ: 'email' | 'prenom' | 'nom',
+    valeur: string,
+  ) {
+    setParents((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, [champ]: valeur } : p)),
+    );
+  }
+
   function erreurPour(champ: string): string | undefined {
     return erreursChamps.find((e) => e.champ === champ)?.message;
   }
@@ -105,6 +169,24 @@ export function FoyerFormPage() {
         dateNaissance: e.dateNaissance,
       }));
 
+    // On envoie toute ligne « entamée » (un champ au moins renseigné), pour que le
+    // BFF signale l'e-mail manquant/invalide d'un parent nommé plutôt que de le
+    // perdre silencieusement. Les lignes entièrement vides (dont la ligne par
+    // défaut) sont ignorées : les parents restent facultatifs.
+    const parentsSaisis = parents.filter(
+      (p) =>
+        p.email.trim() !== '' || p.prenom.trim() !== '' || p.nom.trim() !== '',
+    );
+    const parentsValides: CreerParent[] = parentsSaisis.map((p, i) => ({
+      email: p.email.trim(),
+      ...(p.prenom.trim() ? { prenom: p.prenom.trim() } : {}),
+      ...(p.nom.trim() ? { nom: p.nom.trim() } : {}),
+      ordre: i,
+    }));
+    // Mémorise l'ordre d'envoi pour retraduire les erreurs serveur indexées
+    // (`parents.<i>.<champ>`) vers la ligne d'origine (id stable, cf. mappage).
+    const idsParentsEnvoyes = parentsSaisis.map((p) => p.id);
+
     try {
       const dossier = await api.creerFoyer({
         ressourcesMensuelles: parseFloat(ressourcesMensuelles),
@@ -112,12 +194,15 @@ export function FoyerFormPage() {
         nbEnfantsACharge: parseInt(nbEnfantsACharge, 10),
         nbParts: parseFloat(nbParts),
         enfants: enfantsValides,
+        parents: parentsValides,
       });
       setFoyerId(dossier.foyer.id);
       navigate(`/foyers/${dossier.foyer.id}/contrats`);
     } catch (err) {
       if (err instanceof ApiError) {
-        const erreurs = extraireErreurs(err.corps);
+        const erreurs = extraireErreurs(err.corps).map((e) =>
+          retraduireErreurParent(e, idsParentsEnvoyes),
+        );
         if (erreurs.length > 0) {
           setErreursChamps(erreurs);
         } else {
@@ -339,6 +424,124 @@ export function FoyerFormPage() {
             style={{ marginTop: '0.25rem' }}
           >
             + Ajouter un enfant
+          </button>
+        </fieldset>
+
+        <fieldset style={{ border: 'none', padding: 0, margin: '1rem 0 0' }}>
+          <legend style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+            Parents
+          </legend>
+          <p className="muted" style={{ marginTop: 0 }}>
+            Destinataires des récapitulatifs hebdomadaires. Au moins un parent
+            est recommandé.
+          </p>
+
+          {parents.map((parent) => {
+            const champEmail = `parent.${parent.id}.email`;
+            const nomComplet =
+              `${parent.prenom.trim()} ${parent.nom.trim()}`.trim();
+            const designation = nomComplet || parent.email.trim();
+            return (
+              <div
+                key={parent.id}
+                className="carte parent-ligne"
+                style={{ marginBottom: '0.5rem' }}
+              >
+                <label htmlFor={`parent-email-${parent.id}`}>
+                  Adresse e-mail <span aria-hidden="true">*</span>
+                </label>
+                {/* Pas d'attribut `required` HTML : le bloc Parents est
+                    facultatif (un foyer peut être créé sans parent, la ligne
+                    vide par défaut est ignorée). L'e-mail reste obligatoire
+                    *pour un parent renseigné* — `aria-required` l'annonce et le
+                    BFF le valide, l'erreur étant reliée via `aria-describedby`. */}
+                <input
+                  id={`parent-email-${parent.id}`}
+                  type="email"
+                  aria-required="true"
+                  aria-invalid={erreurPour(champEmail) ? true : undefined}
+                  {...(erreurPour(champEmail)
+                    ? { 'aria-describedby': idErreur(champEmail) }
+                    : {})}
+                  value={parent.email}
+                  onChange={(e) => {
+                    mettreAJourParent(parent.id, 'email', e.target.value);
+                  }}
+                  style={{ width: '100%' }}
+                />
+                {erreurPour(champEmail) && (
+                  <span
+                    id={idErreur(champEmail)}
+                    className="debit"
+                    role="alert"
+                  >
+                    {erreurPour(champEmail)}
+                  </span>
+                )}
+
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '0.5rem',
+                    marginTop: '0.5rem',
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <label htmlFor={`parent-prenom-${parent.id}`}>
+                      Prénom <span className="muted">(facultatif)</span>
+                    </label>
+                    <input
+                      id={`parent-prenom-${parent.id}`}
+                      type="text"
+                      value={parent.prenom}
+                      onChange={(e) => {
+                        mettreAJourParent(parent.id, 'prenom', e.target.value);
+                      }}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label htmlFor={`parent-nom-${parent.id}`}>
+                      Nom <span className="muted">(facultatif)</span>
+                    </label>
+                    <input
+                      id={`parent-nom-${parent.id}`}
+                      type="text"
+                      value={parent.nom}
+                      onChange={(e) => {
+                        mettreAJourParent(parent.id, 'nom', e.target.value);
+                      }}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn secondaire"
+                  onClick={() => {
+                    supprimerParent(parent.id);
+                  }}
+                  aria-label={
+                    designation
+                      ? `Retirer le parent ${designation}`
+                      : 'Retirer ce parent'
+                  }
+                  style={{ marginTop: '0.5rem' }}
+                >
+                  Retirer
+                </button>
+              </div>
+            );
+          })}
+
+          <button
+            type="button"
+            className="btn secondaire"
+            onClick={ajouterParent}
+            style={{ marginTop: '0.25rem' }}
+          >
+            + Ajouter un parent
           </button>
         </fieldset>
 
