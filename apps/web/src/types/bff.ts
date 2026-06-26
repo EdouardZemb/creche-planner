@@ -30,6 +30,9 @@ export type FoyerVue = SchemaComposant<'FoyerVue'>;
 /** Vue projetée d'un enfant — dérivée de `components.schemas.EnfantVue`. */
 export type EnfantVue = SchemaComposant<'EnfantVue'>;
 
+/** Vue projetée d'un parent — dérivée de `components.schemas.ParentVue`. */
+export type ParentVue = SchemaComposant<'ParentVue'>;
+
 /** Vue projetée d'un contrat — dérivée de `components.schemas.ContratVue`. */
 export type ContratVue = SchemaComposant<'ContratVue'>;
 
@@ -70,6 +73,9 @@ export type CreerDossierFoyer = CorpsRequeteJson<'/api/v1/foyers', 'post'>;
 
 /** Un enfant à créer — dérivé du sous-schéma `enfants[]` de `CreerDossierFoyer`. */
 export type CreerEnfant = CreerDossierFoyer['enfants'][number];
+
+/** Un parent à rattacher à la création — dérivé du sous-schéma `parents[]` de `CreerDossierFoyer`. */
+export type CreerParent = NonNullable<CreerDossierFoyer['parents']>[number];
 
 // ---- Énumérations dérivées du contrat --------------------------------------
 

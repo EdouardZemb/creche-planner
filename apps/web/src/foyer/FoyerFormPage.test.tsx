@@ -232,4 +232,116 @@ describe('FoyerFormPage', () => {
     expect(abbr.tagName).toBe('ABBR');
     expect(abbr).toHaveTextContent('RFR');
   });
+
+  // ---- Bloc « Parents » (PR3 parents-foyer) -------------------------------
+
+  it('affiche le bloc Parents avec une ligne pré-remplie (démo)', () => {
+    rendu();
+
+    expect(screen.getByText('Parents')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Adresse e-mail/i)).toHaveValue(
+      'parent.demo@example.com',
+    );
+    expect(screen.getByDisplayValue('Camille')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Martin')).toBeInTheDocument();
+  });
+
+  it("permet d'ajouter un parent dynamiquement", () => {
+    rendu();
+
+    const avant = screen.getAllByLabelText(/Adresse e-mail/i).length;
+    fireEvent.click(screen.getByRole('button', { name: /Ajouter un parent/i }));
+
+    expect(screen.getAllByLabelText(/Adresse e-mail/i)).toHaveLength(avant + 1);
+  });
+
+  it('permet de retirer un parent jusqu’à zéro (parents facultatifs)', () => {
+    rendu();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retirer le parent Camille Martin' }),
+    );
+
+    expect(screen.queryByLabelText(/Adresse e-mail/i)).not.toBeInTheDocument();
+  });
+
+  it('envoie les parents saisis (mappés email/prénom/nom + ordre)', async () => {
+    mockedApi.creerFoyer.mockResolvedValueOnce(dossierFactice);
+    rendu();
+
+    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.creerFoyer).toHaveBeenCalledTimes(1);
+    });
+
+    const saisie = (mockedApi.creerFoyer.mock.calls[0] as unknown[])[0] as {
+      parents: unknown[];
+    };
+    expect(saisie.parents).toEqual([
+      {
+        email: 'parent.demo@example.com',
+        prenom: 'Camille',
+        nom: 'Martin',
+        ordre: 0,
+      },
+    ]);
+  });
+
+  it('ignore les lignes parent entièrement vides à la soumission', async () => {
+    mockedApi.creerFoyer.mockResolvedValueOnce(dossierFactice);
+    rendu();
+
+    // Ajoute une 2e ligne laissée vide : elle ne doit pas partir au BFF.
+    fireEvent.click(screen.getByRole('button', { name: /Ajouter un parent/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.creerFoyer).toHaveBeenCalledTimes(1);
+    });
+
+    const saisie = (mockedApi.creerFoyer.mock.calls[0] as unknown[])[0] as {
+      parents: unknown[];
+    };
+    expect(saisie.parents).toHaveLength(1);
+  });
+
+  it('n’envoie aucun parent quand le bloc est vidé', async () => {
+    mockedApi.creerFoyer.mockResolvedValueOnce(dossierFactice);
+    rendu();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retirer le parent Camille Martin' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.creerFoyer).toHaveBeenCalledTimes(1);
+    });
+
+    const saisie = (mockedApi.creerFoyer.mock.calls[0] as unknown[])[0] as {
+      parents: unknown[];
+    };
+    expect(saisie.parents).toEqual([]);
+  });
+
+  it('lie une erreur serveur de parent au bon champ via aria-describedby', async () => {
+    const erreurs = [
+      { champ: 'parents.0.email', message: 'adresse e-mail invalide' },
+    ];
+    mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(400, erreurs));
+    rendu();
+
+    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+
+    const champ = screen.getByLabelText(/Adresse e-mail/i);
+    await waitFor(() => {
+      expect(champ).toHaveAttribute('aria-invalid', 'true');
+    });
+    const idDecrit = champ.getAttribute('aria-describedby');
+    expect(idDecrit).toBeTruthy();
+    const message = document.getElementById(idDecrit!);
+    expect(message).toHaveTextContent('adresse e-mail invalide');
+    expect(message).toHaveAttribute('role', 'alert');
+  });
 });
