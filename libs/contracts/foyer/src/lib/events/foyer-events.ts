@@ -22,6 +22,9 @@ export type FoyerId = z.infer<typeof foyerIdSchema>;
 export const enfantIdSchema = z.string().uuid().brand<'EnfantId'>();
 export type EnfantId = z.infer<typeof enfantIdSchema>;
 
+export const parentIdSchema = z.string().uuid().brand<'ParentId'>();
+export type ParentId = z.infer<typeof parentIdSchema>;
+
 // --- foyer.FoyerMisAJour.v1 -------------------------------------------------
 
 /** Nom métier versionné (champ `type` de l'enveloppe). */
@@ -89,3 +92,63 @@ export const enfantAjouteEventSchema = integrationEventSchema(
   enfantAjoutePayloadSchema,
 );
 export type EnfantAjouteEvent = z.infer<typeof enfantAjouteEventSchema>;
+
+// --- foyer.Parent{Ajoute,Modifie,Retire}.v1 --------------------------------
+
+/**
+ * Cycle de vie d'un **parent** d'un foyer (destinataire des notifications et,
+ * en option B, identité de connexion via son e-mail — cf.
+ * `.claude/plans/parents-foyer-modelisation.md`). Émis par `svc-foyer` via
+ * l'outbox sur le stream `FOYER`, ils alimenteront la projection locale
+ * `foyer_parent` de `svc-notifications` (PR 4) pour router le récap hebdo.
+ *
+ * `Ajoute` et `Modifie` transportent l'**état complet** du parent (le
+ * consommateur projette sans relire la source) ; `Retire` ne porte que les
+ * identités (le retrait est un soft-delete `actif = false` côté svc-foyer).
+ */
+export const PARENT_AJOUTE_TYPE = 'foyer.ParentAjoute.v1';
+export const PARENT_MODIFIE_TYPE = 'foyer.ParentModifie.v1';
+export const PARENT_RETIRE_TYPE = 'foyer.ParentRetire.v1';
+
+/**
+ * État complet d'un parent transporté par `ParentAjoute`/`ParentModifie`.
+ * `prenom`/`nom` sont optionnels (identité douce) ; `email` = destinataire et
+ * futur identifiant de login (globalement unique côté base, cf. §4bis.6).
+ */
+export const parentEtatPayloadSchema = z.object({
+  foyerId: foyerIdSchema,
+  parentId: parentIdSchema,
+  email: z.email(),
+  prenom: z.string().min(1).optional(),
+  nom: z.string().min(1).optional(),
+  principal: z.boolean(),
+  actif: z.boolean(),
+});
+
+export const parentAjoutePayloadSchema = parentEtatPayloadSchema;
+export type ParentAjoutePayload = z.infer<typeof parentAjoutePayloadSchema>;
+
+export const parentModifiePayloadSchema = parentEtatPayloadSchema;
+export type ParentModifiePayload = z.infer<typeof parentModifiePayloadSchema>;
+
+/** Identités seules : le retrait est un soft-delete, l'état n'est pas reporté. */
+export const parentRetirePayloadSchema = z.object({
+  foyerId: foyerIdSchema,
+  parentId: parentIdSchema,
+});
+export type ParentRetirePayload = z.infer<typeof parentRetirePayloadSchema>;
+
+export const parentAjouteEventSchema = integrationEventSchema(
+  parentAjoutePayloadSchema,
+);
+export type ParentAjouteEvent = z.infer<typeof parentAjouteEventSchema>;
+
+export const parentModifieEventSchema = integrationEventSchema(
+  parentModifiePayloadSchema,
+);
+export type ParentModifieEvent = z.infer<typeof parentModifieEventSchema>;
+
+export const parentRetireEventSchema = integrationEventSchema(
+  parentRetirePayloadSchema,
+);
+export type ParentRetireEvent = z.infer<typeof parentRetireEventSchema>;

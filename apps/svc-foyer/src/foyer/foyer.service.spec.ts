@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import {
   ENFANT_AJOUTE_TYPE,
   FOYER_MIS_A_JOUR_TYPE,
+  PARENT_AJOUTE_TYPE,
+  PARENT_MODIFIE_TYPE,
+  PARENT_RETIRE_TYPE,
 } from '@creche-planner/contracts-foyer';
 import { FoyerService } from './foyer.service.js';
 import type { Database } from '../database/database.types.js';
-import type { FoyerRow } from '../database/schema.js';
+import type { FoyerRow, ParentRow } from '../database/schema.js';
 import type { EcrireFoyerDto } from './foyer.dto.js';
 
 /**
@@ -334,5 +337,297 @@ describe('FoyerService.listerEnfants', () => {
         dateNaissance: '2024-03-15',
       },
     ]);
+  });
+});
+
+// --- Parents ---------------------------------------------------------------
+
+const PARENT_ID = '55555555-5555-4555-8555-555555555555';
+
+function ligneParent(overrides: Partial<ParentRow> = {}): ParentRow {
+  return {
+    id: PARENT_ID,
+    foyerId: FOYER_ID,
+    prenom: 'Alex',
+    nom: 'Martin',
+    email: 'parent@example.com',
+    principal: false,
+    ordre: 0,
+    actif: true,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+/**
+ * Faux `db` transactionnel pour les écritures de parent. Le `select` interne
+ * (présence du foyer) répond `foyerPresent` ; `insert(parent).returning()` renvoie
+ * la ligne reflétant les valeurs insérées (ou rejette `erreurInsert` pour simuler
+ * une violation d'unicité 23505) ; `update().set().where().returning()` renvoie
+ * `lignesUpdate` (vide ⇒ parent introuvable). `updateSet` espionne le `set`.
+ */
+function fakeDbParentTx(
+  options: {
+    foyerPresent?: boolean;
+    lignesUpdate?: ParentRow[];
+    erreurInsert?: { code: string; constraint_name?: string };
+  } = {},
+): {
+  db: Database;
+  transaction: ReturnType<typeof vi.fn>;
+  insertValues: ReturnType<typeof vi.fn>;
+  updateSet: ReturnType<typeof vi.fn>;
+} {
+  const insertValues = vi.fn((valeurs: Record<string, unknown>) => {
+    const estParent = typeof valeurs['email'] === 'string';
+    const erreur =
+      options.erreurInsert && estParent
+        ? Object.assign(new Error('violation unicité'), options.erreurInsert)
+        : undefined;
+    return Object.assign(Promise.resolve(), {
+      returning: () =>
+        erreur
+          ? Promise.reject(erreur)
+          : Promise.resolve([ligneParent(valeurs as Partial<ParentRow>)]),
+    });
+  });
+  const updateSet = vi.fn(() => ({
+    where: () => ({
+      returning: () => Promise.resolve(options.lignesUpdate ?? []),
+    }),
+  }));
+  const foyers = options.foyerPresent ? [{ id: FOYER_ID }] : [];
+  const tx = {
+    select: () => ({ from: () => ({ where: () => Promise.resolve(foyers) }) }),
+    insert: () => ({ values: insertValues }),
+    update: () => ({ set: updateSet }),
+  };
+  const transaction = vi.fn(async (cb: (t: unknown) => Promise<unknown>) =>
+    cb(tx),
+  );
+  const db = { transaction } as unknown as Database;
+  return { db, transaction, insertValues, updateSet };
+}
+
+/** Faux `db` pour les lectures parent (`select` ou `selectDistinct`). */
+function fakeDbParentLecture(
+  cle: 'select' | 'selectDistinct',
+  ...reponses: unknown[][]
+): Database {
+  let i = 0;
+  const builder = vi.fn(() => {
+    const lignes = reponses[i++] ?? [];
+    const chaine: Record<string, unknown> = {
+      from: vi.fn(() => chaine),
+      where: vi.fn(() => Object.assign(Promise.resolve(lignes), chaine)),
+      orderBy: vi.fn(() => Promise.resolve(lignes)),
+    };
+    return chaine;
+  });
+  return { [cle]: builder } as unknown as Database;
+}
+
+describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
+  it('insère le parent + l’outbox ParentAjoute dans la même transaction', async () => {
+    const { db, transaction, insertValues } = fakeDbParentTx({
+      foyerPresent: true,
+    });
+    const service = new FoyerService(db);
+
+    const vue = await service.ajouterParent(FOYER_ID, {
+      email: 'parent@example.com',
+      prenom: 'Alex',
+      principal: true,
+      ordre: 0,
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        foyerId: FOYER_ID,
+        email: 'parent@example.com',
+        prenom: 'Alex',
+        principal: true,
+      }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: PARENT_AJOUTE_TYPE,
+        payload: expect.objectContaining({
+          foyerId: FOYER_ID,
+          parentId: vue.id,
+          email: 'parent@example.com',
+          principal: true,
+          actif: true,
+        }),
+      }),
+    );
+    expect(vue).toMatchObject({ email: 'parent@example.com', actif: true });
+  });
+
+  it('lève NotFoundException si le foyer est introuvable — ni parent ni événement', async () => {
+    const { db, insertValues } = fakeDbParentTx({ foyerPresent: false });
+    const service = new FoyerService(db);
+
+    await expect(
+      service.ajouterParent(FOYER_ID, {
+        email: 'parent@example.com',
+        principal: false,
+        ordre: 0,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('traduit une violation d’e-mail unique en 409 (adresse déjà utilisée)', async () => {
+    const { db } = fakeDbParentTx({
+      foyerPresent: true,
+      erreurInsert: {
+        code: '23505',
+        constraint_name: 'parent_email_unique_idx',
+      },
+    });
+    const service = new FoyerService(db);
+
+    await expect(
+      service.ajouterParent(FOYER_ID, {
+        email: 'parent@example.com',
+        principal: false,
+        ordre: 0,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('traduit une violation du principal unique en 409 (message dédié)', async () => {
+    const { db } = fakeDbParentTx({
+      foyerPresent: true,
+      erreurInsert: {
+        code: '23505',
+        constraint_name: 'parent_principal_unique_idx',
+      },
+    });
+    const service = new FoyerService(db);
+
+    await expect(
+      service.ajouterParent(FOYER_ID, {
+        email: 'parent@example.com',
+        principal: true,
+        ordre: 0,
+      }),
+    ).rejects.toThrow('un parent principal existe déjà pour ce foyer');
+  });
+});
+
+describe('FoyerService.modifierParent', () => {
+  it('met à jour les champs fournis + ré-émet ParentModifie (même transaction)', async () => {
+    const { db, transaction, updateSet, insertValues } = fakeDbParentTx({
+      lignesUpdate: [ligneParent({ email: 'neuf@example.com' })],
+    });
+    const service = new FoyerService(db);
+
+    const vue = await service.modifierParent(FOYER_ID, PARENT_ID, {
+      email: 'neuf@example.com',
+      actif: false,
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'neuf@example.com', actif: false }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ type: PARENT_MODIFIE_TYPE }),
+    );
+    expect(vue.email).toBe('neuf@example.com');
+  });
+
+  it('ne touche que les champs fournis (corps vide ⇒ seul updatedAt)', async () => {
+    const { db, updateSet } = fakeDbParentTx({
+      lignesUpdate: [ligneParent()],
+    });
+    const service = new FoyerService(db);
+
+    await service.modifierParent(FOYER_ID, PARENT_ID, {});
+    const set = updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(Object.keys(set)).toEqual(['updatedAt']);
+  });
+
+  it('lève NotFoundException si le parent est introuvable — aucun événement', async () => {
+    const { db, insertValues } = fakeDbParentTx({ lignesUpdate: [] });
+    const service = new FoyerService(db);
+
+    await expect(
+      service.modifierParent(FOYER_ID, PARENT_ID, { actif: false }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+});
+
+describe('FoyerService.retirerParent (soft-delete + événement)', () => {
+  it('passe actif=false + émet ParentRetire dans la même transaction', async () => {
+    const { db, transaction, updateSet, insertValues } = fakeDbParentTx({
+      lignesUpdate: [ligneParent({ actif: false })],
+    });
+    const service = new FoyerService(db);
+
+    await service.retirerParent(FOYER_ID, PARENT_ID);
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ actif: false }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: PARENT_RETIRE_TYPE,
+        payload: { foyerId: FOYER_ID, parentId: PARENT_ID },
+      }),
+    );
+  });
+
+  it('lève NotFoundException si le parent est introuvable — aucun événement', async () => {
+    const { db, insertValues } = fakeDbParentTx({ lignesUpdate: [] });
+    const service = new FoyerService(db);
+
+    await expect(
+      service.retirerParent(FOYER_ID, PARENT_ID),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+});
+
+describe('FoyerService.listerParents', () => {
+  it('projette les parents actifs en ParentVue', async () => {
+    const db = fakeDbParentLecture('select', [ligneParent()]);
+    const service = new FoyerService(db);
+
+    const vues = await service.listerParents(FOYER_ID);
+    expect(vues).toEqual([
+      {
+        id: PARENT_ID,
+        foyerId: FOYER_ID,
+        prenom: 'Alex',
+        nom: 'Martin',
+        email: 'parent@example.com',
+        principal: false,
+        ordre: 0,
+        actif: true,
+      },
+    ]);
+  });
+});
+
+describe('FoyerService.foyersParEmail (résolution identité→foyers)', () => {
+  it('renvoie les foyerId des parents actifs pour l’e-mail (insensible casse)', async () => {
+    const db = fakeDbParentLecture('selectDistinct', [{ foyerId: FOYER_ID }]);
+    const service = new FoyerService(db);
+
+    const foyers = await service.foyersParEmail('  Parent@Example.com  ');
+    expect(foyers).toEqual([FOYER_ID]);
+  });
+
+  it('renvoie [] pour un e-mail vide sans interroger la base', async () => {
+    const db = {} as unknown as Database;
+    const service = new FoyerService(db);
+    expect(await service.foyersParEmail('   ')).toEqual([]);
   });
 });
