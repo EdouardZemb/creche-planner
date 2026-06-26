@@ -73,6 +73,7 @@ const dossierMock: DossierFoyerVue = {
       dateNaissance: '2020-07-20',
     },
   ],
+  parents: [],
 };
 
 function renderPage(foyerId = 'foyer-1', search = '') {

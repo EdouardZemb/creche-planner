@@ -16,6 +16,13 @@ import postgres, { type Sql } from 'postgres';
  * fourni par le pact (aligné sur le contrat consommateur).
  */
 const ETAT_FOYER_T3 = 'un foyer de référence T3 existe';
+// Parents (PR2) : états dédiés. « sans parent » seede le foyer et purge ses
+// parents (+ l'e-mail visé) pour qu'un ajout réussisse ; « avec un parent »
+// seede en plus un parent actif d'id connu pour lecture/édition/retrait. Les
+// purges rendent les states **idempotents** (ré-exécution locale sans clash sur
+// l'unicité globale `lower(email)`).
+const ETAT_FOYER_SANS_PARENT = 'un foyer de référence T3 sans parent';
+const ETAT_FOYER_AVEC_PARENT = 'un foyer de référence T3 avec un parent';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-foyer) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
@@ -26,6 +33,19 @@ const PORT = Number(process.env['PACT_PROVIDER_PORT'] ?? 3999);
 const DATABASE_URL =
   process.env['DATABASE_URL'] ?? 'postgres://foyer:foyer@localhost:5434/foyer';
 const EN_CI = Boolean(process.env['CI']);
+
+/** Seede (idempotent) le foyer de référence (doc 02 §0) : RFR 72 705 € → T3. */
+async function seedFoyer(db: Sql, id: string): Promise<void> {
+  await db`
+    insert into foyer (id, ressources_mensuelles_centimes, rfr_centimes, nb_enfants_a_charge, nb_parts)
+    values (${id}, 671692, 7270500, 2, 3)
+    on conflict (id) do update set
+      ressources_mensuelles_centimes = excluded.ressources_mensuelles_centimes,
+      rfr_centimes = excluded.rfr_centimes,
+      nb_enfants_a_charge = excluded.nb_enfants_a_charge,
+      nb_parts = excluded.nb_parts
+  `;
+}
 
 async function baseJoignable(): Promise<boolean> {
   const sql = postgres(DATABASE_URL, { max: 1, onnotice: () => undefined });
@@ -105,16 +125,32 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
       logLevel: 'warn',
       stateHandlers: {
         [ETAT_FOYER_T3]: async (params?: unknown): Promise<void> => {
-          const id = String((params as { id: string }).id);
-          // Foyer de référence (doc 02 §0) : RFR 72 705 € → T3.
+          const { id } = params as { id: string };
+          await seedFoyer(db, id);
+        },
+        [ETAT_FOYER_SANS_PARENT]: async (params?: unknown): Promise<void> => {
+          const { foyerId, email } = params as {
+            foyerId: string;
+            email: string;
+          };
+          await seedFoyer(db, foyerId);
+          // Table rase : aucun parent dans ce foyer, et l'e-mail visé est libre
+          // (unicité globale) → l'ajout du pact réussit (201, pas 409).
+          await db`delete from parent where foyer_id = ${foyerId}`;
+          await db`delete from parent where lower(email) = lower(${email})`;
+        },
+        [ETAT_FOYER_AVEC_PARENT]: async (params?: unknown): Promise<void> => {
+          const { foyerId, parentId, email } = params as {
+            foyerId: string;
+            parentId: string;
+            email: string;
+          };
+          await seedFoyer(db, foyerId);
+          await db`delete from parent where foyer_id = ${foyerId}`;
+          await db`delete from parent where lower(email) = lower(${email})`;
           await db`
-            insert into foyer (id, ressources_mensuelles_centimes, rfr_centimes, nb_enfants_a_charge, nb_parts)
-            values (${id}, 671692, 7270500, 2, 3)
-            on conflict (id) do update set
-              ressources_mensuelles_centimes = excluded.ressources_mensuelles_centimes,
-              rfr_centimes = excluded.rfr_centimes,
-              nb_enfants_a_charge = excluded.nb_enfants_a_charge,
-              nb_parts = excluded.nb_parts
+            insert into parent (id, foyer_id, prenom, nom, email, principal, ordre, actif)
+            values (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, false, 0, true)
           `;
         },
       },

@@ -53,6 +53,7 @@ const dossierFactice: DossierFoyerVue = {
       dateNaissance: '2024-12-08',
     },
   ],
+  parents: [],
 };
 
 const contratFactice: ContratLocal = {

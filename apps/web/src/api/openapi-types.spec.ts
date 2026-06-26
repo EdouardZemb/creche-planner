@@ -112,7 +112,7 @@ describe('openapi-types — types générés depuis le contrat gateway', () => {
       prenom: 'Lou',
       dateNaissance: '2022-01-01',
     };
-    const dossier: DossierFoyerVue = { foyer, enfants: [enfant] };
+    const dossier: DossierFoyerVue = { foyer, enfants: [enfant], parents: [] };
     expect(dossier.enfants[0]?.prenom).toBe('Lou');
 
     const ligne: Ligne = {

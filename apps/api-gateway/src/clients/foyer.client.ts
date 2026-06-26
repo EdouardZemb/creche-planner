@@ -22,6 +22,35 @@ export interface SaisieEnfant {
   readonly dateNaissance: string;
 }
 
+/**
+ * Saisie de rattachement d'un parent. `email` requis (destinataire des
+ * notifications + futur identifiant de login) ; le reste est une identité douce
+ * optionnelle. `principal`/`ordre` ont un défaut côté `svc-foyer`.
+ */
+export interface SaisieParent {
+  readonly email: string;
+  // `| undefined` explicite : aligne avec la sortie Zod (`.optional()`) sous
+  // `exactOptionalPropertyTypes`, le DTO BFF étant relayé tel quel.
+  readonly prenom?: string | undefined;
+  readonly nom?: string | undefined;
+  readonly principal?: boolean | undefined;
+  readonly ordre?: number | undefined;
+}
+
+/**
+ * Saisie d'édition d'un parent (`PUT`). Tous les champs optionnels : seuls ceux
+ * fournis sont modifiés. `prenom`/`nom` acceptent `null` pour effacer l'identité
+ * douce ; `actif` permet de réactiver un parent retiré (soft-delete).
+ */
+export interface ModifierParentSaisie {
+  readonly email?: string | undefined;
+  readonly prenom?: string | null | undefined;
+  readonly nom?: string | null | undefined;
+  readonly principal?: boolean | undefined;
+  readonly ordre?: number | undefined;
+  readonly actif?: boolean | undefined;
+}
+
 /** Vue lecture d'un foyer renvoyée par `svc-foyer` (centimes = entiers). */
 const foyerVueSchema = z.object({
   id: z.string(),
@@ -45,6 +74,20 @@ const enfantVueSchema = z.object({
 });
 
 export type EnfantVue = z.infer<typeof enfantVueSchema>;
+
+/** Vue lecture d'un parent rattaché à un foyer (e-mail = PII). */
+const parentVueSchema = z.object({
+  id: z.string(),
+  foyerId: z.string(),
+  prenom: z.string().nullable(),
+  nom: z.string().nullable(),
+  email: z.string(),
+  principal: z.boolean(),
+  ordre: z.number(),
+  actif: z.boolean(),
+});
+
+export type ParentVue = z.infer<typeof parentVueSchema>;
 
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
@@ -162,6 +205,128 @@ export class FoyerClient {
           throw new Error('HTTP ' + reponse.status);
         }
         return z.array(enfantVueSchema).parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** GET `/api/foyers/:id/parents` — liste les parents actifs du foyer. */
+  async parents(foyerId: string): Promise<ParentVue[]> {
+    const base = loadConfig().foyerUrl;
+    const url = `${base}/api/foyers/${encodeURIComponent(foyerId)}/parents`;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-foyer',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return z.array(parentVueSchema).parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** POST `/api/foyers/:id/parents` — rattache un parent. */
+  async ajouterParent(
+    foyerId: string,
+    saisie: SaisieParent,
+  ): Promise<ParentVue> {
+    const base = loadConfig().foyerUrl;
+    const url = `${base}/api/foyers/${encodeURIComponent(foyerId)}/parents`;
+    this.logger.debug(`POST ${url}`);
+    return executerResilient(
+      'svc-foyer',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(saisie),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return parentVueSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** PUT `/api/foyers/:id/parents/:parentId` — édite un parent (champs fournis). */
+  async modifierParent(
+    foyerId: string,
+    parentId: string,
+    saisie: ModifierParentSaisie,
+  ): Promise<ParentVue> {
+    const base = loadConfig().foyerUrl;
+    const url =
+      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
+      `/parents/${encodeURIComponent(parentId)}`;
+    this.logger.debug(`PUT ${url}`);
+    return executerResilient(
+      'svc-foyer',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(saisie),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return parentVueSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /**
+   * DELETE `/api/foyers/:id/parents/:parentId` — retire un parent (soft-delete
+   * côté `svc-foyer`, réponse 204 sans corps).
+   */
+  async retirerParent(foyerId: string, parentId: string): Promise<void> {
+    const base = loadConfig().foyerUrl;
+    const url =
+      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
+      `/parents/${encodeURIComponent(parentId)}`;
+    this.logger.debug(`DELETE ${url}`);
+    await executerResilient(
+      'svc-foyer',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'DELETE',
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /**
+   * GET `/api/foyers?parentEmail=…` — **résolution identité → foyers** : ids des
+   * foyers dont l'e-mail est parent actif (familles recomposées → liste). Sert
+   * l'autorisation par foyer (préparé pour le guard d'identité B1, PR5).
+   */
+  async foyersParEmail(email: string): Promise<string[]> {
+    const base = loadConfig().foyerUrl;
+    const url = `${base}/api/foyers?parentEmail=${encodeURIComponent(email)}`;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-foyer',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return z.array(z.string()).parse(await reponse.json());
       },
       this.breaker,
       OPTIONS,
