@@ -6,6 +6,31 @@ export interface RateLimitConfig {
   readonly maxRequetes: number;
 }
 
+/**
+ * Configuration de l'**identité parent** (option B1 — Cloudflare Access).
+ *
+ * En production, CF Access est au bord de la gateway et injecte un JWT signé
+ * (`Cf-Access-Jwt-Assertion`). Le guard d'identité (PR5) le **valide** contre le
+ * JWKS du team domain (`cfTeamDomain/cdn-cgi/access/certs`), en vérifiant
+ * l'`issuer` (= team domain) et l'`aud` (= `cfAud`, tag de l'application CF).
+ * On ne fait **jamais** confiance à un en-tête e-mail brut (spoofable).
+ */
+export interface IdentiteConfig {
+  /**
+   * Team domain Cloudflare Access (ex. `https://mon-equipe.cloudflareaccess.com`).
+   * Sert d'issuer **et** de base d'URL du JWKS. Absent → validation JWT inactive
+   * (dev / prod non exposée derrière `GATEWAY_AUTH_DISABLED=1`).
+   */
+  readonly cfTeamDomain: string | undefined;
+  /** Tag `aud` de l'application CF Access (audience attendue du JWT). */
+  readonly cfAud: string | undefined;
+  /**
+   * Autorise l'en-tête de dev `X-Dev-User-Email` (identité injectée sans CF).
+   * **Jamais en production** : vrai uniquement si `NODE_ENV !== 'production'`.
+   */
+  readonly devHeaderAutorise: boolean;
+}
+
 export interface GatewayConfig {
   readonly port: number;
   readonly referentielUrl: string;
@@ -26,6 +51,13 @@ export interface GatewayConfig {
    */
   readonly corsOrigins: readonly string[];
   readonly rateLimit: RateLimitConfig;
+  readonly identite: IdentiteConfig;
+}
+
+/** Normalise une variable d'env : trim, et chaîne vide/blanche → `undefined`. */
+function texteNonVide(valeur: string | undefined): string | undefined {
+  const t = valeur?.trim();
+  return t !== undefined && t !== '' ? t : undefined;
 }
 
 /** Découpe une liste d'environnement « a,b ,c » en tableau nettoyé. */
@@ -37,14 +69,19 @@ function parseListe(valeur: string | undefined): string[] {
 }
 
 /**
- * Garde-fou de démarrage (AQ-01, doc 27) : en production, l'absence de
- * `GATEWAY_TOKEN` doit être un **choix explicite**, pas un oubli de config.
+ * Garde-fou de démarrage : en production, deux configs d'auth doivent être des
+ * **choix explicites**, jamais des oublis. L'échappatoire commune est
+ * `GATEWAY_AUTH_DISABLED=1` (la prod actuelle tourne volontairement sans auth :
+ * gateway non exposée — reverse-proxy + ports non publiés + Cloudflare Access,
+ * décision doc 24 ; c'est l'override `docker-compose.server.yml` qui pose
+ * l'échappatoire, pas un défaut implicite).
  *
- * Lève si `NODE_ENV === 'production'` sans jeton (absent ou vide) **et** sans
- * l'échappatoire `GATEWAY_AUTH_DISABLED=1`. La prod actuelle tourne
- * volontairement sans jeton (gateway non exposée : reverse-proxy + ports non
- * publiés + Cloudflare Access — décision doc 24) : c'est l'override
- * `docker-compose.server.yml` qui pose l'échappatoire, pas un défaut implicite.
+ * 1. **AQ-01 (doc 27)** — `GATEWAY_TOKEN` (auth machine web→gateway) : lève si
+ *    prod sans jeton (absent ou vide) **et** sans `GATEWAY_AUTH_DISABLED=1`.
+ * 2. **PR5 (identité B1)** — validation JWT Cloudflare Access : lève si prod
+ *    sans `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` **et** sans
+ *    `GATEWAY_AUTH_DISABLED=1`. Même philosophie : faire confiance à l'email
+ *    vérifié par CF exige d'avoir configuré contre quoi valider sa signature.
  */
 export function verifierConfigProduction(
   env: Record<string, string | undefined> = process.env,
@@ -52,18 +89,30 @@ export function verifierConfigProduction(
   if (env['NODE_ENV'] !== 'production') {
     return;
   }
-  const jeton = env['GATEWAY_TOKEN']?.trim();
-  if (jeton !== undefined && jeton !== '') {
-    return;
-  }
+  // Échappatoire unique : auth volontairement désactivée (gateway non exposée).
   if (env['GATEWAY_AUTH_DISABLED'] === '1') {
     return;
   }
-  throw new Error(
-    "GATEWAY_TOKEN requis en production : sans lui l'authentification de la " +
-      'gateway est désactivée. Pour la désactiver volontairement (gateway non ' +
-      'exposée, cf. doc 24), poser GATEWAY_AUTH_DISABLED=1.',
-  );
+  // Garde-fou 1 — jeton machine (AQ-01).
+  const jeton = env['GATEWAY_TOKEN']?.trim();
+  if (jeton === undefined || jeton === '') {
+    throw new Error(
+      "GATEWAY_TOKEN requis en production : sans lui l'authentification de la " +
+        'gateway est désactivée. Pour la désactiver volontairement (gateway non ' +
+        'exposée, cf. doc 24), poser GATEWAY_AUTH_DISABLED=1.',
+    );
+  }
+  // Garde-fou 2 — identité Cloudflare Access (PR5).
+  const teamDomain = env['CF_ACCESS_TEAM_DOMAIN']?.trim();
+  const aud = env['CF_ACCESS_AUD']?.trim();
+  if (!teamDomain || !aud) {
+    throw new Error(
+      'CF_ACCESS_TEAM_DOMAIN et CF_ACCESS_AUD requis en production : la ' +
+        'validation du JWT Cloudflare Access (option B1) ne peut vérifier ni ' +
+        "l'issuer ni l'audience sans eux. Pour démarrer sans identité CF " +
+        '(gateway non exposée, cf. doc 24), poser GATEWAY_AUTH_DISABLED=1.',
+    );
+  }
 }
 
 /** Configuration de la gateway depuis l'environnement, avec défauts de dev local. */
@@ -83,6 +132,11 @@ export function loadConfig(): GatewayConfig {
     rateLimit: {
       fenetreMs: Number(process.env['RATE_LIMIT_FENETRE_MS'] ?? 60000),
       maxRequetes: Number(process.env['RATE_LIMIT_MAX'] ?? 120),
+    },
+    identite: {
+      cfTeamDomain: texteNonVide(process.env['CF_ACCESS_TEAM_DOMAIN']),
+      cfAud: texteNonVide(process.env['CF_ACCESS_AUD']),
+      devHeaderAutorise: process.env['NODE_ENV'] !== 'production',
     },
   };
 }

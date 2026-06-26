@@ -1656,7 +1656,7 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
   message nominatif). lint/typecheck/test/build web + api-gateway **verts** (295 tests web, 67 api-gateway, Pact
   inchangé).
 
-## 24. Feature Parents du foyer (🚧 PR 4/8 livrée — objectif fonctionnel atteint)
+## 24. Feature Parents du foyer (🚧 PR 5/8 livrée — identité observe-only au BFF)
 
 > **Objectif** : adresser le récap hebdomadaire (et les futures notifications) **aux parents du foyer
 > concerné** au lieu de l'unique adresse globale `NOTIF_EMAIL_PARENT`. Modéliser proprement des **parents**
@@ -1728,9 +1728,25 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
     projection idempotente (routing + contenu + soft-delete), scheduler groupé, repli, résolution des
     destinataires. lint/typecheck/test/build **verts**. **← objectif fonctionnel (mail aux parents) atteint
     ici, sans toucher à l'auth.**
-- **PR 5 — identité au BFF (guard B1, observe-only)** : validation JWT Cloudflare Access (JWKS/team
-  domain/`aud`) → `request.identite.email`, mode dev injectable verrouillé hors prod, `verifierConfigProduction`
-  étendu. **N'autorise/ne refuse encore rien** (pose l'identité + journalise).
+- **PR 5 — identité au BFF (guard B1, observe-only)** (✅ livrée) :
+  - **`IdentiteGuard`** (`APP_GUARD`, enregistré **après** `TokenAuthGuard` dans `SecurityModule`) : établit
+    l'identité du parent et la pose en `request.identite = { email }`, mais **n'autorise/ne refuse aucune
+    route** — il ne fait que **journaliser** ce qu'il _aurait_ refusé. Source de confiance en prod = **JWT
+    Cloudflare Access** (`Cf-Access-Jwt-Assertion`) validé via `jose` (`createRemoteJWKSet` mémoïsé par team
+    domain → `…/cdn-cgi/access/certs`) contre l'**issuer** (= team domain) et l'**`aud`** (= application). On
+    ne fait **jamais** confiance à un en-tête e-mail brut (spoofable). Lib ajoutée : `jose` (api-gateway).
+  - **Mode dev** : en-tête `X-Dev-User-Email` accepté **uniquement hors production**
+    (`config.identite.devHeaderAutorise = NODE_ENV !== 'production'`), pour développer sans Cloudflare.
+  - **Observe-only** : si un `foyerId` est ciblé (`?foyer=` ou `/foyers/:id`), le guard résout
+    `email → {foyerId}` via `FoyerClient.foyersParEmail` (PR1/PR2) et **journalise `AURAIT REFUSÉ`** si le foyer
+    n'est pas dans l'ensemble autorisé. Toute erreur (JWT invalide, svc-foyer indisponible) est **avalée et
+    journalisée** : le guard **ne lève jamais**. `TokenAuthGuard` (auth machine web→gateway) **inchangé**.
+  - **`verifierConfigProduction` étendu** (2ᵉ garde-fou, même philosophie qu'AQ-01) : en production, exige
+    désormais `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` **sauf** opt-out explicite `GATEWAY_AUTH_DISABLED=1`
+    (cas de la **prod actuelle** non exposée → boot **inchangé**, zéro risque). L'enforcement 403 reste pour
+    la PR7. Tests : validation JWT (JWKS local) OK/audience-KO/issuer-KO/email-absent, extraction `foyerId`,
+    guard (dev-header posé/ignoré-en-prod, observe autorisé/refusé/erreur), garde-fou config. lint/typecheck/
+    test/build **verts**. **Toujours sans refus dur.**
 - **PR 6 — admin (provisioning) + sélection foyer web** : guard admin (`ADMIN_EMAILS` vs e-mail CF), écran
   « créer un foyer » gated admin + rattachement/détachement des parents, sélecteur foyer web borné à
   l'ensemble autorisé (0/1/N), back-fill admin des foyers existants. **Toujours sans refus dur.**

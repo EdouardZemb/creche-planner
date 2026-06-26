@@ -26,11 +26,13 @@ describe('verifierConfigProduction (AQ-01)', () => {
     }).toThrow(/GATEWAY_TOKEN requis/);
   });
 
-  it('démarre en production avec un jeton défini', () => {
+  it('démarre en production avec jeton ET identité Cloudflare configurés', () => {
     expect(() => {
       verifierConfigProduction({
         NODE_ENV: 'production',
         GATEWAY_TOKEN: 'secret',
+        CF_ACCESS_TEAM_DOMAIN: 'https://equipe.cloudflareaccess.com',
+        CF_ACCESS_AUD: 'aud-app',
       });
     }).not.toThrow();
   });
@@ -63,5 +65,59 @@ describe('verifierConfigProduction (AQ-01)', () => {
         GATEWAY_AUTH_DISABLED: 'true',
       });
     }).toThrow(/GATEWAY_TOKEN requis/);
+  });
+});
+
+/**
+ * PR5 (identité B1) — garde-fou de démarrage : en production, faire confiance à
+ * l'email vérifié par Cloudflare Access exige d'avoir configuré contre quoi
+ * valider sa signature (`CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD`). Même
+ * échappatoire que le jeton : `GATEWAY_AUTH_DISABLED=1` (gateway non exposée).
+ */
+describe('verifierConfigProduction — identité Cloudflare Access (PR5)', () => {
+  it('refuse le démarrage en production avec un jeton mais sans config CF', () => {
+    expect(() => {
+      verifierConfigProduction({
+        NODE_ENV: 'production',
+        GATEWAY_TOKEN: 'secret',
+      });
+    }).toThrow(/CF_ACCESS_TEAM_DOMAIN et CF_ACCESS_AUD requis/);
+  });
+
+  it('refuse si le team domain est présent mais pas l’aud (et inversement)', () => {
+    expect(() => {
+      verifierConfigProduction({
+        NODE_ENV: 'production',
+        GATEWAY_TOKEN: 'secret',
+        CF_ACCESS_TEAM_DOMAIN: 'https://equipe.cloudflareaccess.com',
+      });
+    }).toThrow(/CF_ACCESS_TEAM_DOMAIN et CF_ACCESS_AUD requis/);
+    expect(() => {
+      verifierConfigProduction({
+        NODE_ENV: 'production',
+        GATEWAY_TOKEN: 'secret',
+        CF_ACCESS_AUD: 'aud-app',
+      });
+    }).toThrow(/CF_ACCESS_TEAM_DOMAIN et CF_ACCESS_AUD requis/);
+  });
+
+  it('refuse une config CF vide ou blanche (var posée mais non remplie)', () => {
+    expect(() => {
+      verifierConfigProduction({
+        NODE_ENV: 'production',
+        GATEWAY_TOKEN: 'secret',
+        CF_ACCESS_TEAM_DOMAIN: '   ',
+        CF_ACCESS_AUD: 'aud-app',
+      });
+    }).toThrow(/CF_ACCESS_TEAM_DOMAIN et CF_ACCESS_AUD requis/);
+  });
+
+  it("n'exige pas la config CF si l'auth est désactivée explicitement (cas prod actuel)", () => {
+    expect(() => {
+      verifierConfigProduction({
+        NODE_ENV: 'production',
+        GATEWAY_AUTH_DISABLED: '1',
+      });
+    }).not.toThrow();
   });
 });
