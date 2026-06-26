@@ -21,6 +21,36 @@ export const ajouterEnfantSchema = z.object({
 });
 export type AjouterEnfantDto = z.infer<typeof ajouterEnfantSchema>;
 
+/**
+ * Rattachement d'un parent au foyer. `email` est requis (destinataire des
+ * notifications + futur identifiant de login) ; `prenom`/`nom` sont une identité
+ * douce optionnelle. `principal`/`ordre` ont un défaut pour une création minimale.
+ */
+export const ajouterParentSchema = z.object({
+  email: z.email('adresse e-mail invalide'),
+  prenom: z.string().min(1).max(200).optional(),
+  nom: z.string().min(1).max(200).optional(),
+  principal: z.boolean().default(false),
+  ordre: z.number().int().min(0).default(0),
+});
+export type AjouterParentDto = z.infer<typeof ajouterParentSchema>;
+
+/**
+ * Édition d'un parent (`PUT`). Tous les champs sont optionnels : seuls ceux
+ * fournis sont modifiés (sémantique d'upsert partiel, cf. établissements).
+ * `prenom`/`nom` acceptent `null` pour effacer l'identité douce ; `actif`
+ * permet de réactiver un parent retiré (soft-delete).
+ */
+export const modifierParentSchema = z.object({
+  email: z.email('adresse e-mail invalide').optional(),
+  prenom: z.string().min(1).max(200).nullable().optional(),
+  nom: z.string().min(1).max(200).nullable().optional(),
+  principal: z.boolean().optional(),
+  ordre: z.number().int().min(0).optional(),
+  actif: z.boolean().optional(),
+});
+export type ModifierParentDto = z.infer<typeof modifierParentSchema>;
+
 /** Pipe générique : valide le corps de requête contre un schéma Zod (→ 400). */
 @Injectable()
 export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {

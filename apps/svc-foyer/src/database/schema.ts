@@ -1,11 +1,14 @@
+import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   date,
   doublePrecision,
   integer,
   jsonb,
   pgTable,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -46,6 +49,48 @@ export const enfant = pgTable('enfant', {
 });
 
 /**
+ * **Parent** d'un foyer (cf. `.claude/plans/parents-foyer-modelisation.md`).
+ * Destinataire des notifications et — en option B — **identité de connexion** via
+ * son e-mail. Table dédiée (pas des colonnes `email1/email2` sur `foyer`) : la
+ * cardinalité est variable (1–2 parents, parfois plus) et l'entité a vocation à
+ * porter plus tard l'abonnement web push. `prenom`/`nom` sont une identité douce
+ * optionnelle ; `actif = false` = soft-delete (on conserve l'historique).
+ *
+ * Deux index d'unicité :
+ * - `parent_email_unique_idx` : `lower(email)` **global** — l'e-mail est
+ *   l'identifiant de login (option B), unique à l'échelle du système.
+ * - `parent_principal_unique_idx` : index partiel garantissant **au plus un**
+ *   parent `principal` par foyer (destinataire « À » par défaut).
+ */
+export const parent = pgTable(
+  'parent',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    foyerId: uuid('foyer_id')
+      .notNull()
+      .references(() => foyer.id, { onDelete: 'cascade' }),
+    prenom: varchar('prenom', { length: 200 }),
+    nom: varchar('nom', { length: 200 }),
+    email: varchar('email', { length: 320 }).notNull(),
+    principal: boolean('principal').notNull().default(false),
+    ordre: integer('ordre').notNull().default(0),
+    actif: boolean('actif').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('parent_email_unique_idx').on(sql`lower(${table.email})`),
+    uniqueIndex('parent_principal_unique_idx')
+      .on(table.foyerId)
+      .where(sql`${table.principal}`),
+  ],
+);
+
+/**
  * Outbox transactionnelle (doc 06 §8.4). L'événement est inséré **dans la même
  * transaction** que le changement d'état ; un relais le publie ensuite sur NATS
  * et renseigne `published_at`. `id` = identifiant d'enveloppe = **clé d'idempotence**.
@@ -63,4 +108,5 @@ export const outbox = pgTable('outbox', {
 
 export type FoyerRow = typeof foyer.$inferSelect;
 export type EnfantRow = typeof enfant.$inferSelect;
+export type ParentRow = typeof parent.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;

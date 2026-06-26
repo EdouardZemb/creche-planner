@@ -4,9 +4,14 @@ import {
   FOYER_EVENT_SOURCE,
   FOYER_MIS_A_JOUR_TYPE,
   FOYER_MIS_A_JOUR_V2_TYPE,
+  PARENT_AJOUTE_TYPE,
+  PARENT_MODIFIE_TYPE,
+  PARENT_RETIRE_TYPE,
   enfantAjouteEventSchema,
   foyerMisAJourEventSchema,
   foyerMisAJourEventV2Schema,
+  parentAjouteEventSchema,
+  parentRetireEventSchema,
 } from '../../index.js';
 
 describe('contracts-foyer (événements foyer.*)', () => {
@@ -160,5 +165,67 @@ describe('contracts-foyer (événements foyer.*)', () => {
       },
     });
     expect(result.success).toBe(false);
+  });
+
+  // --- foyer.Parent{Ajoute,Modifie,Retire}.v1 ------------------------------
+
+  it('expose les types versionnés des événements parent', () => {
+    expect(PARENT_AJOUTE_TYPE).toBe('foyer.ParentAjoute.v1');
+    expect(PARENT_MODIFIE_TYPE).toBe('foyer.ParentModifie.v1');
+    expect(PARENT_RETIRE_TYPE).toBe('foyer.ParentRetire.v1');
+  });
+
+  it('valide un événement foyer.ParentAjoute.v1 bien formé (prénom/nom optionnels)', () => {
+    const event = {
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: PARENT_AJOUTE_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        parentId: '33333333-0000-4000-8000-000000000000',
+        email: 'parent@example.com',
+        principal: true,
+        actif: true,
+      },
+    };
+    expect(parentAjouteEventSchema.safeParse(event).success).toBe(true);
+  });
+
+  it('rejette un e-mail invalide dans ParentAjoute', () => {
+    const result = parentAjouteEventSchema.safeParse({
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: PARENT_AJOUTE_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        parentId: '33333333-0000-4000-8000-000000000000',
+        email: 'pas-un-email',
+        principal: false,
+        actif: true,
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('ParentRetire.v1 ne transporte que les identités (foyerId + parentId)', () => {
+    const event = {
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: PARENT_RETIRE_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        parentId: '33333333-0000-4000-8000-000000000000',
+      },
+    };
+    expect(parentRetireEventSchema.safeParse(event).success).toBe(true);
   });
 });
