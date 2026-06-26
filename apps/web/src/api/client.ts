@@ -2,6 +2,7 @@ import type {
   CreerDossierFoyer,
   DossierFoyerVue,
   FoyerVue,
+  MoiVue,
   CreerContrat,
   ContratVue,
   ContratLocal,
@@ -106,6 +107,14 @@ export interface RequeteOptions {
 }
 
 export const api = {
+  /** Identité courante (Cloudflare Access B1) + droits : admin, foyers autorisés. */
+  moi(opts: RequeteOptions = {}): Promise<MoiVue> {
+    return requete(`${BASE}/v1/moi`, {
+      headers: entetes(false),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<MoiVue>(r));
+  },
+
   creerFoyer(
     saisie: CreerDossierFoyer,
     opts: RequeteOptions = {},

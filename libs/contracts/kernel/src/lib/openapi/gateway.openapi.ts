@@ -88,6 +88,24 @@ export const gatewayOpenApiDocument = {
           'actif',
         ],
       },
+      MoiVue: {
+        type: 'object',
+        description:
+          'Identité courante du client (Cloudflare Access B1) et ses droits, ' +
+          'résolus côté serveur : e-mail vérifié (ou null hors identité), statut ' +
+          'admin (permissif si le gating ADMIN_EMAILS est inactif), et ids des ' +
+          'foyers autorisés (parent actif). Sert à gater l’écran de création et à ' +
+          'borner la sélection de foyer.',
+        properties: {
+          email: { type: ['string', 'null'], format: 'email' },
+          admin: { type: 'boolean' },
+          foyers: {
+            type: 'array',
+            items: { type: 'string', format: 'uuid' },
+          },
+        },
+        required: ['email', 'admin', 'foyers'],
+      },
       ContratVue: {
         type: 'object',
         description: 'Vue projetée d’un contrat de garde.',
@@ -532,6 +550,26 @@ export const gatewayOpenApiDocument = {
         responses: {
           '204': { description: 'Parent retiré (pas de contenu).' },
           '404': { description: 'Parent inconnu.' },
+        },
+      },
+    },
+    '/api/v1/moi': {
+      get: {
+        summary: 'Identité courante et droits (admin, foyers autorisés)',
+        description:
+          'Renvoie l’identité Cloudflare Access du client (e-mail vérifié ou ' +
+          'null), son statut admin et l’ensemble des foyers dont il est parent ' +
+          'actif. Le front s’en sert pour gater l’écran de création (admin) et ' +
+          'borner la sélection de foyer (0/1/N).',
+        responses: {
+          '200': {
+            description: 'Identité courante et droits.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/MoiVue' },
+              },
+            },
+          },
         },
       },
     },

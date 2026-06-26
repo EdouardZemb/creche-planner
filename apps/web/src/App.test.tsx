@@ -56,7 +56,12 @@ vi.mock('./api/client', () => {
     }
   }
   return {
-    api: { lireFoyer: vi.fn(), listerFoyers: vi.fn(), listerAValider: vi.fn() },
+    api: {
+      lireFoyer: vi.fn(),
+      listerFoyers: vi.fn(),
+      listerAValider: vi.fn(),
+      moi: vi.fn(),
+    },
     ApiError,
     AuthExpiredError,
   };
@@ -77,6 +82,7 @@ const mockedApi = api as unknown as {
   lireFoyer: ReturnType<typeof vi.fn>;
   listerFoyers: ReturnType<typeof vi.fn>;
   listerAValider: ReturnType<typeof vi.fn>;
+  moi: ReturnType<typeof vi.fn>;
 };
 
 const FOYER_ID = 'f1';
@@ -98,6 +104,9 @@ describe('App — coquille de navigation', () => {
     mockedApi.listerFoyers.mockResolvedValue([]);
     // Pastille de validation (Lot 4) dans la nav : rien à valider par défaut.
     mockedApi.listerAValider.mockResolvedValue([]);
+    // Par défaut : aucune identité (mode hérité) + admin permissif → la prod
+    // actuelle / les tests historiques conservent leur comportement.
+    mockedApi.moi.mockResolvedValue({ email: null, admin: true, foyers: [] });
   });
 
   it('Accueil : un foyer mémorisé redirige vers son planning sans appel de découverte', async () => {
@@ -306,5 +315,110 @@ describe('App — coquille de navigation', () => {
       'href',
       `/foyers/${FOYER_ID}/planning`,
     );
+  });
+});
+
+describe('App — mode borné par identité (PR6)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mockedApi.lireFoyer.mockResolvedValue(dossierFactice);
+    mockedApi.listerFoyers.mockResolvedValue([]);
+    mockedApi.listerAValider.mockResolvedValue([]);
+  });
+
+  it('identité + 1 foyer autorisé : ouvre directement son planning (sans découverte)', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [FOYER_ID],
+    });
+    rendre('/');
+
+    await screen.findByText('PAGE_PLANNING');
+    // Le foyer découle de l'identité, pas de listerFoyers (découverte héritée).
+    expect(mockedApi.listerFoyers).not.toHaveBeenCalled();
+  });
+
+  it('identité + 0 foyer : écran « contactez l’administrateur » (pas de création)', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'inconnu@test.fr',
+      admin: false,
+      foyers: [],
+    });
+    rendre('/');
+
+    expect(
+      await screen.findByText('Aucun foyer ne vous est rattaché'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('PAGE_NOUVEAU_FOYER')).not.toBeInTheDocument();
+  });
+
+  it('identité + N foyers : sélecteur borné à l’ensemble autorisé', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [FOYER_ID, 'f2'],
+    });
+    rendre('/');
+
+    expect(await screen.findByText('Choisir un foyer')).toBeInTheDocument();
+    const ouvertures = screen.getAllByRole('link', { name: /Ouvrir le foyer/ });
+    expect(ouvertures).toHaveLength(2);
+    expect(ouvertures[0]).toHaveAttribute(
+      'href',
+      `/foyers/${FOYER_ID}/planning`,
+    );
+  });
+
+  it('cache localStorage hors ensemble autorisé : ignoré (plus une source de vérité)', async () => {
+    localStorage.setItem('creche:foyerId', 'foyer-non-autorise');
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [FOYER_ID],
+    });
+    rendre('/');
+
+    // Le cache forgé est ignoré → on ouvre le seul foyer autorisé, pas le cache.
+    await screen.findByText('PAGE_PLANNING');
+    await waitFor(() => {
+      expect(mockedApi.lireFoyer).toHaveBeenCalledWith(
+        FOYER_ID,
+        expect.anything(),
+      );
+    });
+    expect(mockedApi.lireFoyer).not.toHaveBeenCalledWith(
+      'foyer-non-autorise',
+      expect.anything(),
+    );
+  });
+
+  it('non-admin : le lien « Nouveau foyer » disparaît de l’en-tête', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [FOYER_ID],
+    });
+    rendre(`/foyers/${FOYER_ID}/planning`);
+    await screen.findByText('PAGE_PLANNING');
+
+    expect(
+      screen.queryByRole('link', { name: 'Nouveau foyer' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('admin : le lien « Nouveau foyer » reste présent', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'admin@test.fr',
+      admin: true,
+      foyers: [FOYER_ID],
+    });
+    rendre(`/foyers/${FOYER_ID}/planning`);
+    await screen.findByText('PAGE_PLANNING');
+
+    expect(
+      screen.getByRole('link', { name: 'Nouveau foyer' }),
+    ).toBeInTheDocument();
   });
 });
