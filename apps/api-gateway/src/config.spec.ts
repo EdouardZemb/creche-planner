@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { verifierConfigProduction } from './config.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { loadConfig, verifierConfigProduction } from './config.js';
 
 /**
  * AQ-01 (doc 27) — garde-fou de démarrage : en production, l'absence de
@@ -119,5 +119,35 @@ describe('verifierConfigProduction — identité Cloudflare Access (PR5)', () =>
         GATEWAY_AUTH_DISABLED: '1',
       });
     }).not.toThrow();
+  });
+});
+
+/**
+ * PR6 (provisioning admin) — `ADMIN_EMAILS` : allowlist normalisée (minuscules,
+ * dédoublonnée). Vide par défaut ⇒ gating admin **inactif** (opt-in).
+ */
+describe('loadConfig — allowlist admin (PR6)', () => {
+  let envInitial: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    envInitial = { ...process.env };
+    delete process.env['ADMIN_EMAILS'];
+  });
+
+  afterEach(() => {
+    process.env = envInitial;
+  });
+
+  it('renvoie une liste vide sans ADMIN_EMAILS (gating inactif par défaut)', () => {
+    expect(loadConfig().adminEmails).toEqual([]);
+  });
+
+  it('parse un CSV en minuscules, trim et dédoublonne', () => {
+    process.env['ADMIN_EMAILS'] =
+      ' Admin@Example.test ,chef@example.test, admin@example.test ';
+    expect(loadConfig().adminEmails).toEqual([
+      'admin@example.test',
+      'chef@example.test',
+    ]);
   });
 });

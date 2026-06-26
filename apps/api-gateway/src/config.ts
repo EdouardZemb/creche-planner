@@ -52,6 +52,17 @@ export interface GatewayConfig {
   readonly corsOrigins: readonly string[];
   readonly rateLimit: RateLimitConfig;
   readonly identite: IdentiteConfig;
+  /**
+   * Allowlist d'e-mails **administrateurs** (option b-ii, provisioning admin).
+   * Comparée à l'e-mail vérifié par Cloudflare Access pour gater la **création**
+   * de foyer et la **CRUD parents** (cf. `AdminGuard`). Normalisée en minuscules.
+   *
+   * **Opt-in** : liste **vide** ⇒ gating admin **désactivé** (toutes les requêtes
+   * passent — idiome du repo, cf. `GATEWAY_TOKEN` absent). La prod actuelle
+   * (sans `ADMIN_EMAILS`) reste donc inchangée ; le 403 admin ne s'active que
+   * lorsqu'un opérateur pose volontairement `ADMIN_EMAILS` (déploiement PR8).
+   */
+  readonly adminEmails: readonly string[];
 }
 
 /** Normalise une variable d'env : trim, et chaîne vide/blanche → `undefined`. */
@@ -66,6 +77,15 @@ function parseListe(valeur: string | undefined): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+/** Parse l'allowlist `ADMIN_EMAILS` : minuscules, dédoublonnée, ordre stable. */
+function parseAdminEmails(valeur: string | undefined): string[] {
+  const vus = new Set<string>();
+  for (const brut of parseListe(valeur)) {
+    vus.add(brut.toLowerCase());
+  }
+  return [...vus];
 }
 
 /**
@@ -138,5 +158,6 @@ export function loadConfig(): GatewayConfig {
       cfAud: texteNonVide(process.env['CF_ACCESS_AUD']),
       devHeaderAutorise: process.env['NODE_ENV'] !== 'production',
     },
+    adminEmails: parseAdminEmails(process.env['ADMIN_EMAILS']),
   };
 }

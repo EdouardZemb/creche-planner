@@ -1656,7 +1656,7 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
   message nominatif). lint/typecheck/test/build web + api-gateway **verts** (295 tests web, 67 api-gateway, Pact
   inchangé).
 
-## 24. Feature Parents du foyer (🚧 PR 5/8 livrée — identité observe-only au BFF)
+## 24. Feature Parents du foyer (🚧 PR 6/8 livrée — provisioning admin + sélection foyer web)
 
 > **Objectif** : adresser le récap hebdomadaire (et les futures notifications) **aux parents du foyer
 > concerné** au lieu de l'unique adresse globale `NOTIF_EMAIL_PARENT`. Modéliser proprement des **parents**
@@ -1747,9 +1747,39 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
     la PR7. Tests : validation JWT (JWKS local) OK/audience-KO/issuer-KO/email-absent, extraction `foyerId`,
     guard (dev-header posé/ignoré-en-prod, observe autorisé/refusé/erreur), garde-fou config. lint/typecheck/
     test/build **verts**. **Toujours sans refus dur.**
-- **PR 6 — admin (provisioning) + sélection foyer web** : guard admin (`ADMIN_EMAILS` vs e-mail CF), écran
-  « créer un foyer » gated admin + rattachement/détachement des parents, sélecteur foyer web borné à
-  l'ensemble autorisé (0/1/N), back-fill admin des foyers existants. **Toujours sans refus dur.**
+- **PR 6 — admin (provisioning) + sélection foyer web** (✅ livrée) :
+  - **`AdminGuard`** (`APP_GUARD`, enregistré **après** `IdentiteGuard` car il lit `request.identite`) :
+    s'applique aux **seules** routes `@AdminSeulement()` — `POST /api/v1/foyers` (création) et **écritures**
+    parents (`POST`/`PUT`/`DELETE /foyers/:id/parents[/:parentId]`). 403 si l'e-mail vérifié n'est pas dans
+    `ADMIN_EMAILS`. Les **lectures** (liste/lecture foyer, liste parents) restent ouvertes : l'isolation
+    d'**appartenance** par foyer relève de PR7.
+  - **Opt-in (sécurité prod)** : `ADMIN_EMAILS` (CSV, `config.adminEmails`, normalisé minuscules/dédoublonné)
+    **vide** ⇒ gating **désactivé** (idiome du repo, cf. `GATEWAY_TOKEN` absent). La **prod actuelle** (sans
+    `ADMIN_EMAILS`, sous `GATEWAY_AUTH_DISABLED=1`) reste **inchangée**, **zéro 403** introduit ; le 403 ne
+    s'active que lorsqu'un opérateur pose `ADMIN_EMAILS` (déploiement PR8). `verifierConfigProduction`
+    **inchangé** (pas de nouvelle exigence de boot). **« Refus dur d'appartenance » toujours pour PR7.**
+  - **Nouvel endpoint `GET /api/v1/moi`** (`MoiController`, dans l'OpenAPI → schéma `MoiVue`, route count
+    **12→13**, régén `openapi-types.gen.ts`) : résout côté serveur `{ email, admin, foyers }`. `email=null`
+    sans identité ; `admin` **permissif** (`true`) si gating inactif ; `foyers` = ensemble autorisé
+    (`foyersParEmail`, tolérant aux pannes). **Pas de nouveau Pact** (réutilise `foyersParEmail`, déjà
+    consommé depuis PR5).
+  - **Web** : contexte `MoiProvider`/`useMoi` (une requête `/moi` à la racine, repli **permissif/hérité** si
+    injoignable). `FoyerFormPage` **gated admin** (non-admin → écran « réservé à l'administrateur »).
+    **Sélecteur de foyer borné** (mode identité connue) : 0 foyer → « contactez l'administrateur », 1 →
+    ouverture directe, N → page `/mes-foyers`. **localStorage rétrogradé en cache** : suivi uniquement s'il
+    appartient à l'ensemble autorisé. En l'absence d'identité (prod actuelle / dev sans en-tête), comportement
+    **hérité** (découverte `listerFoyers` + localStorage) **inchangé**. En-tête : « Nouveau foyer » masqué hors
+    admin, « Mes foyers » affiché en multi-foyers.
+  - **Back-fill admin** : `scripts/backfill-parents.mjs` (idiome `seed-demo.mjs`) — associe un e-mail parent à
+    chaque foyer existant **via svc-foyer directement** (`POST /api/foyers/:id/parents`, **pas** le BFF
+    admin-gated → émet les events outbox → projection notifications + résolution `email→foyers` à jour).
+    **Dry-run par défaut** (`--apply` pour écrire), **idempotent** (e-mail déjà parent actif → ignoré), 409
+    sur unicité globale signalé. Fichier de correspondance gitignoré (PII). **Non exécuté ici** (action
+    admin/données → confirmation séparée).
+  - Tests : `AdminGuard` (non-gardée/opt-in inactif/admin/non-admin/sans-identité), `MoiController`
+    (null/permissif/admin/borné/panne), parsing `ADMIN_EMAILS`, RTL (gating `FoyerFormPage`, sélecteur 0/1/N,
+    cache invalidé, lien « Nouveau foyer » masqué), `MoiContext` (résolu/repli/défaut). lint/typecheck/test/
+    build **verts**. **Toujours sans refus dur d'appartenance.**
 - **PR 7 — enforcement de l'autorisation par foyer (derrière flag)** : guard d'appartenance 403 sur **toutes**
   les routes portant un `foyerId` (inventaire exhaustif ; admin bypass), activé après back-fill vérifié, tests
   d'accès refusé cross-foyer.

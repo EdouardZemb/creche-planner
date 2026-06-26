@@ -21,6 +21,7 @@ import {
   modifierParentSchema,
   valider,
 } from './bff.dto.js';
+import { AdminSeulement } from '../security/admin.decorator.js';
 import { relayer } from './relais.js';
 
 /** Vue agrégée d'un dossier foyer (identité + enfants + parents rattachés). */
@@ -35,13 +36,20 @@ interface DossierFoyerVue {
  * foyer puis ses enfants et parents en un seul appel orienté écran ; la lecture
  * renvoie le foyer **et** ses enfants/parents en une réponse. Les parents
  * exposent une vraie CRUD (sous-ressource éditable, cf. notifications hebdo).
+ *
+ * **Provisioning admin (PR6, option b-ii)** : la **création** de foyer et toute
+ * **écriture** de parent (ajout / édition / retrait) sont `@AdminSeulement()` —
+ * réservées à un e-mail de `ADMIN_EMAILS` quand le gating est actif (cf.
+ * `AdminGuard`). Les **lectures** (liste/lecture de foyer, liste de parents)
+ * restent ouvertes ici : l'isolation d'**appartenance** par foyer relève de PR7.
  */
 @Controller({ path: 'foyers', version: '1' })
 export class FoyersController {
   constructor(private readonly foyers: FoyerClient) {}
 
-  /** Crée un foyer puis rattache ses enfants et parents (orchestration). */
+  /** Crée un foyer puis rattache ses enfants et parents (orchestration, admin). */
   @Post()
+  @AdminSeulement()
   creer(@Body() corps: unknown): Promise<DossierFoyerVue> {
     const saisie = valider(creerDossierFoyerSchema, corps);
     return relayer(async () => {
@@ -88,8 +96,9 @@ export class FoyersController {
     return relayer(() => this.foyers.parents(id));
   }
 
-  /** Rattache un parent au foyer. */
+  /** Rattache un parent au foyer (admin). */
   @Post(':id/parents')
+  @AdminSeulement()
   @HttpCode(HttpStatus.CREATED)
   ajouterParent(
     @Param('id') id: string,
@@ -99,8 +108,9 @@ export class FoyersController {
     return relayer(() => this.foyers.ajouterParent(id, saisie));
   }
 
-  /** Édite un parent (champs fournis uniquement). */
+  /** Édite un parent (champs fournis uniquement, admin). */
   @Put(':id/parents/:parentId')
+  @AdminSeulement()
   modifierParent(
     @Param('id') id: string,
     @Param('parentId') parentId: string,
@@ -110,8 +120,9 @@ export class FoyersController {
     return relayer(() => this.foyers.modifierParent(id, parentId, saisie));
   }
 
-  /** Retire un parent (soft-delete côté `svc-foyer`). */
+  /** Retire un parent (soft-delete côté `svc-foyer`, admin). */
   @Delete(':id/parents/:parentId')
+  @AdminSeulement()
   @HttpCode(HttpStatus.NO_CONTENT)
   retirerParent(
     @Param('id') id: string,
