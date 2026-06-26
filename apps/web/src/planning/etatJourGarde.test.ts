@@ -8,13 +8,13 @@ const CONTRAT = { arrivee: '09:00', depart: '16:30' };
 
 /** Construit un `PlageHoraire` à partir de deux libellés `HH:MM`. */
 function plage(debut: string, fin: string): PlageHoraire {
-  const [dh, dm] = debut.split(':').map(Number);
-  const [fh, fm] = fin.split(':').map(Number);
+  const d = debut.split(':').map(Number);
+  const f = fin.split(':').map(Number);
   return {
-    debutHeures: dh,
-    debutMinutes: dm,
-    finHeures: fh,
-    finMinutes: fm,
+    debutHeures: d[0] ?? 0,
+    debutMinutes: d[1] ?? 0,
+    finHeures: f[0] ?? 0,
+    finMinutes: f[1] ?? 0,
   };
 }
 
