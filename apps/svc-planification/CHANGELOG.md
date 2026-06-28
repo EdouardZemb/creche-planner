@@ -1,3 +1,14 @@
+## 0.4.0 (2026-06-28)
+
+### 🚀 Features
+
+- **api-gateway:** enforcement autorisation par foyer derrière flag (pr7 parents-foyer) ([#82](https://github.com/EdouardZemb/creche-planner/pull/82))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.3.0 (2026-06-26)
 
 ### 🚀 Features

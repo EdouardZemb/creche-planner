@@ -1,3 +1,14 @@
+## 0.4.0 (2026-06-28)
+
+### 🚀 Features
+
+- **svc-notifications:** projection parents + récap hebdo groupé par foyer (pr4 parents-foyer) ([#78](https://github.com/EdouardZemb/creche-planner/pull/78))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.3.0 (2026-06-26)
 
 ### 🚀 Features
