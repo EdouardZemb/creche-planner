@@ -1,3 +1,17 @@
+## 0.4.0 (2026-06-28)
+
+### 🚀 Features
+
+- **api-gateway:** enforcement autorisation par foyer derrière flag (pr7 parents-foyer) ([#82](https://github.com/EdouardZemb/creche-planner/pull/82))
+- **api-gateway:** provisioning admin + /moi + sélection foyer bornée (pr6 parents-foyer) ([#81](https://github.com/EdouardZemb/creche-planner/pull/81))
+- **api-gateway:** guard d'identité cloudflare access observe-only (pr5 parents-foyer) ([#79](https://github.com/EdouardZemb/creche-planner/pull/79))
+- **bff-foyer:** crud parents bff + openapi + pact (pr2 parents-foyer) ([#76](https://github.com/EdouardZemb/creche-planner/pull/76))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.3.0 (2026-06-26)
 
 ### 🚀 Features

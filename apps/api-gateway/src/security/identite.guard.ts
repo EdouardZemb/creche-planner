@@ -5,26 +5,25 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { FoyerClient } from '../clients/foyer.client.js';
 import { loadConfig } from '../config.js';
 import {
   ENTETE_DEV_EMAIL,
   ENTETE_JWT_CF,
   emailDepuisJwtCf,
   entete,
-  foyerIdDemande,
   jwksCloudflare,
   type RequeteIdentifiable,
 } from './identite.js';
 import { PUBLIC_KEY } from './public.decorator.js';
 
 /**
- * Guard d'**identité** (option B1, Cloudflare Access) — **OBSERVE-ONLY (PR5)**.
+ * Guard d'**identité** (option B1, Cloudflare Access).
  *
  * Il établit l'identité du parent et la pose en `request.identite`, mais
- * **n'autorise ni ne refuse aucune route** : il se contente de **journaliser**
- * ce qu'il *aurait* refusé (résolution `email → {foyers}` comparée au `foyerId`
- * demandé). L'enforcement 403 viendra en PR7, derrière un flag, après back-fill.
+ * **n'autorise ni ne refuse aucune route** : la décision d'accès par foyer relève
+ * du {@link AppartenanceGuard} (PR7), qui s'exécute après lui. Ce guard est
+ * strictement additif et **ne lève jamais** (toute erreur de validation est
+ * avalée et journalisée).
  *
  * Sources d'identité (par priorité) :
  * 1. **JWT Cloudflare Access** (`Cf-Access-Jwt-Assertion`) validé contre le JWKS
@@ -33,18 +32,13 @@ import { PUBLIC_KEY } from './public.decorator.js';
  * 2. **Dev** : `X-Dev-User-Email`, accepté **uniquement hors production**
  *    (`config.identite.devHeaderAutorise`), pour développer sans Cloudflare.
  *
- * L'auth **machine** web→gateway reste assurée par {@link TokenAuthGuard} ; ce
- * guard est strictement additif et ne lève jamais (toute erreur est avalée et
- * journalisée — observe-only).
+ * L'auth **machine** web→gateway reste assurée par {@link TokenAuthGuard}.
  */
 @Injectable()
 export class IdentiteGuard implements CanActivate {
   private readonly logger = new Logger(IdentiteGuard.name);
 
-  constructor(
-    private readonly reflector: Reflector,
-    private readonly foyers: FoyerClient,
-  ) {}
+  constructor(private readonly reflector: Reflector) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const estPublic = this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, [
@@ -59,17 +53,17 @@ export class IdentiteGuard implements CanActivate {
     const email = await this.resoudreEmail(req);
     if (email !== undefined) {
       req.identite = { email };
-      await this.observerAppartenance(email, req);
     }
 
-    // OBSERVE-ONLY : on laisse TOUJOURS passer (l'enforcement est en PR7).
+    // Pose l'identité et laisse TOUJOURS passer : l'autorisation par foyer est
+    // décidée par AppartenanceGuard (en aval).
     return true;
   }
 
   /**
    * Résout l'e-mail vérifié de la requête, ou `undefined` si aucune identité
    * n'a pu être établie. Ne lève jamais : un JWT invalide est journalisé puis
-   * ignoré (observe-only).
+   * ignoré.
    */
   private async resoudreEmail(
     req: RequeteIdentifiable,
@@ -86,7 +80,7 @@ export class IdentiteGuard implements CanActivate {
         );
       } catch (erreur) {
         this.logger.warn(
-          `JWT Cloudflare Access invalide (ignoré, observe-only) : ${messageErreur(erreur)}`,
+          `JWT Cloudflare Access invalide (ignoré) : ${messageErreur(erreur)}`,
         );
         return undefined;
       }
@@ -103,39 +97,6 @@ export class IdentiteGuard implements CanActivate {
     }
 
     return undefined;
-  }
-
-  /**
-   * OBSERVE-ONLY : compare le `foyerId` demandé à l'ensemble des foyers dont
-   * l'e-mail est parent actif, et **journalise** ce qu'on aurait refusé. Aucune
-   * décision d'accès n'est prise. La résolution peut échouer (svc-foyer
-   * indisponible) → journalisée, sans impact.
-   */
-  private async observerAppartenance(
-    email: string,
-    req: RequeteIdentifiable,
-  ): Promise<void> {
-    const foyerId = foyerIdDemande(req);
-    if (foyerId === undefined) {
-      return;
-    }
-    try {
-      const autorises = await this.foyers.foyersParEmail(email);
-      if (autorises.includes(foyerId)) {
-        this.logger.debug(
-          `observe-only : accès foyer ${foyerId} autorisé pour ${email}`,
-        );
-      } else {
-        this.logger.warn(
-          `observe-only : AURAIT REFUSÉ ${email} → foyer ${foyerId} ` +
-            `(foyers autorisés : ${autorises.length > 0 ? autorises.join(', ') : 'aucun'})`,
-        );
-      }
-    } catch (erreur) {
-      this.logger.warn(
-        `observe-only : résolution foyers impossible pour ${email} : ${messageErreur(erreur)}`,
-      );
-    }
   }
 }
 

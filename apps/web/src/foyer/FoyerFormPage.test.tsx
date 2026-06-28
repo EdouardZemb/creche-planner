@@ -7,6 +7,8 @@ import type { DossierFoyerVue } from '../types/bff';
 vi.mock('../api/client', () => ({
   api: {
     creerFoyer: vi.fn(),
+    // Utilisé par MoiProvider (test de gating admin) ; inerte ailleurs.
+    moi: vi.fn().mockResolvedValue({ email: null, admin: true, foyers: [] }),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -27,8 +29,12 @@ vi.mock('../utils/store', () => ({
 
 import { api, ApiError } from '../api/client';
 import { setFoyerId } from '../utils/store';
+import { MoiProvider } from '../session/MoiContext';
 
-const mockedApi = api as unknown as { creerFoyer: ReturnType<typeof vi.fn> };
+const mockedApi = api as unknown as {
+  creerFoyer: ReturnType<typeof vi.fn>;
+  moi: ReturnType<typeof vi.fn>;
+};
 
 const dossierFactice: DossierFoyerVue = {
   foyer: {
@@ -343,5 +349,52 @@ describe('FoyerFormPage', () => {
     const message = document.getElementById(idDecrit!);
     expect(message).toHaveTextContent('adresse e-mail invalide');
     expect(message).toHaveAttribute('role', 'alert');
+  });
+});
+
+describe('FoyerFormPage — gating admin (PR6)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('non-admin : écran « réservé à l’administrateur », pas de formulaire', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [],
+    });
+    render(
+      <MemoryRouter>
+        <MoiProvider>
+          <FoyerFormPage />
+        </MoiProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("Création réservée à l'administrateur"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Créer le foyer' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('admin : le formulaire de création s’affiche', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'admin@test.fr',
+      admin: true,
+      foyers: [],
+    });
+    render(
+      <MemoryRouter>
+        <MoiProvider>
+          <FoyerFormPage />
+        </MoiProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole('button', { name: 'Créer le foyer' }),
+    ).toBeInTheDocument();
   });
 });

@@ -25,14 +25,70 @@ import { useFoyer } from './hooks/useFoyer';
 import { useTitrePage } from './hooks/useTitrePage';
 import { useAnnonceRoute } from './hooks/useAnnonceRoute';
 import { EtatVide, type ActionEtatVide } from './ui/EtatVide';
+import { MoiProvider, useMoi } from './session/MoiContext';
 
 function Accueil() {
-  // Seul endroit qui lit localStorage : restauration du dernier foyer à la racine.
+  const moi = useMoi();
+  if (moi.loading) {
+    return <p className="muted">Chargement de votre session…</p>;
+  }
+
+  // Mode BORNÉ : identité connue (Cloudflare Access B1 / en-tête de dev). Le foyer
+  // découle de l'ensemble autorisé `moi.foyers`, plus d'un id localStorage forgeable.
+  if (moi.email !== null) {
+    // localStorage rétrogradé en simple cache : suivi UNIQUEMENT s'il appartient
+    // à l'ensemble autorisé (sinon ignoré — ce n'est plus une source de vérité).
+    const cache = getFoyerId();
+    if (cache && moi.foyers.includes(cache)) {
+      return <Navigate to={`/foyers/${cache}/planning`} replace />;
+    }
+    if (moi.foyers.length === 1) {
+      return <Navigate to={`/foyers/${moi.foyers[0]}/planning`} replace />;
+    }
+    // 0 foyer (contactez l'admin) ou N foyers (sélecteur) : page dédiée.
+    return <Navigate to="/mes-foyers" replace />;
+  }
+
+  // Mode HÉRITÉ : aucune identité (prod `GATEWAY_AUTH_DISABLED=1` sans Cloudflare,
+  // ou dev sans en-tête). Comportement historique : cache localStorage puis
+  // découverte serveur — la prod actuelle reste inchangée.
   const id = getFoyerId();
   if (id) {
     return <Navigate to={`/foyers/${id}/planning`} replace />;
   }
   return <AccueilDecouverte />;
+}
+
+/**
+ * Page « mes foyers » (mode borné) : 0 foyer → écran « contactez l'administrateur »
+ * (provisioning admin, option b-ii) ; N foyers → sélecteur borné à l'ensemble
+ * autorisé. Atteinte depuis l'accueil ou le lien « Mes foyers » de l'en-tête.
+ */
+function MesFoyersPage() {
+  const moi = useMoi();
+  useTitrePage('Mes foyers');
+  if (moi.loading) {
+    return <p className="muted">Chargement de votre session…</p>;
+  }
+  if (moi.foyers.length === 0) {
+    return (
+      <EtatVide
+        titre="Aucun foyer ne vous est rattaché"
+        description="Votre compte n'est rattaché à aucun foyer. Contactez l'administrateur pour qu'il vous rattache au vôtre."
+      />
+    );
+  }
+  return (
+    <EtatVide
+      titre="Choisir un foyer"
+      description="Plusieurs foyers vous sont rattachés. Choisissez celui à ouvrir."
+      actions={moi.foyers.map((id, i) => ({
+        libelle: `Ouvrir le foyer ${i + 1}`,
+        href: `/foyers/${id}/planning`,
+        primaire: i === 0,
+      }))}
+    />
+  );
 }
 
 /**
@@ -68,6 +124,7 @@ function Entete() {
   // La route /foyers/new partage le segment :foyerId ("new") : on n'affiche pas
   // les liens foyer pour cette pseudo-valeur.
   const id = foyerId && foyerId !== 'new' ? foyerId : null;
+  const moi = useMoi();
   return (
     <header className="app-header">
       <a href="#contenu" className="skip-link">
@@ -87,7 +144,13 @@ function Entete() {
             <NavLink to={`/foyers/${id}/couts`}>Coûts annuels</NavLink>
           </>
         )}
-        <NavLink to="/foyers/new">Nouveau foyer</NavLink>
+        {/* Mode borné, familles multi-foyers : accès au sélecteur. */}
+        {moi.foyers.length > 1 && (
+          <NavLink to="/mes-foyers">Mes foyers</NavLink>
+        )}
+        {/* Création réservée à l'admin (provisioning b-ii). Permissif tant que le
+            gating ADMIN_EMAILS est inactif → la prod actuelle conserve le lien. */}
+        {moi.admin && <NavLink to="/foyers/new">Nouveau foyer</NavLink>}
         <NavLink to="/etablissements">Établissements</NavLink>
       </nav>
     </header>
@@ -207,6 +270,7 @@ function PageIntrouvable() {
  */
 function titreDepuisPathname(pathname: string): string {
   if (pathname === '/foyers/new') return 'Nouveau foyer';
+  if (pathname === '/mes-foyers') return 'Mes foyers';
   if (pathname === '/etablissements') return 'Établissements';
   const foyer = /^\/foyers\/[^/]+\/(contrats|planning|couts)$/.exec(pathname);
   if (foyer) {
@@ -242,6 +306,7 @@ function Coquille() {
       <main id="contenu" tabIndex={-1} ref={refCible}>
         <Routes>
           <Route path="/" element={<Accueil />} />
+          <Route path="/mes-foyers" element={<MesFoyersPage />} />
           <Route path="/etablissements" element={<EtablissementsPage />} />
           <Route path="/foyers/new" element={<FoyerFormPage />} />
           <Route path="/foyers/:foyerId" element={<GardeFoyer />}>
@@ -259,7 +324,9 @@ function Coquille() {
 export function App() {
   return (
     <BrowserRouter>
-      <Coquille />
+      <MoiProvider>
+        <Coquille />
+      </MoiProvider>
     </BrowserRouter>
   );
 }

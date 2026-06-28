@@ -10,6 +10,8 @@ import {
   type ErreurChamp,
 } from '../utils/erreurs';
 import { Abbr } from '../ui/Abbr';
+import { EtatVide } from '../ui/EtatVide';
+import { useMoi } from '../session/MoiContext';
 import type { CreerEnfant, CreerParent } from '../types/bff';
 
 interface EtatEnfant {
@@ -89,6 +91,7 @@ export function FoyerFormPage() {
   useTitrePage('Nouveau foyer');
   const navigate = useNavigate();
   const idBase = useId();
+  const moi = useMoi();
 
   const [ressourcesMensuelles, setRessourcesMensuelles] =
     useState(DEFAUT_RESSOURCES);
@@ -214,6 +217,21 @@ export function FoyerFormPage() {
     } finally {
       setChargement(false);
     }
+  }
+
+  // Provisioning admin (option b-ii) : la création de foyer est réservée à un
+  // administrateur. Tant que le gating `ADMIN_EMAILS` est inactif, `moi.admin`
+  // reste permissif (true) et l'écran s'affiche normalement (prod actuelle).
+  if (!moi.loading && !moi.admin) {
+    return (
+      <EtatVide
+        titre="Création réservée à l'administrateur"
+        description="Seul un administrateur peut créer un foyer et y rattacher des parents. Contactez l'administrateur pour faire créer le vôtre."
+        actions={[
+          { libelle: 'Mes foyers', href: '/mes-foyers', primaire: true },
+        ]}
+      />
+    );
   }
 
   return (

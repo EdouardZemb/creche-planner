@@ -21,6 +21,8 @@ import {
   modifierParentSchema,
   valider,
 } from './bff.dto.js';
+import { AdminSeulement } from '../security/admin.decorator.js';
+import { FoyerScope } from '../security/foyer-scope.decorator.js';
 import { relayer } from './relais.js';
 
 /** Vue agrégée d'un dossier foyer (identité + enfants + parents rattachés). */
@@ -35,13 +37,24 @@ interface DossierFoyerVue {
  * foyer puis ses enfants et parents en un seul appel orienté écran ; la lecture
  * renvoie le foyer **et** ses enfants/parents en une réponse. Les parents
  * exposent une vraie CRUD (sous-ressource éditable, cf. notifications hebdo).
+ *
+ * **Provisioning admin (PR6, option b-ii)** : la **création** de foyer et toute
+ * **écriture** de parent (ajout / édition / retrait) sont `@AdminSeulement()` —
+ * réservées à un e-mail de `ADMIN_EMAILS` quand le gating est actif (cf.
+ * `AdminGuard`). Les **lectures** (liste/lecture de foyer, liste de parents)
+ * restent ouvertes ici : l'isolation d'**appartenance** par foyer relève de PR7.
  */
 @Controller({ path: 'foyers', version: '1' })
 export class FoyersController {
   constructor(private readonly foyers: FoyerClient) {}
 
-  /** Crée un foyer puis rattache ses enfants et parents (orchestration). */
+  /**
+   * Crée un foyer puis rattache ses enfants et parents (orchestration, admin).
+   * **Pas de `@FoyerScope`** : amorçage (le foyer n'existe pas encore) ; l'accès
+   * est borné par `@AdminSeulement()` (provisioning admin, PR6).
+   */
   @Post()
+  @AdminSeulement()
   creer(@Body() corps: unknown): Promise<DossierFoyerVue> {
     const saisie = valider(creerDossierFoyerSchema, corps);
     return relayer(async () => {
@@ -63,7 +76,12 @@ export class FoyersController {
     });
   }
 
-  /** Liste les foyers existants (découverte du foyer déjà configuré). */
+  /**
+   * Liste les foyers existants (découverte « mode hérité », email inconnu).
+   * **Pas de `@FoyerScope`** : ne porte pas de `foyerId` unique (renvoie tout).
+   * Gap résiduel connu — une fois l'identité câblée, le web borne via `/moi` ;
+   * restreindre cette liste relève d'un suivi (cf. doc 24 §24, PR7).
+   */
   @Get()
   lister(): Promise<FoyerVue[]> {
     return relayer(() => this.foyers.lister());
@@ -71,6 +89,7 @@ export class FoyersController {
 
   /** Lit un foyer, ses enfants et ses parents. */
   @Get(':id')
+  @FoyerScope('param:id')
   lire(@Param('id') id: string): Promise<DossierFoyerVue> {
     return relayer(async () => {
       const [foyer, enfants, parents] = await Promise.all([
@@ -84,12 +103,15 @@ export class FoyersController {
 
   /** Liste les parents actifs d'un foyer. */
   @Get(':id/parents')
+  @FoyerScope('param:id')
   listerParents(@Param('id') id: string): Promise<ParentVue[]> {
     return relayer(() => this.foyers.parents(id));
   }
 
-  /** Rattache un parent au foyer. */
+  /** Rattache un parent au foyer (admin). */
   @Post(':id/parents')
+  @AdminSeulement()
+  @FoyerScope('param:id')
   @HttpCode(HttpStatus.CREATED)
   ajouterParent(
     @Param('id') id: string,
@@ -99,8 +121,10 @@ export class FoyersController {
     return relayer(() => this.foyers.ajouterParent(id, saisie));
   }
 
-  /** Édite un parent (champs fournis uniquement). */
+  /** Édite un parent (champs fournis uniquement, admin). */
   @Put(':id/parents/:parentId')
+  @AdminSeulement()
+  @FoyerScope('param:id')
   modifierParent(
     @Param('id') id: string,
     @Param('parentId') parentId: string,
@@ -110,8 +134,10 @@ export class FoyersController {
     return relayer(() => this.foyers.modifierParent(id, parentId, saisie));
   }
 
-  /** Retire un parent (soft-delete côté `svc-foyer`). */
+  /** Retire un parent (soft-delete côté `svc-foyer`, admin). */
   @Delete(':id/parents/:parentId')
+  @AdminSeulement()
+  @FoyerScope('param:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   retirerParent(
     @Param('id') id: string,

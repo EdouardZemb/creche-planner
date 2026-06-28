@@ -33,6 +33,9 @@ export type EnfantVue = SchemaComposant<'EnfantVue'>;
 /** Vue projetée d'un parent — dérivée de `components.schemas.ParentVue`. */
 export type ParentVue = SchemaComposant<'ParentVue'>;
 
+/** Identité courante + droits (admin, foyers autorisés) — dérivée de `components.schemas.MoiVue`. */
+export type MoiVue = SchemaComposant<'MoiVue'>;
+
 /** Vue projetée d'un contrat — dérivée de `components.schemas.ContratVue`. */
 export type ContratVue = SchemaComposant<'ContratVue'>;
 

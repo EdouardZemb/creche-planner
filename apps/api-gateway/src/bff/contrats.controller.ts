@@ -24,6 +24,7 @@ import {
   semaineIsoSchema,
   valider,
 } from './bff.dto.js';
+import { FoyerScope } from '../security/foyer-scope.decorator.js';
 import { relayer } from './relais.js';
 
 /**
@@ -36,6 +37,7 @@ export class ContratsController {
 
   /** Liste les contrats d'un foyer : `?foyer=<uuid>`. */
   @Get()
+  @FoyerScope('query:foyer')
   lister(
     @Query('foyer') foyer: string | undefined,
   ): Promise<readonly ContratVue[]> {
@@ -47,6 +49,7 @@ export class ContratsController {
 
   /** Crée un contrat de garde. */
   @Post()
+  @FoyerScope('body:foyerId')
   creer(@Body() corps: unknown): Promise<ContratVue> {
     const saisie = valider(creerContratSchema, corps);
     return relayer(() =>
@@ -56,6 +59,7 @@ export class ContratsController {
 
   /** Modifie un contrat de garde existant. */
   @Put(':id')
+  @FoyerScope('contrat:id')
   modifier(
     @Param('id') id: string,
     @Body() corps: unknown,
@@ -68,6 +72,7 @@ export class ContratsController {
 
   /** Supprime un contrat de garde. */
   @Delete(':id')
+  @FoyerScope('contrat:id')
   @HttpCode(204)
   async supprimer(@Param('id') id: string): Promise<void> {
     await relayer(() => this.planification.supprimerContrat(id));
@@ -75,6 +80,7 @@ export class ContratsController {
 
   /** Lit la saisie de planning d'un mois (réel par défaut, simulé si `?simule=true`). */
   @Get(':id/plannings/:mois')
+  @FoyerScope('contrat:id')
   lirePlanning(
     @Param('id') id: string,
     @Param('mois') mois: string,
@@ -88,6 +94,7 @@ export class ContratsController {
 
   /** Écrit le planning d'un mois (réel par défaut, simulé si `?simule=true`). */
   @Put(':id/plannings/:mois')
+  @FoyerScope('contrat:id')
   @HttpCode(204)
   async ecrirePlanning(
     @Param('id') id: string,
@@ -108,6 +115,7 @@ export class ContratsController {
    * la fusion read-modify-write est faite par `svc-planification`.
    */
   @Put(':id/plannings/semaine/:semaineIso')
+  @FoyerScope('contrat:id')
   @HttpCode(204)
   async ecrireSemaine(
     @Param('id') id: string,

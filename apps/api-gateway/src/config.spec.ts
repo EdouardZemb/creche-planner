@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { verifierConfigProduction } from './config.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { loadConfig, verifierConfigProduction } from './config.js';
 
 /**
  * AQ-01 (doc 27) — garde-fou de démarrage : en production, l'absence de
@@ -119,5 +119,68 @@ describe('verifierConfigProduction — identité Cloudflare Access (PR5)', () =>
         GATEWAY_AUTH_DISABLED: '1',
       });
     }).not.toThrow();
+  });
+});
+
+/**
+ * PR6 (provisioning admin) — `ADMIN_EMAILS` : allowlist normalisée (minuscules,
+ * dédoublonnée). Vide par défaut ⇒ gating admin **inactif** (opt-in).
+ */
+describe('loadConfig — allowlist admin (PR6)', () => {
+  let envInitial: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    envInitial = { ...process.env };
+    delete process.env['ADMIN_EMAILS'];
+  });
+
+  afterEach(() => {
+    process.env = envInitial;
+  });
+
+  it('renvoie une liste vide sans ADMIN_EMAILS (gating inactif par défaut)', () => {
+    expect(loadConfig().adminEmails).toEqual([]);
+  });
+
+  it('parse un CSV en minuscules, trim et dédoublonne', () => {
+    process.env['ADMIN_EMAILS'] =
+      ' Admin@Example.test ,chef@example.test, admin@example.test ';
+    expect(loadConfig().adminEmails).toEqual([
+      'admin@example.test',
+      'chef@example.test',
+    ]);
+  });
+});
+
+/**
+ * PR7 (enforcement appartenance) — `FOYER_AUTHZ_ENFORCE` : flag opt-in,
+ * désactivé par défaut (observe-only). N'est `true` que posé explicitement à `1`.
+ */
+describe('loadConfig — flag d’enforcement par foyer (PR7)', () => {
+  let envInitial: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    envInitial = { ...process.env };
+    delete process.env['FOYER_AUTHZ_ENFORCE'];
+  });
+
+  afterEach(() => {
+    process.env = envInitial;
+  });
+
+  it('désactivé par défaut (observe-only)', () => {
+    expect(loadConfig().foyerAuthzEnforce).toBe(false);
+  });
+
+  it('activé uniquement sur la valeur exacte « 1 »', () => {
+    process.env['FOYER_AUTHZ_ENFORCE'] = '1';
+    expect(loadConfig().foyerAuthzEnforce).toBe(true);
+  });
+
+  it('ignore toute autre valeur (« true », « 0 », vide)', () => {
+    for (const v of ['true', '0', '', 'oui']) {
+      process.env['FOYER_AUTHZ_ENFORCE'] = v;
+      expect(loadConfig().foyerAuthzEnforce).toBe(false);
+    }
   });
 });

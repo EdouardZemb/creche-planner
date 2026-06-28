@@ -21,6 +21,7 @@ import {
   type ValidationResultat,
 } from '../clients/notifications.client.js';
 import { PlanificationClient } from '../clients/planification.client.js';
+import { FoyerScope } from '../security/foyer-scope.decorator.js';
 import { valider } from './bff.dto.js';
 import { relayer } from './relais.js';
 import {
@@ -74,6 +75,7 @@ export class ValidationsController {
    * Sert d'écran d'édition ouvert depuis une notification A_VALIDER.
    */
   @Get('semaine/:foyerId/:semaineIso/besoins')
+  @FoyerScope('param:foyerId')
   semaineBesoins(
     @Param('foyerId') foyerId: string,
     @Param('semaineIso') semaineIso: string,
@@ -129,6 +131,7 @@ export class ValidationsController {
    * contrat amont — on réutilise `listerContrats` (comme `semaineBesoins`).
    */
   @Get('a-valider')
+  @FoyerScope('query:foyer')
   aValider(
     @Query('foyer') foyer?: string,
   ): Promise<NotificationAValiderEnrichie[]> {
@@ -154,6 +157,7 @@ export class ValidationsController {
 
   /** Valide la semaine `:semaineIso` du contrat `:contratId`. */
   @Post('validations/:contratId/:semaineIso')
+  @FoyerScope('contrat:contratId')
   valider(
     @Param('contratId') contratId: string,
     @Param('semaineIso') semaineIso: string,
@@ -168,6 +172,7 @@ export class ValidationsController {
    * mail par établissement regroupant tous les enfants du foyer validés avec modifications.
    */
   @Get('semaine/:foyerId/:semaineIso/etablissements/:cle/brouillon')
+  @FoyerScope('param:foyerId')
   brouillon(
     @Param('foyerId') foyerId: string,
     @Param('semaineIso') semaineIso: string,
@@ -183,6 +188,7 @@ export class ValidationsController {
    * Idempotent sur `(foyer, semaine, établissement)`.
    */
   @Post('envois/etablissement')
+  @FoyerScope('body:foyerId')
   envoyer(@Body() corps: unknown): Promise<EnvoiEtablissementResultat> {
     const { foyerId, semaineIso, cle } = valider(
       envoiEtablissementSchema,

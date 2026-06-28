@@ -1656,7 +1656,7 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
   message nominatif). lint/typecheck/test/build web + api-gateway **verts** (295 tests web, 67 api-gateway, Pact
   inchangé).
 
-## 24. Feature Parents du foyer (🚧 PR 5/8 livrée — identité observe-only au BFF)
+## 24. Feature Parents du foyer (✅ COMPLÈTE — 8/8 PR livrées)
 
 > **Objectif** : adresser le récap hebdomadaire (et les futures notifications) **aux parents du foyer
 > concerné** au lieu de l'unique adresse globale `NOTIF_EMAIL_PARENT`. Modéliser proprement des **parents**
@@ -1747,12 +1747,125 @@ overflow:hidden; text-overflow:ellipsis` → **toujours une seule ligne**, tronq
     la PR7. Tests : validation JWT (JWKS local) OK/audience-KO/issuer-KO/email-absent, extraction `foyerId`,
     guard (dev-header posé/ignoré-en-prod, observe autorisé/refusé/erreur), garde-fou config. lint/typecheck/
     test/build **verts**. **Toujours sans refus dur.**
-- **PR 6 — admin (provisioning) + sélection foyer web** : guard admin (`ADMIN_EMAILS` vs e-mail CF), écran
-  « créer un foyer » gated admin + rattachement/détachement des parents, sélecteur foyer web borné à
-  l'ensemble autorisé (0/1/N), back-fill admin des foyers existants. **Toujours sans refus dur.**
-- **PR 7 — enforcement de l'autorisation par foyer (derrière flag)** : guard d'appartenance 403 sur **toutes**
-  les routes portant un `foyerId` (inventaire exhaustif ; admin bypass), activé après back-fill vérifié, tests
-  d'accès refusé cross-foyer.
-- **PR 8 — config / déploiement / doc** : dépréciation `NOTIF_EMAIL_PARENT`, config CF Access + `ADMIN_EMAILS`
-  - secrets `.env.server.enc` / staging, finalisation doc. `can-i-deploy` inchangé (option NATS → pas de
-    nouvelle paire).
+- **PR 6 — admin (provisioning) + sélection foyer web** (✅ livrée) :
+  - **`AdminGuard`** (`APP_GUARD`, enregistré **après** `IdentiteGuard` car il lit `request.identite`) :
+    s'applique aux **seules** routes `@AdminSeulement()` — `POST /api/v1/foyers` (création) et **écritures**
+    parents (`POST`/`PUT`/`DELETE /foyers/:id/parents[/:parentId]`). 403 si l'e-mail vérifié n'est pas dans
+    `ADMIN_EMAILS`. Les **lectures** (liste/lecture foyer, liste parents) restent ouvertes : l'isolation
+    d'**appartenance** par foyer relève de PR7.
+  - **Opt-in (sécurité prod)** : `ADMIN_EMAILS` (CSV, `config.adminEmails`, normalisé minuscules/dédoublonné)
+    **vide** ⇒ gating **désactivé** (idiome du repo, cf. `GATEWAY_TOKEN` absent). La **prod actuelle** (sans
+    `ADMIN_EMAILS`, sous `GATEWAY_AUTH_DISABLED=1`) reste **inchangée**, **zéro 403** introduit ; le 403 ne
+    s'active que lorsqu'un opérateur pose `ADMIN_EMAILS` (déploiement PR8). `verifierConfigProduction`
+    **inchangé** (pas de nouvelle exigence de boot). **« Refus dur d'appartenance » toujours pour PR7.**
+  - **Nouvel endpoint `GET /api/v1/moi`** (`MoiController`, dans l'OpenAPI → schéma `MoiVue`, route count
+    **12→13**, régén `openapi-types.gen.ts`) : résout côté serveur `{ email, admin, foyers }`. `email=null`
+    sans identité ; `admin` **permissif** (`true`) si gating inactif ; `foyers` = ensemble autorisé
+    (`foyersParEmail`, tolérant aux pannes). **Pas de nouveau Pact** (réutilise `foyersParEmail`, déjà
+    consommé depuis PR5).
+  - **Web** : contexte `MoiProvider`/`useMoi` (une requête `/moi` à la racine, repli **permissif/hérité** si
+    injoignable). `FoyerFormPage` **gated admin** (non-admin → écran « réservé à l'administrateur »).
+    **Sélecteur de foyer borné** (mode identité connue) : 0 foyer → « contactez l'administrateur », 1 →
+    ouverture directe, N → page `/mes-foyers`. **localStorage rétrogradé en cache** : suivi uniquement s'il
+    appartient à l'ensemble autorisé. En l'absence d'identité (prod actuelle / dev sans en-tête), comportement
+    **hérité** (découverte `listerFoyers` + localStorage) **inchangé**. En-tête : « Nouveau foyer » masqué hors
+    admin, « Mes foyers » affiché en multi-foyers.
+  - **Back-fill admin** : `scripts/backfill-parents.mjs` (idiome `seed-demo.mjs`) — associe un e-mail parent à
+    chaque foyer existant **via svc-foyer directement** (`POST /api/foyers/:id/parents`, **pas** le BFF
+    admin-gated → émet les events outbox → projection notifications + résolution `email→foyers` à jour).
+    **Dry-run par défaut** (`--apply` pour écrire), **idempotent** (e-mail déjà parent actif → ignoré), 409
+    sur unicité globale signalé. Fichier de correspondance gitignoré (PII). **Non exécuté ici** (action
+    admin/données → confirmation séparée).
+  - Tests : `AdminGuard` (non-gardée/opt-in inactif/admin/non-admin/sans-identité), `MoiController`
+    (null/permissif/admin/borné/panne), parsing `ADMIN_EMAILS`, RTL (gating `FoyerFormPage`, sélecteur 0/1/N,
+    cache invalidé, lien « Nouveau foyer » masqué), `MoiContext` (résolu/repli/défaut). lint/typecheck/test/
+    build **verts**. **Toujours sans refus dur d'appartenance.**
+- **PR 7 — enforcement de l'autorisation par foyer (derrière flag)** (✅ livrée) :
+  - **`AppartenanceGuard`** (`APP_GUARD`, enregistré **en dernier**, après `AdminGuard`, car il lit
+    `request.identite`) : sur **toute** route portant un `foyerId`, dérive le foyer ciblé, le compare à
+    l'ensemble autorisé (`FoyerClient.foyersParEmail`, parents **actifs**) et **refuse (403)** hors de cet
+    ensemble. Transforme le « AURAIT REFUSÉ » observe-only de PR5 en **refus réel**.
+  - **Inventaire exhaustif déclaratif** : décorateur **`@FoyerScope('<source>')`** posé sur chaque route
+    concernée — l'inventaire vit **dans le code** des contrôleurs (une route sans décorateur n'est pas
+    soumise à l'autorisation par foyer). Sources : `param:id` (`/foyers/:id`, `/foyers/:id/parents[/…]`),
+    `param:foyerId` (`/notifications/semaine/:foyerId/…`), `query:foyer` (`/contrats?foyer=`,
+    `/couts?foyer=`, `/couts/annuel`, `/notifications/a-valider`), `body:foyerId` (`POST /contrats`,
+    `POST /notifications/envois/etablissement`), et **`contrat:id`/`contrat:contratId`** pour les routes ne
+    portant qu'un **contratId** (`/contrats/:id[/plannings/…]`, `/notifications/validations/:contratId/…`),
+    **résolu en foyer** via un nouvel endpoint **`GET /api/contrats/:id`** de `svc-planification`
+    (`PlanificationClient.contrat()` ; +1 interaction Pact, état `ETAT_CONTRAT_EXISTE` réutilisé, **pas** de
+    nouvelle paire). Routes **hors périmètre** (sans `@FoyerScope`) : `POST /foyers` (amorçage, `@AdminSeulement`),
+    `GET /foyers` (liste « mode hérité », ne porte pas un foyerId unique — gap résiduel documenté), `/moi`,
+    annuaire `/etablissements`.
+  - **Derrière le flag `FOYER_AUTHZ_ENFORCE` (opt-in, défaut désactivé)** — `config.foyerAuthzEnforce` :
+    **off** ⇒ **observe-only** (journalise « AURAIT REFUSÉ », laisse passer — **prod actuelle inchangée**,
+    zéro 403) ; **`=1`** (après back-fill PR6 vérifié) ⇒ **refus réel 403**. À n'activer en prod qu'après
+    confirmation humaine (un mauvais réglage verrouillerait des foyers).
+  - **Garde-fous anti-verrouillage** : **route non scopée** → passe ; **aucune identité établie** → passe
+    (l'auth machine `TokenAuthGuard` + Cloudflare Access au bord restent les barrières — décision : ne pas
+    verrouiller un déploiement où l'identité n'est pas encore câblée) ; **admin** (∈ `ADMIN_EMAILS`) →
+    **bypass** (provisioning). **Fail-closed** : en mode enforce, si la résolution échoue (svc-foyer /
+    svc-planification indisponible, contrat introuvable) on **refuse** plutôt que d'ouvrir un trou ; en
+    observe-only l'échec est seulement journalisé.
+  - **Refactor** : la logique d'appartenance (observe + enforce) est **centralisée** dans `AppartenanceGuard` ;
+    `IdentiteGuard` ne fait plus que **poser l'identité** (l'heuristique `foyerIdDemande` est remplacée par le
+    décorateur, plus précise — elle couvre aussi `param:foyerId` et `body:foyerId`). Une seule résolution
+    `foyersParEmail` par requête.
+  - Tests : extraction `@FoyerScope` (param/query/body/contrat, valeur absente/vide/non-chaîne), guard
+    (route non scopée, sans identité, admin bypass, observe autorisé/refusé/erreur, enforce
+    autorisé/refusé/fail-closed, résolution `contrat→foyer` autorisée/refusée/404), flag `FOYER_AUTHZ_ENFORCE`,
+    Pact consumer `GET /api/contrats/:id`. lint/typecheck/test/build **verts**. **L'enforcement n'est PAS
+    activé** (flag off) — activation en prod = décision humaine séparée (PR8/déploiement).
+- **PR 8 — config / déploiement / doc** (✅ livrée) :
+  - **Dépréciation `NOTIF_EMAIL_PARENT`** : marquée `@deprecated` dans
+    `apps/svc-notifications/src/config.ts` (champ `email.parent`) et dans `.env.server.example` — adresse
+    globale désormais **de repli uniquement** (le récap part aux parents actifs du foyer depuis PR4). **Chemin
+    de retrait documenté** : peupler les parents de **tous** les foyers (écran admin ou
+    `scripts/backfill-parents.mjs`), vérifier qu'aucun `warn` « repli » n'apparaît plus sur un cycle hebdo,
+    **puis** retirer la variable. **Conservée** tant que la couverture parents n'est pas totale (aucun envoi
+    perdu). Comportement **inchangé** par cette PR (documentation + repli déjà en place).
+  - **Câblage config (opt-in, prod inchangée)** : `docker-compose.server.yml` passe désormais à l'api-gateway,
+    en **pass-through** `${VAR:-}`, les quatre leviers de la feature : `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD`
+    (PR5, identité B1), `ADMIN_EMAILS` (PR6, provisioning), `FOYER_AUTHZ_ENFORCE` (PR7, enforcement).
+    **Tous vides/absents par défaut ⇒ comportement legacy, ZÉRO 403** (vérifié : `docker compose config` rend
+    `CF_ACCESS_*=""`, `ADMIN_EMAILS=""`, `FOYER_AUTHZ_ENFORCE=""`). **Activer = définir les valeurs dans
+    `.env.server(.enc)` puis recréer le conteneur — AUCUNE ré-édition du Compose.** Le garde-fou de boot
+    `verifierConfigProduction` (qui exige `CF_ACCESS_*` en prod) reste court-circuité par
+    `GATEWAY_AUTH_DISABLED=1` (gateway non exposée) ; le guard d'identité, lui, consomme `CF_ACCESS_*` dès
+    qu'elles sont posées. `.env.server.example` documente les 4 variables (où trouver team domain / `aud` dans
+    Zero Trust, opt-in de chacune). **`.env.server.enc` NON modifié ici** (clé age serveur-only + valeurs prod
+    réelles + activation du flag = **décision humaine**, geste sur serveur — cf. runbook ci-dessous).
+  - **Staging** : identité **désactivée** (loopback sans Cloudflare → pas de JWT CF). Aucune variable ajoutée
+    côté `docker-compose.staging.yml` ; `.env.staging.example` documente que CF/admin/flag restent OFF et que
+    l'en-tête de dev `X-Dev-User-Email` n'est **pas** accepté en staging (images `NODE_ENV=production`).
+  - **CI** : toucher `docker-compose*.yml` **déclenche** désormais le job `config-validation` (filtre
+    `docker-compose*.yml`) — il ne « skippe » plus ; le merge prod **et** staging reste valide (les nouvelles
+    vars sont en pass-through, jamais en `${VAR:?}` requis). **`can-i-deploy` INCHANGÉ** : projection NATS ⇒
+    aucune nouvelle paire Pact ; `PROVIDERS_ATTENDUS` reste `[svc-foyer, svc-referentiel, svc-planification,
+svc-tarification, svc-notifications]`, seul consumer `api-gateway` (l'endpoint `GET /api/contrats/:id` de
+    PR7 est sur la paire existante `api-gateway→svc-planification`).
+
+### 24.1 Mise en service de l'isolation par foyer (runbook — DÉCISION HUMAINE)
+
+> Tout le câblage est livré **OFF**. Activer l'isolation par foyer en prod est un **geste opérateur tracé**,
+> à faire **dans l'ordre** (l'enforcement EN DERNIER, après vérification du back-fill — sinon des foyers
+> seraient verrouillés). Secrets via sops/age (doc 29) ; jamais de clair commité.
+
+1. **Configurer Cloudflare Access** (tableau de bord Zero Trust) : une application Access protégeant le
+   service ; relever le **team domain** et le tag **AUD** de l'application.
+2. **Poser l'identité (PR5)** : ajouter `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` à `.env.server.enc`
+   (`bash scripts/sops-edit.sh`), committer le `.enc`, recréer le conteneur `api-gateway` (`--no-deps
+--force-recreate`, doc 29). Effet : le guard pose l'identité et **journalise** « AURAIT REFUSÉ » sans
+   refuser (observe-only). **Observer les logs** : confirmer que les identités attendues sont résolues.
+3. **Provisionner les parents** : via l'écran web admin (après étape 4 pour le gating) ou
+   `scripts/backfill-parents.mjs` (dry-run par défaut, `--apply` pour écrire ; cible svc-foyer direct → émet
+   l'outbox → projection notifications + résolution `email→foyers`). **Couvrir TOUS les foyers.**
+4. **Activer le gating admin (PR6)** : poser `ADMIN_EMAILS` (CSV) dans `.env.server.enc`, recréer la gateway.
+   Effet : 403 sur création de foyer + écritures parents hors allowlist. (Les lectures restent ouvertes
+   jusqu'à l'étape 5.)
+5. **Vérifier puis activer l'enforcement (PR7)** : s'assurer qu'**aucun** foyer légitime n'apparaît en
+   « AURAIT REFUSÉ » dans les logs observe-only (back-fill complet). **Alors seulement** poser
+   `FOYER_AUTHZ_ENFORCE=1` dans `.env.server.enc` et recréer la gateway → **refus réel 403** cross-foyer.
+   Rollback = retirer la variable (ou `=0`) et recréer.
+6. **Retirer `NOTIF_EMAIL_PARENT`** une fois la couverture parents totale confirmée (plus aucun `warn` de
+   repli sur un cycle hebdo).

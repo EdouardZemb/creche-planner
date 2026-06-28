@@ -7,12 +7,7 @@ import {
   type KeyObject,
 } from 'jose';
 import { beforeAll, describe, expect, it } from 'vitest';
-import {
-  emailDepuisJwtCf,
-  foyerIdDemande,
-  type OptionsJwtCf,
-  type RequeteIdentifiable,
-} from './identite.js';
+import { emailDepuisJwtCf, type OptionsJwtCf } from './identite.js';
 
 const ISSUER = 'https://equipe.cloudflareaccess.com';
 const AUD = 'aud-application';
@@ -81,46 +76,5 @@ describe('emailDepuisJwtCf', () => {
     await expect(
       emailDepuisJwtCf('pas-un-jwt', OPTIONS, jwks),
     ).rejects.toThrow();
-  });
-});
-
-/**
- * `foyerIdDemande` alimente la journalisation observe-only : il identifie le
- * foyer ciblé sans confondre un id de contrat avec un id de foyer.
- */
-describe('foyerIdDemande', () => {
-  function req(p: Partial<RequeteIdentifiable>): RequeteIdentifiable {
-    return { headers: {}, ...p };
-  }
-
-  it('lit le filtre ?foyer= (contrats, coûts)', () => {
-    expect(
-      foyerIdDemande(
-        req({ query: { foyer: 'f-123' }, url: '/api/v1/couts?foyer=f-123' }),
-      ),
-    ).toBe('f-123');
-  });
-
-  it('lit le param :id d’une route /foyers/:id', () => {
-    expect(
-      foyerIdDemande(
-        req({ params: { id: 'f-9' }, url: '/api/v1/foyers/f-9/parents' }),
-      ),
-    ).toBe('f-9');
-  });
-
-  it('ignore un :id de contrat (route /contrats/:id, pas un foyerId)', () => {
-    expect(
-      foyerIdDemande(
-        req({
-          params: { id: 'c-7' },
-          url: '/api/v1/contrats/c-7/plannings/2026-01',
-        }),
-      ),
-    ).toBeUndefined();
-  });
-
-  it('renvoie undefined sans foyer ni id pertinent', () => {
-    expect(foyerIdDemande(req({ url: '/api/v1/foyers' }))).toBeUndefined();
   });
 });

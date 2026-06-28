@@ -52,6 +52,29 @@ export interface GatewayConfig {
   readonly corsOrigins: readonly string[];
   readonly rateLimit: RateLimitConfig;
   readonly identite: IdentiteConfig;
+  /**
+   * Allowlist d'e-mails **administrateurs** (option b-ii, provisioning admin).
+   * Comparée à l'e-mail vérifié par Cloudflare Access pour gater la **création**
+   * de foyer et la **CRUD parents** (cf. `AdminGuard`). Normalisée en minuscules.
+   *
+   * **Opt-in** : liste **vide** ⇒ gating admin **désactivé** (toutes les requêtes
+   * passent — idiome du repo, cf. `GATEWAY_TOKEN` absent). La prod actuelle
+   * (sans `ADMIN_EMAILS`) reste donc inchangée ; le 403 admin ne s'active que
+   * lorsqu'un opérateur pose volontairement `ADMIN_EMAILS` (déploiement PR8).
+   */
+  readonly adminEmails: readonly string[];
+  /**
+   * **Enforcement de l'autorisation par foyer** (PR7) — `FOYER_AUTHZ_ENFORCE=1`.
+   *
+   * **Opt-in, désactivé par défaut** (`false`). Tant qu'il vaut `false`, le
+   * `AppartenanceGuard` reste **observe-only** : il journalise « AURAIT REFUSÉ »
+   * mais laisse passer (comportement legacy, prod actuelle inchangée). Posé à `1`
+   * — **uniquement après le back-fill des e-mails parents (PR6)** — il transforme
+   * l'observation en **refus réel (403)** sur toute route portant un `foyerId`.
+   * Un mauvais réglage (activé avant back-fill) verrouillerait des foyers : à
+   * n'activer en prod qu'après vérification (décision humaine, doc 24).
+   */
+  readonly foyerAuthzEnforce: boolean;
 }
 
 /** Normalise une variable d'env : trim, et chaîne vide/blanche → `undefined`. */
@@ -66,6 +89,15 @@ function parseListe(valeur: string | undefined): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+/** Parse l'allowlist `ADMIN_EMAILS` : minuscules, dédoublonnée, ordre stable. */
+function parseAdminEmails(valeur: string | undefined): string[] {
+  const vus = new Set<string>();
+  for (const brut of parseListe(valeur)) {
+    vus.add(brut.toLowerCase());
+  }
+  return [...vus];
 }
 
 /**
@@ -138,5 +170,7 @@ export function loadConfig(): GatewayConfig {
       cfAud: texteNonVide(process.env['CF_ACCESS_AUD']),
       devHeaderAutorise: process.env['NODE_ENV'] !== 'production',
     },
+    adminEmails: parseAdminEmails(process.env['ADMIN_EMAILS']),
+    foyerAuthzEnforce: process.env['FOYER_AUTHZ_ENFORCE'] === '1',
   };
 }
