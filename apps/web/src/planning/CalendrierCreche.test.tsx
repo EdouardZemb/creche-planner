@@ -316,7 +316,9 @@ describe('CalendrierCreche', () => {
     );
   });
 
-  it('hydrate la saisie depuis le serveur (absence datee restituee)', async () => {
+  it('hydrate la saisie depuis le serveur (ajustement intérieur → « Ajusté »)', async () => {
+    // Fenêtre 9–11 intérieure à la garde MARDI (08:00–17:00) : ce n'est pas une
+    // absence pleine journée mais un simple ajustement → « Ajusté » (et non « Absent »).
     vi.mocked(api.lirePlanning).mockResolvedValue({
       saisie: {
         absences: [
@@ -342,7 +344,76 @@ describe('CalendrierCreche', () => {
       />,
     );
 
-    // La ligne du 02/06 doit refléter l'absence venue du serveur.
+    // La ligne du 02/06 doit refléter l'absence venue du serveur, classée « Ajusté ».
+    await waitFor(() => {
+      const ligne = screen.getByText('02/06/2026').closest('li');
+      expect(ligne?.textContent).toContain('Ajusté');
+      expect(ligne?.textContent).not.toContain('Absent');
+    });
+  });
+
+  it('classe une absence de fin de journée en « Départ avancé »', async () => {
+    // Fenêtre 15:00–17:00 finissant avec la garde MARDI (08:00–17:00) : présence
+    // réduite à 08:00–15:00 → « Départ avancé » (ajustement, pas absence).
+    vi.mocked(api.lirePlanning).mockResolvedValue({
+      saisie: {
+        absences: [
+          {
+            date: '2026-06-02',
+            debutHeures: 15,
+            debutMinutes: 0,
+            finHeures: 17,
+            finMinutes: 0,
+            preavisJours: 0,
+            certificatMaladie: false,
+          },
+        ],
+      },
+    });
+
+    render(
+      <CalendrierCreche
+        contrat={contratCreche}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      const ligne = screen.getByText('02/06/2026').closest('li');
+      expect(ligne?.textContent).toContain('Départ avancé');
+      expect(ligne?.textContent).not.toContain('Absent');
+    });
+  });
+
+  it('classe une absence pleine journée en « Absent »', async () => {
+    // Fenêtre 08:00–17:00 couvrant toute la garde MARDI → vraie absence.
+    vi.mocked(api.lirePlanning).mockResolvedValue({
+      saisie: {
+        absences: [
+          {
+            date: '2026-06-02',
+            debutHeures: 8,
+            debutMinutes: 0,
+            finHeures: 17,
+            finMinutes: 0,
+            preavisJours: 0,
+            certificatMaladie: false,
+          },
+        ],
+      },
+    });
+
+    render(
+      <CalendrierCreche
+        contrat={contratCreche}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
     await waitFor(() => {
       const ligne = screen.getByText('02/06/2026').closest('li');
       expect(ligne?.textContent).toContain('Absent');

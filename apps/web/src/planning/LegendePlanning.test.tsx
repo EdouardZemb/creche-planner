@@ -26,7 +26,8 @@ describe('LegendePlanning', () => {
     );
     expect(screen.getByText('Cantine (contrat)')).toBeInTheDocument();
     expect(screen.getByText('Ajouté')).toBeInTheDocument();
-    expect(screen.getByText('Retiré / absent')).toBeInTheDocument();
+    expect(screen.getByText('Ajusté (horaires réduits)')).toBeInTheDocument();
+    expect(screen.getByText('Absent / retiré')).toBeInTheDocument();
   });
 
   it('annonce un écart nul comme « conforme au contrat »', () => {
