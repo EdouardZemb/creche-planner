@@ -1869,3 +1869,24 @@ svc-tarification, svc-notifications]`, seul consumer `api-gateway` (l'endpoint `
    Rollback = retirer la variable (ou `=0`) et recréer.
 6. **Retirer `NOTIF_EMAIL_PARENT`** une fois la couverture parents totale confirmée (plus aucun `warn` de
    repli sur un cycle hebdo).
+
+> **✅ Exécuté en production le 2026-06-28 (étapes 1 → 5 ; étape 6 différée).** Procédure suivie à la
+> lettre, chaque pose de variable et recréation de conteneur validée par l'opérateur :
+>
+> - **Identité (étape 2)** : `CF_ACCESS_TEAM_DOMAIN` (URL complète du team domain) + `CF_ACCESS_AUD` (tag
+>   AUD relevé dans Zero Trust > Access > Applications > Overview) posés ; gateway recréée
+>   (`IMAGE_TAG` épinglé sur la version en place, `--no-deps --force-recreate`). Observe-only **confirmé
+>   bout-en-bout** : `GET /api/v1/moi` répond 200 avec l'e-mail extrait du JWT Cloudflare Access validé
+>   (issuer + AUD), zéro « JWT invalide ».
+> - **Back-fill (étape 3)** : parents du **foyer réel** provisionnés via `scripts/backfill-parents.mjs`
+>   (dry-run puis `--apply`, lancé dans un conteneur éphémère sur le réseau interne ciblant svc-foyer
+>   directement). Le **foyer de démo** (re-semé par `seed-demo.mjs` à chaque déploiement) est laissé
+>   **sans parent** → admin-only sous enforcement. Projection `foyer_parent` (svc-notifications) vérifiée.
+> - **Gating admin (étape 4)** : `ADMIN_EMAILS` posé ; vérifié que le seed du déploiement n'est **pas**
+>   cassé (il réutilise le foyer démo en `GET`, ses écritures sont `@FoyerScope` qui passent sans identité).
+> - **Enforcement (étape 5)** : après vérification de **0 « AURAIT REFUSÉ » légitime** en observe-only,
+>   `FOYER_AUTHZ_ENFORCE=1` posé + gateway recréée. Post-flip : accès parent/admin légitimes **200/304**,
+>   **0 refus illégitime**, gateway healthy.
+>
+> Le `.env.server.enc` (modifié sur le serveur) a été rapatrié et **versionné** (le serveur a une deploy
+> key en lecture seule). **Rollback** : `FOYER_AUTHZ_ENFORCE` → vide/`=0` + recréer la gateway.
