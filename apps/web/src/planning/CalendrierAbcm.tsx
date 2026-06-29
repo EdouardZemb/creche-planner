@@ -10,6 +10,7 @@ import type {
   JourAlsh,
   ExceptionAbcm,
   CreerContratAbcm,
+  LienEtablissementSaisie,
   InscriptionsJour,
 } from '../types/bff';
 import { joursDuMois, jourSemaineDeIso, formaterDateFr } from '../utils/dates';
@@ -318,13 +319,20 @@ export function CalendrierAbcm({
 
   const appliquerDurableAbcm = useCallback(
     (semaineModifiee: ContratLocal['semaineAbcm']) => {
-      const corps: CreerContratAbcm = {
+      // Remplacement complet du contrat (PUT) : le lien établissement est
+      // OBLIGATOIRE depuis P5 (`etablissement_id` NOT NULL) → on RECONDUIT celui
+      // du contrat courant, sinon le service rejette en 400.
+      const lien: LienEtablissementSaisie = contrat.etablissementId
+        ? { etablissementId: contrat.etablissementId }
+        : {};
+      const corps: CreerContratAbcm & LienEtablissementSaisie = {
         mode,
         foyerId: contrat.foyerId,
         enfant: contrat.enfant,
         valideDu: contrat.valideDu,
         valideAu: contrat.valideAu,
         semaineAbcm: semaineModifiee ?? {},
+        ...lien,
       };
       setErreurDurable(null);
       api
