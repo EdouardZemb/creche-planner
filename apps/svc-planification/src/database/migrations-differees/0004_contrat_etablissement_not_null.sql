@@ -1,0 +1,25 @@
+-- ============================================================================
+-- MIGRATION DIFFÉRÉE — NE PAS PLACER DANS `migrations/` TANT QUE LE BACK-FILL P5
+-- N'EST PAS CONFIRMÉ EN PRODUCTION.
+-- ============================================================================
+--
+-- Rend `contrat.etablissement_id` NOT NULL (verrou final de la Phase 5, une fois
+-- que TOUS les contrats ont été rattachés par `scripts/backfill-etablissements.mjs`).
+--
+-- Ce fichier vit dans `migrations-differees/` (dossier SŒUR de `migrations/`, NON
+-- inclus dans les assets webpack — cf. `webpack.config.js`) : il n'est donc NI
+-- embarqué dans l'image NI appliqué au démarrage. C'est volontaire : appliquer ce
+-- NOT NULL AVANT le back-fill ferait échouer la migration (lignes encore NULL) et
+-- bloquerait le boot du service.
+--
+-- ▶ PROCÉDURE DE PROMOTION (après bascule confirmée) : cf. README.md de ce dossier
+--   et le runbook doc 06 §25. En résumé :
+--     1. exécuter le back-fill (`--apply`) et vérifier 0 contrat sans établissement ;
+--     2. ajouter `.notNull()` à `etablissementId` dans `schema.ts` ;
+--     3. régénérer la migration (`drizzle-kit generate`) → elle atterrit dans
+--        `migrations/` avec son entrée de journal et son snapshot, et sera appliquée
+--        au prochain déploiement. (Le SQL régénéré est identique à celui ci-dessous.)
+--
+-- Alternative one-shot (hors release) : appliquer ce DDL à la main via psql.
+
+ALTER TABLE "contrat" ALTER COLUMN "etablissement_id" SET NOT NULL;

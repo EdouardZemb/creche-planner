@@ -3,6 +3,7 @@ import {
   creerContratSchema,
   ecrirePlanningSchema,
   modifierContratSchema,
+  rattacherEtablissementSchema,
   ISO_MOIS,
 } from './planification.dto.js';
 
@@ -285,6 +286,27 @@ describe('modifierContratSchema', () => {
         semaineType: semaineCompleteCreche(),
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('rattacherEtablissementSchema (back-fill P5)', () => {
+  const ETAB_ID = '99999999-9999-4999-8999-999999999999';
+
+  it('accepte un etablissementId UUID', () => {
+    expect(
+      rattacherEtablissementSchema.safeParse({ etablissementId: ETAB_ID })
+        .success,
+    ).toBe(true);
+  });
+
+  it('rejette un etablissementId absent', () => {
+    expect(rattacherEtablissementSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('rejette un etablissementId non-UUID', () => {
+    expect(
+      rattacherEtablissementSchema.safeParse({ etablissementId: 'x' }).success,
+    ).toBe(false);
   });
 });
 

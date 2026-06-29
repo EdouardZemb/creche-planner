@@ -113,6 +113,20 @@ export const modifierContratSchema = creerContratSchema;
 export type ModifierContratDto = z.infer<typeof modifierContratSchema>;
 
 /**
+ * Rattachement **chirurgical** d'un contrat existant à un établissement de son
+ * foyer (lien P2), pour le **back-fill P5** : ne porte QUE l'`etablissementId`, ne
+ * remplace ni le mode/les dates ni la semaine type et **n'invalide pas** les
+ * plannings saisis — à la différence de `modifierContratSchema` (remplacement
+ * complet via le chemin `PUT /contrats/:id`).
+ */
+export const rattacherEtablissementSchema = z.object({
+  etablissementId: z.string().uuid(),
+});
+export type RattacherEtablissementDto = z.infer<
+  typeof rattacherEtablissementSchema
+>;
+
+/**
  * Absence crèche du mois (candidate à déduction PSU). La fenêtre d'absence est
  * saisie en heures d'arrivée/départ (plage horaire) ; la durée déduite en est
  * dérivée (fin − début).
