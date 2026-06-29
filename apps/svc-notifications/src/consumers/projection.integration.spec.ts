@@ -4,6 +4,9 @@ import {
   CONTRAT_CREE_TYPE,
   CONTRAT_MODIFIE_TYPE,
   CONTRAT_SUPPRIME_TYPE,
+  ETABLISSEMENT_CREE_TYPE,
+  ETABLISSEMENT_MODIFIE_TYPE,
+  ETABLISSEMENT_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-planification';
 import {
   PARENT_AJOUTE_TYPE,
@@ -12,7 +15,12 @@ import {
 } from '@creche-planner/contracts-foyer';
 import { ProjectionService } from './projection.service.js';
 import type { Database } from '../database/database.types.js';
-import { contrat, foyerParent, processedEvent } from '../database/schema.js';
+import {
+  contrat,
+  etablissement,
+  foyerParent,
+  processedEvent,
+} from '../database/schema.js';
 
 /**
  * Test d'**intégration** de la chaîne « événement → projection » du read model
@@ -216,6 +224,30 @@ describe('Projection ContratCree (contenu + idempotence rejouée)', () => {
       valideAu: null,
     });
     expect(lignesDe(processedEvent)).toHaveLength(1);
+  });
+
+  it('projette le lien établissement (etablissementId) porté par l’event (P3)', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    const ETAB = '99999999-9999-4999-8999-999999999999';
+
+    await projection.traiter(
+      'PLANIFICATION',
+      evenementContratCree('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', {
+        etablissementId: ETAB,
+      }),
+    );
+
+    expect(lignesDe(contrat)[0]).toMatchObject({ etablissementId: ETAB });
+  });
+
+  it('projette etablissementId = null quand l’event ne le porte pas (rétro-compat)', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await projection.traiter('PLANIFICATION', evenementContratCree(ID_EVT));
+
+    expect(lignesDe(contrat)[0]).toMatchObject({ etablissementId: null });
   });
 
   it('idempotence REJOUÉE : la même enveloppe ré-livrée (at-least-once) est un no-op', async () => {
@@ -437,6 +469,157 @@ describe('Projection foyer_parent (parents du foyer, stream FOYER)', () => {
     ).resolves.toBe(true);
     expect(
       lignesDe(processedEvent).filter((l) => l['id'] === ID_RETIRE),
+    ).toHaveLength(1);
+  });
+});
+
+const ETAB_ID = '99999999-9999-4999-8999-999999999999';
+
+function evenementEtablissement(
+  type: string,
+  id: string,
+  surcharge: Record<string, unknown> = {},
+): unknown {
+  return {
+    id,
+    type,
+    source: 'svc-planification',
+    version: 1,
+    occurredAt: '2026-09-15T00:00:00.000Z',
+    traceId: 'trace-e',
+    payload: {
+      etablissementId: ETAB_ID,
+      foyerId: FOYER_ID,
+      nom: 'Crèche du centre',
+      emailService: 'creche@test.fr',
+      preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
+      types: ['CRECHE_PSU'],
+      actif: true,
+      ...surcharge,
+    },
+  };
+}
+
+function evenementEtablissementSupprime(id: string): unknown {
+  return {
+    id,
+    type: ETABLISSEMENT_SUPPRIME_TYPE,
+    source: 'svc-planification',
+    version: 1,
+    occurredAt: '2026-10-15T00:00:00.000Z',
+    traceId: 'trace-es',
+    payload: { etablissementId: ETAB_ID },
+  };
+}
+
+describe('Projection établissement (fiche projetée, stream PLANIFICATION)', () => {
+  it('EtablissementCree projette la fiche (nom/email/préavis/types/actif)', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await expect(
+      projection.traiter(
+        'PLANIFICATION',
+        evenementEtablissement(
+          ETABLISSEMENT_CREE_TYPE,
+          '11111111-1111-4111-8111-eeeeeeeeeeee',
+        ),
+      ),
+    ).resolves.toBe(true);
+
+    expect(lignesDe(etablissement)).toHaveLength(1);
+    expect(lignesDe(etablissement)[0]).toMatchObject({
+      id: ETAB_ID,
+      foyerId: FOYER_ID,
+      nom: 'Crèche du centre',
+      emailService: 'creche@test.fr',
+      preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
+      types: ['CRECHE_PSU'],
+      actif: true,
+    });
+    expect(lignesDe(processedEvent)).toHaveLength(1);
+  });
+
+  it('idempotence REJOUÉE : la même enveloppe EtablissementCree est un no-op', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    const ID = '11111111-1111-4111-8111-eeeeeeeeeeee';
+    await projection.traiter(
+      'PLANIFICATION',
+      evenementEtablissement(ETABLISSEMENT_CREE_TYPE, ID),
+    );
+
+    await projection.traiter(
+      'PLANIFICATION',
+      evenementEtablissement(ETABLISSEMENT_CREE_TYPE, ID, { nom: 'Autre' }),
+    );
+
+    expect(lignesDe(etablissement)).toHaveLength(1);
+    expect(lignesDe(etablissement)[0]).toMatchObject({
+      nom: 'Crèche du centre',
+    });
+    expect(lignesDe(processedEvent)).toHaveLength(1);
+  });
+
+  it('EtablissementModifie (id différent) met à jour la fiche (upsert)', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    await projection.traiter(
+      'PLANIFICATION',
+      evenementEtablissement(
+        ETABLISSEMENT_CREE_TYPE,
+        '11111111-1111-4111-8111-eeeeeeeeeeee',
+      ),
+    );
+
+    await projection.traiter(
+      'PLANIFICATION',
+      evenementEtablissement(
+        ETABLISSEMENT_MODIFIE_TYPE,
+        '22222222-2222-4222-8222-eeeeeeeeeeee',
+        { emailService: 'nouveau@test.fr', actif: false },
+      ),
+    );
+
+    expect(lignesDe(etablissement)).toHaveLength(1);
+    expect(lignesDe(etablissement)[0]).toMatchObject({
+      emailService: 'nouveau@test.fr',
+      actif: false,
+    });
+    expect(lignesDe(processedEvent)).toHaveLength(2);
+  });
+
+  it('EtablissementSupprime retire la fiche ; le rejeu est un no-op', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    await projection.traiter(
+      'PLANIFICATION',
+      evenementEtablissement(
+        ETABLISSEMENT_CREE_TYPE,
+        '11111111-1111-4111-8111-eeeeeeeeeeee',
+      ),
+    );
+    expect(lignesDe(etablissement)).toHaveLength(1);
+    const ID_SUPPR = '33333333-3333-4333-8333-eeeeeeeeeeee';
+
+    await expect(
+      projection.traiter(
+        'PLANIFICATION',
+        evenementEtablissementSupprime(ID_SUPPR),
+      ),
+    ).resolves.toBe(true);
+    expect(lignesDe(etablissement)).toHaveLength(0);
+
+    // Rejeu de la MÊME suppression : marqueur déjà posé ⇒ no-op.
+    await expect(
+      projection.traiter(
+        'PLANIFICATION',
+        evenementEtablissementSupprime(ID_SUPPR),
+      ),
+    ).resolves.toBe(true);
+    expect(lignesDe(etablissement)).toHaveLength(0);
+    expect(
+      lignesDe(processedEvent).filter((l) => l['id'] === ID_SUPPR),
     ).toHaveLength(1);
   });
 });

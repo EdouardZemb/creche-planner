@@ -94,7 +94,7 @@ const SEMAINE_BESOINS = {
   ],
   etablissements: [
     {
-      cle: 'CRECHE_HIRONDELLES' as const,
+      etablissementId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       libelle: 'Crèche Les Hirondelles',
       preavisRegle: { type: 'JOURS_OUVRES' as const, valeur: 2 },
     },
@@ -104,7 +104,7 @@ const SEMAINE_BESOINS = {
       contratId: '55555555-0000-4000-8000-000000000000',
       enfant: 'Léa',
       mode: 'CRECHE_PSU' as const,
-      etablissementCle: 'CRECHE_HIRONDELLES' as const,
+      etablissementId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       besoins: {},
     },
   ],

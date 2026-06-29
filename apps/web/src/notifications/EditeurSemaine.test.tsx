@@ -31,17 +31,21 @@ const JOURS = [
   '2026-07-05',
 ];
 
+// Établissements réels (entité libre) : groupés par `etablissementId` (P3).
+const ID_CRECHE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const ID_ABCM = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
 const VUE: SemaineBesoins = {
   semaineIso: '2026-W27',
   jours: JOURS,
   etablissements: [
     {
-      cle: 'CRECHE_HIRONDELLES',
+      etablissementId: ID_CRECHE,
       libelle: 'Crèche Les Hirondelles',
       preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
     },
     {
-      cle: 'ABCM',
+      etablissementId: ID_ABCM,
       libelle: 'École ABCM',
       preavisRegle: { type: 'JOUR_HEURE', jour: 'JEUDI', heure: '12:00' },
     },
@@ -51,7 +55,7 @@ const VUE: SemaineBesoins = {
       contratId: 'c-lea',
       enfant: 'Léa',
       mode: 'CRECHE_PSU',
-      etablissementCle: 'CRECHE_HIRONDELLES',
+      etablissementId: ID_CRECHE,
       // Planning de base : gardée le mardi 08:00–17:00 (affiché sans ouvrir la saisie).
       semaineType: {
         MARDI: [
@@ -81,7 +85,7 @@ const VUE: SemaineBesoins = {
       contratId: 'c-tom',
       enfant: 'Tom',
       mode: 'CANTINE',
-      etablissementCle: 'ABCM',
+      etablissementId: ID_ABCM,
       besoins: {},
     },
   ],

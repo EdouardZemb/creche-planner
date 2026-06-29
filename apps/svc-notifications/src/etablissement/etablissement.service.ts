@@ -1,10 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  Inject,
-  Injectable,
-  Logger,
-  type OnApplicationBootstrap,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { asc, eq } from 'drizzle-orm';
 import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
@@ -28,70 +23,19 @@ export interface EtablissementVue {
   readonly actif: boolean;
 }
 
-/** Valeurs de seed d'un établissement (préavis + libellé par défaut). */
-interface SeedEtablissement {
-  readonly cle: CleEtablissement;
-  readonly libelle: string;
-  readonly emailService: string;
-  readonly preavisRegle: PreavisRegle;
-}
-
 /**
- * Seed des **2 établissements** (idempotent). Les adresses sont des placeholders
- * non-prod : l'envoi réel est garde-fou par le mailer (dry-run par défaut +
- * allowlist, Lot 2) et les vraies adresses sont saisies via l'écran d'édition. Les
- * règles de préavis reflètent les specs : 2 jours ouvrés crèche (RM-03), jeudi
- * 12h ABCM (RM-07).
+ * Annuaire **legacy** des établissements destinataires à clé fermée
+ * (`etablissement_destinataire`). Depuis P3, la **source de vérité** des
+ * établissements est `svc-planification` (entité libre par foyer), projetée dans le
+ * read model `etablissement` (cf. `ProjectionService`) — d'où la **suppression du
+ * seed en dur** : ce service ne provisionne plus aucune ligne au démarrage. Il reste
+ * temporairement le destinataire des flux d'envoi encore keyés par `cle` (récap
+ * agrégé `EnvoiService`, récap du mardi `SchedulerHebdo`), migrés au PR suivant ; le
+ * démantèlement complet (drop de table + retrait de l'énumération) est P6.
  */
-const SEED: readonly SeedEtablissement[] = [
-  {
-    cle: 'CRECHE_HIRONDELLES',
-    libelle: 'Crèche Les Hirondelles',
-    emailService: 'contact-creche@example.org',
-    preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
-  },
-  {
-    cle: 'ABCM',
-    libelle: 'École ABCM',
-    emailService: 'contact-abcm@example.org',
-    preavisRegle: { type: 'JOUR_HEURE', jour: 'JEUDI', heure: '12:00' },
-  },
-];
-
 @Injectable()
-export class EtablissementService implements OnApplicationBootstrap {
-  private readonly logger = new Logger(EtablissementService.name);
-
+export class EtablissementService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
-
-  /**
-   * Seede les établissements au démarrage (après les migrations, exécutées en
-   * `onModuleInit`). Idempotent via `onConflictDoNothing` sur la clé : ne réécrase
-   * jamais une adresse/règle déjà personnalisée. Tolérant à une base indisponible
-   * (loggue et continue : la liste reste éditable une fois la base revenue).
-   */
-  async onApplicationBootstrap(): Promise<void> {
-    try {
-      for (const e of SEED) {
-        await this.db
-          .insert(etablissementDestinataire)
-          .values({
-            id: randomUUID(),
-            cle: e.cle,
-            libelle: e.libelle,
-            emailService: e.emailService,
-            preavisRegle: e.preavisRegle,
-            actif: true,
-          })
-          .onConflictDoNothing({ target: etablissementDestinataire.cle });
-      }
-      this.logger.log('Établissements destinataires seedés (idempotent)');
-    } catch (erreur) {
-      this.logger.warn(
-        `Seed des établissements impossible (${(erreur as Error).message}) — ignoré`,
-      );
-    }
-  }
 
   /**
    * Résout un établissement par sa clé (destinataire du mail de service, Lot 6).

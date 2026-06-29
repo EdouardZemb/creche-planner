@@ -30,6 +30,13 @@ const contratVueSchema = z.object({
   foyerId: z.string(),
   enfant: z.string(),
   mode: z.string(),
+  /**
+   * Établissement réel rattaché (lien explicite P2/P3), `null`/absent si aucun.
+   * Porté par la liste des contrats (`listerContrats`) — clé de routage du récap
+   * hebdo par le BFF `semaine-besoins`. Optionnel : le cœur de contrat
+   * (`creerContrat`/`contrat`) ne l'expose pas, on tolère donc son absence.
+   */
+  etablissementId: z.string().nullish(),
   valideDu: z.string(),
   valideAu: z.string().nullable(),
 });

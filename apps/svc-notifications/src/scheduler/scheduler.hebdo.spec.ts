@@ -53,6 +53,7 @@ function contratRow(partiel: Partial<ContratRow> = {}): ContratRow {
     foyerId: FOYER_A,
     enfant: 'Léa',
     mode: 'CRECHE_PSU',
+    etablissementId: null,
     valideDu: '2026-01-01',
     valideAu: null,
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),

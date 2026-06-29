@@ -3,39 +3,28 @@ import {
   extraireSemaine,
   type SnapshotSemaine,
 } from '@creche-planner/shared-semaine';
-import type { ContratVue } from '../clients/planification.client.js';
-import type { EtablissementVue } from '../clients/notifications.client.js';
-import { CLES_ETABLISSEMENT, preavisRegleSchema } from './bff.dto.js';
+import type {
+  ContratVue,
+  EtablissementVue,
+} from '../clients/planification.client.js';
+import { preavisRegleSchema } from './bff.dto.js';
 
 /**
  * Agrégation **pure** de la vue hebdomadaire éditable d'un foyer (lecture seule). À
- * partir des contrats du foyer (avec leur(s) saisie(s) mensuelle(s) déjà lues) et de
- * l'annuaire des établissements, produit la vue consolidée d'une semaine : pour
- * chaque contrat actif, ses **besoins datés** restreints aux 7 jours
- * (`extraireSemaine`, lib partagée), rattaché à son établissement destinataire.
+ * partir des contrats du foyer (avec leur(s) saisie(s) mensuelle(s) déjà lues) et des
+ * **établissements réels** du foyer (entité libre, `svc-planification`), produit la
+ * vue consolidée d'une semaine : pour chaque contrat actif, ses **besoins datés**
+ * restreints aux 7 jours (`extraireSemaine`, lib partagée), rattaché à son
+ * établissement par le **lien explicite** `contrat.etablissementId` (P3) — fini le
+ * mapping codé `mode → clé`.
  *
- * La récupération des données (contrats, plannings, annuaire) reste au contrôleur ;
- * ce module ne fait que transformer — sans I/O, donc testable directement.
+ * La récupération des données (contrats, plannings, établissements) reste au
+ * contrôleur ; ce module ne fait que transformer — sans I/O, donc testable directement.
  */
 
 /** Modes de garde connus (un mode inconnu côté amont est ignoré défensivement). */
 const MODES = ['CRECHE_PSU', 'PERISCOLAIRE', 'CANTINE', 'ALSH'] as const;
 type Mode = (typeof MODES)[number];
-
-/** Clé d'établissement destinataire (annuaire `svc-notifications`). */
-type CleEtablissement = (typeof CLES_ETABLISSEMENT)[number];
-
-/**
- * Mapping `mode de garde → clé d'établissement`, recalculé côté gateway (le plan
- * autorise à ne pas dépendre de `svc-notifications` pour cette résolution simple) :
- * `CRECHE_PSU` → crèche des Hirondelles ; `PERISCOLAIRE`/`CANTINE`/`ALSH` → ABCM.
- */
-const MODE_VERS_CLE: Readonly<Record<Mode, CleEtablissement>> = {
-  CRECHE_PSU: 'CRECHE_HIRONDELLES',
-  PERISCOLAIRE: 'ABCM',
-  CANTINE: 'ABCM',
-  ALSH: 'ABCM',
-};
 
 function estModeConnu(mode: string): mode is Mode {
   return (MODES as readonly string[]).includes(mode);
@@ -83,11 +72,14 @@ const semaineAbcmSchema = z.record(
   }),
 );
 
-/** Établissement destinataire concerné par la semaine (annuaire). */
+/** Établissement réel concerné par la semaine (entité libre, `svc-planification`). */
 const etablissementConcerneSchema = z.object({
-  cle: z.enum(CLES_ETABLISSEMENT),
+  /** Identifiant de l'établissement réel (clé de groupement côté écran). */
+  etablissementId: z.string(),
+  /** Nom libre de l'établissement (en-tête de groupe). */
   libelle: z.string(),
-  preavisRegle: preavisRegleSchema,
+  /** Règle de préavis, `null` si l'établissement ne l'a pas (encore) renseignée. */
+  preavisRegle: preavisRegleSchema.nullable(),
 });
 
 /** Un contrat actif de la semaine, avec ses besoins datés et son établissement. */
@@ -95,7 +87,8 @@ const contratBesoinsSchema = z.object({
   contratId: z.string(),
   enfant: z.string(),
   mode: z.enum(MODES),
-  etablissementCle: z.enum(CLES_ETABLISSEMENT),
+  /** Lien explicite vers l'établissement réel (P3), `null` si non rattaché. */
+  etablissementId: z.string().nullable(),
   besoins: besoinsSchema,
   // Planning de BASE (semaine-type) du contrat : l'un OU l'autre selon le mode.
   // Permet à l'écran d'afficher les horaires planifiés d'un jour normal sans entrer
@@ -156,13 +149,19 @@ export function agregerSemaineBesoins(input: {
   readonly contrats: readonly ContratAvecSaisies[];
   readonly annuaire: readonly EtablissementVue[];
 }): SemaineBesoinsVue {
-  const clesConcernees = new Set<CleEtablissement>();
+  // Établissements réellement référencés par un contrat actif (lien explicite) :
+  // sert à ne retenir, dans la sortie, que les fiches concernées par la semaine.
+  const idsConcernes = new Set<string>();
   const contrats = input.contrats.flatMap(({ contrat, saisies }) => {
     if (!estModeConnu(contrat.mode)) {
       return [];
     }
-    const etablissementCle = MODE_VERS_CLE[contrat.mode];
-    clesConcernees.add(etablissementCle);
+    // Routage par le **lien explicite** porté par le contrat (P3). `null` = contrat
+    // pas (encore) rattaché : il reste affiché mais n'est groupé sous aucun établissement.
+    const etablissementId = contrat.etablissementId ?? null;
+    if (etablissementId !== null) {
+      idsConcernes.add(etablissementId);
+    }
     const besoins: SnapshotSemaine = extraireSemaine(saisies, input.jours);
     // La semaine-type (planning de base) transite via le `passthrough` de
     // `listerContrats` ; on la lit défensivement et on ne garde que celle du mode
@@ -181,7 +180,7 @@ export function agregerSemaineBesoins(input: {
         contratId: contrat.id,
         enfant: contrat.enfant,
         mode: contrat.mode,
-        etablissementCle,
+        etablissementId,
         besoins,
         ...(semaineType ? { semaineType } : {}),
         ...(semaineAbcm ? { semaineAbcm } : {}),
@@ -190,10 +189,10 @@ export function agregerSemaineBesoins(input: {
   });
 
   const etablissements = input.annuaire
-    .filter((e) => clesConcernees.has(e.cle))
+    .filter((e) => idsConcernes.has(e.id))
     .map((e) => ({
-      cle: e.cle,
-      libelle: e.libelle,
+      etablissementId: e.id,
+      libelle: e.nom,
       preavisRegle: e.preavisRegle,
     }));
 
