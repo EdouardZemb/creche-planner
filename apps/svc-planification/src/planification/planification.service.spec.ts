@@ -767,3 +767,121 @@ describe('PlanificationService.modifierContrat (atomicité / invariant contrat)'
     expect(deleteWhere).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Faux `db` transactionnel pour `rattacherEtablissement` : deux `select` successifs
+ * (1ᵉʳ = contrat, 2ᵉ = établissement). `contratLigne` pilote le garde 404 ;
+ * `etabPresent` pilote l'appartenance au foyer (2ᵉ select vide = inconnu/hors foyer).
+ * On espionne `update`, `delete` (doit rester non appelé : non destructif) et
+ * l'`insert` outbox. La transaction **renvoie** la valeur du callback (la vue).
+ */
+function fakeDbRattacher(options: {
+  contratLigne: ContratRow | null;
+  etabPresent: boolean;
+}): {
+  db: Database;
+  transaction: ReturnType<typeof vi.fn>;
+  updateSet: ReturnType<typeof vi.fn>;
+  deleteWhere: ReturnType<typeof vi.fn>;
+  insertValues: ReturnType<typeof vi.fn>;
+} {
+  const updateSet = vi.fn(() => ({ where: () => Promise.resolve() }));
+  const deleteWhere = vi.fn(() => Promise.resolve());
+  const insertValues = vi.fn(() => Promise.resolve());
+  let selectCall = 0;
+  const tx = {
+    select: () => ({
+      from: () => ({
+        where: () => {
+          selectCall += 1;
+          if (selectCall === 1) {
+            return Promise.resolve(
+              options.contratLigne ? [options.contratLigne] : [],
+            );
+          }
+          return Promise.resolve(
+            options.etabPresent ? [{ id: ETAB_ID, foyerId: FOYER_ID }] : [],
+          );
+        },
+      }),
+    }),
+    update: () => ({ set: updateSet }),
+    delete: () => ({ where: deleteWhere }),
+    insert: () => ({ values: insertValues }),
+  };
+  const transaction = vi.fn(async (cb: (t: unknown) => Promise<unknown>) =>
+    cb(tx),
+  );
+  const db = { transaction } as unknown as Database;
+  return { db, transaction, updateSet, deleteWhere, insertValues };
+}
+
+describe('PlanificationService.rattacherEtablissement (back-fill P5)', () => {
+  it('rattache un contrat non lié : update du seul etablissement_id + outbox ContratModifie, AUCUNE suppression de planning', async () => {
+    const { db, updateSet, deleteWhere, insertValues } = fakeDbRattacher({
+      contratLigne: ligneCreche({ etablissementId: null }),
+      etabPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.rattacherEtablissement(CONTRAT_ID, ETAB_ID);
+
+    expect(vue).toMatchObject({ id: CONTRAT_ID, foyerId: FOYER_ID });
+    // Met à jour le lien sans cascade : pas de delete des plannings (non destructif).
+    expect(updateSet).toHaveBeenCalledTimes(1);
+    expect(deleteWhere).not.toHaveBeenCalled();
+    // L'événement ContratModifie porte le lien (projection notifications).
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: CONTRAT_MODIFIE_TYPE,
+        payload: expect.objectContaining({
+          contratId: CONTRAT_ID,
+          mode: 'CRECHE_PSU',
+          etablissementId: ETAB_ID,
+        }),
+      }),
+    );
+  });
+
+  it('idempotent : contrat déjà rattaché à cet établissement → no-op (aucune écriture, aucun événement)', async () => {
+    const { db, updateSet, insertValues } = fakeDbRattacher({
+      contratLigne: ligneCreche({ etablissementId: ETAB_ID }),
+      etabPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.rattacherEtablissement(CONTRAT_ID, ETAB_ID);
+
+    expect(vue).toMatchObject({ id: CONTRAT_ID });
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('400 si l’établissement est inconnu ou hors du foyer du contrat : rien n’est écrit', async () => {
+    const { db, updateSet, insertValues } = fakeDbRattacher({
+      contratLigne: ligneCreche({ etablissementId: null }),
+      etabPresent: false,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    await expect(
+      service.rattacherEtablissement(CONTRAT_ID, ETAB_ID),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('404 si le contrat est introuvable : rien n’est écrit', async () => {
+    const { db, updateSet, insertValues } = fakeDbRattacher({
+      contratLigne: null,
+      etabPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    await expect(
+      service.rattacherEtablissement(CONTRAT_ID, ETAB_ID),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+});

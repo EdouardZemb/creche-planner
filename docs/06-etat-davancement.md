@@ -1890,3 +1890,62 @@ svc-tarification, svc-notifications]`, seul consumer `api-gateway` (l'endpoint `
 >
 > Le `.env.server.enc` (modifié sur le serveur) a été rapatrié et **versionné** (le serveur a une deploy
 > key en lecture seule). **Rollback** : `FOYER_AUTHZ_ENFORCE` → vide/`=0` + recréer la gateway.
+
+## 25. Feature Établissements en entité libre (en cours — P1→P5 livrées, restent P4-web déjà fait, P6)
+
+**But** — remplacer les crèches « en dur » (noms de test câblés via `MODE_VERS_CLE`) par une **vraie entité
+libre, configurable par foyer** (`etablissement`, propriété `svc-planification`), avec un **lien explicite
+`contrat.etablissement_id`** projeté en NATS vers le read-model de `svc-notifications` (routage du récap
+hebdo par établissement réel, plus par le mode). Plan `.claude/plans/etablissements-entite-libre.md`,
+6 phases. État : **P1** (table+CRUD+events, migration 0002), **P2** (lien `contrat.etablissement_id`
+NULLABLE, migration 0003, création inline), **P3** (projection NATS read-side, seed supprimé), **P4**
+(routage envoi/scheduler par établissement réel + écran web CRUD) — **livrées**.
+
+### 25.1 P5 — Back-fill du lien contrat→établissement (migration de données)
+
+La prod contient de **vrais contrats** sans `etablissement_id` (colonne posée NULLABLE en P2). Cette phase
+les rattache **sans casse**, en créant par foyer un établissement au **nom par défaut** (placeholder
+renommé ensuite par l'utilisateur via l'écran P4).
+
+- **Endpoint chirurgical** `PUT /api/contrats/:id/etablissement` (svc-planification, **interne**, hors
+  BFF/OpenAPI/Pact) : ne pose QUE `etablissement_id`, **n'écrase pas** le contrat et **n'invalide pas** ses
+  plannings (≠ `PUT /contrats/:id` qui remplace tout + supprime `planning_mois`), et émet `ContratModifie`
+  → le read-model notifications projette le lien. Idempotent (déjà rattaché → no-op), 400 hors foyer,
+  404 contrat absent.
+- **Script** `scripts/backfill-etablissements.mjs` (idiome `backfill-parents.mjs`) : **dry-run par défaut**,
+  `--apply` pour écrire, **idempotent** (établissement dédoublonné par `UNIQUE(foyer_id, nom)`, contrat déjà
+  rattaché ignoré). Pour chaque foyer : regroupe ses contrats par groupe de mode (`MODE_VERS_CLE` —
+  `CRECHE_PSU` → « Crèche Les Hirondelles » ; `CANTINE`/`PERISCOLAIRE`/`ALSH` → « École ABCM »), crée
+  l'établissement du groupe (`emailService`/`preavisRegle` repris des fiches globales historiques), puis
+  rattache chaque contrat non encore lié. **Vérification post-run** : compte les contrats de mode connu
+  encore sans établissement (en `--apply`, un reste > 0 ⇒ exit 1).
+- **Migration NOT NULL différée** : `apps/svc-planification/src/database/migrations-differees/0004_*.sql`
+  (dossier **non bundlé** → jamais auto-appliqué) — à promouvoir **après** bascule confirmée (cf. son
+  README). Appliquer le NOT NULL avant le back-fill casserait le boot.
+
+### 25.2 Runbook P5 (geste humain — NE PAS exécuter sans accord PO)
+
+Cible les **services internes** (réseau privé), comme le back-fill parents : conteneur éphémère Node sur le
+réseau Docker de la pile, variables `BACKFILL_FOYER_URL=http://svc-foyer:3002/api` et
+`BACKFILL_PLANIFICATION_URL=http://svc-planification:3004/api`.
+
+1. **Dry-run d'abord** (aucune écriture) — relire le plan affiché (établissements à créer, contrats à
+   rattacher), vérifier qu'aucun mode n'est « inconnu » :
+   ```sh
+   # depuis le serveur, sur le réseau de la pile prod
+   docker run --rm --network <reseau-prod> -v "$PWD/scripts:/scripts" \
+     -e BACKFILL_FOYER_URL=http://svc-foyer:3002/api \
+     -e BACKFILL_PLANIFICATION_URL=http://svc-planification:3004/api \
+     node:22-alpine node /scripts/backfill-etablissements.mjs
+   ```
+2. **Tester sur dev/staging** la même commande (pile staging isolée) avant toute exécution prod.
+3. **Exécution réelle** (sur validation humaine) : rejouer **avec `--apply`**. La vérification post-run doit
+   afficher `0 contrat(s) … encore sans établissement` (sinon exit 1, on investigue — le re-run est sûr).
+4. **Renommage** : l'utilisateur renomme les établissements placeholder via l'écran P4 et ajuste
+   `emailService`/préavis si besoin.
+5. **(Différé, optionnel) Verrou NOT NULL** : une fois la couverture confirmée et stable, promouvoir
+   `migrations-differees/0004_*.sql` (ajouter `.notNull()` au schéma + `drizzle-kit generate`, cf. README).
+
+> **Idempotence & sûreté** : le script ne touche jamais un contrat déjà rattaché ni un établissement
+> existant de même nom ; le rattachement est non destructif (plannings préservés). Un re-run après échec
+> partiel reprend là où il en était. La projection notifications se met à jour via les events émis.

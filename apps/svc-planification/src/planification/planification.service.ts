@@ -35,6 +35,7 @@ import {
   type ContratModifiePayload,
   type ContratSupprimePayload,
   type EtablissementCreePayload,
+  type ModeContrat,
   type PlanningModifiePayload,
 } from '@creche-planner/contracts-planification';
 import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
@@ -328,6 +329,85 @@ export class PlanificationService {
       valideDu: dto.valideDu,
       valideAu: dto.valideAu,
     };
+  }
+
+  /**
+   * Rattache le contrat `contratId` à l'établissement `etablissementId` (lien P2)
+   * **sans remplacer le reste du contrat ni invalider ses plannings** — à la
+   * différence de `modifierContrat` (remplacement complet + cascade `planning_mois`).
+   * Dédié au **back-fill P5** (migration du lien contrat→établissement sur des
+   * contrats de production réels) : ne touche QUE `etablissement_id`.
+   *
+   * Émet `ContratModifie` (état complet relu depuis la ligne) pour que les
+   * read-models aval (`svc-notifications` : routage du récap hebdo par
+   * `contrat.etablissementId`) projettent le lien. **Idempotent** : si le contrat
+   * pointe déjà sur cet établissement, no-op (aucune écriture, aucun événement) —
+   * un re-run est sûr. 404 si le contrat est introuvable ; 400 si l'établissement
+   * est inconnu ou hors du foyer du contrat (isolation inter-foyers).
+   */
+  async rattacherEtablissement(
+    contratId: string,
+    etablissementId: string,
+  ): Promise<ContratVue> {
+    return this.db.transaction(async (tx) => {
+      const lignes = await tx
+        .select()
+        .from(contrat)
+        .where(eq(contrat.id, contratId));
+      const ligne = lignes[0];
+      if (!ligne) {
+        throw new NotFoundException(`contrat introuvable : ${contratId}`);
+      }
+      const vue: ContratVue = {
+        id: ligne.id,
+        foyerId: ligne.foyerId,
+        enfant: ligne.enfant,
+        mode: ligne.mode,
+        valideDu: ligne.valideDu,
+        valideAu: ligne.valideAu,
+      };
+      // Idempotence : déjà rattaché à CET établissement → rien à faire.
+      if (ligne.etablissementId === etablissementId) {
+        return vue;
+      }
+      // Vérifie l'existence ET l'appartenance au foyer du contrat (400 sinon).
+      const etabs = await tx
+        .select()
+        .from(etablissement)
+        .where(
+          and(
+            eq(etablissement.id, etablissementId),
+            eq(etablissement.foyerId, ligne.foyerId),
+          ),
+        );
+      if (!etabs[0]) {
+        throw new BadRequestException(
+          `établissement ${etablissementId} inconnu ou hors du foyer du contrat`,
+        );
+      }
+      // Met à jour le SEUL lien (pas de remplacement du contrat, pas de cascade
+      // planning) — non destructif sur les saisies de planning existantes.
+      await tx
+        .update(contrat)
+        .set({ etablissementId, updatedAt: new Date() })
+        .where(eq(contrat.id, contratId));
+      const payload: ContratModifiePayload = {
+        contratId: ligne.id,
+        foyerId: ligne.foyerId,
+        enfant: ligne.enfant,
+        mode: ligne.mode as ModeContrat,
+        valideDu: ligne.valideDu,
+        valideAu: ligne.valideAu,
+        etablissementId,
+      };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: CONTRAT_MODIFIE_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+      return vue;
+    });
   }
 
   /**
