@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
   doublePrecision,
@@ -9,6 +10,10 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import type {
+  ModeContrat,
+  PreavisRegle,
+} from '@creche-planner/contracts-planification';
 
 /**
  * Schéma Drizzle du service Planification (base dédiée). Persiste les contrats de
@@ -93,6 +98,57 @@ export const planningMois = pgTable(
 );
 
 /**
+ * **Établissement** d'accueil, entité libre **par foyer** (cf.
+ * `.claude/plans/etablissements-entite-libre.md`). Remplace l'énumération fermée
+ * codée en dur (« Crèche Les Hirondelles » / « École ABCM ») de `svc-notifications` :
+ * créable / éditable / supprimable en nombre illimité. `svc-planification` en est
+ * **propriétaire** (les contrats vivent ici → vraie FK `contrat.etablissement_id`
+ * en P2) ; `svc-notifications` le **reçoit** par projection NATS (P3).
+ *
+ * Coordonnées modélisées en **colonnes plates** (`adresse`/`telephone`/`contact`)
+ * plutôt qu'un `jsonb` opaque : petit ensemble fixe, requêtable, validation simple,
+ * cohérent avec le reste du schéma. `types` (sous-ensemble de `MODES_CONTRAT`) reste
+ * en `jsonb` (liste de longueur variable, purement informative). `UNIQUE(foyer_id,
+ * nom)` dédoublonne la création à la volée (P2).
+ */
+export const etablissement = pgTable(
+  'etablissement',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Foyer propriétaire : portée par foyer (isolation inter-foyers). */
+    foyerId: uuid('foyer_id').notNull(),
+    /** Nom libre, unique par foyer. */
+    nom: varchar('nom', { length: 200 }).notNull(),
+    /** Destinataire des récaps de service (`null` tant que non renseigné). */
+    emailService: varchar('email_service', { length: 320 }),
+    /** Règle de préavis (union JOURS_OUVRES | JOUR_HEURE), `null` si non définie. */
+    preavisRegle: jsonb('preavis_regle').$type<PreavisRegle>(),
+    /** Sous-ensemble des modes proposés par l'établissement (informatif). */
+    types: jsonb('types')
+      .$type<ModeContrat[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /** Adresse postale (coordonnées/contact). */
+    adresse: varchar('adresse', { length: 500 }),
+    /** Téléphone de contact. */
+    telephone: varchar('telephone', { length: 40 }),
+    /** Personne référente. */
+    contact: varchar('contact', { length: 200 }),
+    /** Établissement actif (un établissement archivé n'est plus notifié). */
+    actif: boolean('actif').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique('etablissement_foyer_nom_uq').on(table.foyerId, table.nom),
+  ],
+);
+
+/**
  * Outbox transactionnelle (doc 06 §8.4). L'événement est inséré **dans la même
  * transaction** que le changement d'état ; un relais le publie ensuite sur NATS
  * et renseigne `published_at`. `id` = identifiant d'enveloppe = **clé d'idempotence**.
@@ -110,4 +166,5 @@ export const outbox = pgTable('outbox', {
 
 export type ContratRow = typeof contrat.$inferSelect;
 export type PlanningMoisRow = typeof planningMois.$inferSelect;
+export type EtablissementRow = typeof etablissement.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;

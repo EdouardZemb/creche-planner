@@ -15,6 +15,13 @@
       "when": 1780562000000,
       "tag": "0001_heures_fractionnaires",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782725488218,
+      "tag": "0002_etablissement",
+      "breakpoints": true
     }
   ]
 }
