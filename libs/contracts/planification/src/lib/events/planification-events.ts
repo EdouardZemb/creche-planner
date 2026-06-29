@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { integrationEventSchema } from '@creche-planner/contracts-kernel';
+import { preavisRegleSchema } from '../etablissement/preavis.js';
 
 /**
  * Événements d'intégration du bounded context **Planification** (contrats de garde,
@@ -19,6 +20,8 @@ export const MODES_CONTRAT = [
   'CANTINE',
   'ALSH',
 ] as const;
+/** Mode de garde d'un contrat (type unitaire dérivé de `MODES_CONTRAT`). */
+export type ModeContrat = (typeof MODES_CONTRAT)[number];
 
 // --- planification.ContratCree.v1 -------------------------------------------
 
@@ -115,3 +118,77 @@ export const contratSupprimeEventSchema = integrationEventSchema(
   contratSupprimePayloadSchema,
 );
 export type ContratSupprimeEvent = z.infer<typeof contratSupprimeEventSchema>;
+
+// --- planification.Etablissement{Cree,Modifie,Supprime}.v1 ------------------
+
+/**
+ * État complet d'un **établissement** (entité libre, par foyer — cf.
+ * `.claude/plans/etablissements-entite-libre.md`). `EtablissementCree` et
+ * `EtablissementModifie` partagent ce payload : le consommateur (`svc-notifications`,
+ * P3) projette son read-model sans relire la source. Les coordonnées (adresse,
+ * téléphone, contact) restent **internes** à `svc-planification` (affichage) et ne
+ * voyagent donc pas dans l'événement — seul le routage des récaps en a besoin.
+ */
+const etablissementEtatPayloadSchema = z.object({
+  etablissementId: z.string().uuid(),
+  foyerId: z.string().uuid(),
+  /** Nom libre, unique par foyer (ex. « Crèche du centre »). */
+  nom: z.string().min(1),
+  /** Destinataire des récaps de service ; `null` tant que non renseigné. */
+  emailService: z.email().nullable(),
+  /** Règle de préavis (union JOURS_OUVRES | JOUR_HEURE) ; `null` si non définie. */
+  preavisRegle: preavisRegleSchema.nullable(),
+  /** Sous-ensemble des modes proposés par l'établissement (informatif). */
+  types: z.array(z.enum(MODES_CONTRAT)),
+  /** Établissement actif (un établissement archivé n'est plus notifié). */
+  actif: z.boolean(),
+});
+
+/** Nom métier versionné (champ `type` de l'enveloppe). */
+export const ETABLISSEMENT_CREE_TYPE = 'planification.EtablissementCree.v1';
+
+export const etablissementCreePayloadSchema = etablissementEtatPayloadSchema;
+export type EtablissementCreePayload = z.infer<
+  typeof etablissementCreePayloadSchema
+>;
+
+export const etablissementCreeEventSchema = integrationEventSchema(
+  etablissementCreePayloadSchema,
+);
+export type EtablissementCreeEvent = z.infer<
+  typeof etablissementCreeEventSchema
+>;
+
+/** Nom métier versionné (champ `type` de l'enveloppe). */
+export const ETABLISSEMENT_MODIFIE_TYPE =
+  'planification.EtablissementModifie.v1';
+
+export const etablissementModifiePayloadSchema = etablissementEtatPayloadSchema;
+export type EtablissementModifiePayload = z.infer<
+  typeof etablissementModifiePayloadSchema
+>;
+
+export const etablissementModifieEventSchema = integrationEventSchema(
+  etablissementModifiePayloadSchema,
+);
+export type EtablissementModifieEvent = z.infer<
+  typeof etablissementModifieEventSchema
+>;
+
+/** Nom métier versionné (champ `type` de l'enveloppe). */
+export const ETABLISSEMENT_SUPPRIME_TYPE =
+  'planification.EtablissementSupprime.v1';
+
+export const etablissementSupprimePayloadSchema = z.object({
+  etablissementId: z.string().uuid(),
+});
+export type EtablissementSupprimePayload = z.infer<
+  typeof etablissementSupprimePayloadSchema
+>;
+
+export const etablissementSupprimeEventSchema = integrationEventSchema(
+  etablissementSupprimePayloadSchema,
+);
+export type EtablissementSupprimeEvent = z.infer<
+  typeof etablissementSupprimeEventSchema
+>;

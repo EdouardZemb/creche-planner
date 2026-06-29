@@ -13,6 +13,7 @@ import { PLANIFICATION_EVENT_SOURCE } from '@creche-planner/contracts-planificat
 import { loadConfig } from './config.js';
 import * as schema from './database/schema.js';
 import { PlanificationModule } from './planification/planification.module.js';
+import { EtablissementModule } from './etablissement/etablissement.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { PlanificationModule } from './planification/planification.module.js';
     }),
     HealthModule,
     PlanificationModule,
+    EtablissementModule,
     OutboxModule.forRoot({
       source: PLANIFICATION_EVENT_SOURCE,
       table: schema.outbox,
