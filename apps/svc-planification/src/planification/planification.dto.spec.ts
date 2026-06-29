@@ -193,6 +193,84 @@ describe('creerContratSchema (ABCM)', () => {
   });
 });
 
+describe('creerContratSchema (lien établissement, P2)', () => {
+  const basePsu = {
+    mode: 'CRECHE_PSU' as const,
+    foyerId: FOYER_ID,
+    enfant: 'Mia',
+    valideDu: '2026-01-01',
+    valideAu: '2026-12-31',
+    heuresAnnuellesContractualisees: 885.5,
+    nbMensualites: 7,
+    semaineType: semaineCompleteCreche(),
+  };
+  const ETAB_ID = '99999999-9999-4999-8999-999999999999';
+
+  it('accepte un contrat sans établissement (les deux liens absents)', () => {
+    expect(creerContratSchema.safeParse(basePsu).success).toBe(true);
+  });
+
+  it('accepte un etablissementId existant', () => {
+    expect(
+      creerContratSchema.safeParse({ ...basePsu, etablissementId: ETAB_ID })
+        .success,
+    ).toBe(true);
+  });
+
+  it('rejette un etablissementId non-UUID', () => {
+    expect(
+      creerContratSchema.safeParse({ ...basePsu, etablissementId: 'x' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('accepte un nouvelEtablissement (création à la volée)', () => {
+    expect(
+      creerContratSchema.safeParse({
+        ...basePsu,
+        nouvelEtablissement: {
+          nom: 'Crèche du centre',
+          emailService: 'service@creche.example',
+          types: ['CRECHE_PSU'],
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejette un nouvelEtablissement sans nom', () => {
+    expect(
+      creerContratSchema.safeParse({
+        ...basePsu,
+        nouvelEtablissement: { emailService: 'service@creche.example' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejette la fourniture des DEUX liens à la fois (exclusivité)', () => {
+    expect(
+      creerContratSchema.safeParse({
+        ...basePsu,
+        etablissementId: ETAB_ID,
+        nouvelEtablissement: { nom: 'Doublon' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('porte aussi sur la branche ABCM (etablissementId accepté)', () => {
+    expect(
+      creerContratSchema.safeParse({
+        mode: 'CANTINE',
+        foyerId: FOYER_ID,
+        enfant: 'Zoé',
+        valideDu: '2026-09-01',
+        valideAu: null,
+        semaineAbcm: semaineCompleteAbcm(),
+        etablissementId: ETAB_ID,
+      }).success,
+    ).toBe(true);
+  });
+});
+
 describe('modifierContratSchema', () => {
   it('réutilise la même union que la création (crèche valide accepté)', () => {
     expect(

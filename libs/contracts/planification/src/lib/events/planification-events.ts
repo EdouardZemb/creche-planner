@@ -44,6 +44,15 @@ export const contratCreePayloadSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'date ISO YYYY-MM-DD attendue')
     .nullable(),
+  /**
+   * Établissement d'accueil rattaché au contrat (P2), ou `null` si aucun n'est
+   * lié (la colonne `contrat.etablissement_id` est NULLABLE jusqu'à la migration
+   * de données P5). Champ **additif et OPTIONNEL** dans la v1 : émis (null/uuid)
+   * par `svc-planification` post-P2, mais son absence reste tolérée (rétro-compat,
+   * évolution non rupteur) — les consommateurs qui l'ignorent encore
+   * (`svc-tarification`, `svc-notifications`) ne sont pas cassés.
+   */
+  etablissementId: z.string().uuid().nullish(),
 });
 export type ContratCreePayload = z.infer<typeof contratCreePayloadSchema>;
 
@@ -94,6 +103,8 @@ export const contratModifiePayloadSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'date ISO YYYY-MM-DD attendue')
     .nullable(),
+  /** Établissement d'accueil rattaché (P2), optionnel/nullable. Cf. `ContratCree`. */
+  etablissementId: z.string().uuid().nullish(),
 });
 export type ContratModifiePayload = z.infer<typeof contratModifiePayloadSchema>;
 

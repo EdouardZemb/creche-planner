@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { Duree } from '@creche-planner/shared-kernel';
 import {
@@ -24,16 +29,19 @@ import {
   CONTRAT_CREE_TYPE,
   CONTRAT_MODIFIE_TYPE,
   CONTRAT_SUPPRIME_TYPE,
+  ETABLISSEMENT_CREE_TYPE,
   PLANNING_MODIFIE_TYPE,
   type ContratCreePayload,
   type ContratModifiePayload,
   type ContratSupprimePayload,
+  type EtablissementCreePayload,
   type PlanningModifiePayload,
 } from '@creche-planner/contracts-planification';
 import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   contrat,
+  etablissement,
   outbox,
   planningMois,
   type ContratRow,
@@ -105,6 +113,9 @@ function dureeDePlage(p: PlageHeures): Duree {
   return fin > debut ? Duree.depuisMinutes(fin - debut) : Duree.zero();
 }
 
+/** Transaction Drizzle (le `tx` passé au callback de `db.transaction`). */
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
 @Injectable()
 export class PlanificationService {
   constructor(
@@ -127,11 +138,19 @@ export class PlanificationService {
 
     const id = randomUUID();
     await this.db.transaction(async (tx) => {
+      // Résout le lien établissement DANS la même transaction (atomicité : pas de
+      // contrat orphelin ni d'établissement fantôme — cf. `resoudreEtablissement`).
+      const etablissementId = await this.resoudreEtablissement(
+        tx,
+        dto.foyerId,
+        dto,
+      );
       await tx.insert(contrat).values({
         id,
         foyerId: dto.foyerId,
         enfant: dto.enfant,
         mode: dto.mode,
+        etablissementId,
         valideDu: dto.valideDu,
         valideAu: dto.valideAu,
         heuresAnnuellesContractualisees:
@@ -149,6 +168,7 @@ export class PlanificationService {
         mode: dto.mode,
         valideDu: dto.valideDu,
         valideAu: dto.valideAu,
+        etablissementId,
       };
       await tx.insert(outbox).values({
         id: randomUUID(),
@@ -246,12 +266,21 @@ export class PlanificationService {
       if (!lignes[0]) {
         throw new NotFoundException(`contrat introuvable : ${id}`);
       }
+      // Résout le lien établissement dans la même transaction (existant validé /
+      // nouvel établissement créé atomiquement). Le DTO étant un remplacement
+      // complet, l'absence des deux champs vaut « pas d'établissement » (null).
+      const etablissementId = await this.resoudreEtablissement(
+        tx,
+        dto.foyerId,
+        dto,
+      );
       await tx
         .update(contrat)
         .set({
           foyerId: dto.foyerId,
           enfant: dto.enfant,
           mode: dto.mode,
+          etablissementId,
           valideDu: dto.valideDu,
           valideAu: dto.valideAu,
           heuresAnnuellesContractualisees:
@@ -274,6 +303,7 @@ export class PlanificationService {
         mode: dto.mode,
         valideDu: dto.valideDu,
         valideAu: dto.valideAu,
+        etablissementId,
       };
       await tx.insert(outbox).values({
         id: randomUUID(),
@@ -314,6 +344,86 @@ export class PlanificationService {
         traceId: traceIdCourant(),
       });
     });
+  }
+
+  /**
+   * Résout le **lien établissement** d'un contrat dans la transaction `tx` (P2) et
+   * renvoie l'`etablissementId` à stocker (ou `null` si aucun lien fourni) :
+   * - `nouvelEtablissement` fourni → **crée** l'établissement (insert + émet
+   *   `EtablissementCree` via l'outbox) DANS la même transaction → atomicité : un
+   *   rollback du contrat annule aussi l'établissement (pas d'établissement fantôme).
+   * - `etablissementId` fourni → **vérifie** qu'il existe ET appartient au
+   *   `foyerId` du contrat (isolation inter-foyers) → 400 sinon.
+   * - aucun des deux → `null` (la colonne `etablissement_id` est NULLABLE jusqu'à P5).
+   *
+   * Le DTO garantit l'exclusivité des deux champs (refine Zod), inutile de la
+   * re-vérifier ici.
+   */
+  private async resoudreEtablissement(
+    tx: Tx,
+    foyerId: string,
+    dto: CreerContratDto,
+  ): Promise<string | null> {
+    if (dto.nouvelEtablissement) {
+      const nouvel = dto.nouvelEtablissement;
+      const insere = await tx
+        .insert(etablissement)
+        .values({
+          id: randomUUID(),
+          foyerId,
+          nom: nouvel.nom,
+          emailService: nouvel.emailService ?? null,
+          preavisRegle: nouvel.preavisRegle ?? null,
+          types: nouvel.types ?? [],
+          adresse: nouvel.adresse ?? null,
+          telephone: nouvel.telephone ?? null,
+          contact: nouvel.contact ?? null,
+          actif: nouvel.actif ?? true,
+        })
+        .returning();
+      const ligne = insere[0];
+      if (!ligne) {
+        throw new Error(`insertion établissement échouée (foyer ${foyerId})`);
+      }
+      // Projeté tel quel (état complet) pour le read-model notifications (P3) ;
+      // les coordonnées internes (adresse/téléphone/contact) ne voyagent pas.
+      const payload: EtablissementCreePayload = {
+        etablissementId: ligne.id,
+        foyerId: ligne.foyerId,
+        nom: ligne.nom,
+        emailService: ligne.emailService,
+        preavisRegle: ligne.preavisRegle,
+        types: ligne.types,
+        actif: ligne.actif,
+      };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: ETABLISSEMENT_CREE_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+      return ligne.id;
+    }
+
+    if (dto.etablissementId !== undefined) {
+      const lignes = await tx
+        .select()
+        .from(etablissement)
+        .where(
+          and(
+            eq(etablissement.id, dto.etablissementId),
+            eq(etablissement.foyerId, foyerId),
+          ),
+        );
+      if (!lignes[0]) {
+        throw new BadRequestException(
+          `établissement ${dto.etablissementId} inconnu ou hors du foyer du contrat`,
+        );
+      }
+      return dto.etablissementId;
+    }
+
+    return null;
   }
 
   /**

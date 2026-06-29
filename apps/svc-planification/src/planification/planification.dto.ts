@@ -4,6 +4,7 @@ import {
   type PipeTransform,
 } from '@nestjs/common';
 import { z, type ZodType } from 'zod';
+import { creerEtablissementSchema } from '../etablissement/etablissement.dto.js';
 
 // Dates jour : `z.iso.date()` (calendrier réel — AQ-04, doc 27). Mois : regex
 // bornée 01-12 (l'ancienne `\d{2}` acceptait « 2026-13 »).
@@ -43,6 +44,19 @@ const inscriptionsJourSchema = z.object({
 /** Semaine type ABCM : jour d'école → inscriptions. */
 const semaineAbcmSchema = z.record(jourSemaineSchema, inscriptionsJourSchema);
 
+/**
+ * Lien **établissement** d'un contrat (P2) : on rattache SOIT un établissement
+ * existant par son `etablissementId`, SOIT un `nouvelEtablissement` créé à la volée
+ * (dans la même transaction que le contrat — atomicité côté service). Les deux sont
+ * facultatifs et **mutuellement exclusifs** (refine plus bas) ; aucun fourni ⇒
+ * contrat sans établissement (`etablissement_id` NULLABLE jusqu'à P5). Le `mode`
+ * reste une dimension indépendante (type/tarif), pas l'établissement.
+ */
+const lienEtablissementChamps = {
+  etablissementId: z.string().uuid().optional(),
+  nouvelEtablissement: creerEtablissementSchema.optional(),
+};
+
 /** Création d'un contrat crèche PSU. */
 const creerContratCrecheSchema = z.object({
   mode: z.literal('CRECHE_PSU'),
@@ -53,6 +67,7 @@ const creerContratCrecheSchema = z.object({
   heuresAnnuellesContractualisees: z.number().nonnegative(),
   nbMensualites: z.number().int().min(1),
   semaineType: semaineTypeSchema,
+  ...lienEtablissementChamps,
 });
 
 /** Création d'un contrat ABCM (cantine / périscolaire / ALSH). */
@@ -63,13 +78,31 @@ const creerContratAbcmSchema = z.object({
   valideDu: z.iso.date('date ISO YYYY-MM-DD attendue'),
   valideAu: z.iso.date('date ISO YYYY-MM-DD attendue').nullable(),
   semaineAbcm: semaineAbcmSchema,
+  ...lienEtablissementChamps,
 });
 
+/**
+ * Garde « SOIT existant, SOIT nouveau » : refuse de fournir les **deux** liens
+ * d'établissement à la fois (les deux absents = contrat sans établissement, toléré).
+ */
+const lienEtablissementExclusif = (d: {
+  etablissementId?: string | undefined;
+  nouvelEtablissement?: unknown;
+}): boolean =>
+  !(d.etablissementId !== undefined && d.nouvelEtablissement !== undefined);
+const messageLienExclusif = {
+  message:
+    'fournir soit etablissementId (existant) soit nouvelEtablissement (création), pas les deux',
+  path: ['etablissementId'],
+};
+
 /** Création d'un contrat de garde (crèche PSU ou ABCM). */
-export const creerContratSchema = z.discriminatedUnion('mode', [
-  creerContratCrecheSchema,
-  creerContratAbcmSchema,
-]);
+export const creerContratSchema = z
+  .discriminatedUnion('mode', [
+    creerContratCrecheSchema,
+    creerContratAbcmSchema,
+  ])
+  .refine(lienEtablissementExclusif, messageLienExclusif);
 export type CreerContratDto = z.infer<typeof creerContratSchema>;
 
 /**

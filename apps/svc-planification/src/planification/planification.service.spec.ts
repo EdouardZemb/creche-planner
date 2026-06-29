@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
   CONTRAT_CREE_TYPE,
   CONTRAT_MODIFIE_TYPE,
+  ETABLISSEMENT_CREE_TYPE,
   PLANNING_MODIFIE_TYPE,
 } from '@creche-planner/contracts-planification';
 import type {
@@ -37,6 +38,7 @@ function ligneCreche(overrides: Partial<ContratRow> = {}): ContratRow {
     foyerId: FOYER_ID,
     enfant: 'Mia',
     mode: 'CRECHE_PSU',
+    etablissementId: null,
     valideDu: '2026-01-01',
     valideAu: '2026-12-31',
     heuresAnnuellesContractualisees: 885.5,
@@ -63,6 +65,7 @@ function ligneAbcm(
     foyerId: FOYER_ID,
     enfant: 'Zoé',
     mode,
+    etablissementId: null,
     valideDu: '2026-01-01',
     valideAu: '2026-12-31',
     heuresAnnuellesContractualisees: null,
@@ -494,6 +497,141 @@ describe('PlanificationService.creerContrat', () => {
         payload: expect.objectContaining({ foyerId: FOYER_ID, enfant: 'Mia' }),
       }),
     );
+  });
+});
+
+const ETAB_ID = '99999999-9999-4999-8999-999999999999';
+
+/** DTO crèche valide de base (7 jours), surchargé pour les cas établissement. */
+const DTO_CRECHE_BASE = {
+  mode: 'CRECHE_PSU' as const,
+  foyerId: FOYER_ID,
+  enfant: 'Mia',
+  valideDu: '2026-01-01',
+  valideAu: '2026-12-31',
+  heuresAnnuellesContractualisees: 885.5,
+  nbMensualites: 7,
+  semaineType: {
+    LUNDI: [{ debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 }],
+    MARDI: [],
+    MERCREDI: [],
+    JEUDI: [],
+    VENDREDI: [],
+    SAMEDI: [],
+    DIMANCHE: [],
+  },
+};
+
+/**
+ * Faux `tx` pour `creerContrat` avec lien établissement : `select().from().where()`
+ * renvoie l'établissement existant (ou `[]` pour simuler « hors foyer / inconnu »),
+ * et chaque `insert().values()` est capturé. L'insert établissement (création à la
+ * volée) expose `.returning()` renvoyant la ligne reflétant les valeurs insérées.
+ */
+function fakeCreerAvecEtab(etabExistant: boolean): {
+  db: Database;
+  inserts: Record<string, unknown>[];
+} {
+  const inserts: Record<string, unknown>[] = [];
+  const tx = {
+    select: () => ({
+      from: () => ({
+        where: () =>
+          Promise.resolve(
+            etabExistant ? [{ id: ETAB_ID, foyerId: FOYER_ID }] : [],
+          ),
+      }),
+    }),
+    insert: () => ({
+      values: (v: Record<string, unknown>) => {
+        inserts.push(v);
+        return Object.assign(Promise.resolve(), {
+          returning: () =>
+            Promise.resolve([
+              {
+                id: 'new-etab-id',
+                foyerId: v['foyerId'],
+                nom: v['nom'],
+                emailService: v['emailService'] ?? null,
+                preavisRegle: v['preavisRegle'] ?? null,
+                types: v['types'] ?? [],
+                actif: v['actif'] ?? true,
+              },
+            ]),
+        });
+      },
+    }),
+  };
+  const db = {
+    transaction: vi.fn(async (cb: (t: unknown) => Promise<void>) => {
+      await cb(tx);
+    }),
+  } as unknown as Database;
+  return { db, inserts };
+}
+
+/** Retrouve l'insert outbox d'un type d'événement donné parmi les inserts capturés. */
+function outboxDeType(
+  inserts: Record<string, unknown>[],
+  type: string,
+): Record<string, unknown> | undefined {
+  return inserts.find((i) => i['type'] === type);
+}
+
+describe('PlanificationService.creerContrat (lien établissement, P2)', () => {
+  it('etablissementId existant : le valide (foyer) et le stocke + payload ContratCree', async () => {
+    const { db, inserts } = fakeCreerAvecEtab(true);
+    const service = new PlanificationService(db, referentielVide);
+
+    await service.creerContrat({
+      ...DTO_CRECHE_BASE,
+      etablissementId: ETAB_ID,
+    });
+
+    // L'insert contrat porte etablissementId ; pas de création d'établissement.
+    const contratInsert = inserts.find((i) => i['mode'] === 'CRECHE_PSU');
+    expect(contratInsert).toMatchObject({ etablissementId: ETAB_ID });
+    expect(outboxDeType(inserts, ETABLISSEMENT_CREE_TYPE)).toBeUndefined();
+    // L'événement ContratCree porte le lien.
+    const cree = outboxDeType(inserts, CONTRAT_CREE_TYPE);
+    expect(cree?.['payload']).toMatchObject({ etablissementId: ETAB_ID });
+  });
+
+  it('etablissementId hors foyer / inconnu : 400, aucun contrat inséré', async () => {
+    const { db, inserts } = fakeCreerAvecEtab(false);
+    const service = new PlanificationService(db, referentielVide);
+
+    await expect(
+      service.creerContrat({ ...DTO_CRECHE_BASE, etablissementId: ETAB_ID }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(inserts.find((i) => i['mode'] === 'CRECHE_PSU')).toBeUndefined();
+  });
+
+  it('nouvelEtablissement : crée l’établissement (+EtablissementCree) ET le contrat dans la même transaction', async () => {
+    const { db, inserts } = fakeCreerAvecEtab(false);
+    const service = new PlanificationService(db, referentielVide);
+
+    await service.creerContrat({
+      ...DTO_CRECHE_BASE,
+      nouvelEtablissement: { nom: 'Crèche du centre', types: ['CRECHE_PSU'] },
+    });
+
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+    // L'établissement est inséré (porte le foyer du contrat) + son événement émis.
+    const etabInsert = inserts.find((i) => i['nom'] === 'Crèche du centre');
+    expect(etabInsert).toMatchObject({ foyerId: FOYER_ID });
+    const etabCree = outboxDeType(inserts, ETABLISSEMENT_CREE_TYPE);
+    expect(etabCree?.['payload']).toMatchObject({
+      foyerId: FOYER_ID,
+      nom: 'Crèche du centre',
+    });
+    // Le contrat est rattaché à l'établissement fraîchement créé.
+    const contratInsert = inserts.find((i) => i['mode'] === 'CRECHE_PSU');
+    expect(contratInsert).toMatchObject({ etablissementId: 'new-etab-id' });
+    const contratCree = outboxDeType(inserts, CONTRAT_CREE_TYPE);
+    expect(contratCree?.['payload']).toMatchObject({
+      etablissementId: 'new-etab-id',
+    });
   });
 });
 

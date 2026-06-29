@@ -27,9 +27,51 @@ describe('contracts-planification (événements planification.*)', () => {
         mode: 'CRECHE_PSU',
         valideDu: '2026-09-01',
         valideAu: null,
+        etablissementId: null,
       },
     };
     expect(contratCreeEventSchema.safeParse(event).success).toBe(true);
+  });
+
+  it('accepte un etablissementId lié dans ContratCree (P2)', () => {
+    const event = {
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: CONTRAT_CREE_TYPE,
+      source: PLANIFICATION_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-29T00:00:00.000Z',
+      traceId: '0af7651916cd43dd8448eb211c80319c',
+      payload: {
+        contratId: '55555555-0000-4000-8000-000000000000',
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        enfant: 'Mia',
+        mode: 'CRECHE_PSU',
+        valideDu: '2026-09-01',
+        valideAu: null,
+        etablissementId: '99999999-0000-4000-8000-000000000000',
+      },
+    };
+    expect(contratCreeEventSchema.safeParse(event).success).toBe(true);
+  });
+
+  it('accepte un etablissementId absent dans ContratCree (champ optionnel, rétro-compat)', () => {
+    const result = contratCreeEventSchema.safeParse({
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: CONTRAT_CREE_TYPE,
+      source: PLANIFICATION_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        contratId: '55555555-0000-4000-8000-000000000000',
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        enfant: 'Mia',
+        mode: 'CRECHE_PSU',
+        valideDu: '2026-09-01',
+        valideAu: null,
+      },
+    });
+    expect(result.success).toBe(true);
   });
 
   it('rejette un mode inconnu dans ContratCree', () => {
@@ -47,6 +89,7 @@ describe('contracts-planification (événements planification.*)', () => {
         mode: 'GARDERIE',
         valideDu: '2026-09-01',
         valideAu: null,
+        etablissementId: null,
       },
     });
     expect(result.success).toBe(false);

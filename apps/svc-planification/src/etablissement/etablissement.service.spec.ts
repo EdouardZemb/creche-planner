@@ -117,17 +117,32 @@ function fakeMaj(present: boolean): {
   return { db, outbox, set: () => setArg };
 }
 
-/** Faux `db` transactionnel pour `supprimer` : `select()` garde 404, `delete()` espionné. */
-function fakeSuppr(present: boolean): {
+/**
+ * Faux `db` transactionnel pour `supprimer`. Deux `select` successifs : le 1ᵉʳ
+ * garde l'existence (404 si vide), le 2ᵉ **compte** les contrats rattachés
+ * (`compterContratsRattaches` → garde 409). On répond donc par index d'appel :
+ * existence (`[ligneEtab()]`/`[]`) puis comptage (`[{ n: nbRattaches }]`).
+ * `delete()` est espionné.
+ */
+function fakeSuppr(
+  present: boolean,
+  nbRattaches = 0,
+): {
   db: Database;
   outbox: Record<string, unknown>[];
   supprime: () => boolean;
 } {
   const outbox: Record<string, unknown>[] = [];
   let supprime = false;
-  const rows = present ? [ligneEtab()] : [];
+  const reponses: unknown[][] = [
+    present ? [ligneEtab()] : [],
+    [{ n: nbRattaches }],
+  ];
+  let i = 0;
   const tx = {
-    select: () => ({ from: () => ({ where: () => Promise.resolve(rows) }) }),
+    select: () => ({
+      from: () => ({ where: () => Promise.resolve(reponses[i++] ?? []) }),
+    }),
     delete: () => ({
       where: () => {
         supprime = true;
@@ -316,16 +331,10 @@ describe('EtablissementService.supprimer', () => {
     expect(outbox).toHaveLength(0);
   });
 
-  it('GARDE (extension P2) : bloque en 409 si des contrats sont rattachés, sans supprimer', async () => {
-    const { db, outbox, supprime } = fakeSuppr(true);
+  it('GARDE (P2) : bloque en 409 si des contrats sont rattachés, sans supprimer ni émettre', async () => {
+    // Le comptage réel (`compterContratsRattaches`) renvoie 2 via le 2ᵉ select.
+    const { db, outbox, supprime } = fakeSuppr(true, 2);
     const service = new EtablissementService(db);
-    // Simule la garde réelle de P2 : le comptage des contrats rattachés > 0.
-    vi.spyOn(
-      service as unknown as {
-        compterContratsRattaches: (id: string) => Promise<number>;
-      },
-      'compterContratsRattaches',
-    ).mockResolvedValue(2);
 
     await expect(service.supprimer(ETAB_ID)).rejects.toBeInstanceOf(
       ConflictException,

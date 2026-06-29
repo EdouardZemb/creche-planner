@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { asc, count, eq } from 'drizzle-orm';
 import {
   ETABLISSEMENT_CREE_TYPE,
   ETABLISSEMENT_MODIFIE_TYPE,
@@ -18,10 +18,14 @@ import {
 import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
+  contrat,
   etablissement,
   outbox,
   type EtablissementRow,
 } from '../database/schema.js';
+
+/** Transaction Drizzle (le `tx` passé au callback de `db.transaction`). */
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 import type {
   CreerEtablissementDto,
   ModifierEtablissementDto,
@@ -201,7 +205,7 @@ export class EtablissementService {
       if (!lignes[0]) {
         throw new NotFoundException(`établissement introuvable : ${id}`);
       }
-      const rattaches = await this.compterContratsRattaches();
+      const rattaches = await this.compterContratsRattaches(tx, id);
       if (rattaches > 0) {
         throw new ConflictException(
           `établissement référencé par ${String(rattaches)} contrat(s) : réaffectez-les avant suppression`,
@@ -219,14 +223,18 @@ export class EtablissementService {
   }
 
   /**
-   * Point d'extension de la garde de suppression. **P2** ajoutera la colonne
-   * `contrat.etablissement_id` puis comptera ici, dans la transaction de
-   * `supprimer`, les contrats rattachés à l'établissement (le paramètre `id`
-   * réapparaîtra alors). Tant que la colonne n'existe pas, le comptage vaut 0 →
-   * aucune suppression n'est bloquée.
+   * Compte, dans la transaction `tx`, les contrats rattachés à l'établissement
+   * `id` (`contrat.etablissement_id`). Sous-tend la **garde de suppression** : un
+   * établissement encore référencé ne peut être supprimé (409, cf. `supprimer`).
+   * Lecture **dans la transaction** pour décider sur l'état cohérent avant le
+   * `delete`.
    */
-  private compterContratsRattaches(): Promise<number> {
-    return Promise.resolve(0);
+  private async compterContratsRattaches(tx: Tx, id: string): Promise<number> {
+    const lignes = await tx
+      .select({ n: count() })
+      .from(contrat)
+      .where(eq(contrat.etablissementId, id));
+    return lignes[0]?.n ?? 0;
   }
 
   /**
