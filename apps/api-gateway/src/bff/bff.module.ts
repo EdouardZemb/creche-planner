@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ContratsController } from './contrats.controller.js';
 import { CoutsController } from './couts.controller.js';
+import { EtablissementsFoyerController } from './etablissements-foyer.controller.js';
 import { FoyersController } from './foyers.controller.js';
 import { MoiController } from './moi.controller.js';
 import { NotificationsController } from './notifications.controller.js';
@@ -16,6 +17,7 @@ import { ValidationsController } from './validations.controller.js';
     MoiController,
     ContratsController,
     CoutsController,
+    EtablissementsFoyerController,
     NotificationsController,
     ValidationsController,
   ],

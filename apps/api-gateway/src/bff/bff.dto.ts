@@ -122,6 +122,34 @@ export const upsertEtablissementSchema = z.object({
 /** Clés d'établissement acceptées en chemin (`PUT /etablissements/:cle`). */
 export const CLES_ETABLISSEMENT = ['CRECHE_HIRONDELLES', 'ABCM'] as const;
 
+/** Modes de garde proposables par un établissement (sous-ensemble informatif). */
+const MODES_ETABLISSEMENT = [
+  'CRECHE_PSU',
+  'PERISCOLAIRE',
+  'CANTINE',
+  'ALSH',
+] as const;
+
+/**
+ * Création d'un **établissement** (entité libre par foyer, P2) à la frontière BFF
+ * — relayé à `svc-planification` qui fait la validation profonde. Seul `nom` est
+ * requis ; le reste est facultatif et peut être `null` (champ vidé). Le `foyerId`
+ * voyage dans le chemin (`/foyers/:foyerId/etablissements`), pas dans le corps.
+ */
+export const creerEtablissementSchema = z.object({
+  nom: z.string().min(1).max(200),
+  emailService: z.email('adresse e-mail invalide').nullish(),
+  preavisRegle: preavisRegleSchema.nullish(),
+  types: z.array(z.enum(MODES_ETABLISSEMENT)).optional(),
+  adresse: z.string().max(500).nullish(),
+  telephone: z.string().max(40).nullish(),
+  contact: z.string().max(200).nullish(),
+  actif: z.boolean().optional(),
+});
+
+/** Édition d'un établissement : tous les champs facultatifs (seuls les fournis changent). */
+export const modifierEtablissementSchema = creerEtablissementSchema.partial();
+
 // Mois borné 01-12 (AQ-04, doc 27 : l'ancienne `\d{2}` acceptait « 2026-13 »).
 const MOIS = /^\d{4}-(0[1-9]|1[0-2])$/;
 /** Mois au format `YYYY-MM`. */

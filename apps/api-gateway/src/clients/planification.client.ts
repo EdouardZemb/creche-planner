@@ -59,6 +59,40 @@ export type PrestationsReponse = z.infer<typeof prestationsReponseSchema>;
 /** Corps d'écriture d'un planning, relayé tel quel vers le service amont. */
 export type SaisiePlanning = Readonly<Record<string, unknown>>;
 
+/** Règle de préavis d'un établissement (union discriminée par `type`). */
+const preavisRegleSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('JOURS_OUVRES'), valeur: z.number() }),
+  z.object({
+    type: z.literal('JOUR_HEURE'),
+    jour: z.string(),
+    heure: z.string(),
+  }),
+]);
+
+/**
+ * Vue lecture d'un **établissement** (entité libre par foyer, P2) renvoyée par
+ * `svc-planification`. Distincte de l'`EtablissementVue` à clés de l'ancien
+ * annuaire `svc-notifications` (`notifications.client.ts`) — les deux coexistent
+ * jusqu'au démantèlement P6.
+ */
+const etablissementVueSchema = z.object({
+  id: z.string(),
+  foyerId: z.string(),
+  nom: z.string(),
+  emailService: z.string().nullable(),
+  preavisRegle: preavisRegleSchema.nullable(),
+  types: z.array(z.string()),
+  adresse: z.string().nullable(),
+  telephone: z.string().nullable(),
+  contact: z.string().nullable(),
+  actif: z.boolean(),
+});
+
+export type EtablissementVue = z.infer<typeof etablissementVueSchema>;
+
+/** Corps de création/édition d'un établissement, relayé tel quel (validé en amont). */
+export type SaisieEtablissement = Readonly<Record<string, unknown>>;
+
 /**
  * Réponse `GET /api/contrats/:id/plannings/:mois` : la saisie enregistrée du
  * mois (forme libre, relayée telle quelle) ou `null` si aucune saisie.
@@ -280,6 +314,97 @@ export class PlanificationClient {
           throw new Error('HTTP ' + reponse.status);
         }
         return lirePlanningReponseSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** GET `/api/etablissements?foyer=` — établissements (entité libre) d'un foyer. */
+  async listerEtablissements(foyerId: string): Promise<EtablissementVue[]> {
+    const base = loadConfig().planificationUrl;
+    const url = `${base}/api/etablissements?foyer=${encodeURIComponent(foyerId)}`;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-planification',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return z.array(etablissementVueSchema).parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** POST `/api/etablissements?foyer=` — crée un établissement (201). */
+  async creerEtablissement(
+    foyerId: string,
+    saisie: SaisieEtablissement,
+  ): Promise<EtablissementVue> {
+    const base = loadConfig().planificationUrl;
+    const url = `${base}/api/etablissements?foyer=${encodeURIComponent(foyerId)}`;
+    this.logger.debug(`POST ${url}`);
+    return executerResilient(
+      'svc-planification',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(saisie),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return etablissementVueSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** PUT `/api/etablissements/:id` — modifie un établissement. */
+  async modifierEtablissement(
+    id: string,
+    saisie: SaisieEtablissement,
+  ): Promise<EtablissementVue> {
+    const base = loadConfig().planificationUrl;
+    const url = `${base}/api/etablissements/${encodeURIComponent(id)}`;
+    this.logger.debug(`PUT ${url}`);
+    return executerResilient(
+      'svc-planification',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(saisie),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return etablissementVueSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** DELETE `/api/etablissements/:id` — supprime un établissement (204 ; 409 si rattaché). */
+  async supprimerEtablissement(id: string): Promise<void> {
+    const base = loadConfig().planificationUrl;
+    const url = `${base}/api/etablissements/${encodeURIComponent(id)}`;
+    this.logger.debug(`DELETE ${url}`);
+    await executerResilient(
+      'svc-planification',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'DELETE',
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
       },
       this.breaker,
       OPTIONS,
