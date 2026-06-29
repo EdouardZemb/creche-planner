@@ -203,18 +203,20 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
       dialog.getByRole('button', { name: 'Confirmer' }).click(),
     );
 
-    // L'absence partielle compte toujours comme un retrait de jour (écart -1).
+    // L'absence partielle INTÉRIEURE (11:00–14:00 ⊂ garde 08:30–17:00) s'affiche
+    // désormais « Ajusté » (3e état, ambre) et non « Absent » ; elle reste
+    // toutefois comptée comme un retrait de jour (écart -1).
     await expect(cellule(page, LUNDI).locator('.fc-event-title')).toHaveText(
-      'Absent',
+      'Ajusté',
     );
 
     // PERSISTANCE : la plage horaire saisie est réhydratée → « toute la journée »
     // n'est plus cochée (la plage ne couvre pas toute la garde du contrat).
-    // On attend que la réhydratation serveur ait marqué le jour « Absent » avant
+    // On attend que la réhydratation serveur ait marqué le jour « Ajusté » avant
     // d'ouvrir la modale (sinon `ouvrirSaisie` lit un état encore vide).
     await page.reload();
     await expect(cellule(page, LUNDI).locator('.fc-event-title')).toHaveText(
-      'Absent',
+      'Ajusté',
     );
     dialog = await ouvrirAbsence(page, LUNDI);
     await expect(

@@ -301,9 +301,10 @@ test.describe("MBT — modèle d'état système : saisie planning crèche (Zoé)
     await attendreEnregistrement(page, () =>
       dialogAbs.getByRole('button', { name: 'Confirmer' }).click(),
     );
-    // [S3] l'absence partielle compte toujours comme un retrait (« Absent », -1).
+    // [S3] l'absence partielle INTÉRIEURE (11:00–14:00 ⊂ 08:30–17:00) s'affiche
+    // « Ajusté » (3e état, ambre) tout en restant comptée comme un retrait (-1).
     await expect(cellule(page, LUNDI).locator('.fc-event-title')).toHaveText(
-      'Absent',
+      'Ajusté',
     );
     await expect(page.getByText(/-1\s+jour/)).toBeVisible();
 

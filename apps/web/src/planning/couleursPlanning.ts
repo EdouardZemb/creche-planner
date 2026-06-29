@@ -23,3 +23,8 @@ export function couleurAjoute(): string {
 export function couleurRetire(): string {
   return couleurToken('--rouge', '#b91c1c');
 }
+
+/** Jour gardé avec ajustement partiel (présence réduite) → ambre. */
+export function couleurAjuste(): string {
+  return couleurToken('--ambre', '#b45309');
+}

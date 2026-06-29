@@ -24,7 +24,12 @@ import { usePlanning } from './usePlanning';
 import { useSaisieServeur } from './useSaisieServeur';
 import { LegendePlanning } from './LegendePlanning';
 import { ChoixPortee, type Portee } from './ChoixPortee';
-import { couleurAjoute, couleurRetire } from './couleursPlanning';
+import { classerAbsence } from './etatJourGarde';
+import {
+  couleurAjoute,
+  couleurAjuste,
+  couleurRetire,
+} from './couleursPlanning';
 import {
   ARRIVEE_DEFAUT,
   DEPART_DEFAUT,
@@ -52,6 +57,19 @@ interface EtatAbsence extends PlageHoraire {
 
 interface EtatJourSup extends PlageHoraire {
   date: string;
+}
+
+// État d'affichage d'un jour gardé, classé une seule fois (couleur + libellés)
+// pour être partagé par le calendrier et la liste clavier accessible.
+interface EtatJourAffiche {
+  /** Une absence est saisie ce jour (→ « Modifier » plutôt que « Saisir »). */
+  readonly aAbsence: boolean;
+  /** Couleur de la pastille FullCalendar. */
+  readonly couleur: string;
+  /** Titre de l'évènement FullCalendar. */
+  readonly titre: string;
+  /** Libellé d'état affiché dans la liste clavier. */
+  readonly libelle: string;
 }
 
 /** Calendrier mensuel crèche PSU : jours gardés, absences (retraits), ajouts. */
@@ -250,22 +268,70 @@ export function CalendrierCreche({
 
   const couleurGarde = couleurDuMode('CRECHE_PSU');
   const couleurAbsent = couleurRetire();
+  const couleurAjustement = couleurAjuste();
   const couleurSup = couleurAjoute();
 
   const ecartJours = joursSup.length - absences.length;
 
+  // Classe chaque jour gardé une seule fois : « Gardé » sans absence ; avec
+  // absence, `classerAbsence` distingue l'absence pleine journée (rouge) du
+  // simple ajustement partiel (ambre). Partagé calendrier ↔ liste clavier.
+  const etatsJours = useMemo<Map<string, EtatJourAffiche>>(() => {
+    const map = new Map<string, EtatJourAffiche>();
+    for (const jour of joursGardes) {
+      const absence = absences.find((a) => a.date === jour);
+      if (absence === undefined) {
+        map.set(jour, {
+          aAbsence: false,
+          couleur: couleurGarde,
+          titre: 'Gardé',
+          libelle: 'Gardé',
+        });
+        continue;
+      }
+      const classe = classerAbsence(absence, plageContratJour(jour));
+      if (classe.statut === 'absent') {
+        map.set(jour, {
+          aAbsence: true,
+          couleur: couleurAbsent,
+          titre: 'Absent',
+          libelle: 'Absent',
+        });
+      } else {
+        map.set(jour, {
+          aAbsence: true,
+          couleur: couleurAjustement,
+          titre: classe.presence
+            ? `${classe.libelle} (présent ${classe.presence})`
+            : classe.libelle,
+          libelle: classe.presence
+            ? `${classe.libelle} · ${classe.presence}`
+            : classe.libelle,
+        });
+      }
+    }
+    return map;
+  }, [
+    joursGardes,
+    absences,
+    plageContratJour,
+    couleurGarde,
+    couleurAbsent,
+    couleurAjustement,
+  ]);
+
   const events = useMemo<EventInput[]>(() => {
     const evts: EventInput[] = [];
     for (const jour of joursGardes) {
-      const estAbsent = absences.some((a) => a.date === jour);
-      const couleur = estAbsent ? couleurAbsent : couleurGarde;
+      const etat = etatsJours.get(jour);
+      const couleur = etat?.couleur ?? couleurGarde;
       evts.push({
         id: jour,
         start: jour,
         allDay: true,
         backgroundColor: couleur,
         borderColor: couleur,
-        title: estAbsent ? 'Absent' : 'Gardé',
+        title: etat?.titre ?? 'Gardé',
       });
     }
     for (const j of joursSup) {
@@ -279,14 +345,7 @@ export function CalendrierCreche({
       });
     }
     return evts;
-  }, [
-    joursGardes,
-    joursSup,
-    absences,
-    couleurGarde,
-    couleurAbsent,
-    couleurSup,
-  ]);
+  }, [joursGardes, joursSup, etatsJours, couleurGarde, couleurSup]);
 
   const envoyer = useCallback(
     (
@@ -815,7 +874,9 @@ export function CalendrierCreche({
           <legend>Saisir une absence (accessible au clavier)</legend>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {joursGardesListe.map((jour) => {
-              const estAbsent = absences.some((a) => a.date === jour);
+              const etat = etatsJours.get(jour);
+              const aAbsence = etat?.aAbsence ?? false;
+              const libelleEtat = etat?.libelle ?? 'Gardé';
               const libelleJour = formaterDateFr(jour);
               return (
                 <li
@@ -852,7 +913,7 @@ export function CalendrierCreche({
                     <span style={{ minWidth: '8rem' }}>{libelleJour}</span>
                   </label>
                   <span className="muted" style={{ fontSize: '0.82rem' }}>
-                    {estAbsent ? 'Absent' : 'Gardé'}
+                    {libelleEtat}
                   </span>
                   <button
                     type="button"
@@ -861,12 +922,12 @@ export function CalendrierCreche({
                       ouvrirSaisie(jour);
                     }}
                     aria-label={
-                      estAbsent
+                      aAbsence
                         ? `Modifier l’absence du ${libelleJour}`
                         : `Saisir une absence le ${libelleJour}`
                     }
                   >
-                    {estAbsent ? 'Modifier' : 'Saisir'}
+                    {aAbsence ? 'Modifier' : 'Saisir'}
                   </button>
                 </li>
               );

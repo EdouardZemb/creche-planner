@@ -1,4 +1,8 @@
-import { couleurAjoute, couleurRetire } from './couleursPlanning';
+import {
+  couleurAjoute,
+  couleurAjuste,
+  couleurRetire,
+} from './couleursPlanning';
 
 export interface LegendePlanningProps {
   /** Couleur des jours « gardés » du contrat (couleur du mode). */
@@ -31,7 +35,7 @@ function Entree({ couleur, libelle }: { couleur: string; libelle: string }) {
 }
 
 /**
- * Légende des états du calendrier (gardé / ajouté / retiré) et indicateur
+ * Légende des états du calendrier (gardé / ajouté / ajusté / absent) et indicateur
  * d'écart vs le contrat pour le mois affiché. L'écart résume d'un coup d'œil
  * l'ampleur des ajustements ponctuels appliqués au-dessus de la semaine type.
  */
@@ -63,7 +67,8 @@ export function LegendePlanning({
     >
       <Entree couleur={couleurGarde} libelle={libelleGarde} />
       <Entree couleur={couleurAjoute()} libelle="Ajouté" />
-      <Entree couleur={couleurRetire()} libelle="Retiré / absent" />
+      <Entree couleur={couleurAjuste()} libelle="Ajusté (horaires réduits)" />
+      <Entree couleur={couleurRetire()} libelle="Absent / retiré" />
       <span
         aria-live="polite"
         aria-atomic="true"
