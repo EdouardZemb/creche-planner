@@ -192,13 +192,14 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
       'Absent',
     );
 
-    // 2) ABSENCE PARTIELLE : passer en heures d'arrivée/départ (décocher « toute
-    //    la journée ») et saisir une plage. La modale rouvre via « Modifier ».
+    // 2) ABSENCE PARTIELLE INTÉRIEURE : choisir le type « Absence personnalisée »
+    //    (sélecteur radio remplaçant l'ancienne case « toute la journée ») puis
+    //    saisir une fenêtre d'absence intérieure (11:00–14:00). La modale rouvre
+    //    via « Modifier ».
     dialog = await ouvrirAbsence(page, LUNDI);
-    const caseJournee = dialog.getByLabel('Absence toute la journée');
-    await caseJournee.uncheck();
-    await dialog.getByLabel('Heure d’arrivée').fill('11:00');
-    await dialog.getByLabel('Heure de départ').fill('14:00');
+    await dialog.getByRole('radio', { name: 'Absence personnalisée' }).check();
+    await dialog.getByLabel('Début de l’absence').fill('11:00');
+    await dialog.getByLabel('Fin de l’absence').fill('14:00');
     await attendreEnregistrement(page, () =>
       dialog.getByRole('button', { name: 'Confirmer' }).click(),
     );
@@ -210,8 +211,8 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
       'Ajusté',
     );
 
-    // PERSISTANCE : la plage horaire saisie est réhydratée → « toute la journée »
-    // n'est plus cochée (la plage ne couvre pas toute la garde du contrat).
+    // PERSISTANCE : la fenêtre saisie est réhydratée → le type « Absence
+    // personnalisée » est resélectionné (la plage ne couvre pas toute la garde).
     // On attend que la réhydratation serveur ait marqué le jour « Ajusté » avant
     // d'ouvrir la modale (sinon `ouvrirSaisie` lit un état encore vide).
     await page.reload();
@@ -220,10 +221,10 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
     );
     dialog = await ouvrirAbsence(page, LUNDI);
     await expect(
-      dialog.getByLabel('Absence toute la journée'),
-    ).not.toBeChecked();
-    await expect(dialog.getByLabel('Heure d’arrivée')).toHaveValue('11:00');
-    await expect(dialog.getByLabel('Heure de départ')).toHaveValue('14:00');
+      dialog.getByRole('radio', { name: 'Absence personnalisée' }),
+    ).toBeChecked();
+    await expect(dialog.getByLabel('Début de l’absence')).toHaveValue('11:00');
+    await expect(dialog.getByLabel('Fin de l’absence')).toHaveValue('14:00');
 
     // Nettoyage : supprimer l'absence (retour à l'état nominal seedé).
     await attendreEnregistrement(page, () =>

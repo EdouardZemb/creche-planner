@@ -292,12 +292,16 @@ test.describe("MBT — modèle d'état système : saisie planning crèche (Zoé)
 
     // =====================================================================
     // S0 → S3 (absence PARTIELLE sur le lundi gardé, en heures).
-    // On décoche « toute la journée » et on saisit une sous-plage (11:00–14:00).
+    // On choisit le type « Absence personnalisée » (sélecteur radio remplaçant
+    // l'ancienne case « toute la journée ») et on saisit une sous-plage
+    // INTÉRIEURE (11:00–14:00).
     // =====================================================================
     dialogAbs = await ouvrirAbsence(page, LUNDI);
-    await dialogAbs.getByLabel('Absence toute la journée').uncheck();
-    await dialogAbs.getByLabel('Heure d’arrivée').fill('11:00');
-    await dialogAbs.getByLabel('Heure de départ').fill('14:00');
+    await dialogAbs
+      .getByRole('radio', { name: 'Absence personnalisée' })
+      .check();
+    await dialogAbs.getByLabel('Début de l’absence').fill('11:00');
+    await dialogAbs.getByLabel('Fin de l’absence').fill('14:00');
     await attendreEnregistrement(page, () =>
       dialogAbs.getByRole('button', { name: 'Confirmer' }).click(),
     );
