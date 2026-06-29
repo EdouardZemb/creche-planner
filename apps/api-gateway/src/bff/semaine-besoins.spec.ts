@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { joursDeLaSemaine } from '@creche-planner/shared-semaine';
-import type { ContratVue } from '../clients/planification.client.js';
-import type { EtablissementVue } from '../clients/notifications.client.js';
+import type {
+  ContratVue,
+  EtablissementVue,
+} from '../clients/planification.client.js';
 import {
   agregerSemaineBesoins,
   estContratActifSurSemaine,
@@ -10,29 +12,44 @@ import {
 
 const JOURS_W27 = joursDeLaSemaine('2026-W27'); // 2026-06-29 … 2026-07-05 (à cheval)
 
+// Identifiants d'établissements réels (entité libre, `svc-planification`).
+const ID_CRECHE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const ID_ABCM = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
 const contrat = (
   p: Partial<ContratVue> & Pick<ContratVue, 'mode'>,
 ): ContratVue => ({
   id: '11111111-1111-1111-1111-111111111111',
   foyerId: '22222222-2222-2222-2222-222222222222',
   enfant: 'Mia',
+  etablissementId: null,
   valideDu: '2026-01-01',
   valideAu: null,
   ...p,
 });
 
 const HIRONDELLES: EtablissementVue = {
-  cle: 'CRECHE_HIRONDELLES',
-  libelle: 'Crèche des Hirondelles',
+  id: ID_CRECHE,
+  foyerId: '22222222-2222-2222-2222-222222222222',
+  nom: 'Crèche des Hirondelles',
   emailService: 'creche@example.test',
   preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
+  types: ['CRECHE_PSU'],
+  adresse: null,
+  telephone: null,
+  contact: null,
   actif: true,
 };
 const ABCM: EtablissementVue = {
-  cle: 'ABCM',
-  libelle: 'École ABCM',
+  id: ID_ABCM,
+  foyerId: '22222222-2222-2222-2222-222222222222',
+  nom: 'École ABCM',
   emailService: 'abcm@example.test',
   preavisRegle: { type: 'JOUR_HEURE', jour: 'JEUDI', heure: '12:00' },
+  types: ['PERISCOLAIRE', 'CANTINE', 'ALSH'],
+  adresse: null,
+  telephone: null,
+  contact: null,
   actif: true,
 };
 
@@ -84,7 +101,12 @@ describe('agregerSemaineBesoins', () => {
   it('extrait les besoins datés et déduplique les établissements concernés', () => {
     const contrats: ContratAvecSaisies[] = [
       {
-        contrat: contrat({ id: 'c-creche', enfant: 'Mia', mode: 'CRECHE_PSU' }),
+        contrat: contrat({
+          id: 'c-creche',
+          enfant: 'Mia',
+          mode: 'CRECHE_PSU',
+          etablissementId: ID_CRECHE,
+        }),
         saisies: [
           {
             complementMinutes: 30, // scalaire mensuel : ignoré
@@ -93,11 +115,21 @@ describe('agregerSemaineBesoins', () => {
         ],
       },
       {
-        contrat: contrat({ id: 'c-cantine', enfant: 'Mia', mode: 'CANTINE' }),
+        contrat: contrat({
+          id: 'c-cantine',
+          enfant: 'Mia',
+          mode: 'CANTINE',
+          etablissementId: ID_ABCM,
+        }),
         saisies: [{ exceptions: [{ date: '2026-06-30', cantine: true }] }],
       },
       {
-        contrat: contrat({ id: 'c-alsh', enfant: 'Léo', mode: 'ALSH' }),
+        contrat: contrat({
+          id: 'c-alsh',
+          enfant: 'Léo',
+          mode: 'ALSH',
+          etablissementId: ID_ABCM,
+        }),
         saisies: [{ joursAlsh: [{ date: '2026-07-01', type: 'COMPLETE' }] }],
       },
     ];
@@ -114,15 +146,22 @@ describe('agregerSemaineBesoins', () => {
     expect(vue.contrats).toHaveLength(3);
 
     const creche = vue.contrats.find((c) => c.contratId === 'c-creche');
-    expect(creche?.etablissementCle).toBe('CRECHE_HIRONDELLES');
+    expect(creche?.etablissementId).toBe(ID_CRECHE);
     expect(creche?.besoins['2026-06-29']?.absences).toHaveLength(1);
     expect(creche?.besoins['2026-06-29']?.joursAlsh).toHaveLength(0);
 
-    // Les deux contrats ABCM partagent une seule entrée d'établissement.
-    expect(vue.etablissements.map((e) => e.cle).sort()).toEqual([
-      'ABCM',
-      'CRECHE_HIRONDELLES',
-    ]);
+    // Les deux contrats rattachés à l'ABCM partagent une seule entrée d'établissement.
+    expect(vue.etablissements.map((e) => e.etablissementId).sort()).toEqual(
+      [ID_ABCM, ID_CRECHE].sort(),
+    );
+    // L'établissement réel porte son nom libre et son e-mail (fiche projetée).
+    expect(
+      vue.etablissements.find((e) => e.etablissementId === ID_ABCM),
+    ).toEqual({
+      etablissementId: ID_ABCM,
+      libelle: 'École ABCM',
+      preavisRegle: { type: 'JOUR_HEURE', jour: 'JEUDI', heure: '12:00' },
+    });
   });
 
   it('fusionne les saisies des deux mois d’une semaine à cheval', () => {
@@ -131,7 +170,11 @@ describe('agregerSemaineBesoins', () => {
       jours: JOURS_W27,
       contrats: [
         {
-          contrat: contrat({ id: 'c1', mode: 'CRECHE_PSU' }),
+          contrat: contrat({
+            id: 'c1',
+            mode: 'CRECHE_PSU',
+            etablissementId: ID_CRECHE,
+          }),
           saisies: [
             { absences: [{ date: '2026-06-30', preavisJours: 1 }] }, // juin
             { joursSupplementaires: [{ date: '2026-07-02' }] }, // juillet
@@ -152,7 +195,11 @@ describe('agregerSemaineBesoins', () => {
       contrats: [
         {
           contrat: {
-            ...contrat({ id: 'c-creche', mode: 'CRECHE_PSU' }),
+            ...contrat({
+              id: 'c-creche',
+              mode: 'CRECHE_PSU',
+              etablissementId: ID_CRECHE,
+            }),
             semaineType: {
               MARDI: [
                 {
@@ -168,7 +215,11 @@ describe('agregerSemaineBesoins', () => {
         },
         {
           contrat: {
-            ...contrat({ id: 'c-cantine', mode: 'CANTINE' }),
+            ...contrat({
+              id: 'c-cantine',
+              mode: 'CANTINE',
+              etablissementId: ID_ABCM,
+            }),
             semaineAbcm: { JEUDI: { cantine: true } },
           } as ContratVue,
           saisies: [{}],
@@ -194,7 +245,11 @@ describe('agregerSemaineBesoins', () => {
       jours: JOURS_W27,
       contrats: [
         {
-          contrat: contrat({ id: 'c-x', mode: 'INCONNU' }),
+          contrat: contrat({
+            id: 'c-x',
+            mode: 'INCONNU',
+            etablissementId: ID_CRECHE,
+          }),
           saisies: [{}],
         },
       ],
@@ -209,11 +264,39 @@ describe('agregerSemaineBesoins', () => {
       semaineIso: '2026-W27',
       jours: JOURS_W27,
       contrats: [
-        { contrat: contrat({ id: 'c1', mode: 'CANTINE' }), saisies: [{}] },
+        {
+          contrat: contrat({
+            id: 'c1',
+            mode: 'CANTINE',
+            etablissementId: ID_ABCM,
+          }),
+          saisies: [{}],
+        },
       ],
-      annuaire: [HIRONDELLES], // ABCM non configuré
+      annuaire: [HIRONDELLES], // l'ABCM réel n'est pas (encore) projeté
     });
-    expect(vue.contrats[0]?.etablissementCle).toBe('ABCM');
+    expect(vue.contrats[0]?.etablissementId).toBe(ID_ABCM);
+    expect(vue.etablissements).toHaveLength(0);
+  });
+
+  it('garde un contrat sans établissement (lien null) hors de tout groupe', () => {
+    const vue = agregerSemaineBesoins({
+      semaineIso: '2026-W27',
+      jours: JOURS_W27,
+      contrats: [
+        {
+          contrat: contrat({
+            id: 'c-orphelin',
+            mode: 'CRECHE_PSU',
+            etablissementId: null,
+          }),
+          saisies: [{}],
+        },
+      ],
+      annuaire: [HIRONDELLES, ABCM],
+    });
+    expect(vue.contrats).toHaveLength(1);
+    expect(vue.contrats[0]?.etablissementId).toBeNull();
     expect(vue.etablissements).toHaveLength(0);
   });
 });

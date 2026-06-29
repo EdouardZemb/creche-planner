@@ -91,9 +91,12 @@ export class ValidationsController {
     const jours = joursDeLaSemaine(semaineIso);
     const mois = moisDeLaSemaine(semaineIso);
     return relayer(async () => {
+      // Établissements **réels** du foyer (entité libre, `svc-planification`) : le
+      // récap est routé par le lien explicite `contrat.etablissementId` (P3), plus via
+      // l'annuaire fermé de `svc-notifications`.
       const [contrats, annuaire] = await Promise.all([
         this.planification.listerContrats(foyerId),
-        this.notifications.listerEtablissements(),
+        this.planification.listerEtablissements(foyerId),
       ]);
       const actifs = contrats.filter((c) =>
         estContratActifSurSemaine(c, jours),

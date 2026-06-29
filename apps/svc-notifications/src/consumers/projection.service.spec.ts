@@ -3,6 +3,9 @@ import {
   CONTRAT_CREE_TYPE,
   CONTRAT_MODIFIE_TYPE,
   CONTRAT_SUPPRIME_TYPE,
+  ETABLISSEMENT_CREE_TYPE,
+  ETABLISSEMENT_MODIFIE_TYPE,
+  ETABLISSEMENT_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-planification';
 import {
   PARENT_AJOUTE_TYPE,
@@ -130,6 +133,40 @@ function evenementParentRetire(id: string): unknown {
     occurredAt: '2026-09-16T00:00:00.000Z',
     traceId: 'trace-pr',
     payload: { foyerId: FOYER_ID, parentId: PARENT_ID },
+  };
+}
+
+const ETAB_ID = '99999999-9999-4999-8999-999999999999';
+
+function evenementEtablissement(type: string, id: string): unknown {
+  return {
+    id,
+    type,
+    source: 'svc-planification',
+    version: 1,
+    occurredAt: '2026-09-15T00:00:00.000Z',
+    traceId: 'trace-e',
+    payload: {
+      etablissementId: ETAB_ID,
+      foyerId: FOYER_ID,
+      nom: 'Crèche du centre',
+      emailService: 'creche@test.fr',
+      preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
+      types: ['CRECHE_PSU'],
+      actif: true,
+    },
+  };
+}
+
+function evenementEtablissementSupprime(id: string): unknown {
+  return {
+    id,
+    type: ETABLISSEMENT_SUPPRIME_TYPE,
+    source: 'svc-planification',
+    version: 1,
+    occurredAt: '2026-09-16T00:00:00.000Z',
+    traceId: 'trace-es',
+    payload: { etablissementId: ETAB_ID },
   };
 }
 
@@ -292,6 +329,77 @@ describe('ProjectionService.traiter (Notifications)', () => {
         evenementParent(
           PARENT_AJOUTE_TYPE,
           '55555555-5555-4555-8555-555555555555',
+        ),
+      ),
+    ).resolves.toBe(true);
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('projette un EtablissementCree valide (stream PLANIFICATION) et acquitte', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter(
+        'PLANIFICATION',
+        evenementEtablissement(
+          ETABLISSEMENT_CREE_TYPE,
+          '11111111-1111-4111-8111-eeeeeeeeeeee',
+        ),
+      ),
+    ).resolves.toBe(true);
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('projette un EtablissementModifie valide (même payload d’état) et acquitte', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter(
+        'PLANIFICATION',
+        evenementEtablissement(
+          ETABLISSEMENT_MODIFIE_TYPE,
+          '22222222-2222-4222-8222-eeeeeeeeeeee',
+        ),
+      ),
+    ).resolves.toBe(true);
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('applique un EtablissementSupprime valide (delete) et acquitte', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter(
+        'PLANIFICATION',
+        evenementEtablissementSupprime('33333333-3333-4333-8333-eeeeeeeeeeee'),
+      ),
+    ).resolves.toBe(true);
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('NAK (re-livraison) si le payload EtablissementCree est invalide', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter('PLANIFICATION', {
+        ...(evenementEtablissement(
+          ETABLISSEMENT_CREE_TYPE,
+          '44444444-4444-4444-8444-eeeeeeeeeeee',
+        ) as Record<string, unknown>),
+        payload: { etablissementId: 'pas-un-uuid' },
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('idempotent : un EtablissementCree doublon (marqueur présent) n’upsert pas mais acquitte', async () => {
+    const db = fakeDb(false); // marquerTraite renvoie vide ⇒ doublon
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter(
+        'PLANIFICATION',
+        evenementEtablissement(
+          ETABLISSEMENT_CREE_TYPE,
+          '55555555-5555-4555-8555-eeeeeeeeeeee',
         ),
       ),
     ).resolves.toBe(true);

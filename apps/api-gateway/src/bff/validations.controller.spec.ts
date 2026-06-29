@@ -1,18 +1,25 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
-import type { ContratVue } from '../clients/planification.client.js';
+import type { NotificationsClient } from '../clients/notifications.client.js';
 import type {
+  ContratVue,
   EtablissementVue,
-  NotificationsClient,
-} from '../clients/notifications.client.js';
-import type { PlanificationClient } from '../clients/planification.client.js';
+  PlanificationClient,
+} from '../clients/planification.client.js';
 import { ValidationsController } from './validations.controller.js';
 
+// Établissement **réel** (entité libre, `svc-planification`) : source du routage P3.
+const ID_CRECHE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const HIRONDELLES: EtablissementVue = {
-  cle: 'CRECHE_HIRONDELLES',
-  libelle: 'Crèche des Hirondelles',
+  id: ID_CRECHE,
+  foyerId: 'foyer-1',
+  nom: 'Crèche des Hirondelles',
   emailService: 'creche@example.test',
   preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
+  types: ['CRECHE_PSU'],
+  adresse: null,
+  telephone: null,
+  contact: null,
   actif: true,
 };
 
@@ -21,6 +28,7 @@ const contrat = (
 ): ContratVue => ({
   foyerId: 'foyer-1',
   enfant: 'Mia',
+  etablissementId: null,
   valideDu: '2026-01-01',
   valideAu: null,
   ...p,
@@ -44,7 +52,11 @@ describe('ValidationsController · semaineBesoins', () => {
   });
 
   it('ne lit les plannings que des contrats actifs, sur les mois de la semaine', async () => {
-    const actif = contrat({ id: 'actif', mode: 'CRECHE_PSU' });
+    const actif = contrat({
+      id: 'actif',
+      mode: 'CRECHE_PSU',
+      etablissementId: ID_CRECHE,
+    });
     const inactif = contrat({
       id: 'inactif',
       mode: 'CANTINE',
@@ -54,19 +66,25 @@ describe('ValidationsController · semaineBesoins', () => {
     const lirePlanning = vi
       .fn()
       .mockResolvedValue({ saisie: { absences: [{ date: '2026-06-29' }] } });
+    // L'annuaire est désormais celui de svc-planification (établissements réels).
+    const listerEtablissements = vi.fn().mockResolvedValue([HIRONDELLES]);
     const planification = {
       listerContrats,
       lirePlanning,
+      listerEtablissements,
     } as unknown as PlanificationClient;
-    const notifications = {
-      listerEtablissements: vi.fn().mockResolvedValue([HIRONDELLES]),
-    } as unknown as NotificationsClient;
+    const notifications = {} as unknown as NotificationsClient;
     const controller = new ValidationsController(notifications, planification);
 
     const vue = await controller.semaineBesoins('foyer-1', '2026-W27');
 
-    // Un seul contrat actif → une vue à 1 contrat.
+    // Un seul contrat actif → une vue à 1 contrat, routé vers l'établissement réel.
     expect(vue.contrats.map((c) => c.contratId)).toEqual(['actif']);
+    expect(vue.contrats[0]?.etablissementId).toBe(ID_CRECHE);
+    expect(vue.etablissements.map((e) => e.etablissementId)).toEqual([
+      ID_CRECHE,
+    ]);
+    expect(listerEtablissements).toHaveBeenCalledWith('foyer-1');
     // W27 chevauche juin + juillet → 2 lectures, pour le seul contrat actif.
     expect(lirePlanning).toHaveBeenCalledTimes(2);
     expect(lirePlanning).toHaveBeenCalledWith('actif', '2026-06', false);
@@ -82,10 +100,9 @@ describe('ValidationsController · semaineBesoins', () => {
     const planification = {
       listerContrats: vi.fn().mockRejectedValue(new Error('HTTP 502')),
       lirePlanning: vi.fn(),
-    } as unknown as PlanificationClient;
-    const notifications = {
       listerEtablissements: vi.fn().mockResolvedValue([]),
-    } as unknown as NotificationsClient;
+    } as unknown as PlanificationClient;
+    const notifications = {} as unknown as NotificationsClient;
     const controller = new ValidationsController(notifications, planification);
 
     await expect(

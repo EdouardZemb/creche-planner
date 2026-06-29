@@ -77,6 +77,12 @@ export interface ContratVue {
  * des contrats + calendriers de planning), que le `ContratVue` minimal n'expose pas.
  */
 export interface ContratDetailVue extends ContratVue {
+  /**
+   * Établissement réel rattaché au contrat (lien explicite P2), ou `null` si aucun.
+   * Exposé pour que le BFF route le récap hebdo par ce lien (P3) plutôt que par le
+   * mode ; le `ContratVue` minimal (résolution contrat→foyer) ne le porte pas.
+   */
+  readonly etablissementId: string | null;
   readonly heuresAnnuellesContractualisees: number | null;
   readonly nbMensualites: number | null;
   readonly semaineType: unknown;
@@ -205,6 +211,7 @@ export class PlanificationService {
       foyerId: l.foyerId,
       enfant: l.enfant,
       mode: l.mode,
+      etablissementId: l.etablissementId,
       valideDu: l.valideDu,
       valideAu: l.valideAu,
       heuresAnnuellesContractualisees: l.heuresAnnuellesContractualisees,

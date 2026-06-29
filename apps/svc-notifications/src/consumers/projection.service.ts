@@ -4,9 +4,15 @@ import {
   contratCreeEventSchema,
   contratModifieEventSchema,
   contratSupprimeEventSchema,
+  etablissementCreeEventSchema,
+  etablissementModifieEventSchema,
+  etablissementSupprimeEventSchema,
   CONTRAT_CREE_TYPE,
   CONTRAT_MODIFIE_TYPE,
   CONTRAT_SUPPRIME_TYPE,
+  ETABLISSEMENT_CREE_TYPE,
+  ETABLISSEMENT_MODIFIE_TYPE,
+  ETABLISSEMENT_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-planification';
 import {
   parentAjouteEventSchema,
@@ -18,7 +24,12 @@ import {
 } from '@creche-planner/contracts-foyer';
 import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
-import { contrat, foyerParent, processedEvent } from '../database/schema.js';
+import {
+  contrat,
+  etablissement,
+  foyerParent,
+  processedEvent,
+} from '../database/schema.js';
 
 /** Transaction Drizzle (type du callback `db.transaction`). */
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -40,6 +51,12 @@ type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
  * depuis le stream `FOYER` (`foyer.Parent{Ajoute,Modifie,Retire}.v1`) pour résoudre
  * les destinataires du récap hebdo. Le `switch` sur `type` aiguille indifféremment
  * les deux streams (l'idempotence reste pilotée par `processed_event`).
+ *
+ * Depuis P3 « établissements entité libre », il projette enfin le read model
+ * `etablissement` depuis le stream `PLANIFICATION`
+ * (`planification.Etablissement{Cree,Modifie,Supprime}.v1`) : Notifications cesse
+ * d'être source de vérité (plus de seed en dur) et résout le destinataire réel du
+ * récap par le lien explicite `contrat.etablissement_id` (lui aussi désormais projeté).
  */
 @Injectable()
 export class ProjectionService {
@@ -85,6 +102,23 @@ export class ProjectionService {
           return true;
         case PARENT_RETIRE_TYPE:
           await this.appliquerParentRetire(stream, donnees);
+          return true;
+        case ETABLISSEMENT_CREE_TYPE:
+          await this.appliquerEtablissementEtat(
+            stream,
+            donnees,
+            etablissementCreeEventSchema,
+          );
+          return true;
+        case ETABLISSEMENT_MODIFIE_TYPE:
+          await this.appliquerEtablissementEtat(
+            stream,
+            donnees,
+            etablissementModifieEventSchema,
+          );
+          return true;
+        case ETABLISSEMENT_SUPPRIME_TYPE:
+          await this.appliquerEtablissementSupprime(stream, donnees);
           return true;
         default:
           return true; // type non consommé par Notifications : acquitté
@@ -151,6 +185,7 @@ export class ProjectionService {
           foyerId: p.foyerId,
           enfant: p.enfant,
           mode: p.mode,
+          etablissementId: p.etablissementId ?? null,
           valideDu: p.valideDu,
           valideAu: p.valideAu,
           updatedAt: new Date(),
@@ -161,6 +196,7 @@ export class ProjectionService {
             foyerId: p.foyerId,
             enfant: p.enfant,
             mode: p.mode,
+            etablissementId: p.etablissementId ?? null,
             valideDu: p.valideDu,
             valideAu: p.valideAu,
             updatedAt: new Date(),
@@ -170,9 +206,9 @@ export class ProjectionService {
   }
 
   /**
-   * `ContratModifie` : le contrat a changé (enfant/mode/dates). On met à jour la
-   * table locale `contrat` (upsert : on tolère un `ContratModifie` reçu avant le
-   * `ContratCree` correspondant). Idempotent via `processed_event`.
+   * `ContratModifie` : le contrat a changé (enfant/mode/dates/établissement). On met
+   * à jour la table locale `contrat` (upsert : on tolère un `ContratModifie` reçu avant
+   * le `ContratCree` correspondant). Idempotent via `processed_event`.
    */
   private async appliquerContratModifie(
     stream: string,
@@ -191,6 +227,7 @@ export class ProjectionService {
           foyerId: p.foyerId,
           enfant: p.enfant,
           mode: p.mode,
+          etablissementId: p.etablissementId ?? null,
           valideDu: p.valideDu,
           valideAu: p.valideAu,
           updatedAt: new Date(),
@@ -201,6 +238,7 @@ export class ProjectionService {
             foyerId: p.foyerId,
             enfant: p.enfant,
             mode: p.mode,
+            etablissementId: p.etablissementId ?? null,
             valideDu: p.valideDu,
             valideAu: p.valideAu,
             updatedAt: new Date(),
@@ -289,6 +327,74 @@ export class ProjectionService {
         .update(foyerParent)
         .set({ actif: false, updatedAt: new Date() })
         .where(eq(foyerParent.parentId, evt.payload.parentId));
+    });
+  }
+
+  /**
+   * `EtablissementCree`/`EtablissementModifie` : upsert de l'état complet de la fiche
+   * établissement dans le read model local `etablissement` (clé = `id`). Les deux
+   * événements transportent le même payload d'état et se projettent à l'identique : un
+   * `EtablissementModifie` reçu avant son `EtablissementCree` (désordre transitoire) crée
+   * la ligne. On projette ce qui sert le routage/rendu du récap (`nom`, `email_service`,
+   * `preavis_regle`, `types`, `actif`) ; les coordonnées internes ne voyagent pas dans
+   * l'event. Idempotent via `processed_event`.
+   */
+  private async appliquerEtablissementEtat(
+    stream: string,
+    donnees: unknown,
+    schema: typeof etablissementCreeEventSchema,
+  ): Promise<void> {
+    const evt = schema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      const p = evt.payload;
+      await tx
+        .insert(etablissement)
+        .values({
+          id: p.etablissementId,
+          foyerId: p.foyerId,
+          nom: p.nom,
+          emailService: p.emailService,
+          preavisRegle: p.preavisRegle,
+          types: p.types,
+          actif: p.actif,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: etablissement.id,
+          set: {
+            foyerId: p.foyerId,
+            nom: p.nom,
+            emailService: p.emailService,
+            preavisRegle: p.preavisRegle,
+            types: p.types,
+            actif: p.actif,
+            updatedAt: new Date(),
+          },
+        });
+    });
+  }
+
+  /**
+   * `EtablissementSupprime` : retire la fiche du read model `etablissement`. Idempotent
+   * via `processed_event` (un rejeu supprime une ligne déjà absente : no-op). Le récap
+   * d'un contrat encore rattaché retombera alors sur un destinataire introuvable
+   * (géré côté envoi). Tout dans une seule transaction.
+   */
+  private async appliquerEtablissementSupprime(
+    stream: string,
+    donnees: unknown,
+  ): Promise<void> {
+    const evt = etablissementSupprimeEventSchema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      await tx
+        .delete(etablissement)
+        .where(eq(etablissement.id, evt.payload.etablissementId));
     });
   }
 

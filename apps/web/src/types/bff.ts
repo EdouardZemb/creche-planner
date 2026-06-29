@@ -266,11 +266,13 @@ export interface SaisieJourBesoins {
 /** Besoins d'une semaine : jour `YYYY-MM-DD` → entrées (jours vides omis). */
 export type BesoinsSemaine = Record<string, SaisieJourBesoins>;
 
-/** Établissement destinataire concerné par la semaine (récap mail à venir). */
+/** Établissement réel concerné par la semaine (entité libre, `svc-planification`). */
 export interface EtablissementConcerne {
-  cle: CleEtablissement;
+  /** Identifiant de l'établissement réel (clé de groupement à l'écran). */
+  etablissementId: string;
   libelle: string;
-  preavisRegle: PreavisRegle;
+  /** Règle de préavis, `null` si l'établissement ne l'a pas (encore) renseignée. */
+  preavisRegle: PreavisRegle | null;
 }
 
 /** Un contrat actif de la semaine, avec ses besoins datés et son établissement. */
@@ -278,7 +280,8 @@ export interface ContratBesoinsSemaine {
   contratId: string;
   enfant: string;
   mode: Mode;
-  etablissementCle: CleEtablissement;
+  /** Lien explicite vers l'établissement réel (P3), `null` si non rattaché. */
+  etablissementId: string | null;
   besoins: BesoinsSemaine;
   /**
    * Planning de BASE (semaine-type) du contrat, fourni selon le mode : permet

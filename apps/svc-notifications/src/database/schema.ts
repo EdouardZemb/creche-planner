@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
   jsonb,
@@ -33,8 +34,10 @@ import type {
  * stream `PLANIFICATION`). Notifications projette ce read model pour savoir, lors de
  * la validation hebdomadaire, **quels contrats actifs** notifier, à quel foyer ils
  * appartiennent et sur quelle **période de validité** (`valide_du`/`valide_au`) ils
- * portent. Le `mode` sert plus tard à résoudre l'établissement destinataire
- * (`CRECHE_PSU` → crèche ; `PERISCOLAIRE`/`CANTINE`/`ALSH` → ABCM). Alimenté
+ * portent. Le `mode` reste projeté (sélection de la semaine-type à l'affichage),
+ * mais le **routage** du récap se fait désormais par le lien explicite
+ * `etablissement_id` (P3) — l'établissement réel rattaché au contrat (entité libre
+ * par foyer), projeté depuis les events contrat enrichis (P2). Alimenté
  * idempotemment via `processed_event` (cf. plus bas), une seule ligne par contrat.
  */
 export const contrat = pgTable('contrat', {
@@ -45,10 +48,54 @@ export const contrat = pgTable('contrat', {
   enfant: varchar('enfant', { length: 200 }).notNull(),
   /** Mode de garde (CRECHE_PSU | PERISCOLAIRE | CANTINE | ALSH). */
   mode: varchar('mode', { length: 32 }).notNull(),
+  /**
+   * Établissement réel rattaché au contrat (lien explicite P2), clé de **routage**
+   * du récap hebdo vers la fiche établissement projetée (`etablissement`). `null`
+   * tant que le contrat n'est pas (encore) rattaché — la colonne amont est NULLABLE
+   * jusqu'à la migration de données P5 ; l'event contrat peut aussi l'omettre.
+   */
+  etablissementId: uuid('etablissement_id'),
   /** Début de validité ISO `YYYY-MM-DD` (inclus). */
   valideDu: varchar('valide_du', { length: 10 }).notNull(),
   /** Fin de validité ISO `YYYY-MM-DD` (incluse), `null` si période ouverte. */
   valideAu: varchar('valide_au', { length: 10 }),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// --- Read model : Établissements (projeté depuis le stream PLANIFICATION) -----
+
+/**
+ * Projection de la **fiche établissement** (entité libre par foyer, P3), alimentée
+ * par les events `planification.Etablissement{Cree,Modifie,Supprime}.v1` (stream
+ * `PLANIFICATION`, émis par `svc-planification` qui en est **propriétaire**).
+ * Notifications **cesse d'être source de vérité** : il consomme ce read model
+ * (keyé par `id`, portant `foyer_id`) pour résoudre le **destinataire réel** du
+ * récap (`email_service`) et sa **règle de préavis** à partir du lien explicite
+ * `contrat.etablissement_id` — en remplacement du mapping codé `mode → clé` et de
+ * l'annuaire fermé `etablissement_destinataire` (démantelé en P6). Les coordonnées
+ * internes (adresse/téléphone/contact) ne voyagent pas dans l'event : seul le
+ * routage des récaps en a besoin. Alimenté idempotemment via `processed_event`.
+ */
+export const etablissement = pgTable('etablissement', {
+  /** Identifiant de l'établissement amont (PK). */
+  id: uuid('id').primaryKey(),
+  /** Foyer propriétaire (portée par foyer, isolation inter-foyers). */
+  foyerId: uuid('foyer_id').notNull(),
+  /** Nom libre, unique par foyer (en-tête du récap). */
+  nom: varchar('nom', { length: 200 }).notNull(),
+  /** Destinataire des récaps de service (`null` tant que non renseigné). */
+  emailService: varchar('email_service', { length: 320 }),
+  /** Règle de préavis (union JOURS_OUVRES | JOUR_HEURE), `null` si non définie. */
+  preavisRegle: jsonb('preavis_regle').$type<PreavisRegle>(),
+  /** Sous-ensemble des modes proposés par l'établissement (informatif). */
+  types: jsonb('types')
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  /** Établissement actif (un établissement archivé n'est plus notifié). */
+  actif: boolean('actif').notNull().default(true),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -319,6 +366,8 @@ export const outbox = pgTable('outbox', {
 
 export type ContratRow = typeof contrat.$inferSelect;
 export type FoyerParentRow = typeof foyerParent.$inferSelect;
+/** Read model projeté de la fiche établissement (entité libre, P3). */
+export type EtablissementProjeteRow = typeof etablissement.$inferSelect;
 export type EtablissementRow = typeof etablissementDestinataire.$inferSelect;
 export type NotificationHebdoRow = typeof notificationHebdo.$inferSelect;
 export type EnvoiEtablissementRow = typeof envoiEtablissement.$inferSelect;

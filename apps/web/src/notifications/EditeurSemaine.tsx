@@ -47,21 +47,23 @@ export function EditeurSemaine({
     }
   };
 
-  // Regroupe les contrats par établissement, en conservant l'ordre de l'annuaire
-  // renvoyé par le BFF (établissements concernés de la semaine).
+  // Regroupe les contrats par établissement réel (lien explicite `etablissementId`,
+  // P3), en conservant l'ordre des établissements concernés renvoyé par le BFF. Un
+  // contrat non rattaché (`etablissementId` null) n'apparaît dans aucun groupe.
   const groupes = useMemo(() => {
     if (!data) return [];
-    const parCle = new Map<string, ContratBesoinsSemaine[]>();
+    const parEtablissement = new Map<string, ContratBesoinsSemaine[]>();
     for (const c of data.contrats) {
-      const liste = parCle.get(c.etablissementCle) ?? [];
+      if (c.etablissementId === null) continue;
+      const liste = parEtablissement.get(c.etablissementId) ?? [];
       liste.push(c);
-      parCle.set(c.etablissementCle, liste);
+      parEtablissement.set(c.etablissementId, liste);
     }
     return data.etablissements
       .map((etab) => ({
-        cle: etab.cle,
+        id: etab.etablissementId,
         libelle: etab.libelle,
-        contrats: parCle.get(etab.cle) ?? [],
+        contrats: parEtablissement.get(etab.etablissementId) ?? [],
       }))
       .filter((g) => g.contrats.length > 0);
   }, [data]);
@@ -104,7 +106,7 @@ export function EditeurSemaine({
 
       {data &&
         groupes.map((groupe) => (
-          <div key={groupe.cle} style={{ marginTop: '0.75rem' }}>
+          <div key={groupe.id} style={{ marginTop: '0.75rem' }}>
             <h4 style={{ fontSize: 'var(--h2)', margin: '0 0 0.25rem' }}>
               {groupe.libelle}
             </h4>
