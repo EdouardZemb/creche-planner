@@ -10,6 +10,9 @@
           "enfant": "Zoé",
           "foyerId": "33333333-3333-4333-8333-333333333333",
           "mode": "CANTINE",
+          "nouvelEtablissement": {
+            "nom": "Crèche Pact CANTINE"
+          },
           "semaineAbcm": {
             "DIMANCHE": {},
             "JEUDI": {},
@@ -422,6 +425,9 @@
           "heuresAnnuellesContractualisees": 763,
           "mode": "CRECHE_PSU",
           "nbMensualites": 7,
+          "nouvelEtablissement": {
+            "nom": "Crèche Pact Modif"
+          },
           "semaineType": {
             "DIMANCHE": [],
             "JEUDI": [],

@@ -108,6 +108,9 @@ test('parcours : créer foyer → contrat cantine → planning → coût du mois
   await page.locator('#contrat-mode').selectOption('CANTINE');
   await page.locator('#contrat-enfant').selectOption({ label: 'Mia' });
   await page.locator('#contrat-valideDu').fill('2026-10-01');
+  // Établissement OBLIGATOIRE depuis P5 : créé à la volée (aucune liste à mocker).
+  await page.locator('#contrat-etablissement').selectOption('__nouveau__');
+  await page.locator('#contrat-nouvel-etab-nom').fill('École ABCM');
   await page.getByRole('button', { name: /Créer le contrat/i }).click();
 
   // Le contrat apparaît dans la liste.

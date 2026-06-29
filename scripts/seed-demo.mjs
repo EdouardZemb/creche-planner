@@ -133,6 +133,22 @@ const CONTRATS_DEFAUT = {
   },
 };
 
+/**
+ * Établissement (entité libre par foyer, P2) rattaché à chaque contrat — lien
+ * OBLIGATOIRE depuis P5 (`etablissement_id` NOT NULL). Les contrats d'un même
+ * établissement le PARTAGENT (UNIQUE(foyer_id, nom) → créé une seule fois, cf.
+ * `garantirEtablissements`). Un contrat sans entrée ici retombe sur un placeholder.
+ */
+const ETABLISSEMENTS = {
+  'creche-enfant-1': 'Crèche Les Hirondelles',
+  'creche-enfant-2': 'Crèche Les Hirondelles',
+  'abcm-cantine-enfant-1': 'École ABCM',
+  'abcm-peri-enfant-1': 'École ABCM',
+};
+
+/** Établissement de repli pour un contrat de surcouche sans entrée `ETABLISSEMENTS`. */
+const ETABLISSEMENT_DEFAUT = 'Établissement';
+
 /** Plannings mensuels NOMINAUX à écrire (corps vide = sans absence/complément). */
 const PLANNINGS = {
   // Crèche : période contractuelle (7 mensualités) → reproduit la mensualité fixe.
@@ -351,9 +367,30 @@ async function garantirFoyer(etat, foyer) {
   return cree.id;
 }
 
+/**
+ * Garantit les établissements requis par les contrats (idempotent) et renvoie la
+ * table `nom → id`. On LISTE d'abord ceux du foyer (réutilise un foyer existant),
+ * puis on CRÉE ceux qui manquent — l'unicité `(foyer_id, nom)` évite les doublons.
+ */
+async function garantirEtablissements(foyerId, noms) {
+  const existants =
+    (await http('GET', `/foyers/${foyerId}/etablissements`)) ?? [];
+  const parNom = {};
+  for (const e of existants) parNom[e.nom] = e.id;
+  for (const nom of noms) {
+    if (parNom[nom]) continue;
+    const cree = await http('POST', `/foyers/${foyerId}/etablissements`, {
+      nom,
+    });
+    parNom[nom] = cree.id;
+    console.log(`• Établissement « ${nom} » créé (${cree.id})`);
+  }
+  return parNom;
+}
+
 /** Garantit un contrat (POST si nouveau, PUT si déjà connu). */
-async function garantirContrat(etat, foyerId, cle, def) {
-  const corps = { ...normaliserContrat(def), foyerId };
+async function garantirContrat(etat, foyerId, cle, def, etablissementId) {
+  const corps = { ...normaliserContrat(def), foyerId, etablissementId };
   const idConnu = etat.contrats[cle];
   if (idConnu) {
     try {
@@ -497,8 +534,26 @@ async function main() {
   const foyerId = await garantirFoyer(etat, foyer);
   await sauverEtat(etat);
 
+  // Établissements (lien contrat OBLIGATOIRE depuis P5) : créés/réutilisés une fois,
+  // partagés par les contrats de même établissement.
+  const noms = [
+    ...new Set(
+      Object.keys(contrats).map(
+        (cle) => ETABLISSEMENTS[cle] ?? ETABLISSEMENT_DEFAUT,
+      ),
+    ),
+  ];
+  const etablissements = await garantirEtablissements(foyerId, noms);
+
   for (const [cle, def] of Object.entries(contrats)) {
-    const contratId = await garantirContrat(etat, foyerId, cle, def);
+    const nom = ETABLISSEMENTS[cle] ?? ETABLISSEMENT_DEFAUT;
+    const contratId = await garantirContrat(
+      etat,
+      foyerId,
+      cle,
+      def,
+      etablissements[nom],
+    );
     await sauverEtat(etat);
     await ecrirePlannings(contratId, cle);
   }

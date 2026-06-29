@@ -159,10 +159,12 @@ export interface CreerContratAbcm {
 }
 
 /**
- * Lien **établissement** d'un contrat (P2) — facultatif et mutuellement exclusif :
- * SOIT `etablissementId` (rattacher un établissement existant), SOIT
- * `nouvelEtablissement` (créé à la volée dans la même transaction côté service).
- * Aucun des deux ⇒ contrat sans établissement. Le `mode` reste indépendant.
+ * Lien **établissement** d'un contrat (P2) — **obligatoire** depuis P5
+ * (`etablissement_id` NOT NULL) et mutuellement exclusif : fournir EXACTEMENT un de
+ * `etablissementId` (rattacher un établissement existant) OU `nouvelEtablissement`
+ * (créé à la volée dans la même transaction côté service). Les deux champs restent
+ * optionnels au niveau TS (l'un OU l'autre) ; le service rejette « aucun des deux »
+ * (400). Le `mode` reste une dimension indépendante.
  */
 export interface LienEtablissementSaisie {
   etablissementId?: string;

@@ -30,6 +30,10 @@ import type {
 const CONTRAT_ID = '55555555-5555-4555-8555-555555555555';
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
 const MOIS = '2026-10'; // octobre 2026 : 05 = lundi, 06 = mardi, 15 = jeudi.
+// Établissement de référence : depuis P5 (`etablissement_id` NOT NULL) un contrat
+// est TOUJOURS rattaché ; `AUTRE_ETAB_ID` sert aux scénarios de re-pointage.
+const ETAB_ID = '99999999-9999-4999-8999-999999999999';
+const AUTRE_ETAB_ID = '88888888-8888-4888-8888-888888888888';
 
 /** Ligne contrat crèche PSU : semaine type avec une plage le lundi (8h30→17h00). */
 function ligneCreche(overrides: Partial<ContratRow> = {}): ContratRow {
@@ -38,7 +42,7 @@ function ligneCreche(overrides: Partial<ContratRow> = {}): ContratRow {
     foyerId: FOYER_ID,
     enfant: 'Mia',
     mode: 'CRECHE_PSU',
-    etablissementId: null,
+    etablissementId: ETAB_ID,
     valideDu: '2026-01-01',
     valideAu: '2026-12-31',
     heuresAnnuellesContractualisees: 885.5,
@@ -65,7 +69,7 @@ function ligneAbcm(
     foyerId: FOYER_ID,
     enfant: 'Zoé',
     mode,
-    etablissementId: null,
+    etablissementId: ETAB_ID,
     valideDu: '2026-01-01',
     valideAu: '2026-12-31',
     heuresAnnuellesContractualisees: null,
@@ -474,6 +478,8 @@ describe('PlanificationService.creerContrat', () => {
       valideAu: '2026-12-31',
       heuresAnnuellesContractualisees: 885.5,
       nbMensualites: 7,
+      // Établissement obligatoire (P5) ; le faux `tx` valide son existence/foyer.
+      etablissementId: ETAB_ID,
       // Le front envoie toujours les 7 jours (tableau vide = jour non gardé) ;
       // `z.record(<enum>, …)` de Zod v4 exige d'ailleurs les 7 clés.
       semaineType: {
@@ -499,8 +505,6 @@ describe('PlanificationService.creerContrat', () => {
     );
   });
 });
-
-const ETAB_ID = '99999999-9999-4999-8999-999999999999';
 
 /** DTO crèche valide de base (7 jours), surchargé pour les cas établissement. */
 const DTO_CRECHE_BASE = {
@@ -680,6 +684,8 @@ const DTO_MODIF_VALIDE: ModifierContratDto = {
   mode: 'CRECHE_PSU',
   foyerId: FOYER_ID,
   enfant: 'Mia',
+  // Établissement obligatoire (P5) ; le faux `tx` valide son existence/foyer.
+  etablissementId: ETAB_ID,
   valideDu: '2026-01-01',
   valideAu: '2026-12-31',
   heuresAnnuellesContractualisees: 885.5,
@@ -817,9 +823,9 @@ function fakeDbRattacher(options: {
 }
 
 describe('PlanificationService.rattacherEtablissement (back-fill P5)', () => {
-  it('rattache un contrat non lié : update du seul etablissement_id + outbox ContratModifie, AUCUNE suppression de planning', async () => {
+  it('rattache un contrat vers un autre établissement : update du seul etablissement_id + outbox ContratModifie, AUCUNE suppression de planning', async () => {
     const { db, updateSet, deleteWhere, insertValues } = fakeDbRattacher({
-      contratLigne: ligneCreche({ etablissementId: null }),
+      contratLigne: ligneCreche({ etablissementId: AUTRE_ETAB_ID }),
       etabPresent: true,
     });
     const service = new PlanificationService(db, referentielVide);
@@ -859,7 +865,7 @@ describe('PlanificationService.rattacherEtablissement (back-fill P5)', () => {
 
   it('400 si l’établissement est inconnu ou hors du foyer du contrat : rien n’est écrit', async () => {
     const { db, updateSet, insertValues } = fakeDbRattacher({
-      contratLigne: ligneCreche({ etablissementId: null }),
+      contratLigne: ligneCreche({ etablissementId: AUTRE_ETAB_ID }),
       etabPresent: false,
     });
     const service = new PlanificationService(db, referentielVide);

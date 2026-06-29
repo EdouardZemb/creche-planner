@@ -36,6 +36,16 @@ const CONTRAT_ID = '11111111-1111-1111-1111-111111111111';
 /** Foyer figé dont on liste les contrats (aligné avec le pact consumer). */
 const FOYER_LISTE_ID = '22222222-2222-2222-2222-222222222222';
 
+/** Foyer commun des contrats seedés (tous dans le même foyer). */
+const FOYER_SEED = '22222222-2222-2222-2222-222222222222';
+
+/**
+ * Établissement seedé : depuis P5 (`contrat.etablissement_id` NOT NULL), tout
+ * contrat doit référencer un établissement existant (FK). On en sème un, fixe, que
+ * les inserts de contrat ci-dessous rattachent.
+ */
+const ETAB_SEED_ID = '99999999-9999-9999-9999-999999999999';
+
 // nx lance vitest avec cwd = racine du projet (apps/svc-planification) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
 const BUNDLE = resolve(RACINE, 'apps/svc-planification/dist/main.js');
@@ -86,6 +96,18 @@ async function attendreReadiness(url: string, delaiMs = 40000): Promise<void> {
     }
     await sleep(500);
   }
+}
+
+/**
+ * Sème l'établissement de référence (idempotent) que les contrats seedés
+ * rattachent (FK `contrat.etablissement_id`, NOT NULL depuis P5).
+ */
+async function seedEtablissement(db: Sql): Promise<void> {
+  await db`
+    insert into etablissement (id, foyer_id, nom)
+    values (${ETAB_SEED_ID}, ${FOYER_SEED}, 'Établissement Pact (seed)')
+    on conflict (id) do nothing
+  `;
 }
 
 describe('Pact provider · svc-planification honore le contrat api-gateway', () => {
@@ -141,12 +163,13 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
           // Contrat crèche PSU de Mia (doc 02 §7) : 763 h / 7 mensualités.
           await db`delete from planning_mois where contrat_id = ${CONTRAT_ID}`;
           await db`delete from contrat where id = ${CONTRAT_ID}`;
+          await seedEtablissement(db);
           await db`
             insert into contrat (
-              id, foyer_id, enfant, mode, valide_du, valide_au,
+              id, foyer_id, etablissement_id, enfant, mode, valide_du, valide_au,
               heures_annuelles_contractualisees, nb_mensualites, semaine_type
             ) values (
-              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', 'Mia',
+              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', ${ETAB_SEED_ID}, 'Mia',
               'CRECHE_PSU', '2026-01-01', '2026-07-31',
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )
@@ -160,12 +183,13 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
           // Un contrat crèche existant, éditable/supprimable (mêmes id/foyer).
           await db`delete from planning_mois where contrat_id = ${CONTRAT_ID}`;
           await db`delete from contrat where id = ${CONTRAT_ID}`;
+          await seedEtablissement(db);
           await db`
             insert into contrat (
-              id, foyer_id, enfant, mode, valide_du, valide_au,
+              id, foyer_id, etablissement_id, enfant, mode, valide_du, valide_au,
               heures_annuelles_contractualisees, nb_mensualites, semaine_type
             ) values (
-              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', 'Mia',
+              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', ${ETAB_SEED_ID}, 'Mia',
               'CRECHE_PSU', '2026-01-01', '2026-07-31',
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )
@@ -176,12 +200,13 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
           // renvoie un tableau non vide.
           await db`delete from planning_mois where contrat_id = ${CONTRAT_ID}`;
           await db`delete from contrat where foyer_id = ${FOYER_LISTE_ID}`;
+          await seedEtablissement(db);
           await db`
             insert into contrat (
-              id, foyer_id, enfant, mode, valide_du, valide_au,
+              id, foyer_id, etablissement_id, enfant, mode, valide_du, valide_au,
               heures_annuelles_contractualisees, nb_mensualites, semaine_type
             ) values (
-              ${CONTRAT_ID}, ${FOYER_LISTE_ID}, 'Mia',
+              ${CONTRAT_ID}, ${FOYER_LISTE_ID}, ${ETAB_SEED_ID}, 'Mia',
               'CRECHE_PSU', '2026-01-01', '2026-07-31',
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )
@@ -193,12 +218,13 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
           // La saisie reflète exactement ce qu'attend le pact consumer.
           await db`delete from planning_mois where contrat_id = ${CONTRAT_ID}`;
           await db`delete from contrat where id = ${CONTRAT_ID}`;
+          await seedEtablissement(db);
           await db`
             insert into contrat (
-              id, foyer_id, enfant, mode, valide_du, valide_au,
+              id, foyer_id, etablissement_id, enfant, mode, valide_du, valide_au,
               heures_annuelles_contractualisees, nb_mensualites, semaine_type
             ) values (
-              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', 'Mia',
+              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', ${ETAB_SEED_ID}, 'Mia',
               'CRECHE_PSU', '2026-01-01', '2026-07-31',
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )
