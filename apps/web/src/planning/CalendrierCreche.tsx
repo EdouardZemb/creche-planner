@@ -34,9 +34,82 @@ import {
   ARRIVEE_DEFAUT,
   DEPART_DEFAUT,
   versHhmm,
+  minutesDeHhmm,
   plageDepuisHeures,
   plageValide,
 } from './heures';
+
+// Type d'ajustement saisi : décrit la PRÉSENCE de l'enfant. La fenêtre d'absence
+// stockée (durée = fin − début) en est dérivée — l'utilisateur ne saisit plus
+// directement la fenêtre, ce qui levait l'ambiguïté « départ à 16h » → 8h déduites.
+type TypeAbsence =
+  | 'journee'
+  | 'departAvance'
+  | 'arriveeRetardee'
+  | 'personnalise';
+
+// Heures saisies : `heure` pour les types à un seul champ (départ avancé /
+// arrivée retardée), `arrivee`/`depart` pour la fenêtre libre « personnalisé ».
+interface SaisieHeures {
+  arrivee: string;
+  depart: string;
+  heure: string;
+}
+
+// Options (et ordre) du sélecteur de type d'absence, partagées modale ↔ lot.
+const TYPES_ABSENCE: readonly { valeur: TypeAbsence; libelle: string }[] = [
+  { valeur: 'journee', libelle: 'Absence toute la journée' },
+  { valeur: 'departAvance', libelle: 'Départ avancé' },
+  { valeur: 'arriveeRetardee', libelle: 'Arrivée retardée' },
+  { valeur: 'personnalise', libelle: 'Absence personnalisée' },
+];
+
+/**
+ * Dérive la FENÊTRE D'ABSENCE (`PlageHoraire`, durée = fin − début) à stocker,
+ * depuis le type d'ajustement (qui décrit la présence) et la plage de garde du
+ * jour (`garde`, A = arrivée / D = départ). `null` si la saisie est incohérente
+ * (heure hors garde, plage personnalisée invalide, jour non gardé) → à ignorer.
+ *
+ * - `journee` → toute la garde [A, D].
+ * - `departAvance` (présent jusqu'à `h`) → [h, D], avec A < h < D.
+ * - `arriveeRetardee` (présent à partir de `h`) → [A, h], avec A < h < D.
+ * - `personnalise` → fenêtre libre [arrivee, depart], si cohérente.
+ */
+function fenetreAbsence(
+  type: TypeAbsence,
+  saisie: SaisieHeures,
+  garde: { arrivee: string; depart: string } | null,
+): PlageHoraire | null {
+  if (type === 'personnalise') {
+    return plageValide(saisie.arrivee, saisie.depart)
+      ? plageDepuisHeures(saisie.arrivee, saisie.depart)
+      : null;
+  }
+  if (garde === null) return null;
+  if (type === 'journee') {
+    return plageDepuisHeures(garde.arrivee, garde.depart);
+  }
+  const a = minutesDeHhmm(garde.arrivee);
+  const d = minutesDeHhmm(garde.depart);
+  const h = minutesDeHhmm(saisie.heure);
+  if (saisie.heure === '' || h <= a || h >= d) return null;
+  return type === 'departAvance'
+    ? plageDepuisHeures(saisie.heure, garde.depart)
+    : plageDepuisHeures(garde.arrivee, saisie.heure);
+}
+
+/**
+ * Validité d'une saisie INDÉPENDAMMENT du jour (pour activer un bouton de lot,
+ * où chaque jour porte sa propre garde). La cohérence avec la garde de chaque
+ * jour est vérifiée à l'application, via `fenetreAbsence`.
+ */
+function saisieAbsenceValide(type: TypeAbsence, saisie: SaisieHeures): boolean {
+  if (type === 'journee') return true;
+  if (type === 'personnalise') {
+    return plageValide(saisie.arrivee, saisie.depart);
+  }
+  return saisie.heure !== '';
+}
 
 export interface CalendrierCrecheProps {
   contrat: ContratLocal;
@@ -180,14 +253,17 @@ export function CalendrierCreche({
   const [dialogForm, setDialogForm] = useState<{
     arrivee: string;
     depart: string;
-    /** Absence sur toute la journée gardée (utilise la plage du contrat). */
-    journeeComplete: boolean;
+    /** Heure pivot pour « départ avancé » / « arrivée retardée ». */
+    heure: string;
+    /** Type d'ajustement ; la fenêtre d'absence stockée en est dérivée. */
+    typeAbsence: TypeAbsence;
     preavisJours: number;
     certificatMaladie: boolean;
   }>({
     arrivee: ARRIVEE_DEFAUT,
     depart: DEPART_DEFAUT,
-    journeeComplete: true,
+    heure: '',
+    typeAbsence: 'journee',
     preavisJours: 0,
     certificatMaladie: false,
   });
@@ -197,13 +273,15 @@ export function CalendrierCreche({
   const [lotForm, setLotForm] = useState<{
     arrivee: string;
     depart: string;
-    journeeComplete: boolean;
+    heure: string;
+    typeAbsence: TypeAbsence;
     preavisJours: number;
     certificatMaladie: boolean;
   }>({
     arrivee: ARRIVEE_DEFAUT,
     depart: DEPART_DEFAUT,
-    journeeComplete: true,
+    heure: '',
+    typeAbsence: 'journee',
     preavisJours: 0,
     certificatMaladie: false,
   });
@@ -388,29 +466,46 @@ export function CalendrierCreche({
       if (!estDansPeriode(iso)) return;
       setPortee('mois');
       if (joursGardes.has(iso)) {
+        const garde = plageContratJour(iso);
         const existing = absences.find((a) => a.date === iso);
-        const plage = plageContratJour(iso);
-        const arrivee = existing
-          ? versHhmm(existing.debutHeures, existing.debutMinutes)
-          : (plage?.arrivee ?? ARRIVEE_DEFAUT);
-        const depart = existing
-          ? versHhmm(existing.finHeures, existing.finMinutes)
-          : (plage?.depart ?? DEPART_DEFAUT);
-        // Par défaut « toute la journée » ; pour une absence existante, coché
-        // seulement si sa plage couvre toute la garde du contrat ce jour-là.
-        const journeeComplete = existing
-          ? plage !== null &&
-            arrivee === plage.arrivee &&
-            depart === plage.depart
-          : true;
-        setDialogKind('absence');
-        setDialogForm({
-          arrivee,
-          depart,
-          journeeComplete,
-          preavisJours: existing?.preavisJours ?? 0,
-          certificatMaladie: existing?.certificatMaladie ?? false,
-        });
+        if (existing) {
+          // Reconstruit le type d'ajustement depuis la fenêtre stockée (la
+          // fenêtre d'absence redevient une présence saisie) pour un aller-retour
+          // fidèle dans la modale.
+          const classe = classerAbsence(existing, garde);
+          const debut = versHhmm(existing.debutHeures, existing.debutMinutes);
+          const fin = versHhmm(existing.finHeures, existing.finMinutes);
+          let typeAbsence: TypeAbsence = 'personnalise';
+          let heure = '';
+          if (classe.statut === 'absent') {
+            typeAbsence = 'journee';
+          } else if (classe.libelle === 'Départ avancé') {
+            typeAbsence = 'departAvance';
+            heure = debut;
+          } else if (classe.libelle === 'Arrivée retardée') {
+            typeAbsence = 'arriveeRetardee';
+            heure = fin;
+          }
+          setDialogKind('absence');
+          setDialogForm({
+            arrivee: debut,
+            depart: fin,
+            heure,
+            typeAbsence,
+            preavisJours: existing.preavisJours,
+            certificatMaladie: existing.certificatMaladie,
+          });
+        } else {
+          setDialogKind('absence');
+          setDialogForm({
+            arrivee: garde?.arrivee ?? ARRIVEE_DEFAUT,
+            depart: garde?.depart ?? DEPART_DEFAUT,
+            heure: '',
+            typeAbsence: 'journee',
+            preavisJours: 0,
+            certificatMaladie: false,
+          });
+        }
       } else {
         const existing = joursSup.find((j) => j.date === iso);
         setDialogKind('ajout');
@@ -421,7 +516,8 @@ export function CalendrierCreche({
           depart: existing
             ? versHhmm(existing.finHeures, existing.finMinutes)
             : DEPART_DEFAUT,
-          journeeComplete: false,
+          heure: '',
+          typeAbsence: 'journee',
           preavisJours: 0,
           certificatMaladie: false,
         });
@@ -475,41 +571,23 @@ export function CalendrierCreche({
 
   const confirmerDialog = useCallback(() => {
     if (dialogDate === null) return;
-    if (!plageValide(dialogForm.arrivee, dialogForm.depart)) return;
     const date = dialogDate;
     const jourSemaine = jourSemaineDeIso(date);
-    const plage = plageDepuisHeures(dialogForm.arrivee, dialogForm.depart);
 
-    if (portee === 'tous') {
-      const nouvelleSemaine = { ...semaineType };
-      nouvelleSemaine[jourSemaine] = dialogKind === 'absence' ? [] : [plage];
-      setConfirmationDurable({
-        semaineType: nouvelleSemaine,
-        message:
-          dialogKind === 'absence'
-            ? `Retirer ce jour de garde tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`
-            : `Ajouter ce jour de garde tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
-      });
-      setDialogDate(null);
-      return;
-    }
-
-    if (dialogKind === 'absence') {
-      const existait = absences.some((a) => a.date === date);
-      const nouvelles = absences.filter((a) => a.date !== date);
-      nouvelles.push({
-        date,
-        ...plage,
-        preavisJours: dialogForm.preavisJours,
-        certificatMaladie: dialogForm.certificatMaladie,
-      });
-      majAbsences(nouvelles);
-      setDialogDate(null);
-      envoyer(nouvelles, joursSup, complementMinutes);
-      annoncer(
-        `Absence ${existait ? 'modifiée' : 'ajoutée'} le ${formaterDateFr(date)}`,
-      );
-    } else {
+    // Ajout d'un jour de garde : on saisit une plage de PRÉSENCE (arrivée/départ).
+    if (dialogKind === 'ajout') {
+      if (!plageValide(dialogForm.arrivee, dialogForm.depart)) return;
+      const plage = plageDepuisHeures(dialogForm.arrivee, dialogForm.depart);
+      if (portee === 'tous') {
+        const nouvelleSemaine = { ...semaineType };
+        nouvelleSemaine[jourSemaine] = [plage];
+        setConfirmationDurable({
+          semaineType: nouvelleSemaine,
+          message: `Ajouter ce jour de garde tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
+        });
+        setDialogDate(null);
+        return;
+      }
       const existait = joursSup.some((j) => j.date === date);
       const nouveaux = joursSup.filter((j) => j.date !== date);
       nouveaux.push({ date, ...plage });
@@ -519,7 +597,43 @@ export function CalendrierCreche({
       annoncer(
         `Jour supplémentaire ${existait ? 'modifié' : 'ajouté'} le ${formaterDateFr(date)}`,
       );
+      return;
     }
+
+    // Absence sur un jour gardé. Portée « tous » : le jour est retiré de la
+    // semaine type (la fenêtre d'absence n'a pas de sens ici).
+    if (portee === 'tous') {
+      const nouvelleSemaine = { ...semaineType };
+      nouvelleSemaine[jourSemaine] = [];
+      setConfirmationDurable({
+        semaineType: nouvelleSemaine,
+        message: `Retirer ce jour de garde tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
+      });
+      setDialogDate(null);
+      return;
+    }
+
+    // Fenêtre d'absence dérivée du type d'ajustement et de la garde du jour.
+    const plage = fenetreAbsence(
+      dialogForm.typeAbsence,
+      dialogForm,
+      plageContratJour(date),
+    );
+    if (plage === null) return;
+    const existait = absences.some((a) => a.date === date);
+    const nouvelles = absences.filter((a) => a.date !== date);
+    nouvelles.push({
+      date,
+      ...plage,
+      preavisJours: dialogForm.preavisJours,
+      certificatMaladie: dialogForm.certificatMaladie,
+    });
+    majAbsences(nouvelles);
+    setDialogDate(null);
+    envoyer(nouvelles, joursSup, complementMinutes);
+    annoncer(
+      `Absence ${existait ? 'modifiée' : 'ajoutée'} le ${formaterDateFr(date)}`,
+    );
   }, [
     dialogDate,
     dialogKind,
@@ -533,6 +647,7 @@ export function CalendrierCreche({
     majAbsences,
     majJoursSup,
     annoncer,
+    plageContratJour,
   ]);
 
   const supprimerDialog = useCallback(() => {
@@ -574,27 +689,27 @@ export function CalendrierCreche({
 
   const appliquerLot = useCallback(
     (jours: Iterable<string>) => {
-      // En « toute la journée », chaque jour prend SA plage de garde du contrat ;
-      // sinon, la plage saisie dans le formulaire de lot (qui doit être valide).
-      if (
-        !lotForm.journeeComplete &&
-        !plageValide(lotForm.arrivee, lotForm.depart)
-      ) {
-        return;
-      }
+      // Validité indépendante du jour (la cohérence avec la garde de chaque jour
+      // est vérifiée ci-dessous, jour par jour).
+      if (!saisieAbsenceValide(lotForm.typeAbsence, lotForm)) return;
       const cibles = Array.from(jours).filter((j) => joursGardes.has(j));
       if (cibles.length === 0) return;
-      const plageLot = plageDepuisHeures(lotForm.arrivee, lotForm.depart);
-      const ciblesSet = new Set(cibles);
-      const nouvelles = absences.filter((a) => !ciblesSet.has(a.date));
+      // Chaque jour dérive SA fenêtre depuis sa propre plage de garde. Un jour
+      // dont l'heure pivot tombe hors de sa garde (départ avancé / arrivée
+      // retardée) est ignoré plutôt que de créer une absence incohérente.
+      const aAppliquer: { date: string; plage: PlageHoraire }[] = [];
       for (const date of cibles) {
-        const plageJour = lotForm.journeeComplete
-          ? (plageContratJour(date) ?? null)
-          : null;
-        const plage =
-          plageJour !== null
-            ? plageDepuisHeures(plageJour.arrivee, plageJour.depart)
-            : plageLot;
+        const plage = fenetreAbsence(
+          lotForm.typeAbsence,
+          lotForm,
+          plageContratJour(date),
+        );
+        if (plage !== null) aAppliquer.push({ date, plage });
+      }
+      if (aAppliquer.length === 0) return;
+      const appliqueSet = new Set(aAppliquer.map((x) => x.date));
+      const nouvelles = absences.filter((a) => !appliqueSet.has(a.date));
+      for (const { date, plage } of aAppliquer) {
         nouvelles.push({
           date,
           ...plage,
@@ -604,11 +719,18 @@ export function CalendrierCreche({
       }
       majAbsences(nouvelles);
       envoyer(nouvelles, joursSup, complementMinutes);
-      const [premiereCible] = cibles;
+      const ignores = cibles.length - aAppliquer.length;
+      const [premiere] = aAppliquer;
+      const base =
+        aAppliquer.length === 1 && premiere !== undefined
+          ? `Absence ajoutée le ${formaterDateFr(premiere.date)}`
+          : `Absences ajoutées sur ${aAppliquer.length} jours`;
       annoncer(
-        cibles.length === 1 && premiereCible !== undefined
-          ? `Absence ajoutée le ${formaterDateFr(premiereCible)}`
-          : `Absences ajoutées sur ${cibles.length} jours`,
+        ignores > 0
+          ? `${base} (${ignores} jour${ignores > 1 ? 's' : ''} ignoré${
+              ignores > 1 ? 's' : ''
+            } : horaire hors garde)`
+          : base,
       );
     },
     [
@@ -646,14 +768,15 @@ export function CalendrierCreche({
   const calKey = useRef(0);
   calKey.current = parseInt(mois.replace('-', ''), 10);
 
-  // En « toute la journée » (absence), les heures viennent du contrat → toujours
-  // valides ; sinon on exige une plage cohérente saisie à la main.
+  // Validité de la saisie de la modale : pour une absence, la fenêtre dérivée
+  // du type doit être cohérente avec la garde du jour ; pour un ajout, la plage
+  // de présence saisie doit être cohérente.
+  const gardeDialog = dialogDate !== null ? plageContratJour(dialogDate) : null;
   const dialogPlageValide =
-    dialogKind === 'absence' && dialogForm.journeeComplete
-      ? true
+    dialogKind === 'absence'
+      ? fenetreAbsence(dialogForm.typeAbsence, dialogForm, gardeDialog) !== null
       : plageValide(dialogForm.arrivee, dialogForm.depart);
-  const lotPlageValide =
-    lotForm.journeeComplete || plageValide(lotForm.arrivee, lotForm.depart);
+  const lotPlageValide = saisieAbsenceValide(lotForm.typeAbsence, lotForm);
 
   return (
     <div>
@@ -751,31 +874,64 @@ export function CalendrierCreche({
               gap: '0.75rem',
             }}
           >
-            <label
+            <fieldset
               style={{
-                flexDirection: 'row',
+                border: 'none',
+                margin: 0,
+                padding: 0,
                 display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
+                flexDirection: 'column',
+                gap: '0.2rem',
               }}
             >
-              <input
-                type="checkbox"
-                checked={lotForm.journeeComplete}
-                onChange={(e) => {
-                  setLotForm((f) => ({
-                    ...f,
-                    journeeComplete: e.target.checked,
-                  }));
-                }}
-                style={{ width: 'auto', padding: 0 }}
-              />
-              Toute la journée
-            </label>
-            {!lotForm.journeeComplete && (
+              <legend style={{ padding: 0, fontSize: '0.82rem' }}>
+                Type d’absence
+              </legend>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
+                {TYPES_ABSENCE.map((t) => (
+                  <label
+                    key={t.valeur}
+                    style={{
+                      flexDirection: 'row',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      margin: 0,
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="type-absence-lot"
+                      checked={lotForm.typeAbsence === t.valeur}
+                      onChange={() => {
+                        setLotForm((f) => ({ ...f, typeAbsence: t.valeur }));
+                      }}
+                      style={{ width: 'auto', padding: 0 }}
+                    />
+                    {t.libelle}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            {(lotForm.typeAbsence === 'departAvance' ||
+              lotForm.typeAbsence === 'arriveeRetardee') && (
+              <label>
+                {lotForm.typeAbsence === 'departAvance'
+                  ? 'Nouvelle heure de départ'
+                  : 'Nouvelle heure d’arrivée'}
+                <input
+                  type="time"
+                  value={lotForm.heure}
+                  onChange={(e) => {
+                    setLotForm((f) => ({ ...f, heure: e.target.value }));
+                  }}
+                />
+              </label>
+            )}
+            {lotForm.typeAbsence === 'personnalise' && (
               <>
                 <label>
-                  Arrivée
+                  Début de l’absence
                   <input
                     type="time"
                     value={lotForm.arrivee}
@@ -785,7 +941,7 @@ export function CalendrierCreche({
                   />
                 </label>
                 <label>
-                  Départ
+                  Fin de l’absence
                   <input
                     type="time"
                     value={lotForm.depart}
@@ -837,7 +993,10 @@ export function CalendrierCreche({
               className="muted"
               style={{ fontSize: '0.8rem', marginTop: '0.4rem' }}
             >
-              L’heure de départ doit être postérieure à l’arrivée.
+              {lotForm.typeAbsence === 'departAvance' ||
+              lotForm.typeAbsence === 'arriveeRetardee'
+                ? 'Renseignez l’heure de l’ajustement.'
+                : 'L’heure de départ doit être postérieure à l’arrivée.'}
             </div>
           )}
           <div
@@ -948,39 +1107,104 @@ export function CalendrierCreche({
             setDialogDate(null);
           }}
         >
-          {dialogKind === 'absence' && (
-            <label
-              style={{
-                flexDirection: 'row',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                margin: 0,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={dialogForm.journeeComplete}
-                onChange={(e) => {
-                  setDialogForm((f) => ({
-                    ...f,
-                    journeeComplete: e.target.checked,
-                  }));
-                }}
-                style={{ width: 'auto', padding: 0 }}
-              />
-              Absence toute la journée
-            </label>
-          )}
+          {dialogKind === 'absence' ? (
+            <>
+              <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
+                <legend style={{ padding: 0, fontSize: '0.9rem' }}>
+                  Type d’absence
+                </legend>
+                {TYPES_ABSENCE.map((t) => (
+                  <label
+                    key={t.valeur}
+                    style={{
+                      flexDirection: 'row',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      margin: '0.15rem 0',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="type-absence"
+                      checked={dialogForm.typeAbsence === t.valeur}
+                      onChange={() => {
+                        setDialogForm((f) => ({ ...f, typeAbsence: t.valeur }));
+                      }}
+                      style={{ width: 'auto', padding: 0 }}
+                    />
+                    {t.libelle}
+                  </label>
+                ))}
+              </fieldset>
 
-          {dialogKind === 'absence' && dialogForm.journeeComplete ? (
-            <div
-              className="muted"
-              style={{ fontSize: '0.82rem', marginTop: '0.25rem' }}
-            >
-              Toute la journée gardée ({dialogForm.arrivee}–{dialogForm.depart}
-              ).
-            </div>
+              {dialogForm.typeAbsence === 'journee' && (
+                <div
+                  className="muted"
+                  style={{ fontSize: '0.82rem', marginTop: '0.25rem' }}
+                >
+                  Toute la journée gardée
+                  {gardeDialog
+                    ? ` (${gardeDialog.arrivee}–${gardeDialog.depart})`
+                    : ''}
+                  .
+                </div>
+              )}
+
+              {(dialogForm.typeAbsence === 'departAvance' ||
+                dialogForm.typeAbsence === 'arriveeRetardee') && (
+                <label style={{ display: 'block', marginTop: '0.25rem' }}>
+                  {dialogForm.typeAbsence === 'departAvance'
+                    ? 'Nouvelle heure de départ'
+                    : 'Nouvelle heure d’arrivée'}
+                  <input
+                    type="time"
+                    value={dialogForm.heure}
+                    onChange={(e) => {
+                      setDialogForm((f) => ({ ...f, heure: e.target.value }));
+                    }}
+                  />
+                </label>
+              )}
+
+              {dialogForm.typeAbsence === 'personnalise' && (
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '0.75rem',
+                    flexWrap: 'wrap',
+                    marginTop: '0.25rem',
+                  }}
+                >
+                  <label>
+                    Début de l’absence
+                    <input
+                      type="time"
+                      value={dialogForm.arrivee}
+                      onChange={(e) => {
+                        setDialogForm((f) => ({
+                          ...f,
+                          arrivee: e.target.value,
+                        }));
+                      }}
+                    />
+                  </label>
+                  <label>
+                    Fin de l’absence
+                    <input
+                      type="time"
+                      value={dialogForm.depart}
+                      onChange={(e) => {
+                        setDialogForm((f) => ({
+                          ...f,
+                          depart: e.target.value,
+                        }));
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+            </>
           ) : (
             <div
               style={{
@@ -1017,7 +1241,11 @@ export function CalendrierCreche({
               className="muted"
               style={{ fontSize: '0.8rem', marginTop: '0.4rem' }}
             >
-              L’heure de départ doit être postérieure à l’arrivée.
+              {dialogKind === 'absence' &&
+              (dialogForm.typeAbsence === 'departAvance' ||
+                dialogForm.typeAbsence === 'arriveeRetardee')
+                ? 'L’heure doit être comprise dans la plage de garde.'
+                : 'L’heure de départ doit être postérieure à l’arrivée.'}
             </div>
           )}
 

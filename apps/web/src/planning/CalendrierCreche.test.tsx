@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CalendrierCreche } from './CalendrierCreche';
 import type { ContratLocal } from '../types/bff';
@@ -418,6 +424,183 @@ describe('CalendrierCreche', () => {
       const ligne = screen.getByText('02/06/2026').closest('li');
       expect(ligne?.textContent).toContain('Absent');
     });
+  });
+
+  // P3 : le sélecteur de type décrit la PRÉSENCE de l'enfant ; le code dérive
+  // la fenêtre d'absence stockée (durée = fin − début).
+  it('« Départ avancé » dérive la fenêtre [heure saisie, départ garde]', async () => {
+    vi.mocked(api.ecrirePlanning).mockResolvedValue(undefined);
+
+    render(
+      <CalendrierCreche
+        contrat={contratCreche}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('simulate-date-click'));
+    const dialog = screen.getByRole('dialog');
+    // Présent jusqu'à 15:00 (garde MARDI 08:00–17:00) → fenêtre d'absence 15:00–17:00.
+    fireEvent.click(
+      within(dialog).getByRole('radio', { name: 'Départ avancé' }),
+    );
+    fireEvent.change(
+      within(dialog).getByLabelText('Nouvelle heure de départ'),
+      { target: { value: '15:00' } },
+    );
+    fireEvent.click(within(dialog).getByText('Confirmer'));
+
+    await waitFor(
+      () => {
+        expect(api.ecrirePlanning).toHaveBeenCalledWith(
+          'contrat-creche-1',
+          '2026-06',
+          false,
+          expect.objectContaining({
+            absences: expect.arrayContaining([
+              expect.objectContaining({
+                date: '2026-06-02',
+                debutHeures: 15,
+                debutMinutes: 0,
+                finHeures: 17,
+                finMinutes: 0,
+              }),
+            ]),
+          }),
+          expect.any(Object),
+        );
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it('« Arrivée retardée » dérive la fenêtre [arrivée garde, heure saisie]', async () => {
+    vi.mocked(api.ecrirePlanning).mockResolvedValue(undefined);
+
+    render(
+      <CalendrierCreche
+        contrat={contratCreche}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('simulate-date-click'));
+    const dialog = screen.getByRole('dialog');
+    // Présent à partir de 10:00 → fenêtre d'absence 08:00–10:00.
+    fireEvent.click(
+      within(dialog).getByRole('radio', { name: 'Arrivée retardée' }),
+    );
+    fireEvent.change(
+      within(dialog).getByLabelText('Nouvelle heure d’arrivée'),
+      { target: { value: '10:00' } },
+    );
+    fireEvent.click(within(dialog).getByText('Confirmer'));
+
+    await waitFor(
+      () => {
+        expect(api.ecrirePlanning).toHaveBeenCalledWith(
+          'contrat-creche-1',
+          '2026-06',
+          false,
+          expect.objectContaining({
+            absences: expect.arrayContaining([
+              expect.objectContaining({
+                date: '2026-06-02',
+                debutHeures: 8,
+                debutMinutes: 0,
+                finHeures: 10,
+                finMinutes: 0,
+              }),
+            ]),
+          }),
+          expect.any(Object),
+        );
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it('rouvre une absence existante avec le type présélectionné et l heure (aller-retour)', async () => {
+    // Absence hydratée 15:00–17:00 (départ avancé) : à la réouverture, le type
+    // « Départ avancé » est présélectionné et l'heure de présence vaut 15:00.
+    vi.mocked(api.lirePlanning).mockResolvedValue({
+      saisie: {
+        absences: [
+          {
+            date: '2026-06-02',
+            debutHeures: 15,
+            debutMinutes: 0,
+            finHeures: 17,
+            finMinutes: 0,
+            preavisJours: 0,
+            certificatMaladie: false,
+          },
+        ],
+      },
+    });
+
+    render(
+      <CalendrierCreche
+        contrat={contratCreche}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    // Attendre l'hydratation (la ligne reflète « Départ avancé »).
+    await waitFor(() => {
+      const ligne = screen.getByText('02/06/2026').closest('li');
+      expect(ligne?.textContent).toContain('Départ avancé');
+    });
+
+    fireEvent.click(screen.getByTestId('simulate-date-click'));
+    const dialog = screen.getByRole('dialog');
+    expect(
+      within(dialog).getByRole('radio', { name: 'Départ avancé' }),
+    ).toBeChecked();
+    expect(
+      within(dialog).getByLabelText('Nouvelle heure de départ'),
+    ).toHaveValue('15:00');
+  });
+
+  it('désactive « Confirmer » quand l heure tombe hors de la plage de garde', () => {
+    render(
+      <CalendrierCreche
+        contrat={contratCreche}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('simulate-date-click'));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(
+      within(dialog).getByRole('radio', { name: 'Départ avancé' }),
+    );
+
+    // 07:00 précède l'arrivée de garde (08:00) → fenêtre incohérente.
+    fireEvent.change(
+      within(dialog).getByLabelText('Nouvelle heure de départ'),
+      { target: { value: '07:00' } },
+    );
+    expect(
+      within(dialog).getByRole('button', { name: 'Confirmer' }),
+    ).toBeDisabled();
+
+    // Une heure intérieure à la garde réactive le bouton.
+    fireEvent.change(
+      within(dialog).getByLabelText('Nouvelle heure de départ'),
+      { target: { value: '15:00' } },
+    );
+    expect(
+      within(dialog).getByRole('button', { name: 'Confirmer' }),
+    ).not.toBeDisabled();
   });
 
   it('ferme le dialog en cliquant sur Annuler', () => {
