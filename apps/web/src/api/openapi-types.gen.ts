@@ -470,6 +470,9 @@ export interface paths {
                         /** Format: uuid */
                         foyerId: string;
                         enfant: string;
+                        /** Format: uuid */
+                        etablissementId?: string;
+                        nouvelEtablissement?: components["schemas"]["CreerEtablissementCorps"];
                         /** Format: date */
                         valideDu: string;
                         /** Format: date */
@@ -622,6 +625,171 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/foyers/{foyerId}/etablissements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lister les établissements d’un foyer (entité libre)
+         * @description Établissements configurables propres au foyer (P2/P3) — distincts de l’ancien annuaire global à clés `/api/v1/etablissements`.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    foyerId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Établissements du foyer (liste vide si aucun). */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EtablissementFoyerVue"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Créer un établissement dans le foyer */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    foyerId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreerEtablissementCorps"];
+                };
+            };
+            responses: {
+                /** @description Établissement créé. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EtablissementFoyerVue"];
+                    };
+                };
+                /** @description Données invalides (ex. nom déjà utilisé). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/foyers/{foyerId}/etablissements/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Modifier un établissement du foyer (champs fournis uniquement) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    foyerId: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        nom?: string;
+                        /** Format: email */
+                        emailService?: string | null;
+                        preavisRegle?: components["schemas"]["PreavisRegle"] | null;
+                        types?: ("CRECHE_PSU" | "CANTINE" | "PERISCOLAIRE" | "ALSH")[];
+                        adresse?: string | null;
+                        telephone?: string | null;
+                        contact?: string | null;
+                        actif?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Établissement mis à jour. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EtablissementFoyerVue"];
+                    };
+                };
+                /** @description Établissement inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        /**
+         * Supprimer un établissement du foyer
+         * @description Suppression bloquée (409) tant qu’au moins un contrat y est rattaché.
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    foyerId: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Établissement supprimé (pas de contenu). */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Des contrats sont rattachés à l’établissement. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/etablissements": {
         parameters: {
             query?: never;
@@ -764,6 +932,8 @@ export interface components {
             foyerId: string;
             enfant: string;
             mode: string;
+            /** Format: uuid */
+            etablissementId?: string | null;
             /** Format: date */
             valideDu: string;
             /** Format: date */
@@ -790,6 +960,35 @@ export interface components {
             emailService: string;
             preavisRegle: components["schemas"]["PreavisRegle"];
             actif: boolean;
+        };
+        /** @description Établissement en entité libre, propre à un foyer (propriété de svc-planification, P2/P3). Identifié par un `id` libre (UUID), pas l’ancienne clé fermée. Tous les champs descriptifs sauf `nom` peuvent être null tant qu’ils ne sont pas renseignés. */
+        EtablissementFoyerVue: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            foyerId: string;
+            nom: string;
+            /** Format: email */
+            emailService: string | null;
+            preavisRegle: components["schemas"]["PreavisRegle"] | null;
+            /** @description Modes de garde proposés par l’établissement (informatif, multi-valeurs ; indépendant du `mode` d’un contrat). */
+            types: ("CRECHE_PSU" | "CANTINE" | "PERISCOLAIRE" | "ALSH")[];
+            adresse: string | null;
+            telephone: string | null;
+            contact: string | null;
+            actif: boolean;
+        };
+        /** @description Corps de création d’un établissement (entité libre par foyer). Seul `nom` est requis ; le reste est facultatif et peut être null. Sert aussi de `nouvelEtablissement` à la création d’un contrat (à la volée). */
+        CreerEtablissementCorps: {
+            nom: string;
+            /** Format: email */
+            emailService?: string | null;
+            preavisRegle?: components["schemas"]["PreavisRegle"] | null;
+            types?: ("CRECHE_PSU" | "CANTINE" | "PERISCOLAIRE" | "ALSH")[];
+            adresse?: string | null;
+            telephone?: string | null;
+            contact?: string | null;
+            actif?: boolean;
         };
         /** @description Ligne de coût (débit ou crédit) en centimes. */
         Ligne: {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useFoyer } from '../hooks/useFoyer';
 import { useContrats } from './useContrats';
+import { useEtablissements } from '../etablissements/useEtablissements';
 import { ContratForm } from './ContratForm';
 import { api, ApiError } from '../api/client';
 import { messageErreur } from '../utils/erreurs';
@@ -91,6 +92,9 @@ export function ContratsPage() {
     erreur: erreurContrats,
     recharger,
   } = useContrats(id);
+  // Établissements du foyer : alimentent le sélecteur du formulaire de contrat
+  // (rattachement à un existant ou création à la volée).
+  const { data: etablissements } = useEtablissements(id);
   const [formulaireOuvert, setFormulaireOuvert] = useState(false);
   const [contratEdite, setContratEdite] = useState<ContratLocal | null>(null);
   const [suppressionId, setSuppressionId] = useState<string | null>(null);
@@ -258,6 +262,7 @@ export function ContratsPage() {
               <ContratForm
                 foyerId={id}
                 enfants={data.enfants}
+                etablissements={etablissements ?? []}
                 {...(contratEdite ? { contrat: contratEdite } : {})}
                 onCree={onSoumis}
                 onAnnuler={fermerFormulaire}

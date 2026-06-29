@@ -57,15 +57,29 @@ export type DossierFoyerVue = ReponseJson<'/api/v1/foyers', 'post', 201>;
 /** Règle de préavis d'un établissement — dérivée de `components.schemas.PreavisRegle`. */
 export type PreavisRegle = SchemaComposant<'PreavisRegle'>;
 
-/** Établissement destinataire — dérivé de `components.schemas.EtablissementVue`. */
-export type EtablissementVue = SchemaComposant<'EtablissementVue'>;
+/**
+ * Établissement en **entité libre par foyer** (P2/P3, propriété svc-planification)
+ * — dérivé de `components.schemas.EtablissementFoyerVue`. Identifié par un `id`
+ * libre (plus l'ancien enum fermé `cle`).
+ */
+export type EtablissementFoyerVue = SchemaComposant<'EtablissementFoyerVue'>;
 
-/** Clé d'un établissement — dérivée du champ `cle` d'`EtablissementVue`. */
-export type CleEtablissement = EtablissementVue['cle'];
+/**
+ * Corps de **création** d'un établissement — dérivé du requestBody de
+ * `POST /api/v1/foyers/{foyerId}/etablissements` (seul `nom` requis). Sert aussi
+ * de `nouvelEtablissement` à la création d'un contrat (création à la volée).
+ */
+export type CreerEtablissement = CorpsRequeteJson<
+  '/api/v1/foyers/{foyerId}/etablissements',
+  'post'
+>;
 
-/** Corps d'upsert d'un établissement — dérivé du requestBody de `PUT /api/v1/etablissements/{cle}`. */
-export type MajEtablissement = CorpsRequeteJson<
-  '/api/v1/etablissements/{cle}',
+/**
+ * Corps de **modification** d'un établissement — dérivé du requestBody de
+ * `PUT /api/v1/foyers/{foyerId}/etablissements/{id}` (tous les champs optionnels).
+ */
+export type ModifierEtablissement = CorpsRequeteJson<
+  '/api/v1/foyers/{foyerId}/etablissements/{id}',
   'put'
 >;
 
@@ -144,7 +158,19 @@ export interface CreerContratAbcm {
   semaineAbcm: SemaineAbcm;
 }
 
-export type CreerContrat = CreerContratCreche | CreerContratAbcm;
+/**
+ * Lien **établissement** d'un contrat (P2) — facultatif et mutuellement exclusif :
+ * SOIT `etablissementId` (rattacher un établissement existant), SOIT
+ * `nouvelEtablissement` (créé à la volée dans la même transaction côté service).
+ * Aucun des deux ⇒ contrat sans établissement. Le `mode` reste indépendant.
+ */
+export interface LienEtablissementSaisie {
+  etablissementId?: string;
+  nouvelEtablissement?: CreerEtablissement;
+}
+
+export type CreerContrat = (CreerContratCreche | CreerContratAbcm) &
+  LienEtablissementSaisie;
 
 // Écriture de planning (PUT /contrats/:id/plannings/:mois?simule=).
 // Crèche : la saisie d'une présence/absence se fait en heures d'arrivée/départ
