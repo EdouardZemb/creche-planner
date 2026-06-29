@@ -11,7 +11,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(gatewayOpenApiDocument.info.version).toBe('1.0.0');
   });
 
-  it('expose exactement les 13 routes attendues', () => {
+  it('expose exactement les 15 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -21,6 +21,8 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/foyers/{id}',
         '/api/v1/foyers/{id}/parents',
         '/api/v1/foyers/{id}/parents/{parentId}',
+        '/api/v1/foyers/{foyerId}/etablissements',
+        '/api/v1/foyers/{foyerId}/etablissements/{id}',
         '/api/v1/moi',
         '/api/v1/contrats',
         '/api/v1/contrats/{id}/plannings/{mois}',
@@ -59,6 +61,8 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(schemas.CoutMoisVue).toBeDefined();
     expect(schemas.CoutAnnuelVue).toBeDefined();
     expect(schemas.EtablissementVue).toBeDefined();
+    expect(schemas.EtablissementFoyerVue).toBeDefined();
+    expect(schemas.CreerEtablissementCorps).toBeDefined();
     expect(schemas.PreavisRegle).toBeDefined();
   });
 

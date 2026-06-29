@@ -9,6 +9,7 @@ vi.mock('../api/client', () => ({
     lireFoyer: vi.fn(),
     listerContrats: vi.fn(),
     supprimerContrat: vi.fn(),
+    listerEtablissements: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -30,6 +31,7 @@ const mockedApi = api as unknown as {
   lireFoyer: ReturnType<typeof vi.fn>;
   listerContrats: ReturnType<typeof vi.fn>;
   supprimerContrat: ReturnType<typeof vi.fn>;
+  listerEtablissements: ReturnType<typeof vi.fn>;
 };
 
 const FOYER_ID = 'f1';
@@ -84,6 +86,8 @@ describe('ContratsPage', () => {
     mockedApi.lireFoyer.mockResolvedValue(dossierFactice);
     // Liste des contrats lue depuis l'API (GET /api/v1/contrats?foyer=).
     mockedApi.listerContrats.mockResolvedValue([contratFactice]);
+    // Établissements du foyer (sélecteur du formulaire de contrat).
+    mockedApi.listerEtablissements.mockResolvedValue([]);
   });
 
   it('liste les contrats avec boutons Modifier et Supprimer', async () => {

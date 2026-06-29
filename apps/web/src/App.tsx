@@ -142,6 +142,9 @@ function Entete() {
               <PastilleAValider foyerId={id} />
             </NavLink>
             <NavLink to={`/foyers/${id}/couts`}>Coûts annuels</NavLink>
+            <NavLink to={`/foyers/${id}/etablissements`}>
+              Établissements
+            </NavLink>
           </>
         )}
         {/* Mode borné, familles multi-foyers : accès au sélecteur. */}
@@ -151,7 +154,6 @@ function Entete() {
         {/* Création réservée à l'admin (provisioning b-ii). Permissif tant que le
             gating ADMIN_EMAILS est inactif → la prod actuelle conserve le lien. */}
         {moi.admin && <NavLink to="/foyers/new">Nouveau foyer</NavLink>}
-        <NavLink to="/etablissements">Établissements</NavLink>
       </nav>
     </header>
   );
@@ -271,12 +273,15 @@ function PageIntrouvable() {
 function titreDepuisPathname(pathname: string): string {
   if (pathname === '/foyers/new') return 'Nouveau foyer';
   if (pathname === '/mes-foyers') return 'Mes foyers';
-  if (pathname === '/etablissements') return 'Établissements';
-  const foyer = /^\/foyers\/[^/]+\/(contrats|planning|couts)$/.exec(pathname);
+  const foyer =
+    /^\/foyers\/[^/]+\/(contrats|planning|couts|etablissements)$/.exec(
+      pathname,
+    );
   if (foyer) {
     const segment = foyer[1];
     if (segment === 'contrats') return 'Contrats';
     if (segment === 'planning') return 'Planning';
+    if (segment === 'etablissements') return 'Établissements';
     return 'Coûts annuels';
   }
   // Pages de récupération / 404 et redirection racine : annonce neutre.
@@ -307,12 +312,12 @@ function Coquille() {
         <Routes>
           <Route path="/" element={<Accueil />} />
           <Route path="/mes-foyers" element={<MesFoyersPage />} />
-          <Route path="/etablissements" element={<EtablissementsPage />} />
           <Route path="/foyers/new" element={<FoyerFormPage />} />
           <Route path="/foyers/:foyerId" element={<GardeFoyer />}>
             <Route path="contrats" element={<ContratsPage />} />
             <Route path="planning" element={<PlanningPage />} />
             <Route path="couts" element={<CoutsAnnuelsPage />} />
+            <Route path="etablissements" element={<EtablissementsPage />} />
           </Route>
           <Route path="*" element={<PageIntrouvable />} />
         </Routes>

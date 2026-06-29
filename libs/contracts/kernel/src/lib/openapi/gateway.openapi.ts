@@ -114,6 +114,12 @@ export const gatewayOpenApiDocument = {
           foyerId: { type: 'string', format: 'uuid' },
           enfant: { type: 'string' },
           mode: { type: 'string' },
+          /**
+           * Établissement réel rattaché (lien explicite P2/P3) ; null/absent si
+           * aucun. Porté par la liste des contrats — clé de routage du récap hebdo
+           * et pré-sélection du sélecteur d’établissement à l’édition d’un contrat.
+           */
+          etablissementId: { type: ['string', 'null'], format: 'uuid' },
           valideDu: { type: 'string', format: 'date' },
           valideAu: { type: ['string', 'null'], format: 'date' },
         },
@@ -169,6 +175,81 @@ export const gatewayOpenApiDocument = {
           actif: { type: 'boolean' },
         },
         required: ['cle', 'libelle', 'emailService', 'preavisRegle', 'actif'],
+      },
+      EtablissementFoyerVue: {
+        type: 'object',
+        description:
+          'Établissement en entité libre, propre à un foyer (propriété de ' +
+          'svc-planification, P2/P3). Identifié par un `id` libre (UUID), pas ' +
+          'l’ancienne clé fermée. Tous les champs descriptifs sauf `nom` peuvent ' +
+          'être null tant qu’ils ne sont pas renseignés.',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          foyerId: { type: 'string', format: 'uuid' },
+          nom: { type: 'string' },
+          emailService: { type: ['string', 'null'], format: 'email' },
+          preavisRegle: {
+            anyOf: [
+              { $ref: '#/components/schemas/PreavisRegle' },
+              { type: 'null' },
+            ],
+          },
+          types: {
+            type: 'array',
+            description:
+              'Modes de garde proposés par l’établissement (informatif, ' +
+              'multi-valeurs ; indépendant du `mode` d’un contrat).',
+            items: {
+              type: 'string',
+              enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+            },
+          },
+          adresse: { type: ['string', 'null'] },
+          telephone: { type: ['string', 'null'] },
+          contact: { type: ['string', 'null'] },
+          actif: { type: 'boolean' },
+        },
+        required: [
+          'id',
+          'foyerId',
+          'nom',
+          'emailService',
+          'preavisRegle',
+          'types',
+          'adresse',
+          'telephone',
+          'contact',
+          'actif',
+        ],
+      },
+      CreerEtablissementCorps: {
+        type: 'object',
+        description:
+          'Corps de création d’un établissement (entité libre par foyer). Seul ' +
+          '`nom` est requis ; le reste est facultatif et peut être null. Sert ' +
+          'aussi de `nouvelEtablissement` à la création d’un contrat (à la volée).',
+        properties: {
+          nom: { type: 'string', minLength: 1, maxLength: 200 },
+          emailService: { type: ['string', 'null'], format: 'email' },
+          preavisRegle: {
+            anyOf: [
+              { $ref: '#/components/schemas/PreavisRegle' },
+              { type: 'null' },
+            ],
+          },
+          types: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+            },
+          },
+          adresse: { type: ['string', 'null'] },
+          telephone: { type: ['string', 'null'] },
+          contact: { type: ['string', 'null'] },
+          actif: { type: 'boolean' },
+        },
+        required: ['nom'],
       },
       Ligne: {
         type: 'object',
@@ -608,7 +689,10 @@ export const gatewayOpenApiDocument = {
                 type: 'object',
                 description:
                   'Contrat de garde. Les champs spécifiques au mode (PSU/ABCM) ' +
-                  'sont laissés ouverts via additionalProperties.',
+                  'sont laissés ouverts via additionalProperties. Le lien ' +
+                  'établissement est facultatif : `etablissementId` (existant) ' +
+                  'OU `nouvelEtablissement` (créé à la volée), mutuellement ' +
+                  'exclusifs (validation profonde svc-planification).',
                 additionalProperties: true,
                 properties: {
                   mode: {
@@ -617,6 +701,10 @@ export const gatewayOpenApiDocument = {
                   },
                   foyerId: { type: 'string', format: 'uuid' },
                   enfant: { type: 'string' },
+                  etablissementId: { type: 'string', format: 'uuid' },
+                  nouvelEtablissement: {
+                    $ref: '#/components/schemas/CreerEtablissementCorps',
+                  },
                   valideDu: { type: 'string', format: 'date' },
                   valideAu: { type: ['string', 'null'], format: 'date' },
                 },
@@ -746,6 +834,158 @@ export const gatewayOpenApiDocument = {
                 schema: { $ref: '#/components/schemas/CoutAnnuelVue' },
               },
             },
+          },
+        },
+      },
+    },
+    '/api/v1/foyers/{foyerId}/etablissements': {
+      get: {
+        summary: 'Lister les établissements d’un foyer (entité libre)',
+        description:
+          'Établissements configurables propres au foyer (P2/P3) — distincts ' +
+          'de l’ancien annuaire global à clés `/api/v1/etablissements`.',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Établissements du foyer (liste vide si aucun).',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    $ref: '#/components/schemas/EtablissementFoyerVue',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        summary: 'Créer un établissement dans le foyer',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/CreerEtablissementCorps' },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Établissement créé.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/EtablissementFoyerVue' },
+              },
+            },
+          },
+          '400': { description: 'Données invalides (ex. nom déjà utilisé).' },
+        },
+      },
+    },
+    '/api/v1/foyers/{foyerId}/etablissements/{id}': {
+      put: {
+        summary:
+          'Modifier un établissement du foyer (champs fournis uniquement)',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Champs éditables d’un établissement (tous optionnels ; ' +
+                  'seuls les champs fournis changent, un champ null vide la ' +
+                  'valeur). `nom` non vide s’il est fourni.',
+                properties: {
+                  nom: { type: 'string', minLength: 1, maxLength: 200 },
+                  emailService: { type: ['string', 'null'], format: 'email' },
+                  preavisRegle: {
+                    anyOf: [
+                      { $ref: '#/components/schemas/PreavisRegle' },
+                      { type: 'null' },
+                    ],
+                  },
+                  types: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                      enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+                    },
+                  },
+                  adresse: { type: ['string', 'null'] },
+                  telephone: { type: ['string', 'null'] },
+                  contact: { type: ['string', 'null'] },
+                  actif: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Établissement mis à jour.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/EtablissementFoyerVue' },
+              },
+            },
+          },
+          '404': { description: 'Établissement inconnu.' },
+        },
+      },
+      delete: {
+        summary: 'Supprimer un établissement du foyer',
+        description:
+          'Suppression bloquée (409) tant qu’au moins un contrat y est rattaché.',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '204': { description: 'Établissement supprimé (pas de contenu).' },
+          '409': {
+            description: 'Des contrats sont rattachés à l’établissement.',
           },
         },
       },

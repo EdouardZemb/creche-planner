@@ -1,13 +1,20 @@
 import { api } from '../api/client';
-import type { EtablissementVue } from '../types/bff';
+import type { EtablissementFoyerVue } from '../types/bff';
 import { useAsync, type AsyncEtat } from '../hooks/useAsync';
 
 /**
- * Charge l'annuaire des établissements destinataires (crèche / ABCM). Se
- * recharge quand `version` change (incrémenté après un enregistrement réussi).
+ * Charge les établissements (entité libre) du foyer courant
+ * (`GET /api/v1/foyers/:foyerId/etablissements`). Se recharge quand `foyerId`
+ * change ou via `reload()` (après création / édition / suppression).
  */
 export function useEtablissements(
-  version?: number,
-): AsyncEtat<EtablissementVue[]> {
-  return useAsync((signal) => api.listerEtablissements({ signal }), [version]);
+  foyerId: string,
+): AsyncEtat<EtablissementFoyerVue[]> {
+  return useAsync(
+    (signal) =>
+      foyerId
+        ? api.listerEtablissements(foyerId, { signal })
+        : Promise.resolve([]),
+    [foyerId],
+  );
 }

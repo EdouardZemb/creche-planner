@@ -1,7 +1,12 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { ContratForm } from './ContratForm';
-import type { EnfantVue, ContratVue, ContratLocal } from '../types/bff';
+import type {
+  EnfantVue,
+  ContratVue,
+  ContratLocal,
+  EtablissementFoyerVue,
+} from '../types/bff';
 
 vi.mock('../api/client', () => ({
   api: {
@@ -40,6 +45,21 @@ const contratVueFactice: ContratVue = {
   valideDu: '2026-09-01',
   valideAu: null,
 };
+
+const etablissementsTest: EtablissementFoyerVue[] = [
+  {
+    id: 'et-1',
+    foyerId: 'f1',
+    nom: 'Crèche du Centre',
+    emailService: 'creche@example.org',
+    preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
+    types: ['CRECHE_PSU'],
+    adresse: null,
+    telephone: null,
+    contact: null,
+    actif: true,
+  },
+];
 
 function rendu(onCree = vi.fn()) {
   return render(
@@ -339,5 +359,85 @@ describe('ContratForm', () => {
     expect(onCree).toHaveBeenCalledTimes(1);
     const contratLocal = onCree.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(contratLocal['semaineType']).toBeDefined();
+  });
+
+  // ---- Établissement (P4) --------------------------------------------------
+
+  it('rattache un établissement existant (etablissementId)', async () => {
+    mockedApi.creerContrat.mockResolvedValueOnce(contratVueFactice);
+    render(
+      <ContratForm
+        foyerId="f1"
+        enfants={enfantsTest}
+        etablissements={etablissementsTest}
+        onCree={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Valide du/i), {
+      target: { value: '2026-09-01' },
+    });
+    fireEvent.change(screen.getByLabelText(/Établissement/i), {
+      target: { value: 'et-1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.creerContrat).toHaveBeenCalledTimes(1);
+    });
+    const saisie = (
+      mockedApi.creerContrat.mock.calls[0] as unknown[]
+    )[0] as Record<string, unknown>;
+    expect(saisie['etablissementId']).toBe('et-1');
+    expect(saisie['nouvelEtablissement']).toBeUndefined();
+  });
+
+  it('crée un établissement à la volée (nouvelEtablissement)', async () => {
+    mockedApi.creerContrat.mockResolvedValueOnce(contratVueFactice);
+    render(
+      <ContratForm
+        foyerId="f1"
+        enfants={enfantsTest}
+        etablissements={etablissementsTest}
+        onCree={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Valide du/i), {
+      target: { value: '2026-09-01' },
+    });
+    fireEvent.change(screen.getByLabelText(/Établissement/i), {
+      target: { value: '__nouveau__' },
+    });
+    fireEvent.change(screen.getByLabelText(/Nom du nouvel établissement/i), {
+      target: { value: 'Micro-crèche Pomme' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.creerContrat).toHaveBeenCalledTimes(1);
+    });
+    const saisie = (mockedApi.creerContrat.mock.calls[0] as unknown[])[0] as {
+      etablissementId?: string;
+      nouvelEtablissement?: { nom: string };
+    };
+    expect(saisie.etablissementId).toBeUndefined();
+    expect(saisie.nouvelEtablissement?.nom).toBe('Micro-crèche Pomme');
+  });
+
+  it('pré-sélectionne l’établissement du contrat en édition', () => {
+    render(
+      <ContratForm
+        foyerId="f1"
+        enfants={enfantsTest}
+        etablissements={etablissementsTest}
+        contrat={{ ...contratEditeFactice, etablissementId: 'et-1' }}
+        onCree={vi.fn()}
+      />,
+    );
+
+    expect(
+      (screen.getByLabelText(/Établissement/i) as HTMLSelectElement).value,
+    ).toBe('et-1');
   });
 });

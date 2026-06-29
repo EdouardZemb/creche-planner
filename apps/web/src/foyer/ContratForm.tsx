@@ -9,6 +9,8 @@ import type {
   SemaineTypeCreche,
   SemaineAbcm,
   InscriptionsJour,
+  EtablissementFoyerVue,
+  LienEtablissementSaisie,
 } from '../types/bff';
 import { JOURS_SEMAINE, LIBELLES_JOURS } from '../utils/dates';
 import {
@@ -287,9 +289,19 @@ function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
 
 // ---- ContratForm -------------------------------------------------------------
 
+/** Valeur sentinelle du sélecteur d'établissement : « créer à la volée ». */
+const NOUVEL_ETABLISSEMENT = '__nouveau__';
+
 export interface ContratFormProps {
   foyerId: string;
   enfants: EnfantVue[];
+  /**
+   * Établissements (entité libre) du foyer, pour le sélecteur de rattachement.
+   * Passés en prop par la page (qui les charge) — le formulaire reste un contrôlé
+   * pur, sans fetch propre. Absent/défaut ⇒ seule l'option « créer à la volée »
+   * est offerte.
+   */
+  etablissements?: EtablissementFoyerVue[];
   /** Contrat à éditer ; absent ⇒ mode création. */
   contrat?: ContratLocal;
   /** Callback de succès (création OU modification). */
@@ -348,12 +360,21 @@ function abcmDepuisSemaine(semaine: ContratLocal['semaineAbcm']): SemaineAbcm {
 export function ContratForm({
   foyerId,
   enfants,
+  etablissements = [],
   contrat,
   onCree,
   onAnnuler,
 }: ContratFormProps) {
   const edition = contrat !== undefined;
   const idBase = useId();
+
+  // Rattachement à un établissement : id existant, '' (aucun), ou la sentinelle
+  // NOUVEL_ETABLISSEMENT (création à la volée → champs nom/e-mail dédiés).
+  const [etablissementChoix, setEtablissementChoix] = useState<string>(
+    contrat?.etablissementId ?? '',
+  );
+  const [nouvelNom, setNouvelNom] = useState('');
+  const [nouvelEmail, setNouvelEmail] = useState('');
   const [mode, setMode] = useState<Mode>(
     contrat && estMode(contrat.mode) ? contrat.mode : 'CRECHE_PSU',
   );
@@ -432,11 +453,31 @@ export function ContratForm({
       return;
     }
 
+    // Lien établissement (facultatif, exclusif) : un id existant OU un nouvel
+    // établissement créé à la volée côté service (même transaction que le contrat).
+    let lien: LienEtablissementSaisie = {};
+    if (etablissementChoix === NOUVEL_ETABLISSEMENT) {
+      const nom = nouvelNom.trim();
+      if (nom !== '') {
+        lien = {
+          nouvelEtablissement: {
+            nom,
+            ...(nouvelEmail.trim() !== ''
+              ? { emailService: nouvelEmail.trim() }
+              : {}),
+          },
+        };
+      }
+    } else if (etablissementChoix !== '') {
+      lien = { etablissementId: etablissementChoix };
+    }
+
     const baseContrat = {
       foyerId,
       enfant: enfantSelectionne.prenom,
       valideDu,
       ...(valideAu.trim() !== '' ? { valideAu: valideAu } : { valideAu: null }),
+      ...lien,
     };
 
     try {
@@ -611,6 +652,59 @@ export function ContratForm({
         <span id={idErreur('valideAu')} className="debit" role="alert">
           {erreurPour('valideAu')}
         </span>
+      )}
+
+      <label htmlFor="contrat-etablissement">Établissement</label>
+      <select
+        id="contrat-etablissement"
+        value={etablissementChoix}
+        onChange={(e) => {
+          setEtablissementChoix(e.target.value);
+        }}
+        style={{ width: '100%' }}
+      >
+        <option value="">— Aucun établissement —</option>
+        {etablissements.map((e) => (
+          <option key={e.id} value={e.id}>
+            {e.nom}
+            {e.actif ? '' : ' (archivé)'}
+          </option>
+        ))}
+        <option value={NOUVEL_ETABLISSEMENT}>
+          ➕ Créer un nouvel établissement
+        </option>
+      </select>
+
+      {etablissementChoix === NOUVEL_ETABLISSEMENT && (
+        <fieldset style={{ border: 'none', padding: 0, margin: '0.5rem 0 0' }}>
+          <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
+            Nouvel établissement
+          </legend>
+          <label htmlFor="contrat-nouvel-etab-nom">
+            Nom du nouvel établissement <span aria-hidden="true">*</span>
+          </label>
+          <input
+            id="contrat-nouvel-etab-nom"
+            type="text"
+            value={nouvelNom}
+            onChange={(e) => {
+              setNouvelNom(e.target.value);
+            }}
+            style={{ width: '100%' }}
+          />
+          <label htmlFor="contrat-nouvel-etab-email">
+            Adresse e-mail du service
+          </label>
+          <input
+            id="contrat-nouvel-etab-email"
+            type="email"
+            value={nouvelEmail}
+            onChange={(e) => {
+              setNouvelEmail(e.target.value);
+            }}
+            style={{ width: '100%' }}
+          />
+        </fieldset>
       )}
 
       {mode === 'CRECHE_PSU' && (

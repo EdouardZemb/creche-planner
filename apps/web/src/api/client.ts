@@ -11,8 +11,9 @@ import type {
   LirePlanningReponse,
   CoutMoisVue,
   CoutAnnuelVue,
-  EtablissementVue,
-  MajEtablissement,
+  EtablissementFoyerVue,
+  CreerEtablissement,
+  ModifierEtablissement,
   NotificationAValider,
   ValidationResultat,
   BrouillonEtablissement,
@@ -269,24 +270,72 @@ export const api = {
     }).then((r) => lire<CoutAnnuelVue>(r));
   },
 
-  listerEtablissements(opts: RequeteOptions = {}): Promise<EtablissementVue[]> {
-    return requete(`${BASE}/v1/etablissements`, {
-      headers: entetes(false),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    }).then((r) => lire<EtablissementVue[]>(r));
+  /** Établissements (entité libre) d'un foyer — `GET /v1/foyers/:foyerId/etablissements`. */
+  listerEtablissements(
+    foyerId: string,
+    opts: RequeteOptions = {},
+  ): Promise<EtablissementFoyerVue[]> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements`,
+      {
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<EtablissementFoyerVue[]>(r));
   },
 
-  mettreAJourEtablissement(
-    cle: string,
-    saisie: MajEtablissement,
+  /** Crée un établissement dans le foyer — `POST /v1/foyers/:foyerId/etablissements` (201). */
+  creerEtablissement(
+    foyerId: string,
+    saisie: CreerEtablissement,
     opts: RequeteOptions = {},
-  ): Promise<EtablissementVue> {
-    return requete(`${BASE}/v1/etablissements/${encodeURIComponent(cle)}`, {
-      method: 'PUT',
-      headers: entetes(true),
-      body: JSON.stringify(saisie),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    }).then((r) => lire<EtablissementVue>(r));
+  ): Promise<EtablissementFoyerVue> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements`,
+      {
+        method: 'POST',
+        headers: entetes(true),
+        body: JSON.stringify(saisie),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<EtablissementFoyerVue>(r));
+  },
+
+  /** Modifie un établissement du foyer — `PUT /v1/foyers/:foyerId/etablissements/:id`. */
+  modifierEtablissement(
+    foyerId: string,
+    id: string,
+    saisie: ModifierEtablissement,
+    opts: RequeteOptions = {},
+  ): Promise<EtablissementFoyerVue> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(id)}`,
+      {
+        method: 'PUT',
+        headers: entetes(true),
+        body: JSON.stringify(saisie),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<EtablissementFoyerVue>(r));
+  },
+
+  /**
+   * Supprime un établissement du foyer — `DELETE /v1/foyers/:foyerId/etablissements/:id`
+   * (204 ; **409** si des contrats y sont rattachés → l'appelant affiche l'erreur).
+   */
+  supprimerEtablissement(
+    foyerId: string,
+    id: string,
+    opts: RequeteOptions = {},
+  ): Promise<void> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<void>(r));
   },
 
   listerAValider(
