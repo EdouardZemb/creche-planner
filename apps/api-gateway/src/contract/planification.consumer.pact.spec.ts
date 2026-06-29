@@ -213,6 +213,8 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           valideDu: '2026-09-01',
           valideAu: null,
           semaineAbcm: semaineAbcmCantineLundi,
+          // Lien établissement OBLIGATOIRE (P5) : créé à la volée (aucun seed requis).
+          nouvelEtablissement: { nom: 'Crèche Pact CANTINE' },
         },
       })
       .willRespondWith({
@@ -240,6 +242,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           valideDu: '2026-09-01',
           valideAu: null,
           semaineAbcm: semaineAbcmCantineLundi,
+          nouvelEtablissement: { nom: 'Crèche Pact CANTINE' },
         }),
       });
       expect(reponse.status).toBe(201);
@@ -299,6 +302,8 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           heuresAnnuellesContractualisees: 763,
           nbMensualites: 7,
           semaineType: semaineTypeCrecheLundi,
+          // Lien établissement OBLIGATOIRE (P5) : créé à la volée dans le foyer du body.
+          nouvelEtablissement: { nom: 'Crèche Pact Modif' },
         },
       })
       .willRespondWith({
@@ -329,6 +334,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
             heuresAnnuellesContractualisees: 763,
             nbMensualites: 7,
             semaineType: semaineTypeCrecheLundi,
+            nouvelEtablissement: { nom: 'Crèche Pact Modif' },
           }),
         },
       );

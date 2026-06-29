@@ -1919,9 +1919,11 @@ renommé ensuite par l'utilisateur via l'écran P4).
   l'établissement du groupe (`emailService`/`preavisRegle` repris des fiches globales historiques), puis
   rattache chaque contrat non encore lié. **Vérification post-run** : compte les contrats de mode connu
   encore sans établissement (en `--apply`, un reste > 0 ⇒ exit 1).
-- **Migration NOT NULL différée** : `apps/svc-planification/src/database/migrations-differees/0004_*.sql`
-  (dossier **non bundlé** → jamais auto-appliqué) — à promouvoir **après** bascule confirmée (cf. son
-  README). Appliquer le NOT NULL avant le back-fill casserait le boot.
+- **Migration NOT NULL** : initialement **différée** (`migrations-differees/0004_*.sql`, dossier **non bundlé**
+  → jamais auto-appliqué) pour ne pas casser le boot avant le back-fill. **Promue le 2026-06-29** après
+  vérification `0 contrat NULL` en prod → vraie migration journalisée
+  `migrations/0004_contrat_etablissement_not_null.sql` (`ALTER … SET NOT NULL`) + `.notNull()` au schéma ;
+  le dossier `migrations-differees/` a été supprimé (son rôle est rempli).
 
 ### 25.2 Runbook P5 (geste humain — NE PAS exécuter sans accord PO)
 
@@ -1943,8 +1945,11 @@ réseau Docker de la pile, variables `BACKFILL_FOYER_URL=http://svc-foyer:3002/a
    afficher `0 contrat(s) … encore sans établissement` (sinon exit 1, on investigue — le re-run est sûr).
 4. **Renommage** : l'utilisateur renomme les établissements placeholder via l'écran P4 et ajuste
    `emailService`/préavis si besoin.
-5. **(Différé, optionnel) Verrou NOT NULL** : une fois la couverture confirmée et stable, promouvoir
-   `migrations-differees/0004_*.sql` (ajouter `.notNull()` au schéma + `drizzle-kit generate`, cf. README).
+5. **Verrou NOT NULL — FAIT (2026-06-29)** : couverture confirmée (`0 contrat NULL` en prod) → migration
+   différée **promue** en migration journalisée `migrations/0004_contrat_etablissement_not_null.sql`
+   (`.notNull()` au schéma + entrée `_journal.json`/snapshot), appliquée au prochain déploiement par le
+   `MigrationService`. ⚠️ Avant tout (re)déploiement, re-vérifier `0 contrat NULL` en prod, sinon le boot
+   échoue sur le `SET NOT NULL`.
 
 > **Idempotence & sûreté** : le script ne touche jamais un contrat déjà rattaché ni un établissement
 > existant de même nom ; le rattachement est non destructif (plannings préservés). Un re-run après échec

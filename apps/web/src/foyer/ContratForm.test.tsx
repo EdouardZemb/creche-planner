@@ -63,8 +63,20 @@ const etablissementsTest: EtablissementFoyerVue[] = [
 
 function rendu(onCree = vi.fn()) {
   return render(
-    <ContratForm foyerId="f1" enfants={enfantsTest} onCree={onCree} />,
+    <ContratForm
+      foyerId="f1"
+      enfants={enfantsTest}
+      etablissements={etablissementsTest}
+      onCree={onCree}
+    />,
   );
+}
+
+/** Sélectionne l'établissement de test (obligatoire depuis P5) avant de soumettre. */
+function choisirEtablissement(): void {
+  fireEvent.change(screen.getByLabelText(/Établissement/i), {
+    target: { value: 'et-1' },
+  });
 }
 
 describe('ContratForm', () => {
@@ -146,6 +158,7 @@ describe('ContratForm', () => {
       target: { value: '2026-09-01' },
     });
     fireEvent.click(screen.getByRole('checkbox', { name: /ALSH Lundi/i }));
+    choisirEtablissement();
     fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
 
     await waitFor(() => {
@@ -176,6 +189,7 @@ describe('ContratForm', () => {
       target: { value: '2026-09-01' },
     });
     fireEvent.click(screen.getByRole('checkbox', { name: /Cantine Lundi/i }));
+    choisirEtablissement();
     fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
 
     await waitFor(() => {
@@ -210,6 +224,7 @@ describe('ContratForm', () => {
     fireEvent.change(screen.getByLabelText(/Valide du/i), {
       target: { value: '2026-09-01' },
     });
+    choisirEtablissement();
 
     fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
 
@@ -239,6 +254,7 @@ describe('ContratForm', () => {
     fireEvent.change(screen.getByLabelText(/Valide du/i), {
       target: { value: '2026-09-01' },
     });
+    choisirEtablissement();
     fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
 
     await waitFor(() => {
@@ -254,6 +270,7 @@ describe('ContratForm', () => {
 
     const champ = screen.getByLabelText(/Valide du/i);
     fireEvent.change(champ, { target: { value: '2026-09-01' } });
+    choisirEtablissement();
     fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
 
     await waitFor(() => {
@@ -293,6 +310,7 @@ describe('ContratForm', () => {
     foyerId: 'f1',
     enfant: 'Zoé',
     mode: 'CRECHE_PSU',
+    etablissementId: 'et-1',
     valideDu: '2026-01-01',
     valideAu: '2026-12-31',
     heuresAnnuellesContractualisees: 763,
@@ -309,6 +327,7 @@ describe('ContratForm', () => {
       <ContratForm
         foyerId="f1"
         enfants={enfantsTest}
+        etablissements={etablissementsTest}
         contrat={contratEditeFactice}
         onCree={vi.fn()}
       />,
@@ -336,6 +355,7 @@ describe('ContratForm', () => {
       <ContratForm
         foyerId="f1"
         enfants={enfantsTest}
+        etablissements={etablissementsTest}
         contrat={contratEditeFactice}
         onCree={onCree}
       />,
@@ -423,6 +443,30 @@ describe('ContratForm', () => {
     };
     expect(saisie.etablissementId).toBeUndefined();
     expect(saisie.nouvelEtablissement?.nom).toBe('Micro-crèche Pomme');
+  });
+
+  it('refuse de soumettre sans établissement (lien obligatoire P5)', async () => {
+    render(
+      <ContratForm
+        foyerId="f1"
+        enfants={enfantsTest}
+        etablissements={etablissementsTest}
+        onCree={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Valide du/i), {
+      target: { value: '2026-09-01' },
+    });
+    // Aucun établissement sélectionné (placeholder) → soumission bloquée côté front.
+    fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/sélectionner ou créer un établissement/i),
+      ).toBeInTheDocument();
+    });
+    expect(mockedApi.creerContrat).not.toHaveBeenCalled();
   });
 
   it('pré-sélectionne l’établissement du contrat en édition', () => {

@@ -38,12 +38,15 @@ export const contrat = pgTable('contrat', {
   mode: varchar('mode', { length: 32 }).notNull(),
   /**
    * Établissement d'accueil rattaché (P2). Référence **explicite** remplaçant la
-   * déduction `mode → établissement` codée en dur. **NULLABLE** à ce stade : le
-   * `NOT NULL` viendra après la migration de données (P5). FK vers `etablissement`
+   * déduction `mode → établissement` codée en dur. **NOT NULL** depuis P5 : le
+   * back-fill prod a rattaché tous les contrats puis la migration différée a été
+   * promue (`0004_contrat_etablissement_not_null`). FK vers `etablissement`
    * (déclarée plus bas, d'où la référence paresseuse `() => etablissement.id`). Le
    * `mode` reste une dimension **indépendante** (type/tarif, ≠ établissement).
    */
-  etablissementId: uuid('etablissement_id').references(() => etablissement.id),
+  etablissementId: uuid('etablissement_id')
+    .notNull()
+    .references(() => etablissement.id),
   /** Début de validité ISO `YYYY-MM-DD` (inclus). */
   valideDu: varchar('valide_du', { length: 10 }).notNull(),
   /** Fin de validité ISO `YYYY-MM-DD` (incluse), `null` si période ouverte. */

@@ -10,6 +10,7 @@ import type {
   AbsenceCreche,
   JourSupplementaire,
   CreerContratCreche,
+  LienEtablissementSaisie,
   PlageHoraire,
 } from '../types/bff';
 import { joursDuMois, jourSemaineDeIso, formaterDateFr } from '../utils/dates';
@@ -537,7 +538,13 @@ export function CalendrierCreche({
   // Applique la modification durable confirmée (modifie le contrat).
   const appliquerDurable = useCallback(
     (semaineTypeModifiee: ContratLocal['semaineType']) => {
-      const corps: CreerContratCreche = {
+      // Remplacement complet du contrat (PUT) : le lien établissement est
+      // OBLIGATOIRE depuis P5 (`etablissement_id` NOT NULL) → on RECONDUIT celui
+      // du contrat courant, sinon le service rejette en 400.
+      const lien: LienEtablissementSaisie = contrat.etablissementId
+        ? { etablissementId: contrat.etablissementId }
+        : {};
+      const corps: CreerContratCreche & LienEtablissementSaisie = {
         mode: 'CRECHE_PSU',
         foyerId: contrat.foyerId,
         enfant: contrat.enfant,
@@ -547,6 +554,7 @@ export function CalendrierCreche({
           contrat.heuresAnnuellesContractualisees ?? 0,
         nbMensualites: contrat.nbMensualites ?? 7,
         semaineType: semaineTypeModifiee ?? {},
+        ...lien,
       };
       setErreurDurable(null);
       api

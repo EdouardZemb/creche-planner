@@ -1,0 +1,1 @@
+ALTER TABLE "contrat" ALTER COLUMN "etablissement_id" SET NOT NULL;

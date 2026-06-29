@@ -435,22 +435,22 @@ export class PlanificationService {
 
   /**
    * Résout le **lien établissement** d'un contrat dans la transaction `tx` (P2) et
-   * renvoie l'`etablissementId` à stocker (ou `null` si aucun lien fourni) :
+   * renvoie l'`etablissementId` à stocker (toujours non-null depuis P5) :
    * - `nouvelEtablissement` fourni → **crée** l'établissement (insert + émet
    *   `EtablissementCree` via l'outbox) DANS la même transaction → atomicité : un
    *   rollback du contrat annule aussi l'établissement (pas d'établissement fantôme).
    * - `etablissementId` fourni → **vérifie** qu'il existe ET appartient au
    *   `foyerId` du contrat (isolation inter-foyers) → 400 sinon.
-   * - aucun des deux → `null` (la colonne `etablissement_id` est NULLABLE jusqu'à P5).
    *
-   * Le DTO garantit l'exclusivité des deux champs (refine Zod), inutile de la
-   * re-vérifier ici.
+   * Le DTO garantit qu'**exactement un** des deux champs est fourni (refine Zod) :
+   * la colonne étant `NOT NULL` (P5), un contrat sans établissement est rejeté en
+   * amont. Le `throw` final est une défense en profondeur (chemin théoriquement mort).
    */
   private async resoudreEtablissement(
     tx: Tx,
     foyerId: string,
     dto: CreerContratDto,
-  ): Promise<string | null> {
+  ): Promise<string> {
     if (dto.nouvelEtablissement) {
       const nouvel = dto.nouvelEtablissement;
       const insere = await tx
@@ -510,7 +510,11 @@ export class PlanificationService {
       return dto.etablissementId;
     }
 
-    return null;
+    // Inatteignable si le DTO a été validé (refine « exactement un »), mais on
+    // refuse explicitement plutôt que d'insérer un `etablissement_id` NULL (P5).
+    throw new BadRequestException(
+      'établissement requis : fournir etablissementId (existant) ou nouvelEtablissement (création)',
+    );
   }
 
   /**

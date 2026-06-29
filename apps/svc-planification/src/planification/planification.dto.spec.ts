@@ -14,6 +14,9 @@ import {
  */
 
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
+// Établissement de référence : depuis P5 un contrat DOIT être rattaché (NOT NULL),
+// donc les payloads « valides » de base en portent un.
+const ETAB_ID = '99999999-9999-4999-8999-999999999999';
 
 const JOURS = [
   'LUNDI',
@@ -61,6 +64,7 @@ describe('creerContratSchema (crèche PSU)', () => {
     heuresAnnuellesContractualisees: 885.5,
     nbMensualites: 7,
     semaineType: semaineCompleteCreche(),
+    etablissementId: ETAB_ID,
   };
 
   it('accepte un contrat crèche valide', () => {
@@ -159,6 +163,7 @@ describe('creerContratSchema (ABCM)', () => {
     valideDu: '2026-09-01',
     valideAu: null,
     semaineAbcm: semaineCompleteAbcm(),
+    etablissementId: ETAB_ID,
   };
 
   it('accepte un contrat cantine valide', () => {
@@ -205,10 +210,9 @@ describe('creerContratSchema (lien établissement, P2)', () => {
     nbMensualites: 7,
     semaineType: semaineCompleteCreche(),
   };
-  const ETAB_ID = '99999999-9999-4999-8999-999999999999';
 
-  it('accepte un contrat sans établissement (les deux liens absents)', () => {
-    expect(creerContratSchema.safeParse(basePsu).success).toBe(true);
+  it('rejette un contrat sans établissement (lien requis depuis P5)', () => {
+    expect(creerContratSchema.safeParse(basePsu).success).toBe(false);
   });
 
   it('accepte un etablissementId existant', () => {
@@ -284,14 +288,13 @@ describe('modifierContratSchema', () => {
         heuresAnnuellesContractualisees: 885.5,
         nbMensualites: 7,
         semaineType: semaineCompleteCreche(),
+        etablissementId: ETAB_ID,
       }).success,
     ).toBe(true);
   });
 });
 
 describe('rattacherEtablissementSchema (back-fill P5)', () => {
-  const ETAB_ID = '99999999-9999-4999-8999-999999999999';
-
   it('accepte un etablissementId UUID', () => {
     expect(
       rattacherEtablissementSchema.safeParse({ etablissementId: ETAB_ID })

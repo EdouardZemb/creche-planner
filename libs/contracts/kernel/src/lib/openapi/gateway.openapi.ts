@@ -690,9 +690,10 @@ export const gatewayOpenApiDocument = {
                 description:
                   'Contrat de garde. Les champs spécifiques au mode (PSU/ABCM) ' +
                   'sont laissés ouverts via additionalProperties. Le lien ' +
-                  'établissement est facultatif : `etablissementId` (existant) ' +
-                  'OU `nouvelEtablissement` (créé à la volée), mutuellement ' +
-                  'exclusifs (validation profonde svc-planification).',
+                  'établissement est OBLIGATOIRE depuis P5 (`etablissement_id` ' +
+                  'NOT NULL) : fournir EXACTEMENT un de `etablissementId` ' +
+                  '(existant) OU `nouvelEtablissement` (créé à la volée) — ni ' +
+                  'zéro ni les deux (validation profonde svc-planification).',
                 additionalProperties: true,
                 properties: {
                   mode: {

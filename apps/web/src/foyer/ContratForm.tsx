@@ -37,6 +37,8 @@ const CHAMPS_LIES = new Set<string>([
   'valideAu',
   'heuresAnnuellesContractualisees',
   'nbMensualites',
+  'etablissementId',
+  'nouvelEtablissementNom',
 ]);
 
 const JOURS_SEMAINE_OUVRES: JourSemaine[] = [
@@ -453,23 +455,43 @@ export function ContratForm({
       return;
     }
 
-    // Lien établissement (facultatif, exclusif) : un id existant OU un nouvel
-    // établissement créé à la volée côté service (même transaction que le contrat).
-    let lien: LienEtablissementSaisie = {};
+    // Lien établissement OBLIGATOIRE (P5, `etablissement_id` NOT NULL) : exactement
+    // un — un établissement existant OU un nouvel établissement créé à la volée côté
+    // service (même transaction que le contrat). Validé ici pour un retour immédiat.
+    let lien: LienEtablissementSaisie;
     if (etablissementChoix === NOUVEL_ETABLISSEMENT) {
       const nom = nouvelNom.trim();
-      if (nom !== '') {
-        lien = {
-          nouvelEtablissement: {
-            nom,
-            ...(nouvelEmail.trim() !== ''
-              ? { emailService: nouvelEmail.trim() }
-              : {}),
+      if (nom === '') {
+        setErreursChamps([
+          {
+            champ: 'nouvelEtablissementNom',
+            message: 'Le nom du nouvel établissement est requis.',
           },
-        };
+        ]);
+        setErreurGlobale('Veuillez nommer le nouvel établissement.');
+        setChargement(false);
+        return;
       }
+      lien = {
+        nouvelEtablissement: {
+          nom,
+          ...(nouvelEmail.trim() !== ''
+            ? { emailService: nouvelEmail.trim() }
+            : {}),
+        },
+      };
     } else if (etablissementChoix !== '') {
       lien = { etablissementId: etablissementChoix };
+    } else {
+      setErreursChamps([
+        {
+          champ: 'etablissementId',
+          message: 'Veuillez sélectionner ou créer un établissement.',
+        },
+      ]);
+      setErreurGlobale('Un établissement est requis pour le contrat.');
+      setChargement(false);
+      return;
     }
 
     const baseContrat = {
@@ -654,16 +676,23 @@ export function ContratForm({
         </span>
       )}
 
-      <label htmlFor="contrat-etablissement">Établissement</label>
+      <label htmlFor="contrat-etablissement">
+        Établissement <span aria-hidden="true">*</span>
+      </label>
       <select
         id="contrat-etablissement"
         value={etablissementChoix}
+        aria-required="true"
+        aria-invalid={erreurPour('etablissementId') ? true : undefined}
+        {...(erreurPour('etablissementId')
+          ? { 'aria-describedby': idErreur('etablissementId') }
+          : {})}
         onChange={(e) => {
           setEtablissementChoix(e.target.value);
         }}
         style={{ width: '100%' }}
       >
-        <option value="">— Aucun établissement —</option>
+        <option value="">— Sélectionner un établissement —</option>
         {etablissements.map((e) => (
           <option key={e.id} value={e.id}>
             {e.nom}
@@ -674,6 +703,11 @@ export function ContratForm({
           ➕ Créer un nouvel établissement
         </option>
       </select>
+      {erreurPour('etablissementId') && (
+        <span id={idErreur('etablissementId')} className="debit" role="alert">
+          {erreurPour('etablissementId')}
+        </span>
+      )}
 
       {etablissementChoix === NOUVEL_ETABLISSEMENT && (
         <fieldset style={{ border: 'none', padding: 0, margin: '0.5rem 0 0' }}>
@@ -686,12 +720,29 @@ export function ContratForm({
           <input
             id="contrat-nouvel-etab-nom"
             type="text"
+            required
+            aria-required="true"
+            aria-invalid={
+              erreurPour('nouvelEtablissementNom') ? true : undefined
+            }
+            {...(erreurPour('nouvelEtablissementNom')
+              ? { 'aria-describedby': idErreur('nouvelEtablissementNom') }
+              : {})}
             value={nouvelNom}
             onChange={(e) => {
               setNouvelNom(e.target.value);
             }}
             style={{ width: '100%' }}
           />
+          {erreurPour('nouvelEtablissementNom') && (
+            <span
+              id={idErreur('nouvelEtablissementNom')}
+              className="debit"
+              role="alert"
+            >
+              {erreurPour('nouvelEtablissementNom')}
+            </span>
+          )}
           <label htmlFor="contrat-nouvel-etab-email">
             Adresse e-mail du service
           </label>
