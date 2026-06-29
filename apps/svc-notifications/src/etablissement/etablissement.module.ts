@@ -1,18 +1,23 @@
 import { Module } from '@nestjs/common';
 import { EtablissementController } from './etablissement.controller.js';
 import { EtablissementService } from './etablissement.service.js';
+import { EtablissementProjeteService } from './etablissement-projete.service.js';
 
 /**
- * Module **établissements destinataires** (Lot 3) : annuaire legacy à clé fermée du
- * domaine notifications. Le client Drizzle est fourni par le module global
- * `DatabaseModule`. Depuis P3, le service **ne seede plus** (la source de vérité est
- * `svc-planification`, projetée dans le read model `etablissement`) ; il n'expose que
- * la lecture/upsert, le temps que les flux d'envoi encore keyés `cle` migrent (PR
- * suivant) avant démantèlement (P6).
+ * Module **établissements** du domaine notifications. Le client Drizzle est fourni par
+ * le module global `DatabaseModule`. Deux services y cohabitent le temps de la
+ * transition :
+ *
+ * - `EtablissementProjeteService` : lecture du **read model projeté** `etablissement`
+ *   (entité libre par foyer, source de vérité `svc-planification`, P3) — c'est lui qui
+ *   route désormais les récaps (envoi & scheduler) via `contrat.etablissement_id` ;
+ * - `EtablissementService` : annuaire **legacy** à clé fermée (`etablissement_destinataire`),
+ *   qui **ne seede plus** (P3) et ne sert plus qu'au CRUD legacy `/api/etablissements`
+ *   (Pact) en attendant son démantèlement (P6).
  */
 @Module({
   controllers: [EtablissementController],
-  providers: [EtablissementService],
-  exports: [EtablissementService],
+  providers: [EtablissementService, EtablissementProjeteService],
+  exports: [EtablissementService, EtablissementProjeteService],
 })
 export class EtablissementModule {}

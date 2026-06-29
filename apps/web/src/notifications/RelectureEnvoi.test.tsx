@@ -4,10 +4,12 @@ import { RelectureEnvoi } from './RelectureEnvoi';
 import type {
   BrouillonEtablissement,
   EnvoiEtablissementResultat,
+  SemaineBesoins,
 } from '../types/bff';
 
 vi.mock('../api/client', () => ({
   api: {
+    lireSemaineBesoins: vi.fn(),
     lireBrouillonEtablissement: vi.fn(),
     envoyerRecapEtablissement: vi.fn(),
   },
@@ -18,23 +20,45 @@ import { api } from '../api/client';
 
 const FOYER_ID = 'foyer-1';
 const SEMAINE = '2026-W27';
+// Établissements réels du foyer (read model `etablissement`, entité libre).
+const CRECHE_ID = '99999999-9999-4999-8999-999999999991';
+const ABCM_ID = '99999999-9999-4999-8999-999999999992';
+
+/**
+ * Vue `semaine/besoins` réduite : deux établissements concernés (crèche + ABCM). Le
+ * détail des contrats/besoins n'est pas lu par `RelectureEnvoi` (seule la liste des
+ * établissements concernés l'est), on fournit donc le strict nécessaire.
+ */
+function semaineBesoins(): SemaineBesoins {
+  return {
+    semaineIso: SEMAINE,
+    jours: [],
+    etablissements: [
+      {
+        etablissementId: CRECHE_ID,
+        libelle: 'Crèche Les Hirondelles',
+        preavisRegle: null,
+      },
+      { etablissementId: ABCM_ID, libelle: 'École ABCM', preavisRegle: null },
+    ],
+    contrats: [],
+  };
+}
 
 /** Brouillon agrégé : la crèche est concernée, l'ABCM ne l'est pas (enfants vide). */
 function brouillonPour(
-  cle: string,
+  etablissementId: string,
   partiel: Partial<BrouillonEtablissement> = {},
 ): BrouillonEtablissement {
-  const concerne = cle === 'CRECHE_HIRONDELLES';
+  const concerne = etablissementId === CRECHE_ID;
   return {
     foyerId: FOYER_ID,
     semaineIso: SEMAINE,
-    etablissementCle: cle as BrouillonEtablissement['etablissementCle'],
-    etablissementLibelle:
-      cle === 'CRECHE_HIRONDELLES' ? 'Crèche Les Hirondelles' : 'École ABCM',
-    destinataire:
-      cle === 'CRECHE_HIRONDELLES'
-        ? 'contact-creche@example.org'
-        : 'contact-abcm@example.org',
+    etablissementId,
+    etablissementLibelle: concerne ? 'Crèche Les Hirondelles' : 'École ABCM',
+    destinataire: concerne
+      ? 'contact-creche@example.org'
+      : 'contact-abcm@example.org',
     sujet: 'Plannings modifiés — semaine 2026-W27',
     corps: '<p>Bonjour</p>',
     texte: 'Bonjour\n\nLéa :\n- 29/06/2026 : 1 absence',
@@ -55,10 +79,12 @@ function brouillonPour(
 }
 
 function mockBrouillons(
-  override: (cle: string) => BrouillonEtablissement = brouillonPour,
+  override: (id: string) => BrouillonEtablissement = brouillonPour,
 ) {
+  vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineBesoins());
   vi.mocked(api.lireBrouillonEtablissement).mockImplementation(
-    (_foyerId, _semaineIso, cle) => Promise.resolve(override(cle)),
+    (_foyerId, _semaineIso, etablissementId) =>
+      Promise.resolve(override(etablissementId)),
   );
 }
 
@@ -84,7 +110,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
   });
 
   it('indique l’absence de modification quand aucun établissement n’est concerné', async () => {
-    mockBrouillons((cle) => brouillonPour(cle, { enfants: [] }));
+    mockBrouillons((id) => brouillonPour(id, { enfants: [] }));
     render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
 
     expect(
@@ -97,7 +123,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     const resultat: EnvoiEtablissementResultat = {
       foyerId: FOYER_ID,
       semaineIso: SEMAINE,
-      etablissementCle: 'CRECHE_HIRONDELLES',
+      etablissementId: CRECHE_ID,
       destinataire: 'contact-creche@example.org',
       statut: 'DRY_RUN',
       messageId: null,
@@ -122,14 +148,14 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
       expect(api.envoyerRecapEtablissement).toHaveBeenCalledWith(
         FOYER_ID,
         SEMAINE,
-        'CRECHE_HIRONDELLES',
+        CRECHE_ID,
       );
     });
     expect(await screen.findByText(/mode dry-run/i)).toBeInTheDocument();
   });
 
   it('avertit d’une action irréversible quand l’envoi serait réel', async () => {
-    mockBrouillons((cle) => brouillonPour(cle, { dryRun: false }));
+    mockBrouillons((id) => brouillonPour(id, { dryRun: false }));
     render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
 
     const bouton = await screen.findByRole('button', {
@@ -151,7 +177,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     vi.mocked(api.envoyerRecapEtablissement).mockResolvedValue({
       foyerId: FOYER_ID,
       semaineIso: SEMAINE,
-      etablissementCle: 'CRECHE_HIRONDELLES',
+      etablissementId: CRECHE_ID,
       destinataire: 'contact-creche@example.org',
       statut: 'ECHEC',
       messageId: null,

@@ -18,33 +18,34 @@ vi.mock('../api/client', () => ({
 
 import { api } from '../api/client';
 
+// Établissement réel concerné (read model `etablissement`, entité libre par foyer).
+const ID_CRECHE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
 /** Brouillon agrégé renvoyé à la `RelectureEnvoi` montée après une validation. */
-function brouillonPour(cle: string) {
+function brouillonPour(etablissementId: string) {
+  const concerne = etablissementId === ID_CRECHE;
   return {
     foyerId: 'foyer-1',
     semaineIso: '2026-W27',
-    etablissementCle: cle as 'CRECHE_HIRONDELLES' | 'ABCM',
-    etablissementLibelle:
-      cle === 'CRECHE_HIRONDELLES' ? 'Crèche Les Hirondelles' : 'École ABCM',
-    destinataire:
-      cle === 'CRECHE_HIRONDELLES'
-        ? 'contact-creche@example.org'
-        : 'contact-abcm@example.org',
+    etablissementId,
+    etablissementLibelle: concerne ? 'Crèche Les Hirondelles' : 'École ABCM',
+    destinataire: concerne
+      ? 'contact-creche@example.org'
+      : 'contact-abcm@example.org',
     sujet: 'Plannings modifiés — semaine 2026-W27',
     corps: '<p>Bonjour</p>',
     texte: 'Bonjour',
-    enfants:
-      cle === 'CRECHE_HIRONDELLES'
-        ? [
-            {
-              contratId: '55555555-0000-4000-8000-000000000000',
-              enfant: 'Léa',
-              deltaModifs: {
-                jours: [{ date: '2026-07-01', avant: null, apres: {} }],
-              },
+    enfants: concerne
+      ? [
+          {
+            contratId: '55555555-0000-4000-8000-000000000000',
+            enfant: 'Léa',
+            deltaModifs: {
+              jours: [{ date: '2026-07-01', avant: null, apres: {} }],
             },
-          ]
-        : [],
+          },
+        ]
+      : [],
     dryRun: true,
   };
 }
@@ -94,7 +95,7 @@ const SEMAINE_BESOINS = {
   ],
   etablissements: [
     {
-      etablissementId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      etablissementId: ID_CRECHE,
       libelle: 'Crèche Les Hirondelles',
       preavisRegle: { type: 'JOURS_OUVRES' as const, valeur: 2 },
     },
@@ -104,7 +105,7 @@ const SEMAINE_BESOINS = {
       contratId: '55555555-0000-4000-8000-000000000000',
       enfant: 'Léa',
       mode: 'CRECHE_PSU' as const,
-      etablissementId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      etablissementId: ID_CRECHE,
       besoins: {},
     },
   ],
@@ -114,7 +115,8 @@ describe('EncartValidation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.lireBrouillonEtablissement).mockImplementation(
-      (_foyerId, _semaineIso, cle) => Promise.resolve(brouillonPour(cle)),
+      (_foyerId, _semaineIso, etablissementId) =>
+        Promise.resolve(brouillonPour(etablissementId)),
     );
     vi.mocked(api.lireSemaineBesoins).mockResolvedValue(SEMAINE_BESOINS);
   });

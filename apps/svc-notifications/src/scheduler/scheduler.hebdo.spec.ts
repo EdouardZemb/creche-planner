@@ -8,13 +8,13 @@ import type { ContratRow } from '../database/schema.js';
 import type { ValidationService } from '../validation/validation.service.js';
 import type { DestinatairesService } from '../destinataires/destinataires.service.js';
 import type {
-  EtablissementService,
-  EtablissementVue,
-} from '../etablissement/etablissement.service.js';
+  EtablissementProjeteService,
+  EtablissementProjeteVue,
+} from '../etablissement/etablissement-projete.service.js';
 
 /**
  * Tests du scheduler du mardi avec **horloge mockée** (jamais `new Date()` dans la
- * logique) et sans Postgres ni SMTP : `ValidationService`, `EtablissementService`,
+ * logique) et sans Postgres ni SMTP : `ValidationService`, `EtablissementProjeteService`,
  * `DestinatairesService` et `MailerService` sont des doubles vitest, la base ne sert
  * qu'à lister les contrats actifs (le prédicat drizzle n'est pas évalué — la fonction
  * renvoie le jeu fourni).
@@ -36,6 +36,9 @@ const MARDI_7H00 = '2026-06-23T05:00:00.000Z';
 const SEMAINE_N1 = '2026-W27';
 const FOYER_A = '22222222-2222-4222-8222-222222222222';
 const FOYER_B = '33333333-3333-4333-8333-333333333333';
+// Établissements réels (read model `etablissement`), reliés aux contrats par `etablissementId`.
+const ETAB_CRECHE_ID = '99999999-9999-4999-8999-999999999991';
+const ETAB_ABCM_ID = '99999999-9999-4999-8999-999999999992';
 
 function horloge(iso: string): Clock {
   return { maintenant: () => new Date(iso) };
@@ -72,16 +75,18 @@ function fakeBase(contrats: ContratRow[]): Database {
   } as unknown as Database;
 }
 
-const ETAB_CRECHE: EtablissementVue = {
-  cle: 'CRECHE_HIRONDELLES',
-  libelle: 'Crèche Les Hirondelles',
+const ETAB_CRECHE: EtablissementProjeteVue = {
+  id: ETAB_CRECHE_ID,
+  foyerId: FOYER_A,
+  nom: 'Crèche Les Hirondelles',
   emailService: 'creche@test',
   preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
   actif: true,
 };
-const ETAB_ABCM: EtablissementVue = {
-  cle: 'ABCM',
-  libelle: 'École ABCM',
+const ETAB_ABCM: EtablissementProjeteVue = {
+  id: ETAB_ABCM_ID,
+  foyerId: FOYER_A,
+  nom: 'École ABCM',
   emailService: 'abcm@test',
   preavisRegle: { type: 'JOUR_HEURE', jour: 'JEUDI', heure: '12:00' },
   actif: true,
@@ -90,7 +95,7 @@ const ETAB_ABCM: EtablissementVue = {
 interface Doubles {
   validation: ValidationService;
   notifier: ReturnType<typeof vi.fn>;
-  etablissements: EtablissementService;
+  etablissements: EtablissementProjeteService;
   destinataires: DestinatairesService;
   emailsActifs: ReturnType<typeof vi.fn>;
   mailer: MailerService;
@@ -98,7 +103,7 @@ interface Doubles {
 }
 
 function doubles(
-  annuaire: EtablissementVue[] = [ETAB_CRECHE],
+  annuaire: EtablissementProjeteVue[] = [ETAB_CRECHE],
   emails: string[] = [],
 ): Doubles {
   const notifier = vi.fn(() => Promise.resolve(true));
@@ -111,7 +116,7 @@ function doubles(
     notifier,
     etablissements: {
       lister: vi.fn(() => Promise.resolve(annuaire)),
-    } as unknown as EtablissementService,
+    } as unknown as EtablissementProjeteService,
     destinataires: {
       emailsActifs,
     } as unknown as DestinatairesService,
@@ -239,8 +244,18 @@ describe('SchedulerHebdo.declencher', () => {
     await scheduler(
       MARDI_8H01,
       [
-        contratRow({ id: 'c1', mode: 'CRECHE_PSU', enfant: 'Léa' }),
-        contratRow({ id: 'c2', mode: 'PERISCOLAIRE', enfant: 'Tom' }),
+        contratRow({
+          id: 'c1',
+          mode: 'CRECHE_PSU',
+          enfant: 'Léa',
+          etablissementId: ETAB_CRECHE_ID,
+        }),
+        contratRow({
+          id: 'c2',
+          mode: 'PERISCOLAIRE',
+          enfant: 'Tom',
+          etablissementId: ETAB_ABCM_ID,
+        }),
       ],
       dd,
     ).declencher();

@@ -12,9 +12,10 @@ import { OPTIONS_SCHEDULER } from './scheduler.options.js';
  * module global `EmailModule` (câblé dans `AppModule`) et le client Drizzle par
  * `DatabaseModule` ; ce module n'apporte que l'horloge système (`CLOCK`, mockée en
  * test), les options de déclenchement et le scheduler lui-même. Il réutilise
- * `ValidationService` (notification idempotente), `EtablissementService`
- * (résolution du préavis du mail) et `DestinatairesService` (e-mails des parents
- * actifs du foyer, PR4) via leurs modules.
+ * `ValidationService` (notification idempotente), `EtablissementProjeteService`
+ * (résolution du préavis du mail via le read model projeté, routé par
+ * `contrat.etablissement_id`) et `DestinatairesService` (e-mails des parents actifs du
+ * foyer, PR4) via leurs modules.
  */
 @Module({
   imports: [ValidationModule, EtablissementModule, DestinatairesModule],

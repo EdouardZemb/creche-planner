@@ -24,8 +24,9 @@ const ETAT_ENVOI =
 /** Identifiants figés partagés avec les stateHandlers de la vérification provider. */
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
 const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
-// Établissement destinataire du récap agrégé (mode crèche → CRECHE_HIRONDELLES).
-const CLE = 'CRECHE_HIRONDELLES';
+// Établissement réel destinataire du récap agrégé (read model `etablissement`, P3),
+// rattaché au contrat par le lien explicite `contrat.etablissement_id`.
+const ETABLISSEMENT_ID = '99999999-9999-4999-8999-999999999999';
 // Semaine entièrement dans un mois (mars) : une seule relecture amont côté provider.
 const SEMAINE = '2026-W10';
 
@@ -181,13 +182,13 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
     });
   });
 
-  it('régénère le brouillon agrégé par établissement (GET …/etablissements/:cle/brouillon)', async () => {
+  it('régénère le brouillon agrégé par établissement (GET …/etablissements/:etablissementId/brouillon)', async () => {
     provider
       .given(ETAT_BROUILLON)
       .uponReceiving('une régénération du brouillon agrégé par établissement')
       .withRequest({
         method: 'GET',
-        path: `/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${CLE}/brouillon`,
+        path: `/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ID}/brouillon`,
       })
       .willRespondWith({
         status: 200,
@@ -195,7 +196,7 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
         body: {
           foyerId: string(FOYER_ID),
           semaineIso: string(SEMAINE),
-          etablissementCle: string(CLE),
+          etablissementId: string(ETABLISSEMENT_ID),
           etablissementLibelle: string('Crèche Les Hirondelles'),
           destinataire: string('contact-creche@example.org'),
           sujet: string('Plannings modifiés — semaine 2026-W10'),
@@ -217,7 +218,7 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
 
     await provider.executeTest(async (mockServer) => {
       const reponse = await fetch(
-        `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${CLE}/brouillon`,
+        `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ID}/brouillon`,
       );
       expect(reponse.status).toBe(200);
       const corps = (await reponse.json()) as { destinataire: string };
@@ -233,7 +234,11 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
         method: 'POST',
         path: '/api/envois/etablissement',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: { foyerId: FOYER_ID, semaineIso: SEMAINE, cle: CLE },
+        body: {
+          foyerId: FOYER_ID,
+          semaineIso: SEMAINE,
+          etablissementId: ETABLISSEMENT_ID,
+        },
       })
       .willRespondWith({
         status: 200,
@@ -242,7 +247,7 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
         body: {
           foyerId: string(FOYER_ID),
           semaineIso: string(SEMAINE),
-          etablissementCle: string(CLE),
+          etablissementId: string(ETABLISSEMENT_ID),
           destinataire: string('contact-creche@example.org'),
           statut: string('DRY_RUN'),
           messageId: null,
@@ -260,7 +265,7 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
           body: JSON.stringify({
             foyerId: FOYER_ID,
             semaineIso: SEMAINE,
-            cle: CLE,
+            etablissementId: ETABLISSEMENT_ID,
           }),
         },
       );

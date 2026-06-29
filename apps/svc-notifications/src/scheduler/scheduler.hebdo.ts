@@ -7,15 +7,13 @@ import {
 } from '@nestjs/common';
 import { and, gte, isNull, lte, or } from 'drizzle-orm';
 import { DRIZZLE, MailerService } from '@creche-planner/nest-commons';
-import { MODES_CONTRAT } from '@creche-planner/contracts-planification';
 import type { Database } from '../database/database.types.js';
 import { contrat, type ContratRow } from '../database/schema.js';
 import { ValidationService } from '../validation/validation.service.js';
 import {
-  EtablissementService,
-  type EtablissementVue,
-} from '../etablissement/etablissement.service.js';
-import { cleEtablissementPourMode } from '../etablissement/etablissement.dto.js';
+  EtablissementProjeteService,
+  type EtablissementProjeteVue,
+} from '../etablissement/etablissement-projete.service.js';
 import {
   joursDeLaSemaine,
   semaineIsoDeDate,
@@ -67,7 +65,7 @@ export class SchedulerHebdo
     @Inject(DRIZZLE) private readonly db: Database,
     @Inject(OPTIONS_SCHEDULER) private readonly options: OptionsScheduler,
     private readonly validation: ValidationService,
-    private readonly etablissements: EtablissementService,
+    private readonly etablissements: EtablissementProjeteService,
     private readonly destinataires: DestinatairesService,
     private readonly mailer: MailerService,
   ) {}
@@ -96,7 +94,7 @@ export class SchedulerHebdo
       if (contrats.length === 0) {
         return;
       }
-      const annuaire = await this.annuaireParCle();
+      const annuaire = await this.annuaireParId();
       // Idempotence **par contrat** (clé UNIQUE notification_hebdo) : on fige chaque
       // contrat et on retient ceux que CET appel a réellement notifiés (les ticks /
       // réplicas suivants renvoient `false` → rien à renvoyer).
@@ -196,10 +194,13 @@ export class SchedulerHebdo
       );
   }
 
-  /** Annuaire des établissements indexé par clé (résolution du préavis du mail). */
-  private async annuaireParCle(): Promise<Map<string, EtablissementVue>> {
+  /**
+   * Annuaire des établissements projetés indexé par `id` (résolution du préavis du
+   * mail via le lien explicite `contrat.etablissement_id`).
+   */
+  private async annuaireParId(): Promise<Map<string, EtablissementProjeteVue>> {
     const liste = await this.etablissements.lister();
-    return new Map(liste.map((e) => [e.cle, e]));
+    return new Map(liste.map((e) => [e.id, e]));
   }
 
   /** Regroupe les contrats fraîchement notifiés par foyer (préserve l'ordre d'arrivée). */
@@ -226,13 +227,13 @@ export class SchedulerHebdo
     foyerId: string,
     contratsFoyer: ContratRow[],
     semaineIso: string,
-    annuaire: Map<string, EtablissementVue>,
+    annuaire: Map<string, EtablissementProjeteVue>,
   ): Promise<void> {
     const enfants = contratsFoyer.map((c) => {
-      const etab = this.etablissementPourMode(c.mode, annuaire);
+      const etab = this.etablissementPourContrat(c.etablissementId, annuaire);
       return {
         enfant: c.enfant,
-        etablissementLibelle: etab?.libelle ?? null,
+        etablissementLibelle: etab?.nom ?? null,
         preavisRegle: etab?.preavisRegle ?? null,
       };
     });
@@ -263,15 +264,18 @@ export class SchedulerHebdo
     );
   }
 
-  /** Résout l'établissement destinataire à partir du mode du contrat (sinon `undefined`). */
-  private etablissementPourMode(
-    mode: string,
-    annuaire: Map<string, EtablissementVue>,
-  ): EtablissementVue | undefined {
-    const connu = MODES_CONTRAT.find((m) => m === mode);
-    if (!connu) {
+  /**
+   * Résout l'établissement destinataire à partir du **lien explicite**
+   * `contrat.etablissement_id` (sinon `undefined` : contrat non rattaché ou fiche non
+   * encore projetée — le mail retombe alors sur libellé/préavis nuls).
+   */
+  private etablissementPourContrat(
+    etablissementId: string | null,
+    annuaire: Map<string, EtablissementProjeteVue>,
+  ): EtablissementProjeteVue | undefined {
+    if (etablissementId === null) {
       return undefined;
     }
-    return annuaire.get(cleEtablissementPourMode(connu));
+    return annuaire.get(etablissementId);
   }
 }

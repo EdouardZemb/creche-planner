@@ -66,7 +66,7 @@
       ],
       "request": {
         "body": {
-          "cle": "CRECHE_HIRONDELLES",
+          "etablissementId": "99999999-9999-4999-8999-999999999999",
           "foyerId": "22222222-2222-4222-8222-222222222222",
           "semaineIso": "2026-W10"
         },
@@ -81,7 +81,7 @@
           "destinataire": "contact-creche@example.org",
           "envoyeLe": "2026-03-09T08:00:00.000Z",
           "erreur": null,
-          "etablissementCle": "CRECHE_HIRONDELLES",
+          "etablissementId": "99999999-9999-4999-8999-999999999999",
           "foyerId": "22222222-2222-4222-8222-222222222222",
           "messageId": null,
           "semaineIso": "2026-W10",
@@ -108,7 +108,7 @@
                 }
               ]
             },
-            "$.etablissementCle": {
+            "$.etablissementId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -419,7 +419,7 @@
       ],
       "request": {
         "method": "GET",
-        "path": "/api/validations/semaine/22222222-2222-4222-8222-222222222222/2026-W10/etablissements/CRECHE_HIRONDELLES/brouillon"
+        "path": "/api/validations/semaine/22222222-2222-4222-8222-222222222222/2026-W10/etablissements/99999999-9999-4999-8999-999999999999/brouillon"
       },
       "response": {
         "body": {
@@ -439,7 +439,7 @@
               "enfant": "Léa"
             }
           ],
-          "etablissementCle": "CRECHE_HIRONDELLES",
+          "etablissementId": "99999999-9999-4999-8999-999999999999",
           "etablissementLibelle": "Crèche Les Hirondelles",
           "foyerId": "22222222-2222-4222-8222-222222222222",
           "semaineIso": "2026-W10",
@@ -517,7 +517,7 @@
                 }
               ]
             },
-            "$.etablissementCle": {
+            "$.etablissementId": {
               "combine": "AND",
               "matchers": [
                 {

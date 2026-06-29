@@ -334,11 +334,11 @@ export const api = {
   lireBrouillonEtablissement(
     foyerId: string,
     semaineIso: string,
-    cle: string,
+    etablissementId: string,
     opts: RequeteOptions = {},
   ): Promise<BrouillonEtablissement> {
     return requete(
-      `${BASE}/v1/notifications/semaine/${encodeURIComponent(foyerId)}/${encodeURIComponent(semaineIso)}/etablissements/${encodeURIComponent(cle)}/brouillon`,
+      `${BASE}/v1/notifications/semaine/${encodeURIComponent(foyerId)}/${encodeURIComponent(semaineIso)}/etablissements/${encodeURIComponent(etablissementId)}/brouillon`,
       {
         headers: entetes(false),
         ...(opts.signal ? { signal: opts.signal } : {}),
@@ -349,13 +349,13 @@ export const api = {
   envoyerRecapEtablissement(
     foyerId: string,
     semaineIso: string,
-    cle: string,
+    etablissementId: string,
     opts: RequeteOptions = {},
   ): Promise<EnvoiEtablissementResultat> {
     return requete(`${BASE}/v1/notifications/envois/etablissement`, {
       method: 'POST',
       headers: entetes(true),
-      body: JSON.stringify({ foyerId, semaineIso, cle }),
+      body: JSON.stringify({ foyerId, semaineIso, etablissementId }),
       ...(opts.signal ? { signal: opts.signal } : {}),
     }).then((r) => lire<EnvoiEtablissementResultat>(r));
   },

@@ -2,7 +2,7 @@ import { NotFoundException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Column, getTableColumns, Param, type Table } from 'drizzle-orm';
 import { EnvoiService } from './envoi.service.js';
-import type { EtablissementService } from '../etablissement/etablissement.service.js';
+import type { EtablissementProjeteService } from '../etablissement/etablissement-projete.service.js';
 import type {
   MailerService,
   ResultatEnvoi,
@@ -19,8 +19,9 @@ import type { DeltaModifs } from '../validation/validation.diff.js';
  * Tests du service d'envoi **agrégé par établissement** sans Postgres : base factice
  * multi-tables qui honore le sous-ensemble utilisé — `select().from(table).where(and(eq…))`,
  * `insert(table).values().onConflictDoNothing(target[]).returning()` (réservation
- * idempotente du slot), `update(table).set().where(eq…)`. Le mailer et l'annuaire sont
- * mockés : **aucun** SMTP réel n'est jamais ouvert (dry-run/échec simulés).
+ * idempotente du slot), `update(table).set().where(eq…)`. Le mailer et la fiche
+ * établissement projetée sont mockés : **aucun** SMTP réel n'est jamais ouvert
+ * (dry-run/échec simulés).
  */
 type Ligne = Record<string, unknown>;
 
@@ -134,11 +135,15 @@ const FOYER_ID = '22222222-2222-4222-8222-222222222222';
 const CONTRAT_LEA = '55555555-0000-4000-8000-000000000000';
 const CONTRAT_TOM = '55555555-0000-4000-8000-000000000001';
 const SEMAINE = '2026-W27';
-const CLE = 'CRECHE_HIRONDELLES' as const;
+// Établissement réel destinataire (read model `etablissement`, entité libre par foyer).
+const ETAB_ID = '99999999-9999-4999-8999-999999999999';
+// Un autre établissement du foyer, pour vérifier le routage par lien explicite.
+const ETAB_AUTRE_ID = '99999999-9999-4999-8999-999999999998';
 
 const ETAB = {
-  cle: CLE,
-  libelle: 'Crèche Les Hirondelles',
+  id: ETAB_ID,
+  foyerId: FOYER_ID,
+  nom: 'Crèche Les Hirondelles',
   emailService: 'contact-creche@example.org',
   preavisRegle: { type: 'JOURS_OUVRES' as const, valeur: 2 },
   actif: true,
@@ -168,6 +173,7 @@ function seedContrat(
     id: string;
     enfant: string;
     mode?: string;
+    etablissementId?: string;
     statut?: string;
     delta?: DeltaModifs | null;
     date?: string;
@@ -178,6 +184,7 @@ function seedContrat(
     foyerId: FOYER_ID,
     enfant: options.enfant,
     mode: options.mode ?? 'CRECHE_PSU',
+    etablissementId: options.etablissementId ?? ETAB_ID,
     valideDu: '2026-01-01',
     valideAu: null,
     updatedAt: new Date(),
@@ -202,15 +209,15 @@ function seedContrat(
 }
 
 function fakeEtablissements(etab: typeof ETAB | null = ETAB): {
-  service: EtablissementService;
+  service: EtablissementProjeteService;
   mock: ReturnType<typeof vi.fn>;
 } {
-  // `null` simule un établissement absent (`parCle` renvoie `undefined` en prod) ;
-  // `!etab` couvre les deux. On évite `undefined` ici : passé explicitement, il
-  // réactiverait la valeur par défaut du paramètre.
+  // `null` simule une fiche absente (`parId` renvoie `undefined` en prod) ; `!etab`
+  // couvre les deux. On évite `undefined` ici : passé explicitement, il réactiverait
+  // la valeur par défaut du paramètre.
   const mock = vi.fn(() => Promise.resolve(etab ?? undefined));
   return {
-    service: { parCle: mock } as unknown as EtablissementService,
+    service: { parId: mock } as unknown as EtablissementProjeteService,
     mock,
   };
 }
@@ -245,9 +252,9 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, CLE);
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
-    expect(brouillon.etablissementCle).toBe(CLE);
+    expect(brouillon.etablissementId).toBe(ETAB_ID);
     expect(brouillon.destinataire).toBe('contact-creche@example.org');
     expect(brouillon.enfants).toHaveLength(2);
     expect(brouillon.enfants.map((e) => e.enfant)).toEqual(['Léa', 'Tom']);
@@ -260,26 +267,26 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
 
   it('n’inclut que les contrats VALIDEE_AVEC_MODIFS de l’établissement visé', async () => {
     const { db, stores } = fakeBase();
-    // Léa : crèche, validée avec modifs → incluse.
+    // Léa : rattachée à l'établissement visé, validée avec modifs → incluse.
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
-    // Tom : crèche mais seulement VALIDEE (sans modifs) → exclu.
+    // Tom : même établissement mais seulement VALIDEE (sans modifs) → exclu.
     seedContrat(stores, {
       id: CONTRAT_TOM,
       enfant: 'Tom',
       statut: 'VALIDEE',
       delta: null,
     });
-    // Zoé : mode ABCM (autre établissement) → exclue de la crèche.
+    // Zoé : rattachée à un AUTRE établissement (lien explicite) → exclue.
     seedContrat(stores, {
       id: '55555555-0000-4000-8000-000000000002',
       enfant: 'Zoé',
-      mode: 'CANTINE',
+      etablissementId: ETAB_AUTRE_ID,
     });
     const { service: etablissements } = fakeEtablissements();
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, CLE);
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
     expect(brouillon.enfants.map((e) => e.enfant)).toEqual(['Léa']);
   });
@@ -296,7 +303,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, CLE);
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
     expect(brouillon.enfants).toHaveLength(0);
     expect(brouillon.corps).toContain('Aucune modification');
@@ -311,7 +318,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, CLE);
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
     expect(brouillon.dryRun).toBe(true);
   });
@@ -325,7 +332,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, CLE);
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
     expect(brouillon.dryRun).toBe(false);
   });
@@ -338,7 +345,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     const service = new EnvoiService(db, etablissements, mailer);
 
     await expect(
-      service.brouillon(FOYER_ID, SEMAINE, CLE),
+      service.brouillon(FOYER_ID, SEMAINE, ETAB_ID),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
@@ -351,7 +358,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const resultat = await service.envoyer(FOYER_ID, SEMAINE, CLE);
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
 
     expect(resultat.statut).toBe('DRY_RUN');
     expect(resultat.messageId).toBeNull();
@@ -376,7 +383,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     const { mailer } = fakeMailer({ messageId: '<msg-1@test>', dryRun: false });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const resultat = await service.envoyer(FOYER_ID, SEMAINE, CLE);
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
 
     expect(resultat.statut).toBe('ENVOYE');
     expect(resultat.messageId).toBe('<msg-1@test>');
@@ -395,8 +402,8 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     });
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const premier = await service.envoyer(FOYER_ID, SEMAINE, CLE);
-    const second = await service.envoyer(FOYER_ID, SEMAINE, CLE);
+    const premier = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
+    const second = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
 
     expect(mock).toHaveBeenCalledTimes(1);
     expect(second.statut).toBe('ENVOYE');
@@ -411,7 +418,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     const { mailer, mock } = fakeMailer(new Error('SMTP 535 auth refusée'));
     const service = new EnvoiService(db, etablissements, mailer);
 
-    const resultat = await service.envoyer(FOYER_ID, SEMAINE, CLE);
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
 
     expect(mock).toHaveBeenCalledTimes(1);
     expect(resultat.statut).toBe('ECHEC');
