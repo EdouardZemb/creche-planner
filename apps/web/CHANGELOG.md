@@ -1,3 +1,23 @@
+## 0.5.0 (2026-06-29)
+
+### 🚀 Features
+
+- **web:** établissements en entité libre par foyer — écran CRUD + sélecteur contrat (P4) ([#102](https://github.com/EdouardZemb/creche-planner/pull/102))
+- **svc-notifications:** router envoi/scheduler par établissement réel (P4) ([#101](https://github.com/EdouardZemb/creche-planner/pull/101), [#100](https://github.com/EdouardZemb/creche-planner/issues/100))
+- **svc-notifications:** projection établissements + routage récap par lien explicite (P3) ([#100](https://github.com/EdouardZemb/creche-planner/pull/100))
+- **web:** sélecteur de type d'ajustement à la saisie d'absence crèche (p3) ([#86](https://github.com/EdouardZemb/creche-planner/pull/86))
+- **web:** 3e état « Ajusté » (ambre) à l'affichage du planning crèche (pr2) ([#85](https://github.com/EdouardZemb/creche-planner/pull/85))
+- **web:** module pur de classification d'une absence sur un jour gardé (p1) ([#80](https://github.com/EdouardZemb/creche-planner/pull/80))
+
+### 🩹 Fixes
+
+- **web:** adapter les e2e-stack au sélecteur de type d'absence (régression #86) ([#88](https://github.com/EdouardZemb/creche-planner/pull/88), [#86](https://github.com/EdouardZemb/creche-planner/issues/86))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.4.0 (2026-06-28)
 
 ### 🚀 Features

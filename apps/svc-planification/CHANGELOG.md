@@ -1,3 +1,17 @@
+## 0.5.0 (2026-06-29)
+
+### 🚀 Features
+
+- **planification:** back-fill du lien contrat→établissement (P5) ([#103](https://github.com/EdouardZemb/creche-planner/pull/103))
+- **svc-notifications:** projection établissements + routage récap par lien explicite (P3) ([#100](https://github.com/EdouardZemb/creche-planner/pull/100))
+- **planification:** référence explicite contrat→établissement (P2) ([#99](https://github.com/EdouardZemb/creche-planner/pull/99))
+- **planification:** entité établissement libre par foyer (CRUD + events, P1) ([#87](https://github.com/EdouardZemb/creche-planner/pull/87))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.4.0 (2026-06-28)
 
 ### 🚀 Features

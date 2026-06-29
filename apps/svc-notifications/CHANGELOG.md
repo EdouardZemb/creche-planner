@@ -1,3 +1,15 @@
+## 0.5.0 (2026-06-29)
+
+### 🚀 Features
+
+- **svc-notifications:** router envoi/scheduler par établissement réel (P4) ([#101](https://github.com/EdouardZemb/creche-planner/pull/101), [#100](https://github.com/EdouardZemb/creche-planner/issues/100))
+- **svc-notifications:** projection établissements + routage récap par lien explicite (P3) ([#100](https://github.com/EdouardZemb/creche-planner/pull/100))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.4.0 (2026-06-28)
 
 ### 🚀 Features
