@@ -279,12 +279,16 @@ export type StatutEnvoi = (typeof STATUTS_ENVOI)[number];
  * première I/O vers un tiers réel : la ligne en porte la **preuve** (`destinataire`
  * figé, `sujet`, `corps` rendu) et le **résultat** (`statut`, `message_id`/`erreur`).
  *
- * La clé `UNIQUE(foyer_id, semaine_iso, etablissement_cle)` garantit l'idempotence :
+ * La clé `UNIQUE(foyer_id, semaine_iso, etablissement_id)` garantit l'idempotence :
  * un second clic « Envoyer » (ou un rejeu) ne ré-émet pas le même récap — l'insert
  * `onConflictDoNothing` ne réserve le slot qu'une fois, et l'appelant renvoie alors
  * l'envoi déjà journalisé. `destinataire`/`sujet`/`corps` sont **figés** à l'insert :
  * ils prouvent ce qui a réellement été adressé, indépendamment d'une édition ultérieure
- * de l'annuaire ou du planning.
+ * de la fiche établissement ou du planning.
+ *
+ * L'établissement est désormais identifié par son `id` réel (entité libre par foyer,
+ * P3), routé par le lien explicite `contrat.etablissement_id` — en remplacement de la
+ * `cle` d'annuaire fermé (`CRECHE_HIRONDELLES` | `ABCM`).
  */
 export const envoiEtablissement = pgTable(
   'envoi_etablissement',
@@ -294,8 +298,8 @@ export const envoiEtablissement = pgTable(
     foyerId: uuid('foyer_id').notNull(),
     /** Semaine ISO 8601 du récap, format `YYYY-Www`. */
     semaineIso: varchar('semaine_iso', { length: 8 }).notNull(),
-    /** Clé de l'établissement destinataire (`CRECHE_HIRONDELLES` | `ABCM`). */
-    etablissementCle: varchar('etablissement_cle', { length: 32 }).notNull(),
+    /** Établissement destinataire réel (read model `etablissement`, routé par contrat). */
+    etablissementId: uuid('etablissement_id').notNull(),
     /** Adresse réellement visée, **figée** à l'insert (preuve, pas une jointure vive). */
     destinataire: varchar('destinataire', { length: 320 }).notNull(),
     /** Sujet du mail, figé. */
@@ -318,7 +322,7 @@ export const envoiEtablissement = pgTable(
     unique('envoi_etablissement_foyer_semaine_etab_uq').on(
       table.foyerId,
       table.semaineIso,
-      table.etablissementCle,
+      table.etablissementId,
     ),
   ],
 );

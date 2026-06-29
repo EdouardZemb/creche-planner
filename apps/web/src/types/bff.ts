@@ -326,7 +326,8 @@ export interface EnfantBrouillon {
 export interface BrouillonEtablissement {
   foyerId: string;
   semaineIso: string;
-  etablissementCle: CleEtablissement;
+  /** Identifiant réel de l'établissement destinataire (read model `etablissement`, P3). */
+  etablissementId: string;
   etablissementLibelle: string;
   destinataire: string;
   sujet: string;
@@ -343,7 +344,7 @@ export type StatutEnvoi = 'EN_COURS' | 'ENVOYE' | 'ECHEC' | 'DRY_RUN';
 export interface EnvoiEtablissementResultat {
   foyerId: string;
   semaineIso: string;
-  etablissementCle: CleEtablissement;
+  etablissementId: string;
   destinataire: string;
   statut: StatutEnvoi;
   messageId: string | null;

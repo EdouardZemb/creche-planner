@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { api } from '../api/client';
 import type {
   BrouillonEtablissement,
-  CleEtablissement,
   DeltaJour,
   EnfantBrouillon,
   EnvoiEtablissementResultat,
@@ -10,12 +9,6 @@ import type {
 import { messageErreur } from '../utils/erreurs';
 import { useAsync } from '../hooks/useAsync';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
-
-/** Les deux établissements destinataires possibles d'un récap (domaine fermé). */
-const CLES_ETABLISSEMENT: readonly CleEtablissement[] = [
-  'CRECHE_HIRONDELLES',
-  'ABCM',
-];
 
 /** `2026-06-29` → `29/06/2026` (affichage FR). */
 function jourLisible(date: string): string {
@@ -72,7 +65,7 @@ function BlocEnvoiEtablissement({
       const resultat = await api.envoyerRecapEtablissement(
         foyerId,
         semaineIso,
-        brouillon.etablissementCle,
+        brouillon.etablissementId,
       );
       setMessage(libelleResultat(resultat));
       setEnvoye(true);
@@ -195,11 +188,13 @@ function BlocEnvoiEtablissement({
 
 /**
  * Relecture humaine **obligatoire** puis envoi des mails **agrégés par établissement**
- * (édition hebdo, Phase 4). Pour le foyer et la semaine, charge le brouillon agrégé de
- * chaque établissement destinataire et n'affiche un bloc relecture/envoi que pour ceux
- * qui ont **au moins un enfant** validé avec modifications. Chaque bloc déclenche un
- * **mail unique** regroupant tous les enfants concernés, après confirmation explicite ;
- * un bandeau « DRY-RUN actif » avertit quand l'envoi serait neutralisé.
+ * (édition hebdo, Phase 4). Pour le foyer et la semaine, on découvre d'abord les
+ * **établissements réels concernés** (entité libre par foyer, lien explicite
+ * `contrat.etablissementId`) via la vue `semaine/besoins`, puis on charge le brouillon
+ * agrégé de chacun par son `id`. On n'affiche un bloc relecture/envoi que pour ceux qui
+ * ont **au moins un enfant** validé avec modifications. Chaque bloc déclenche un **mail
+ * unique** regroupant tous les enfants concernés, après confirmation explicite ; un
+ * bandeau « DRY-RUN actif » avertit quand l'envoi serait neutralisé.
  */
 export function RelectureEnvoi({
   foyerId,
@@ -209,12 +204,29 @@ export function RelectureEnvoi({
   semaineIso: string;
 }) {
   const { data, loading, error } = useAsync(
-    (signal) =>
-      Promise.all(
-        CLES_ETABLISSEMENT.map((cle) =>
-          api.lireBrouillonEtablissement(foyerId, semaineIso, cle, { signal }),
+    async (signal) => {
+      const semaine = await api.lireSemaineBesoins(foyerId, semaineIso, {
+        signal,
+      });
+      // Un brouillon par établissement concerné, routé par son `id`. `allSettled` :
+      // un établissement non routable (sans adresse de service → 404 amont) est
+      // simplement écarté plutôt que de faire échouer toute la relecture.
+      const brouillons = await Promise.allSettled(
+        semaine.etablissements.map((e) =>
+          api.lireBrouillonEtablissement(
+            foyerId,
+            semaineIso,
+            e.etablissementId,
+            {
+              signal,
+            },
+          ),
         ),
-      ),
+      );
+      return brouillons.flatMap((r) =>
+        r.status === 'fulfilled' ? [r.value] : [],
+      );
+    },
     [foyerId, semaineIso],
   );
 
@@ -244,7 +256,7 @@ export function RelectureEnvoi({
 
       {concernes.map((brouillon) => (
         <BlocEnvoiEtablissement
-          key={brouillon.etablissementCle}
+          key={brouillon.etablissementId}
           foyerId={foyerId}
           semaineIso={semaineIso}
           brouillon={brouillon}

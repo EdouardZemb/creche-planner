@@ -1,8 +1,4 @@
 import { z } from 'zod';
-import {
-  CLES_ETABLISSEMENT,
-  type CleEtablissement,
-} from '../etablissement/etablissement.dto.js';
 import type { StatutEnvoi } from '../database/schema.js';
 import type { DeltaModifs } from '../validation/validation.diff.js';
 import { estSemaineIso } from '@creche-planner/shared-semaine';
@@ -26,8 +22,8 @@ export interface EnfantBrouillon {
 export interface BrouillonEtablissementVue {
   readonly foyerId: string;
   readonly semaineIso: string;
-  /** Clé de l'établissement destinataire (`CRECHE_HIRONDELLES` | `ABCM`). */
-  readonly etablissementCle: CleEtablissement;
+  /** Identifiant réel de l'établissement destinataire (read model `etablissement`). */
+  readonly etablissementId: string;
   /** Libellé lisible de l'établissement (en-tête du mail). */
   readonly etablissementLibelle: string;
   /** Adresse e-mail réellement visée (mise en évidence côté front). */
@@ -53,7 +49,7 @@ export interface BrouillonEtablissementVue {
 export interface EnvoiEtablissementResultat {
   readonly foyerId: string;
   readonly semaineIso: string;
-  readonly etablissementCle: CleEtablissement;
+  readonly etablissementId: string;
   readonly destinataire: string;
   readonly statut: StatutEnvoi;
   readonly messageId: string | null;
@@ -64,15 +60,16 @@ export interface EnvoiEtablissementResultat {
 
 /**
  * Corps de la demande d'envoi (`POST /envois/etablissement`) : la cible
- * `(foyer, semaine, établissement)`. Le destinataire n'est **pas** au choix du
- * client — il est résolu côté service depuis l'annuaire, pour qu'on ne puisse pas
- * adresser un récap à une adresse arbitraire.
+ * `(foyer, semaine, établissement)`. L'établissement est désigné par son `id` réel
+ * (read model `etablissement`) ; le destinataire n'est **pas** au choix du client — il
+ * est résolu côté service depuis la fiche projetée, pour qu'on ne puisse pas adresser un
+ * récap à une adresse arbitraire.
  */
 export const envoiEtablissementSchema = z.object({
   foyerId: z.uuid('foyerId doit être un UUID'),
   semaineIso: z
     .string()
     .refine(estSemaineIso, 'semaine ISO invalide (attendu YYYY-Www)'),
-  cle: z.enum(CLES_ETABLISSEMENT),
+  etablissementId: z.uuid('etablissementId doit être un UUID'),
 });
 export type EnvoiEtablissementDto = z.infer<typeof envoiEtablissementSchema>;

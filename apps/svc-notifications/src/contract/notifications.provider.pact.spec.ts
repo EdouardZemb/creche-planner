@@ -22,8 +22,14 @@ const ETAT_BROUILLON =
 const ETAT_ENVOI =
   'un récap agrégé par établissement est prêt à envoyer au service';
 
-/** Id figé de la ligne crèche seedée par le stateHandler. */
+/** Id figé de la ligne crèche legacy seedée par le stateHandler (annuaire `cle`). */
 const CRECHE_ID = '99999999-9999-4999-8999-999999999999';
+/**
+ * Id figé de la **fiche établissement projetée** (read model `etablissement`, P3) —
+ * destinataire réel du récap agrégé, rattaché aux contrats par `etablissement_id`.
+ * Partagé avec le consumer (`ETABLISSEMENT_ID`).
+ */
+const ETABLISSEMENT_ID = '99999999-9999-4999-8999-999999999999';
 
 /** Identifiants figés des semaines à valider seedées (partagés avec le consumer). */
 const NOTIF_ID = '88888888-8888-4888-8888-888888888888';
@@ -31,7 +37,6 @@ const NOTIF_ID_2 = '88888888-8888-4888-8888-888888888889';
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
 const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
 const CONTRAT_ID_2 = '55555555-0000-4000-8000-000000000001';
-const CLE = 'CRECHE_HIRONDELLES';
 const SEMAINE = '2026-W10';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-notifications) → racine du dépôt à ../../.
@@ -155,11 +160,32 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
           snapshot = '{}'::jsonb
       `;
     };
+    // Upsert idempotent de la **fiche établissement projetée** (read model
+    // `etablissement`, P3) : destinataire réel du récap agrégé, résolu par le lien
+    // explicite `contrat.etablissement_id`.
+    const seedEtablissementProjete = async (): Promise<void> => {
+      await db`
+        insert into etablissement (
+          id, foyer_id, nom, email_service, preavis_regle, types, actif
+        ) values (
+          ${ETABLISSEMENT_ID}, ${FOYER_ID}, 'Crèche Les Hirondelles',
+          'contact-creche@example.org',
+          ${JSON.stringify({ type: 'JOURS_OUVRES', valeur: 2 })}::jsonb,
+          '[]'::jsonb, true
+        )
+        on conflict (id) do update set
+          foyer_id = excluded.foyer_id,
+          nom = excluded.nom,
+          email_service = excluded.email_service,
+          preavis_regle = excluded.preavis_regle,
+          actif = excluded.actif
+      `;
+    };
     // Seede de quoi régénérer/envoyer un brouillon **agrégé par établissement** : deux
-    // contrats crèche du même foyer (mode → CRECHE_HIRONDELLES), chacun avec une semaine
-    // validée avec un delta, et l'établissement crèche. Idempotent. Pour l'envoi, on
-    // purge d'abord la trace `envoi_etablissement` afin que la vérification reparte d'un
-    // envoi neuf (statut DRY_RUN attendu).
+    // contrats du même foyer rattachés à la fiche projetée (`etablissement_id`), chacun
+    // avec une semaine validée avec un delta, et la fiche établissement. Idempotent. Pour
+    // l'envoi, on purge d'abord la trace `envoi_etablissement` afin que la vérification
+    // reparte d'un envoi neuf (statut DRY_RUN attendu).
     const delta = (date: string): string =>
       JSON.stringify({
         jours: [
@@ -182,12 +208,16 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
       date: string,
     ): Promise<void> => {
       await db`
-        insert into contrat (id, foyer_id, enfant, mode, valide_du, valide_au)
-        values (
-          ${contratId}, ${FOYER_ID}, ${enfant}, 'CRECHE_PSU', '2026-01-01', null
+        insert into contrat (
+          id, foyer_id, enfant, mode, etablissement_id, valide_du, valide_au
+        ) values (
+          ${contratId}, ${FOYER_ID}, ${enfant}, 'CRECHE_PSU',
+          ${ETABLISSEMENT_ID}, '2026-01-01', null
         )
         on conflict (id) do update set
-          enfant = excluded.enfant, mode = excluded.mode
+          enfant = excluded.enfant,
+          mode = excluded.mode,
+          etablissement_id = excluded.etablissement_id
       `;
       await db`
         insert into notification_hebdo (
@@ -203,7 +233,7 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
       `;
     };
     const seedBrouillon = async (): Promise<void> => {
-      await seedCreche();
+      await seedEtablissementProjete();
       await seedContratValide(NOTIF_ID, CONTRAT_ID, 'Léa', '2026-03-04');
       await seedContratValide(NOTIF_ID_2, CONTRAT_ID_2, 'Tom', '2026-03-05');
     };
@@ -212,7 +242,7 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
       await db`
         delete from envoi_etablissement
         where foyer_id = ${FOYER_ID} and semaine_iso = ${SEMAINE}
-          and etablissement_cle = ${CLE}
+          and etablissement_id = ${ETABLISSEMENT_ID}
       `;
     };
     await new Verifier({

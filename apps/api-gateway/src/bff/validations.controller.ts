@@ -33,13 +33,13 @@ import {
 
 /**
  * Corps minimal de la demande d'envoi agrégé (`POST …/envois/etablissement`). La forme
- * fine (UUID, semaine ISO, clé d'établissement) est revalidée par le service amont ;
+ * fine (UUID foyer/établissement, semaine ISO) est revalidée par le service amont ;
  * ici on s'assure des champs requis.
  */
 const envoiEtablissementSchema = z.object({
   foyerId: z.string().min(1),
   semaineIso: z.string().min(1),
-  cle: z.string().min(1),
+  etablissementId: z.string().min(1),
 });
 
 /**
@@ -174,15 +174,19 @@ export class ValidationsController {
    * Régénère le brouillon **agrégé par établissement** (relecture avant envoi) : un seul
    * mail par établissement regroupant tous les enfants du foyer validés avec modifications.
    */
-  @Get('semaine/:foyerId/:semaineIso/etablissements/:cle/brouillon')
+  @Get('semaine/:foyerId/:semaineIso/etablissements/:etablissementId/brouillon')
   @FoyerScope('param:foyerId')
   brouillon(
     @Param('foyerId') foyerId: string,
     @Param('semaineIso') semaineIso: string,
-    @Param('cle') cle: string,
+    @Param('etablissementId') etablissementId: string,
   ): Promise<BrouillonEtablissementVue> {
     return relayer(() =>
-      this.notifications.lireBrouillonEtablissement(foyerId, semaineIso, cle),
+      this.notifications.lireBrouillonEtablissement(
+        foyerId,
+        semaineIso,
+        etablissementId,
+      ),
     );
   }
 
@@ -193,12 +197,16 @@ export class ValidationsController {
   @Post('envois/etablissement')
   @FoyerScope('body:foyerId')
   envoyer(@Body() corps: unknown): Promise<EnvoiEtablissementResultat> {
-    const { foyerId, semaineIso, cle } = valider(
+    const { foyerId, semaineIso, etablissementId } = valider(
       envoiEtablissementSchema,
       corps,
     );
     return relayer(() =>
-      this.notifications.envoyerRecapEtablissement(foyerId, semaineIso, cle),
+      this.notifications.envoyerRecapEtablissement(
+        foyerId,
+        semaineIso,
+        etablissementId,
+      ),
     );
   }
 }

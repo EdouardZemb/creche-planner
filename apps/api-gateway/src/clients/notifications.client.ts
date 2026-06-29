@@ -87,7 +87,7 @@ const enfantBrouillonSchema = z.object({
 const brouillonEtablissementSchema = z.object({
   foyerId: z.string(),
   semaineIso: z.string(),
-  etablissementCle: z.enum(['CRECHE_HIRONDELLES', 'ABCM']),
+  etablissementId: z.string(),
   etablissementLibelle: z.string(),
   destinataire: z.string(),
   sujet: z.string(),
@@ -108,7 +108,7 @@ const statutEnvoiSchema = z.enum(['EN_COURS', 'ENVOYE', 'ECHEC', 'DRY_RUN']);
 const envoiEtablissementResultatSchema = z.object({
   foyerId: z.string(),
   semaineIso: z.string(),
-  etablissementCle: z.enum(['CRECHE_HIRONDELLES', 'ABCM']),
+  etablissementId: z.string(),
   destinataire: z.string(),
   statut: statutEnvoiSchema,
   messageId: z.string().nullable(),
@@ -228,18 +228,18 @@ export class NotificationsClient {
   }
 
   /**
-   * GET `/api/validations/semaine/:foyerId/:semaineIso/etablissements/:cle/brouillon`
+   * GET `/api/validations/semaine/:foyerId/:semaineIso/etablissements/:etablissementId/brouillon`
    * — régénère le brouillon **agrégé par établissement** (tous les enfants du foyer).
    */
   async lireBrouillonEtablissement(
     foyerId: string,
     semaineIso: string,
-    cle: string,
+    etablissementId: string,
   ): Promise<BrouillonEtablissementVue> {
     const base = loadConfig().notificationsUrl;
     const url =
       `${base}/api/validations/semaine/${encodeURIComponent(foyerId)}` +
-      `/${encodeURIComponent(semaineIso)}/etablissements/${encodeURIComponent(cle)}/brouillon`;
+      `/${encodeURIComponent(semaineIso)}/etablissements/${encodeURIComponent(etablissementId)}/brouillon`;
     this.logger.debug(`GET ${url}`);
     return executerResilient(
       'svc-notifications',
@@ -262,7 +262,7 @@ export class NotificationsClient {
   async envoyerRecapEtablissement(
     foyerId: string,
     semaineIso: string,
-    cle: string,
+    etablissementId: string,
   ): Promise<EnvoiEtablissementResultat> {
     const base = loadConfig().notificationsUrl;
     const url = `${base}/api/envois/etablissement`;
@@ -273,7 +273,7 @@ export class NotificationsClient {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ foyerId, semaineIso, cle }),
+          body: JSON.stringify({ foyerId, semaineIso, etablissementId }),
         });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);

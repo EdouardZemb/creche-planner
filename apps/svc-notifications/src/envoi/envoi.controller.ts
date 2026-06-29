@@ -8,12 +8,8 @@ import {
   ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
-import {
-  CleEtablissementPipe,
-  ZodValidationPipe,
-} from '../etablissement/etablissement.dto.js';
+import { ZodValidationPipe } from '../etablissement/etablissement.dto.js';
 import { SemaineIsoPipe } from '../validation/validation.dto.js';
-import type { CleEtablissement } from '../etablissement/etablissement.dto.js';
 import {
   envoiEtablissementSchema,
   type EnvoiEtablissementDto,
@@ -30,13 +26,13 @@ import { EnvoiService } from './envoi.service.js';
  * par établissement** regroupant tous les enfants du foyer dont la semaine a été validée
  * avec modifications (remplace l'envoi par-contrat du Lot 6). Deux endpoints :
  *
- * - `GET /validations/semaine/:foyerId/:semaineIso/etablissements/:cle/brouillon` :
+ * - `GET /validations/semaine/:foyerId/:semaineIso/etablissements/:etablissementId/brouillon` :
  *   régénère le brouillon agrégé (lecture seule) pour la relecture avant envoi ;
  * - `POST /envois/etablissement` : déclenche l'envoi réel **après** le clic « Envoyer »
  *   (idempotent via la clé d'unicité `(foyer, semaine, établissement)`, garde-fous
  *   dry-run/allowlist du mailer).
  *
- * La forme des paramètres (UUID, semaine ISO, clé d'établissement, corps) est vérifiée
+ * La forme des paramètres (UUID foyer/établissement, semaine ISO, corps) est vérifiée
  * par des pipes ; l'agrégation, l'idempotence et le journal vivent dans le service.
  */
 @Controller()
@@ -44,13 +40,15 @@ export class EnvoiController {
   constructor(private readonly envois: EnvoiService) {}
 
   /** Régénère le brouillon agrégé du mail de service pour relecture (lecture seule). */
-  @Get('validations/semaine/:foyerId/:semaineIso/etablissements/:cle/brouillon')
+  @Get(
+    'validations/semaine/:foyerId/:semaineIso/etablissements/:etablissementId/brouillon',
+  )
   brouillon(
     @Param('foyerId', ParseUUIDPipe) foyerId: string,
     @Param('semaineIso', SemaineIsoPipe) semaineIso: string,
-    @Param('cle', CleEtablissementPipe) cle: CleEtablissement,
+    @Param('etablissementId', ParseUUIDPipe) etablissementId: string,
   ): Promise<BrouillonEtablissementVue> {
-    return this.envois.brouillon(foyerId, semaineIso, cle);
+    return this.envois.brouillon(foyerId, semaineIso, etablissementId);
   }
 
   /** Envoie réellement le récap agrégé au service (après relecture). Idempotent. */
@@ -60,6 +58,10 @@ export class EnvoiController {
     @Body(new ZodValidationPipe(envoiEtablissementSchema))
     dto: EnvoiEtablissementDto,
   ): Promise<EnvoiEtablissementResultat> {
-    return this.envois.envoyer(dto.foyerId, dto.semaineIso, dto.cle);
+    return this.envois.envoyer(
+      dto.foyerId,
+      dto.semaineIso,
+      dto.etablissementId,
+    );
   }
 }

@@ -91,19 +91,17 @@ const VUE: SemaineBesoins = {
   ],
 };
 
-/** Brouillon agrégé par établissement, paramétré par la clé demandée. */
-function brouillonPour(cle: string): BrouillonEtablissement {
-  const concerne = cle === 'CRECHE_HIRONDELLES';
+/** Brouillon agrégé par établissement, paramétré par l'`id` demandé (P3). */
+function brouillonPour(etablissementId: string): BrouillonEtablissement {
+  const concerne = etablissementId === ID_CRECHE;
   return {
     foyerId: 'foyer-1',
     semaineIso: '2026-W27',
-    etablissementCle: cle as BrouillonEtablissement['etablissementCle'],
-    etablissementLibelle:
-      cle === 'CRECHE_HIRONDELLES' ? 'Crèche Les Hirondelles' : 'École ABCM',
-    destinataire:
-      cle === 'CRECHE_HIRONDELLES'
-        ? 'contact-creche@example.org'
-        : 'contact-abcm@example.org',
+    etablissementId,
+    etablissementLibelle: concerne ? 'Crèche Les Hirondelles' : 'École ABCM',
+    destinataire: concerne
+      ? 'contact-creche@example.org'
+      : 'contact-abcm@example.org',
     sujet: 'Plannings modifiés — semaine 2026-W27',
     corps: '<p>Bonjour</p>',
     texte: 'Bonjour',
@@ -129,7 +127,8 @@ describe('EditeurSemaine', () => {
     vi.mocked(api.lireSemaineBesoins).mockResolvedValue(VUE);
     vi.mocked(api.ecrireSemaineBesoins).mockResolvedValue(undefined);
     vi.mocked(api.lireBrouillonEtablissement).mockImplementation(
-      (_foyerId, _semaineIso, cle) => Promise.resolve(brouillonPour(cle)),
+      (_foyerId, _semaineIso, etablissementId) =>
+        Promise.resolve(brouillonPour(etablissementId)),
     );
   });
 

@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { DRIZZLE, MailerService } from '@creche-planner/nest-commons';
-import { MODES_CONTRAT } from '@creche-planner/contracts-planification';
 import type { Database } from '../database/database.types.js';
 import {
   contrat,
@@ -14,12 +13,7 @@ import {
   type EnvoiEtablissementRow,
   type StatutEnvoi,
 } from '../database/schema.js';
-import { EtablissementService } from '../etablissement/etablissement.service.js';
-import {
-  cleEtablissementPourMode,
-  CLES_ETABLISSEMENT,
-  type CleEtablissement,
-} from '../etablissement/etablissement.dto.js';
+import { EtablissementProjeteService } from '../etablissement/etablissement-projete.service.js';
 import { aDesModifs, type DeltaModifs } from '../validation/validation.diff.js';
 import {
   brouillonServiceAgrege,
@@ -36,7 +30,7 @@ import type {
 interface BrouillonConstruit {
   readonly foyerId: string;
   readonly semaineIso: string;
-  readonly etablissementCle: CleEtablissement;
+  readonly etablissementId: string;
   readonly etablissementLibelle: string;
   readonly destinataire: string;
   readonly sujet: string;
@@ -52,7 +46,7 @@ interface BrouillonConstruit {
  * avec modifications (remplace l'envoi par-contrat du Lot 6). Deux opérations :
  *
  * - `brouillon` : régénère, en **lecture seule**, le récap agrégé (destinataire résolu
- *   via l'annuaire, sujet, corps rendu multi-enfant à partir des diffs figés du Lot 4)
+ *   via la fiche établissement projetée, sujet, corps rendu multi-enfant à partir des diffs figés du Lot 4)
  *   pour la relecture humaine. Indique si un envoi réel serait neutralisé (`dryRun`).
  * - `envoyer` : **après** le clic « Envoyer », réserve un slot `envoi_etablissement`
  *   (`EN_COURS`) via la clé `UNIQUE(foyer, semaine, établissement)`, sollicite le
@@ -70,7 +64,7 @@ export class EnvoiService {
 
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
-    private readonly etablissements: EtablissementService,
+    private readonly etablissements: EtablissementProjeteService,
     private readonly mailer: MailerService,
   ) {}
 
@@ -78,13 +72,13 @@ export class EnvoiService {
   async brouillon(
     foyerId: string,
     semaineIso: string,
-    cle: CleEtablissement,
+    etablissementId: string,
   ): Promise<BrouillonEtablissementVue> {
-    const b = await this.construire(foyerId, semaineIso, cle);
+    const b = await this.construire(foyerId, semaineIso, etablissementId);
     return {
       foyerId: b.foyerId,
       semaineIso: b.semaineIso,
-      etablissementCle: b.etablissementCle,
+      etablissementId: b.etablissementId,
       etablissementLibelle: b.etablissementLibelle,
       destinataire: b.destinataire,
       sujet: b.sujet,
@@ -104,9 +98,9 @@ export class EnvoiService {
   async envoyer(
     foyerId: string,
     semaineIso: string,
-    cle: CleEtablissement,
+    etablissementId: string,
   ): Promise<EnvoiEtablissementResultat> {
-    const b = await this.construire(foyerId, semaineIso, cle);
+    const b = await this.construire(foyerId, semaineIso, etablissementId);
 
     const id = randomUUID();
     const insere = await this.db
@@ -115,7 +109,7 @@ export class EnvoiService {
         id,
         foyerId: b.foyerId,
         semaineIso: b.semaineIso,
-        etablissementCle: b.etablissementCle,
+        etablissementId: b.etablissementId,
         destinataire: b.destinataire,
         sujet: b.sujet,
         corps: b.corps,
@@ -125,7 +119,7 @@ export class EnvoiService {
         target: [
           envoiEtablissement.foyerId,
           envoiEtablissement.semaineIso,
-          envoiEtablissement.etablissementCle,
+          envoiEtablissement.etablissementId,
         ],
       })
       .returning({ id: envoiEtablissement.id });
@@ -136,10 +130,10 @@ export class EnvoiService {
       const existant = await this.envoiExistant(
         b.foyerId,
         b.semaineIso,
-        b.etablissementCle,
+        b.etablissementId,
       );
       this.logger.log(
-        `Envoi déjà journalisé pour ${b.foyerId}/${b.semaineIso} (${b.etablissementCle}) — ignoré`,
+        `Envoi déjà journalisé pour ${b.foyerId}/${b.semaineIso} (${b.etablissementId}) — ignoré`,
       );
       return this.versResultat(existant);
     }
@@ -164,7 +158,7 @@ export class EnvoiService {
       return {
         foyerId: b.foyerId,
         semaineIso: b.semaineIso,
-        etablissementCle: b.etablissementCle,
+        etablissementId: b.etablissementId,
         destinataire: b.destinataire,
         statut,
         messageId: res.messageId,
@@ -184,7 +178,7 @@ export class EnvoiService {
       return {
         foyerId: b.foyerId,
         semaineIso: b.semaineIso,
-        etablissementCle: b.etablissementCle,
+        etablissementId: b.etablissementId,
         destinataire: b.destinataire,
         statut: 'ECHEC',
         messageId: null,
@@ -195,31 +189,37 @@ export class EnvoiService {
   }
 
   /**
-   * Construit le brouillon agrégé : résout l'établissement destinataire, rassemble les
-   * contrats du foyer rattachés à cet établissement dont la semaine est
-   * `VALIDEE_AVEC_MODIFS` (deltas non vides), et rend un corps multi-enfant. `404` si
-   * l'établissement destinataire est inconnu. Une liste d'enfants vide rend un récap
-   * « aucune modification » (le front ne propose pas l'envoi dans ce cas).
+   * Construit le brouillon agrégé : résout la fiche établissement destinataire (read
+   * model projeté), rassemble les contrats du foyer **rattachés à cet établissement**
+   * (lien explicite `contrat.etablissement_id`) dont la semaine est `VALIDEE_AVEC_MODIFS`
+   * (deltas non vides), et rend un corps multi-enfant. `404` si l'établissement est
+   * inconnu, hors du foyer ou sans adresse de service (récap non routable). Une liste
+   * d'enfants vide rend un récap « aucune modification » (le front ne propose pas
+   * l'envoi dans ce cas).
    */
   private async construire(
     foyerId: string,
     semaineIso: string,
-    cle: CleEtablissement,
+    etablissementId: string,
   ): Promise<BrouillonConstruit> {
-    const etab = await this.etablissements.parCle(cle);
-    if (!etab) {
+    const etab = await this.etablissements.parId(etablissementId);
+    if (etab?.foyerId !== foyerId || etab.emailService === null) {
       throw new NotFoundException([
         {
           champ: 'etablissement',
-          message: `établissement destinataire ${cle} inconnu`,
+          message: `établissement destinataire ${etablissementId} inconnu ou sans adresse de service`,
         },
       ]);
     }
 
-    const enfants = await this.enfantsConcernes(foyerId, semaineIso, cle);
+    const enfants = await this.enfantsConcernes(
+      foyerId,
+      semaineIso,
+      etablissementId,
+    );
     const rendu = brouillonServiceAgrege({
       semaineIso,
-      etablissementLibelle: etab.libelle,
+      etablissementLibelle: etab.nom,
       enfants: enfants.map(
         (e): EnfantModifie => ({
           enfant: e.enfant,
@@ -231,8 +231,8 @@ export class EnvoiService {
     return {
       foyerId,
       semaineIso,
-      etablissementCle: cle,
-      etablissementLibelle: etab.libelle,
+      etablissementId,
+      etablissementLibelle: etab.nom,
       destinataire: etab.emailService,
       sujet: rendu.subject,
       corps: rendu.html,
@@ -242,15 +242,16 @@ export class EnvoiService {
   }
 
   /**
-   * Rassemble les enfants du foyer concernés par l'établissement `cle` : les semaines
-   * `VALIDEE_AVEC_MODIFS` (delta non vide) du foyer dont le mode du contrat se résout
-   * vers cette clé. Deux requêtes (notifications du foyer + contrats du foyer), jointes
-   * en mémoire — la cardinalité est faible (quelques contrats par foyer).
+   * Rassemble les enfants du foyer concernés par l'établissement : les semaines
+   * `VALIDEE_AVEC_MODIFS` (delta non vide) du foyer dont le contrat est **rattaché** à
+   * cet établissement (`contrat.etablissement_id`). Deux requêtes (notifications du foyer
+   * + contrats du foyer), jointes en mémoire — la cardinalité est faible (quelques
+   * contrats par foyer).
    */
   private async enfantsConcernes(
     foyerId: string,
     semaineIso: string,
-    cle: CleEtablissement,
+    etablissementId: string,
   ): Promise<EnfantBrouillon[]> {
     const notifs = await this.db
       .select()
@@ -276,7 +277,7 @@ export class EnvoiService {
     const enfants: EnfantBrouillon[] = [];
     for (const n of notifs) {
       const c = parId.get(n.contratId);
-      if (!c || this.cleEtablissement(c.mode) !== cle) {
+      if (c?.etablissementId !== etablissementId) {
         continue;
       }
       const delta: DeltaModifs = n.deltaModifs ?? { jours: [] };
@@ -292,12 +293,6 @@ export class EnvoiService {
         a.contratId.localeCompare(b.contratId),
     );
     return enfants;
-  }
-
-  /** Résout la clé d'établissement depuis le mode du contrat (renarrow sûr). */
-  private cleEtablissement(mode: string): CleEtablissement | undefined {
-    const connu = MODES_CONTRAT.find((m) => m === mode);
-    return connu ? cleEtablissementPourMode(connu) : undefined;
   }
 
   /**
@@ -316,7 +311,7 @@ export class EnvoiService {
   private async envoiExistant(
     foyerId: string,
     semaineIso: string,
-    etablissementCle: string,
+    etablissementId: string,
   ): Promise<EnvoiEtablissementRow> {
     const lignes = await this.db
       .select()
@@ -325,7 +320,7 @@ export class EnvoiService {
         and(
           eq(envoiEtablissement.foyerId, foyerId),
           eq(envoiEtablissement.semaineIso, semaineIso),
-          eq(envoiEtablissement.etablissementCle, etablissementCle),
+          eq(envoiEtablissement.etablissementId, etablissementId),
         ),
       );
     const ligne = lignes[0];
@@ -333,7 +328,7 @@ export class EnvoiService {
       // Le conflit d'insert garantit l'existence ; une absence ici signale une course
       // anormale (suppression concurrente) plutôt qu'un cas nominal.
       throw new Error(
-        `envoi introuvable après conflit : ${foyerId}/${semaineIso}/${etablissementCle}`,
+        `envoi introuvable après conflit : ${foyerId}/${semaineIso}/${etablissementId}`,
       );
     }
     return ligne;
@@ -345,22 +340,13 @@ export class EnvoiService {
     return {
       foyerId: ligne.foyerId,
       semaineIso: ligne.semaineIso,
-      etablissementCle: this.cle(ligne.etablissementCle),
+      etablissementId: ligne.etablissementId,
       destinataire: ligne.destinataire,
       statut: this.statut(ligne.statut),
       messageId: ligne.messageId,
       erreur: ligne.erreur,
       envoyeLe: ligne.envoyeLe ? ligne.envoyeLe.toISOString() : null,
     };
-  }
-
-  /** Renarrow d'une clé d'établissement lue en base. */
-  private cle(valeur: string): CleEtablissement {
-    const connue = CLES_ETABLISSEMENT.find((c) => c === valeur);
-    if (!connue) {
-      throw new Error(`clé d'établissement inconnue en base : ${valeur}`);
-    }
-    return connue;
   }
 
   /** Renarrow d'un statut d'envoi lu en base. */
