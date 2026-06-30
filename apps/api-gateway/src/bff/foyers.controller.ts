@@ -8,12 +8,14 @@ import {
   Param,
   Post,
   Put,
+  Req,
 } from '@nestjs/common';
 import {
   FoyerClient,
   type EnfantVue,
   type FoyerVue,
   type ParentVue,
+  type SaisieParent,
 } from '../clients/foyer.client.js';
 import {
   ajouterEnfantSchema,
@@ -24,8 +26,11 @@ import {
   modifierParentSchema,
   valider,
 } from './bff.dto.js';
-import { AdminSeulement } from '../security/admin.decorator.js';
+import { loadConfig } from '../config.js';
+import { estAdmin } from '../security/admin.js';
+import { CreationFoyerUnique } from '../security/creation-foyer-unique.decorator.js';
 import { FoyerScope } from '../security/foyer-scope.decorator.js';
+import type { RequeteIdentifiable } from '../security/identite.js';
 import { relayer } from './relais.js';
 
 /** Vue agrégée d'un dossier foyer (identité + enfants + parents rattachés). */
@@ -41,29 +46,37 @@ interface DossierFoyerVue {
  * renvoie le foyer **et** ses enfants/parents en une réponse. Les parents
  * exposent une vraie CRUD (sous-ressource éditable, cf. notifications hebdo).
  *
- * **Autorisation.** La **création** de foyer (`POST`) reste `@AdminSeulement()` —
- * amorçage réservé à un e-mail de `ADMIN_EMAILS` quand le gating est actif (cf.
- * `AdminGuard`). En revanche l'**édition** d'un foyer existant — ses scalaires
- * (`PUT /foyers/:id`) comme ses parents (ajout / édition / retrait) — est
- * `@FoyerScope('param:id')` : le **parent du foyer** la pilote (l'admin garde un
- * bypass réparateur), un tiers prend 403. La gestion des **enfants** du foyer
- * (ajout `POST`, édition `PUT`, suppression `DELETE /foyers/:id/enfants[...]`) suit
- * la même règle. Les **lectures** (liste/lecture de foyer, liste de parents)
- * restent ouvertes ici.
+ * **Autorisation.** La **création** de foyer (`POST`) est `@CreationFoyerUnique()`
+ * (P5, besoin B) : **self-service de la 1ʳᵉ création** — un parent non-admin crée
+ * son foyer une fois, une 2ᵉ création prend **409** ; l'admin crée sans limite
+ * (provisioning), une identité absente reste en mode hérité. Le créateur non-admin
+ * est **rattaché comme parent** (sinon il ne pourrait pas éditer via `@FoyerScope`).
+ * L'**édition** d'un foyer existant — ses scalaires (`PUT /foyers/:id`) comme ses
+ * parents (ajout / édition / retrait) — est `@FoyerScope('param:id')` : le **parent
+ * du foyer** la pilote (l'admin garde un bypass réparateur), un tiers prend 403. La
+ * gestion des **enfants** du foyer (ajout `POST`, édition `PUT`, suppression
+ * `DELETE /foyers/:id/enfants[...]`) suit la même règle. Les **lectures**
+ * (liste/lecture de foyer, liste de parents) restent ouvertes ici.
  */
 @Controller({ path: 'foyers', version: '1' })
 export class FoyersController {
   constructor(private readonly foyers: FoyerClient) {}
 
   /**
-   * Crée un foyer puis rattache ses enfants et parents (orchestration, admin).
+   * Crée un foyer puis rattache ses enfants et parents (orchestration).
    * **Pas de `@FoyerScope`** : amorçage (le foyer n'existe pas encore) ; l'accès
-   * est borné par `@AdminSeulement()` (provisioning admin, PR6).
+   * est borné par `@CreationFoyerUnique()` (self-service 1ʳᵉ création, garde
+   * create-once, P5). Le **créateur** non-admin est ajouté à ses parents s'il n'y
+   * figure pas, pour pouvoir éditer ensuite (cf. `AppartenanceGuard`).
    */
   @Post()
-  @AdminSeulement()
-  creer(@Body() corps: unknown): Promise<DossierFoyerVue> {
+  @CreationFoyerUnique()
+  creer(
+    @Body() corps: unknown,
+    @Req() req?: RequeteIdentifiable,
+  ): Promise<DossierFoyerVue> {
     const saisie = valider(creerDossierFoyerSchema, corps);
+    const parentsSaisis = parentsAvecCreateur(saisie.parents, req);
     return relayer(async () => {
       const foyer = await this.foyers.creerFoyer({
         ressourcesMensuelles: saisie.ressourcesMensuelles,
@@ -76,7 +89,7 @@ export class FoyersController {
         enfants.push(await this.foyers.ajouterEnfant(foyer.id, enfant));
       }
       const parents: ParentVue[] = [];
-      for (const parent of saisie.parents) {
+      for (const parent of parentsSaisis) {
         parents.push(await this.foyers.ajouterParent(foyer.id, parent));
       }
       return { foyer, enfants, parents };
@@ -209,4 +222,32 @@ export class FoyersController {
   ): Promise<void> {
     return relayer(() => this.foyers.retirerParent(id, parentId));
   }
+}
+
+/**
+ * Garantit que l'**e-mail du créateur** figure parmi les parents (P5) : sans cela
+ * un parent qui s'auto-crée un foyer ne pourrait pas l'éditer ensuite
+ * (`AppartenanceGuard` autorise via `foyersParEmail`). On n'auto-ajoute que pour
+ * une **identité non-admin** : l'admin **provisionne pour autrui** (le rattacher à
+ * chaque foyer créé le ferait destinataire des récaps et polluerait la liste) ;
+ * une identité absente reste en mode hérité (aucun ajout). Idempotent : on ne
+ * duplique pas un e-mail déjà saisi (comparaison insensible à la casse).
+ */
+function parentsAvecCreateur(
+  parents: readonly SaisieParent[],
+  req?: RequeteIdentifiable,
+): SaisieParent[] {
+  const email = req?.identite?.email;
+  if (email === undefined) {
+    return [...parents]; // mode hérité : aucune identité → on ne rattache rien
+  }
+  const { adminEmails } = loadConfig();
+  if (estAdmin(email, adminEmails)) {
+    return [...parents]; // provisioning admin : ne pas s'auto-rattacher
+  }
+  const cible = email.trim().toLowerCase();
+  const dejaPresent = parents.some(
+    (p) => p.email.trim().toLowerCase() === cible,
+  );
+  return dejaPresent ? [...parents] : [...parents, { email }];
 }

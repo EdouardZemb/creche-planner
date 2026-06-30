@@ -119,6 +119,19 @@ services:
   api-gateway:
     ports:
       - '3000:3000'
+    environment:
+      # Pile LOCALE / E2E uniquement (override jamais utilisé par server/staging).
+      # L'image embarque NODE_ENV=production, où l'en-tête d'identité de dev
+      # `X-Dev-User-Email` est ignoré. On repasse en `development` ici pour POUVOIR
+      # injecter une identité sans Cloudflare Access (parcours E2E « create-once »
+      # P5). `GATEWAY_AUTH_DISABLED=1` (compose de base) reste en vigueur → le
+      # garde-fou de prod n'exige rien.
+      NODE_ENV: development
+      # E-mail sentinelle (aucun utilisateur réel) : active le gating admin pour
+      # que l'identité de dev injectée soit NON-admin → la garde create-once (P5)
+      # s'exerce de bout en bout. Aucune route n'étant plus @AdminSeulement,
+      # l'AdminGuard reste inerte pour tous les autres parcours.
+      ADMIN_EMAILS: admin-sentinelle@e2e.invalid
 
   web:
     ports:

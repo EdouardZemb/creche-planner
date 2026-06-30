@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
@@ -340,7 +340,7 @@ describe('App — mode borné par identité (PR6)', () => {
     expect(mockedApi.listerFoyers).not.toHaveBeenCalled();
   });
 
-  it('identité + 0 foyer : écran « contactez l’administrateur » (pas de création)', async () => {
+  it('identité + 0 foyer : écran « créer mon foyer » (self-service, P5)', async () => {
     mockedApi.moi.mockResolvedValue({
       email: 'inconnu@test.fr',
       admin: false,
@@ -349,8 +349,12 @@ describe('App — mode borné par identité (PR6)', () => {
     rendre('/');
 
     expect(
-      await screen.findByText('Aucun foyer ne vous est rattaché'),
+      await screen.findByText('Vous n’avez pas encore de foyer'),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Créer mon foyer' }),
+    ).toHaveAttribute('href', '/foyers/new');
+    // La page de création n'est pas rendue d'office : elle suit un clic.
     expect(screen.queryByText('PAGE_NOUVEAU_FOYER')).not.toBeInTheDocument();
   });
 
@@ -420,5 +424,41 @@ describe('App — mode borné par identité (PR6)', () => {
     expect(
       screen.getByRole('link', { name: 'Nouveau foyer' }),
     ).toBeInTheDocument();
+  });
+
+  it('P5 : non-admin SANS foyer garde « Nouveau foyer » (1ʳᵉ création self-service)', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [],
+    });
+    mockedApi.listerFoyers.mockResolvedValue([{ id: FOYER_ID }]);
+    rendre(`/foyers/${FOYER_ID}/planning`);
+    await screen.findByText('PAGE_PLANNING');
+
+    expect(
+      screen.getByRole('link', { name: 'Nouveau foyer' }),
+    ).toBeInTheDocument();
+  });
+
+  it('P5 : hors contexte foyer, « Modifier mon foyer » mène à l’édition de son foyer', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [FOYER_ID],
+    });
+    // Page 404 (hors /foyers/:id) : le raccourci d'en-tête doit apparaître.
+    rendre('/page-inconnue');
+
+    // On vise l'en-tête (la page 404 porte son propre CTA « Nouveau foyer »).
+    const nav = await screen.findByRole('navigation', {
+      name: 'Navigation principale',
+    });
+    const lien = within(nav).getByRole('link', { name: 'Modifier mon foyer' });
+    expect(lien).toHaveAttribute('href', `/foyers/${FOYER_ID}/modifier`);
+    // Dans l'en-tête, « Nouveau foyer » est masqué (create-once, non-admin).
+    expect(
+      within(nav).queryByRole('link', { name: 'Nouveau foyer' }),
+    ).not.toBeInTheDocument();
   });
 });

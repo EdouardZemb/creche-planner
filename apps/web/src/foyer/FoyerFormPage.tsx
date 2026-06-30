@@ -186,7 +186,14 @@ export function FoyerFormPage() {
       setFoyerId(dossier.foyer.id);
       navigate(`/foyers/${dossier.foyer.id}/contrats`);
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.status === 409) {
+        // P5 (create-once) : le BFF refuse une 2ᵉ création. Oriente vers l'édition
+        // (l'écran masque normalement le formulaire en amont ; filet pour une
+        // course où `moi.foyers` était encore vide au montage).
+        setErreurGlobale(
+          'Vous avez déjà un foyer. Modifiez-le plutôt que d’en créer un nouveau.',
+        );
+      } else if (err instanceof ApiError) {
         const erreurs = extraireErreurs(err.corps).map((e) =>
           retraduireErreurParent(e, idsParentsEnvoyes),
         );
@@ -203,16 +210,22 @@ export function FoyerFormPage() {
     }
   }
 
-  // Provisioning admin (option b-ii) : la création de foyer est réservée à un
-  // administrateur. Tant que le gating `ADMIN_EMAILS` est inactif, `moi.admin`
-  // reste permissif (true) et l'écran s'affiche normalement (prod actuelle).
-  if (!moi.loading && !moi.admin) {
+  // P5 (besoin B) : self-service de la 1ʳᵉ création. Un non-admin SANS foyer peut
+  // créer le sien ; un non-admin qui a DÉJÀ un foyer est orienté vers l'édition
+  // (create-once — le BFF renvoie 409 en doublon). L'admin (et le mode hérité,
+  // `moi.admin` permissif) crée normalement.
+  const premierFoyer = moi.foyers[0];
+  if (!moi.loading && !moi.admin && premierFoyer !== undefined) {
     return (
       <EtatVide
-        titre="Création réservée à l'administrateur"
-        description="Seul un administrateur peut créer un foyer et y rattacher des parents. Contactez l'administrateur pour faire créer le vôtre."
+        titre="Vous avez déjà un foyer"
+        description="Vous ne pouvez créer qu'un seul foyer. Modifiez le vôtre plutôt que d'en créer un nouveau."
         actions={[
-          { libelle: 'Mes foyers', href: '/mes-foyers', primaire: true },
+          {
+            libelle: 'Modifier mon foyer',
+            href: `/foyers/${premierFoyer}/modifier`,
+            primaire: true,
+          },
         ]}
       />
     );
