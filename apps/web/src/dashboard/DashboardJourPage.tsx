@@ -3,7 +3,7 @@ import {
   jourCourantParis,
   semaineIsoDeDate,
 } from '@creche-planner/shared-semaine';
-import type { SemaineBesoins } from '../types/bff';
+import type { CoutMoisVue, SemaineBesoins } from '../types/bff';
 import {
   couleurAjoute,
   couleurAjuste,
@@ -13,9 +13,11 @@ import { couleurDuMode } from '../utils/couleurs';
 import { libelleMode } from '../utils/libelles';
 import {
   formaterDateFr,
+  formaterMoisFr,
   LIBELLES_JOURS,
   jourSemaineDeIso,
 } from '../utils/dates';
+import { centimesEnEuros } from '../utils/money';
 import { useAsync } from '../hooks/useAsync';
 import { useTitrePage } from '../hooks/useTitrePage';
 import { api } from '../api/client';
@@ -109,6 +111,47 @@ function RangeeJour({
 }
 
 /**
+ * Bandeau « coût du mois » (P3c) : le coût RÉEL (`simule=false`) du mois courant,
+ * en lecture seule, avec un lien vers le détail des coûts. Secondaire et
+ * non-bloquant — s'efface silencieusement tant qu'il charge ou s'il échoue, pour
+ * ne jamais masquer la journée. Réutilise le client `lireCoutMois` et le
+ * formatage `centimesEnEuros` (mêmes conventions que le planning / les coûts).
+ */
+function BandeauCoutMois({ foyerId, mois }: { foyerId: string; mois: string }) {
+  const { data } = useAsync<CoutMoisVue>(
+    (signal) => api.lireCoutMois(foyerId, mois, false, { signal }),
+    [foyerId, mois],
+  );
+  if (!data) {
+    return null;
+  }
+  return (
+    <div
+      className="carte"
+      style={{
+        display: 'flex',
+        alignItems: 'baseline',
+        justifyContent: 'space-between',
+        gap: '0.75rem',
+        flexWrap: 'wrap',
+      }}
+    >
+      <span>
+        Coût de <strong>{formaterMoisFr(mois)}</strong>
+      </span>
+      <span style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}>
+        <strong style={{ fontSize: '1.1rem' }}>
+          {centimesEnEuros(data.totalCentimes)}
+        </strong>
+        <Link to={`/foyers/${foyerId}/couts`} className="btn secondaire">
+          Détail
+        </Link>
+      </span>
+    </div>
+  );
+}
+
+/**
  * Tableau de bord « ma journée » : les gardes prévues **aujourd'hui** (fuseau
  * Europe/Paris) pour le foyer, dérivées de la vue hebdomadaire consolidée
  * (`lireSemaineBesoins`) par la logique pure `lignesDuJour`. Per-foyer (route
@@ -142,6 +185,10 @@ export function DashboardJourPage() {
       <p className="muted" style={{ marginTop: 0 }}>
         {LIBELLES_JOURS[jour]} {formaterDateFr(aujourdhui)}
       </p>
+
+      {/* P3c : coût réel du mois courant, indépendant des gardes du jour →
+          toujours rendu (hors états loading/erreur de la journée). */}
+      <BandeauCoutMois foyerId={id} mois={mois} />
 
       {loading && !data && (
         <div className="carte muted" aria-live="polite">

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { jourCourantParis } from '@creche-planner/shared-semaine';
 import { DashboardJourPage } from './DashboardJourPage';
 import type {
+  CoutMoisVue,
   PlageHoraire,
   SemaineBesoins,
   SemaineTypeCreche,
@@ -12,6 +13,7 @@ import type {
 vi.mock('../api/client', () => ({
   api: {
     lireSemaineBesoins: vi.fn(),
+    lireCoutMois: vi.fn(),
   },
   // `messageErreur` (utils/erreurs) teste `e instanceof ApiError` : le mock doit
   // exposer la classe, sinon le chemin d'erreur lève « No ApiError export ».
@@ -74,6 +76,16 @@ const semaineVide: SemaineBesoins = {
   contrats: [],
 };
 
+// Coût mensuel réel servi au bandeau « coût du mois » (P3c).
+const coutMois = {
+  foyerId: FOYER_ID,
+  mois: '2026-07',
+  simule: false,
+  totalCentimes: 85116,
+  prestations: [],
+  lignes: [],
+} as CoutMoisVue;
+
 function renderPage(foyerId = FOYER_ID) {
   return render(
     <MemoryRouter initialEntries={[`/foyers/${foyerId}/dashboard`]}>
@@ -90,6 +102,10 @@ function renderPage(foyerId = FOYER_ID) {
 describe('DashboardJourPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Le bandeau « coût du mois » (P3c) est secondaire : par défaut on sert un
+    // coût valide pour qu'il ne pollue pas les autres cas (il s'efface seul si
+    // l'appel échoue / charge).
+    vi.mocked(api.lireCoutMois).mockResolvedValue(coutMois);
   });
 
   it('affiche le chargement initialement', () => {
@@ -157,5 +173,38 @@ describe('DashboardJourPage', () => {
     expect(
       screen.getByRole('button', { name: /Réessayer/i }),
     ).toBeInTheDocument();
+  });
+
+  it('bandeau « coût du mois » (P3c) : montant réel du mois courant + lien détail', async () => {
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineVide);
+
+    renderPage();
+
+    // Coût réel formaté (851,16 €) rendu quel que soit le contenu de la journée.
+    expect(await screen.findByText(/851,16/)).toBeInTheDocument();
+    // Le coût demandé est celui du mois courant (Paris), non simulé.
+    expect(api.lireCoutMois).toHaveBeenCalledWith(
+      FOYER_ID,
+      jourCourantParis(new Date()).slice(0, 7),
+      false,
+      expect.anything(),
+    );
+    expect(screen.getByRole('link', { name: /Détail/i })).toHaveAttribute(
+      'href',
+      `/foyers/${FOYER_ID}/couts`,
+    );
+  });
+
+  it('bandeau « coût du mois » : silencieux si le coût échoue (journée préservée)', async () => {
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineVide);
+    vi.mocked(api.lireCoutMois).mockRejectedValue(new Error('coût indispo'));
+
+    renderPage();
+
+    // La journée reste lisible ; le bandeau ne rend rien (pas de lien « Détail »).
+    expect(await screen.findByText(/Aucune garde prévue/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /Détail/i }),
+    ).not.toBeInTheDocument();
   });
 });
