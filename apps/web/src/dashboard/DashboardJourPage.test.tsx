@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { jourCourantParis } from '@creche-planner/shared-semaine';
 import { DashboardJourPage } from './DashboardJourPage';
 import type {
   PlageHoraire,
@@ -106,7 +107,7 @@ describe('DashboardJourPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('liste les gardes du jour avec un lien « Modifier » vers le planning', async () => {
+  it('liste les gardes du jour avec un lien « Modifier » deep-linké vers le contrat (P3a)', async () => {
     vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineAvecGarde);
 
     renderPage();
@@ -117,10 +118,19 @@ describe('DashboardJourPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Gardé/)).toBeInTheDocument();
 
+    // P3a : « Modifier » ouvre le planning directement sur l'onglet enfant + le
+    // sous-onglet mode de cette garde, au mois du jour affiché (params lus par
+    // PlanningPage), au lieu du planning générique.
     const lien = screen.getByRole('link', {
       name: /Modifier la garde de Léa/i,
     });
-    expect(lien).toHaveAttribute('href', `/foyers/${FOYER_ID}/planning`);
+    const url = new URL(lien.getAttribute('href')!, 'http://x');
+    expect(url.pathname).toBe(`/foyers/${FOYER_ID}/planning`);
+    expect(url.searchParams.get('enfant')).toBe('Léa');
+    expect(url.searchParams.get('mode')).toBe('CRECHE_PSU');
+    expect(url.searchParams.get('mois')).toBe(
+      jourCourantParis(new Date()).slice(0, 7),
+    );
     // Le titre d'onglet reflète la page (EX-05).
     expect(document.title).toMatch(/Aujourd/);
   });
