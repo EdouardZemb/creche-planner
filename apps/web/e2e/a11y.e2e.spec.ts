@@ -11,7 +11,8 @@ import AxeBuilder from '@axe-core/playwright';
 //
 // Le foyer actif est lu depuis `localStorage` (clé `creche:foyerId`) ; on l'amorce
 // via `addInitScript` AVANT chargement pour que la racine `/` redirige vers le
-// planning du foyer. Les contrats, eux, transitent désormais par le BFF : depuis
+// tableau de bord « Aujourd'hui » du foyer (P3b). Les contrats, eux, transitent
+// désormais par le BFF : depuis
 // le refactor API-backed (2026-06-06), `useContrats` lit la liste via
 // `GET /api/v1/contrats?foyer=` — mockée dans `mockerBff` ci-dessous — et non plus
 // dans `sessionStorage`. C'est cette liste qui alimente les onglets du planning (UT-01).
@@ -114,6 +115,17 @@ const coutAnnuel = {
   })),
 };
 
+// Vue hebdo consolidée servie au tableau de bord « Aujourd'hui » (P3b) : foyer
+// SANS garde planifiée → l'écran affiche l'état vide accessible (« Aucune garde
+// prévue aujourd'hui » + lien vers le planning), déterministe quel que soit le
+// jour réel où tourne l'audit. C'est cette page que la redirection racine audite.
+const semaineBesoinsVide = {
+  semaineIso: `${ANNEE}-W01`,
+  jours: [],
+  etablissements: [],
+  contrats: [],
+};
+
 /**
  * Amorce les stockages navigateur AVANT le chargement de la page : foyer actif
  * (localStorage) et contrats du foyer (sessionStorage) attendus par `utils/store.ts`.
@@ -156,6 +168,15 @@ async function mockerBff(page: Page): Promise<void> {
     }
     if (method === 'PUT' && pathname.includes('/plannings/')) {
       return route.fulfill({ status: 204, body: '' });
+    }
+    // Tableau de bord « Aujourd'hui » (P3b) : vue hebdo consolidée du foyer
+    // (GET /api/v1/notifications/semaine/:foyer/:semaine/besoins).
+    if (
+      method === 'GET' &&
+      pathname.includes('/notifications/semaine/') &&
+      pathname.endsWith('/besoins')
+    ) {
+      return route.fulfill({ status: 200, json: semaineBesoinsVide });
     }
     if (method === 'GET' && pathname.endsWith('/api/v1/couts/annuel')) {
       return route.fulfill({ status: 200, json: coutAnnuel });
@@ -202,14 +223,14 @@ test.describe("Audit d'accessibilité automatisé (axe-core, WCAG 2.1 AA)", () =
   });
 
   test('accueil / redirection racine — 0 violation AA', async ({ page }) => {
-    // La racine redirige vers /foyers/:id/planning (foyer amorcé) : on attend la
-    // stabilisation puis on audite la page atterrie.
+    // La racine redirige vers /foyers/:id/dashboard (foyer amorcé, P3b) : on
+    // attend la stabilisation puis on audite le tableau de bord « Aujourd'hui ».
     await page.goto('/');
-    await expect(page).toHaveURL(/\/foyers\/foyer-a11y\/planning/);
+    await expect(page).toHaveURL(/\/foyers\/foyer-a11y\/dashboard/);
     await expect(
-      page.getByRole('heading', { name: /Planning mensuel/i }),
+      page.getByRole('heading', { name: /Aujourd’hui/i }),
     ).toBeVisible();
-    const r = await auditer(page, 'accueil→planning');
+    const r = await auditer(page, 'accueil→dashboard');
     expect(r.violations).toEqual([]);
   });
 
