@@ -72,10 +72,15 @@ function MesFoyersPage() {
     return <p className="muted">Chargement de votre session…</p>;
   }
   if (moi.foyers.length === 0) {
+    // P5 : self-service de la 1ʳᵉ création (besoin B). Sans foyer rattaché, on
+    // propose de créer le sien plutôt que de renvoyer vers un administrateur.
     return (
       <EtatVide
-        titre="Aucun foyer ne vous est rattaché"
-        description="Votre compte n'est rattaché à aucun foyer. Contactez l'administrateur pour qu'il vous rattache au vôtre."
+        titre="Vous n’avez pas encore de foyer"
+        description="Créez votre foyer pour commencer à planifier la garde de vos enfants."
+        actions={[
+          { libelle: 'Créer mon foyer', href: '/foyers/new', primaire: true },
+        ]}
       />
     );
   }
@@ -126,6 +131,10 @@ function Entete() {
   // les liens foyer pour cette pseudo-valeur.
   const id = foyerId && foyerId !== 'new' ? foyerId : null;
   const moi = useMoi();
+  // P5 : un non-admin ne peut créer qu'à défaut de foyer (create-once) ; l'admin
+  // crée sans limite, et le mode hérité reste permissif (`moi.admin` vrai).
+  const peutCreerFoyer = moi.admin || moi.foyers.length === 0;
+  const premierFoyer = moi.foyers[0];
   return (
     <header className="app-header">
       <a href="#contenu" className="skip-link">
@@ -156,9 +165,19 @@ function Entete() {
         {moi.foyers.length > 1 && (
           <NavLink to="/mes-foyers">Mes foyers</NavLink>
         )}
-        {/* Création réservée à l'admin (provisioning b-ii). Permissif tant que le
-            gating ADMIN_EMAILS est inactif → la prod actuelle conserve le lien. */}
-        {moi.admin && <NavLink to="/foyers/new">Nouveau foyer</NavLink>}
+        {/* P5 : hors d'un contexte foyer (le bloc `id` ci-dessus porte déjà
+            « Modifier le foyer »), raccourci vers l'édition de SON foyer dès
+            qu'au moins un foyer est rattaché. */}
+        {!id && premierFoyer && (
+          <NavLink to={`/foyers/${premierFoyer}/modifier`}>
+            Modifier mon foyer
+          </NavLink>
+        )}
+        {/* P5 : création self-service de la 1ʳᵉ fois. Masquée pour un non-admin
+            qui a déjà un foyer (create-once → on oriente vers l'édition) ;
+            l'admin garde l'accès (provisioning) et le mode hérité (admin
+            permissif) reste inchangé. */}
+        {peutCreerFoyer && <NavLink to="/foyers/new">Nouveau foyer</NavLink>}
       </nav>
     </header>
   );

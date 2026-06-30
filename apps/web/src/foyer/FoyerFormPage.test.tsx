@@ -352,12 +352,12 @@ describe('FoyerFormPage', () => {
   });
 });
 
-describe('FoyerFormPage — gating admin (PR6)', () => {
+describe('FoyerFormPage — accès self-service (P5, besoin B)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('non-admin : écran « réservé à l’administrateur », pas de formulaire', async () => {
+  it('non-admin SANS foyer : le formulaire de création s’affiche (self-service)', async () => {
     mockedApi.moi.mockResolvedValue({
       email: 'parent@test.fr',
       admin: false,
@@ -372,11 +372,33 @@ describe('FoyerFormPage — gating admin (PR6)', () => {
     );
 
     expect(
-      await screen.findByText("Création réservée à l'administrateur"),
+      await screen.findByRole('button', { name: 'Créer le foyer' }),
+    ).toBeInTheDocument();
+  });
+
+  it('non-admin AVEC un foyer : écran d’orientation vers l’édition (create-once)', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: ['foyer-9'],
+    });
+    render(
+      <MemoryRouter>
+        <MoiProvider>
+          <FoyerFormPage />
+        </MoiProvider>
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText('Vous avez déjà un foyer'),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Créer le foyer' }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Modifier mon foyer' }),
+    ).toHaveAttribute('href', '/foyers/foyer-9/modifier');
   });
 
   it('admin : le formulaire de création s’affiche', async () => {
@@ -396,5 +418,29 @@ describe('FoyerFormPage — gating admin (PR6)', () => {
     expect(
       await screen.findByRole('button', { name: 'Créer le foyer' }),
     ).toBeInTheDocument();
+  });
+
+  it('refus 409 du BFF (course) : message orientant vers l’édition', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: true,
+      foyers: [],
+    });
+    mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(409, undefined));
+    render(
+      <MemoryRouter>
+        <MoiProvider>
+          <FoyerFormPage />
+        </MoiProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Créer le foyer/i }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /vous avez déjà un foyer/i,
+    );
   });
 });

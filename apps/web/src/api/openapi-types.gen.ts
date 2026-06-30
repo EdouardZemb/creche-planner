@@ -110,7 +110,10 @@ export interface paths {
             };
         };
         put?: never;
-        /** Créer un foyer et ses enfants (orchestration) */
+        /**
+         * Créer un foyer et ses enfants (orchestration)
+         * @description Self-service de la première création (P5). Une identité non-admin qui possède déjà un foyer reçoit 409 (create-once) ; l’admin crée sans limite, une identité absente reste en mode hérité. Le créateur non-admin est rattaché comme parent du foyer.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -155,6 +158,13 @@ export interface paths {
                             parents: components["schemas"]["ParentVue"][];
                         };
                     };
+                };
+                /** @description Création refusée : l’utilisateur (non-admin identifié) possède déjà un foyer. Orienter vers l’édition de son foyer. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
                 };
             };
         };

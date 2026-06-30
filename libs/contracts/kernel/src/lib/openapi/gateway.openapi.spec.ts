@@ -34,6 +34,14 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     );
   });
 
+  it('documente le 409 create-once sur la création de foyer (POST /foyers)', () => {
+    const operation = gatewayOpenApiDocument.paths['/api/v1/foyers'].post;
+    expect(operation).toBeDefined();
+    expect(operation.responses['201']).toBeDefined();
+    expect(operation.responses['409']).toBeDefined();
+    expect(operation.responses['409'].description).toMatch(/déjà un foyer/i);
+  });
+
   it('expose l’ajout d’un enfant (POST /foyers/{id}/enfants)', () => {
     const operation =
       gatewayOpenApiDocument.paths['/api/v1/foyers/{id}/enfants'].post;

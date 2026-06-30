@@ -105,6 +105,88 @@ describe('FoyersController · création orchestrée', () => {
     ).toThrow(BadRequestException);
     expect(creerFoyer).not.toHaveBeenCalled();
   });
+
+  // P5 — rattachement du créateur : sans identité (mode hérité) on ne rattache
+  // personne d'office ; avec une identité non-admin, le créateur est ajouté à ses
+  // parents s'il n'y figure pas, pour pouvoir éditer ensuite (@FoyerScope).
+  it('mode hérité (sans identité) : n’auto-rattache aucun parent', async () => {
+    const creerFoyer = vi.fn().mockResolvedValue(FOYER);
+    const ajouterParent = vi.fn();
+    const controller = new FoyersController({
+      creerFoyer,
+      ajouterEnfant: vi.fn(),
+      ajouterParent,
+    } as unknown as FoyerClient);
+
+    const vue = await controller.creer({
+      ressourcesMensuelles: 6716.92,
+      rfr: 72705,
+      nbEnfantsACharge: 2,
+      nbParts: 3,
+    });
+
+    expect(ajouterParent).not.toHaveBeenCalled();
+    expect(vue.parents).toEqual([]);
+  });
+
+  it('identité non-admin : rattache le créateur comme parent (auto-ajout)', async () => {
+    const creerFoyer = vi.fn().mockResolvedValue(FOYER);
+    const ajouterParent = vi
+      .fn()
+      .mockImplementation((_id: string, saisie: { email: string }) =>
+        Promise.resolve(parent({ id: 'p1', email: saisie.email })),
+      );
+    const controller = new FoyersController({
+      creerFoyer,
+      ajouterEnfant: vi.fn(),
+      ajouterParent,
+    } as unknown as FoyerClient);
+
+    const vue = await controller.creer(
+      {
+        ressourcesMensuelles: 6716.92,
+        rfr: 72705,
+        nbEnfantsACharge: 2,
+        nbParts: 3,
+      },
+      { headers: {}, identite: { email: 'createur@example.test' } },
+    );
+
+    expect(ajouterParent).toHaveBeenCalledWith('foyer-1', {
+      email: 'createur@example.test',
+    });
+    expect(vue.parents).toHaveLength(1);
+  });
+
+  it('identité non-admin déjà parmi les parents : pas de doublon (insensible à la casse)', async () => {
+    const creerFoyer = vi.fn().mockResolvedValue(FOYER);
+    const ajouterParent = vi
+      .fn()
+      .mockImplementation((_id: string, saisie: { email: string }) =>
+        Promise.resolve(parent({ id: 'p1', email: saisie.email })),
+      );
+    const controller = new FoyersController({
+      creerFoyer,
+      ajouterEnfant: vi.fn(),
+      ajouterParent,
+    } as unknown as FoyerClient);
+
+    await controller.creer(
+      {
+        ressourcesMensuelles: 6716.92,
+        rfr: 72705,
+        nbEnfantsACharge: 2,
+        nbParts: 3,
+        parents: [{ email: 'Createur@Example.test' }],
+      },
+      { headers: {}, identite: { email: 'createur@example.test' } },
+    );
+
+    expect(ajouterParent).toHaveBeenCalledTimes(1);
+    expect(ajouterParent).toHaveBeenCalledWith('foyer-1', {
+      email: 'Createur@Example.test',
+    });
+  });
 });
 
 describe('FoyersController · édition des scalaires', () => {
