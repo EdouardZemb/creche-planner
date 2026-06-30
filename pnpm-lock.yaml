@@ -720,6 +720,9 @@ importers:
       '@creche-planner/contracts-kernel':
         specifier: workspace:*
         version: link:../../libs/contracts/kernel
+      '@creche-planner/shared-semaine':
+        specifier: workspace:*
+        version: link:../../libs/shared/semaine
       '@fullcalendar/core':
         specifier: ~6.1.21
         version: 6.1.21

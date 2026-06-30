@@ -12,6 +12,7 @@ import {
 } from 'react-router-dom';
 import { FoyerFormPage } from './foyer/FoyerFormPage';
 import { FoyerModifierPage } from './foyer/FoyerModifierPage';
+import { DashboardJourPage } from './dashboard/DashboardJourPage';
 import { ContratsPage } from './foyer/ContratsPage';
 import { PlanningPage } from './planning/PlanningPage';
 import { CoutsAnnuelsPage } from './couts/CoutsAnnuelsPage';
@@ -146,6 +147,9 @@ function Entete() {
       <nav aria-label="Navigation principale">
         {id && (
           <>
+            {/* Tableau de bord « ma journée » : visible dès qu'un foyer est
+                actif, pour tous les parents (NON conditionné `moi.admin`). */}
+            <NavLink to={`/foyers/${id}/dashboard`}>Aujourd’hui</NavLink>
             <NavLink to={`/foyers/${id}/contrats`}>Contrats</NavLink>
             <NavLink to={`/foyers/${id}/planning`}>
               Planning
@@ -298,11 +302,12 @@ function titreDepuisPathname(pathname: string): string {
   if (pathname === '/foyers/new') return 'Nouveau foyer';
   if (pathname === '/mes-foyers') return 'Mes foyers';
   const foyer =
-    /^\/foyers\/[^/]+\/(contrats|planning|couts|etablissements|modifier)$/.exec(
+    /^\/foyers\/[^/]+\/(dashboard|contrats|planning|couts|etablissements|modifier)$/.exec(
       pathname,
     );
   if (foyer) {
     const segment = foyer[1];
+    if (segment === 'dashboard') return 'Aujourd’hui';
     if (segment === 'contrats') return 'Contrats';
     if (segment === 'planning') return 'Planning';
     if (segment === 'etablissements') return 'Établissements';
@@ -339,6 +344,7 @@ function Coquille() {
           <Route path="/mes-foyers" element={<MesFoyersPage />} />
           <Route path="/foyers/new" element={<FoyerFormPage />} />
           <Route path="/foyers/:foyerId" element={<GardeFoyer />}>
+            <Route path="dashboard" element={<DashboardJourPage />} />
             <Route path="contrats" element={<ContratsPage />} />
             <Route path="planning" element={<PlanningPage />} />
             <Route path="couts" element={<CoutsAnnuelsPage />} />
