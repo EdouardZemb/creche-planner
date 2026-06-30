@@ -11,7 +11,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(gatewayOpenApiDocument.info.version).toBe('1.0.0');
   });
 
-  it('expose exactement les 13 routes attendues', () => {
+  it('expose exactement les 14 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -19,6 +19,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/openapi.json',
         '/api/v1/foyers',
         '/api/v1/foyers/{id}',
+        '/api/v1/foyers/{id}/enfants',
         '/api/v1/foyers/{id}/parents',
         '/api/v1/foyers/{id}/parents/{parentId}',
         '/api/v1/foyers/{foyerId}/etablissements',
@@ -30,6 +31,18 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/couts/annuel',
       ].sort(),
     );
+  });
+
+  it('expose l’ajout d’un enfant (POST /foyers/{id}/enfants)', () => {
+    const operation =
+      gatewayOpenApiDocument.paths['/api/v1/foyers/{id}/enfants'].post;
+    expect(operation).toBeDefined();
+    expect(
+      operation.responses['201'].content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/EnfantVue' });
+    const corps =
+      operation.requestBody.content['application/json'].schema.required;
+    expect(corps).toEqual(['prenom', 'dateNaissance']);
   });
 
   it('expose l’édition des scalaires d’un foyer (PUT /foyers/{id})', () => {

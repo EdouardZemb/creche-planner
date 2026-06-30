@@ -524,6 +524,49 @@ export const gatewayOpenApiDocument = {
         },
       },
     },
+    '/api/v1/foyers/{id}/enfants': {
+      post: {
+        summary: 'Rattacher un enfant au foyer',
+        description:
+          'Ajoute un enfant à un foyer existant (prénom + date de ' +
+          'naissance). L’édition et la suppression d’un enfant relèvent ' +
+          'd’une phase ultérieure.',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  prenom: { type: 'string' },
+                  dateNaissance: { type: 'string', format: 'date' },
+                },
+                required: ['prenom', 'dateNaissance'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Enfant rattaché.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/EnfantVue' },
+              },
+            },
+          },
+          '404': { description: 'Foyer inconnu.' },
+        },
+      },
+    },
     '/api/v1/foyers/{id}/parents': {
       get: {
         summary: 'Lister les parents actifs d’un foyer',

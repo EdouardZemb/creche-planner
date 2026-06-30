@@ -254,6 +254,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/foyers/{id}/enfants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rattacher un enfant au foyer
+         * @description Ajoute un enfant à un foyer existant (prénom + date de naissance). L’édition et la suppression d’un enfant relèvent d’une phase ultérieure.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        prenom: string;
+                        /** Format: date */
+                        dateNaissance: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Enfant rattaché. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EnfantVue"];
+                    };
+                };
+                /** @description Foyer inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/foyers/{id}/parents": {
         parameters: {
             query?: never;

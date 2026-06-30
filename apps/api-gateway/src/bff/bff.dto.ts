@@ -35,20 +35,24 @@ export const modifierParentSchema = z.object({
   actif: z.boolean().optional(),
 });
 
+/**
+ * Rattachement d'un enfant au foyer (frontière BFF) : prénom + date de naissance.
+ * Sert l'ajout d'un enfant à un foyer existant (`POST /foyers/:id/enfants`) et,
+ * réutilisé, les enfants de la création orchestrée. La validation profonde reste
+ * chez `svc-foyer`.
+ */
+export const ajouterEnfantSchema = z.object({
+  prenom: z.string().min(1),
+  dateNaissance: z.string().min(1),
+});
+
 /** Création orchestrée d'un foyer + ses enfants + ses parents. */
 export const creerDossierFoyerSchema = z.object({
   ressourcesMensuelles: z.number().nonnegative(),
   rfr: z.number().nonnegative(),
   nbEnfantsACharge: z.number().int().min(1),
   nbParts: z.number().positive(),
-  enfants: z
-    .array(
-      z.object({
-        prenom: z.string().min(1),
-        dateNaissance: z.string().min(1),
-      }),
-    )
-    .default([]),
+  enfants: z.array(ajouterEnfantSchema).default([]),
   parents: z.array(ajouterParentSchema).default([]),
 });
 export type CreerDossierFoyer = z.infer<typeof creerDossierFoyerSchema>;

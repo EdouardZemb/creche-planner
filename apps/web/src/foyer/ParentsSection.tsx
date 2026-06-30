@@ -1,0 +1,401 @@
+import { useId, useState } from 'react';
+import { api, ApiError } from '../api/client';
+import { extraireErreurs, messageErreur } from '../utils/erreurs';
+import { retraduireErreurParent } from './parentErreurs';
+import type { ErreurChamp } from '../utils/erreurs';
+import type { ParentVue } from '../types/bff';
+
+/**
+ * Gestion des **parents** d'un foyer dans l'écran d'édition (P3 « cycle de vie du
+ * foyer ») : liste des parents actifs + ajout / édition / retrait, chacun via une
+ * écriture **unitaire** au BFF (`POST`/`PUT`/`DELETE /v1/foyers/:id/parents[...]`,
+ * gardées `@FoyerScope` → pilotables par le parent du foyer). Les lignes
+ * dynamiques reprennent la trame de `FoyerFormPage`, mais ici chaque ligne
+ * persiste indépendamment (pas de soumission groupée).
+ */
+export function ParentsSection({
+  foyerId,
+  parentsInitiaux,
+}: {
+  readonly foyerId: string;
+  readonly parentsInitiaux: readonly ParentVue[];
+}) {
+  const [parents, setParents] = useState<ParentVue[]>(() => [
+    ...parentsInitiaux,
+  ]);
+
+  return (
+    <fieldset style={{ border: 'none', padding: 0, margin: '1.5rem 0 0' }}>
+      <legend style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+        Parents
+      </legend>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Destinataires des récapitulatifs hebdomadaires. Au moins un parent est
+        recommandé.
+      </p>
+
+      {parents.length === 0 && (
+        <p className="muted">Aucun parent rattaché pour l’instant.</p>
+      )}
+
+      {parents.map((parent) => (
+        <LigneParentExistant
+          key={parent.id}
+          foyerId={foyerId}
+          parent={parent}
+          onModifie={(maj) => {
+            setParents((prev) => prev.map((p) => (p.id === maj.id ? maj : p)));
+          }}
+          onRetire={(id) => {
+            setParents((prev) => prev.filter((p) => p.id !== id));
+          }}
+        />
+      ))}
+
+      <FormNouveauParent
+        foyerId={foyerId}
+        onAjoute={(parent) => {
+          setParents((prev) => [...prev, parent]);
+        }}
+      />
+    </fieldset>
+  );
+}
+
+/**
+ * Message d'erreur d'une écriture parent. Le BFF **masque** le détail amont
+ * derrière un corps générique (cf. `relayer`), si bien que le 409 ne distingue
+ * pas l'e-mail déjà pris du parent principal déjà existant : on rend les deux
+ * causes possibles plutôt qu'un « Conflit » abstrait. Les autres statuts passent
+ * par le message standard.
+ */
+function messageErreurParent(err: unknown): string {
+  if (err instanceof ApiError && err.status === 409) {
+    return 'Adresse e-mail déjà utilisée, ou un parent principal existe déjà pour ce foyer.';
+  }
+  return messageErreur(err);
+}
+
+/**
+ * Une ligne de parent **existant**, éditable sur place (e-mail, identité douce,
+ * statut principal) avec persistance unitaire, et retirable (soft-delete amont).
+ */
+function LigneParentExistant({
+  foyerId,
+  parent,
+  onModifie,
+  onRetire,
+}: {
+  readonly foyerId: string;
+  readonly parent: ParentVue;
+  readonly onModifie: (parent: ParentVue) => void;
+  readonly onRetire: (id: string) => void;
+}) {
+  const idBase = useId();
+  const [email, setEmail] = useState(parent.email);
+  const [prenom, setPrenom] = useState(parent.prenom ?? '');
+  const [nom, setNom] = useState(parent.nom ?? '');
+  const [principal, setPrincipal] = useState(parent.principal);
+  const [occupe, setOccupe] = useState(false);
+  const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
+  const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
+
+  function erreurPour(champ: string): string | undefined {
+    return erreursChamps.find((e) => e.champ === champ)?.message;
+  }
+  function idErreur(champ: string): string {
+    return `${idBase}-${champ}-err`;
+  }
+
+  function gererErreur(err: unknown) {
+    if (err instanceof ApiError) {
+      // Écriture unitaire : les erreurs de champ ne sont pas indexées
+      // (`email`/`prenom`/`nom`). On passe quand même par `retraduireErreurParent`
+      // (no-op sur un champ non indexé) pour partager la convention avec la
+      // création groupée de `FoyerFormPage`.
+      const erreurs = extraireErreurs(err.corps).map((e) =>
+        retraduireErreurParent(e, [parent.id]),
+      );
+      if (erreurs.length > 0) {
+        setErreursChamps(erreurs);
+        return;
+      }
+    }
+    setErreurGlobale(messageErreurParent(err));
+  }
+
+  async function enregistrer() {
+    setOccupe(true);
+    setErreurGlobale(null);
+    setErreursChamps([]);
+    try {
+      const maj = await api.modifierParent(foyerId, parent.id, {
+        email: email.trim(),
+        prenom: prenom.trim() === '' ? null : prenom.trim(),
+        nom: nom.trim() === '' ? null : nom.trim(),
+        principal,
+      });
+      onModifie(maj);
+    } catch (err) {
+      gererErreur(err);
+    } finally {
+      setOccupe(false);
+    }
+  }
+
+  async function retirer() {
+    setOccupe(true);
+    setErreurGlobale(null);
+    setErreursChamps([]);
+    try {
+      await api.retirerParent(foyerId, parent.id);
+      onRetire(parent.id);
+    } catch (err) {
+      setErreurGlobale(messageErreurParent(err));
+    } finally {
+      setOccupe(false);
+    }
+  }
+
+  const nomComplet = `${prenom.trim()} ${nom.trim()}`.trim();
+  const designation = nomComplet || email.trim();
+
+  return (
+    <div className="carte parent-ligne" style={{ marginBottom: '0.5rem' }}>
+      {erreurGlobale && (
+        <p className="debit" role="alert">
+          {erreurGlobale}
+        </p>
+      )}
+
+      <label htmlFor={`${idBase}-email`}>
+        Adresse e-mail <span aria-hidden="true">*</span>
+      </label>
+      <input
+        id={`${idBase}-email`}
+        type="email"
+        aria-required="true"
+        aria-invalid={erreurPour('email') ? true : undefined}
+        {...(erreurPour('email')
+          ? { 'aria-describedby': idErreur('email') }
+          : {})}
+        value={email}
+        onChange={(e) => {
+          setEmail(e.target.value);
+        }}
+        style={{ width: '100%' }}
+      />
+      {erreurPour('email') && (
+        <span id={idErreur('email')} className="debit" role="alert">
+          {erreurPour('email')}
+        </span>
+      )}
+
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+        <div style={{ flex: 1 }}>
+          <label htmlFor={`${idBase}-prenom`}>
+            Prénom <span className="muted">(facultatif)</span>
+          </label>
+          <input
+            id={`${idBase}-prenom`}
+            type="text"
+            value={prenom}
+            onChange={(e) => {
+              setPrenom(e.target.value);
+            }}
+            style={{ width: '100%' }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label htmlFor={`${idBase}-nom`}>
+            Nom <span className="muted">(facultatif)</span>
+          </label>
+          <input
+            id={`${idBase}-nom`}
+            type="text"
+            value={nom}
+            onChange={(e) => {
+              setNom(e.target.value);
+            }}
+            style={{ width: '100%' }}
+          />
+        </div>
+      </div>
+
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          marginTop: '0.5rem',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={principal}
+          onChange={(e) => {
+            setPrincipal(e.target.checked);
+          }}
+        />
+        Parent principal (destinataire « À » par défaut)
+      </label>
+
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+        <button
+          type="button"
+          className="btn secondaire"
+          disabled={occupe}
+          onClick={() => void enregistrer()}
+        >
+          {occupe ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+        <button
+          type="button"
+          className="btn secondaire"
+          disabled={occupe}
+          onClick={() => void retirer()}
+          aria-label={
+            designation
+              ? `Retirer le parent ${designation}`
+              : 'Retirer ce parent'
+          }
+        >
+          Retirer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Formulaire de rattachement d'un **nouveau** parent (ajout unitaire). */
+function FormNouveauParent({
+  foyerId,
+  onAjoute,
+}: {
+  readonly foyerId: string;
+  readonly onAjoute: (parent: ParentVue) => void;
+}) {
+  const idBase = useId();
+  const [email, setEmail] = useState('');
+  const [prenom, setPrenom] = useState('');
+  const [nom, setNom] = useState('');
+  const [occupe, setOccupe] = useState(false);
+  const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
+  const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
+
+  function erreurPour(champ: string): string | undefined {
+    return erreursChamps.find((e) => e.champ === champ)?.message;
+  }
+  function idErreur(champ: string): string {
+    return `${idBase}-${champ}-err`;
+  }
+
+  async function ajouter() {
+    setOccupe(true);
+    setErreurGlobale(null);
+    setErreursChamps([]);
+    try {
+      const cree = await api.ajouterParent(foyerId, {
+        email: email.trim(),
+        ...(prenom.trim() ? { prenom: prenom.trim() } : {}),
+        ...(nom.trim() ? { nom: nom.trim() } : {}),
+      });
+      onAjoute(cree);
+      setEmail('');
+      setPrenom('');
+      setNom('');
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const erreurs = extraireErreurs(err.corps).map((e) =>
+          retraduireErreurParent(e, ['nouveau']),
+        );
+        if (erreurs.length > 0) {
+          setErreursChamps(erreurs);
+          return;
+        }
+      }
+      setErreurGlobale(messageErreurParent(err));
+    } finally {
+      setOccupe(false);
+    }
+  }
+
+  return (
+    <div
+      className="carte parent-ligne"
+      style={{ marginBottom: '0.5rem', marginTop: '0.5rem' }}
+    >
+      <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Ajouter un parent</p>
+
+      {erreurGlobale && (
+        <p className="debit" role="alert">
+          {erreurGlobale}
+        </p>
+      )}
+
+      <label htmlFor={`${idBase}-email`}>
+        Adresse e-mail <span aria-hidden="true">*</span>
+      </label>
+      <input
+        id={`${idBase}-email`}
+        type="email"
+        aria-required="true"
+        aria-invalid={erreurPour('email') ? true : undefined}
+        {...(erreurPour('email')
+          ? { 'aria-describedby': idErreur('email') }
+          : {})}
+        value={email}
+        onChange={(e) => {
+          setEmail(e.target.value);
+        }}
+        style={{ width: '100%' }}
+      />
+      {erreurPour('email') && (
+        <span id={idErreur('email')} className="debit" role="alert">
+          {erreurPour('email')}
+        </span>
+      )}
+
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+        <div style={{ flex: 1 }}>
+          <label htmlFor={`${idBase}-prenom`}>
+            Prénom <span className="muted">(facultatif)</span>
+          </label>
+          <input
+            id={`${idBase}-prenom`}
+            type="text"
+            value={prenom}
+            onChange={(e) => {
+              setPrenom(e.target.value);
+            }}
+            style={{ width: '100%' }}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label htmlFor={`${idBase}-nom`}>
+            Nom <span className="muted">(facultatif)</span>
+          </label>
+          <input
+            id={`${idBase}-nom`}
+            type="text"
+            value={nom}
+            onChange={(e) => {
+              setNom(e.target.value);
+            }}
+            style={{ width: '100%' }}
+          />
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="btn secondaire"
+        disabled={occupe}
+        onClick={() => void ajouter()}
+        style={{ marginTop: '0.5rem' }}
+      >
+        {occupe ? 'Ajout en cours…' : '+ Ajouter ce parent'}
+      </button>
+    </div>
+  );
+}

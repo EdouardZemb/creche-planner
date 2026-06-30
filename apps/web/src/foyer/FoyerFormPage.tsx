@@ -16,6 +16,7 @@ import {
   type ChampScalaireFoyer,
   type ValeursScalairesFoyer,
 } from './FoyerScalairesForm';
+import { retraduireErreurParent } from './parentErreurs';
 import type { CreerEnfant, CreerParent } from '../types/bff';
 
 interface EtatEnfant {
@@ -43,32 +44,6 @@ let compteurParent = 0;
 function nouveauParent(email = '', prenom = '', nom = ''): EtatParent {
   compteurParent += 1;
   return { id: `parent-${compteurParent}`, email, prenom, nom };
-}
-
-/**
- * Le BFF valide le tableau `parents` envoyé et renvoie ses erreurs indexées par
- * position (`parents.<i>.<champ>`, cf. `path.join('.')`). Comme on ne transmet
- * pas les lignes vides, cet index ne correspond pas à la position dans l'état du
- * formulaire : on le retraduit vers l'id stable de la ligne (`parent.<id>.<champ>`)
- * pour relier le message au bon champ via `aria-describedby`. Les autres erreurs
- * (champs scalaires du foyer) passent inchangées.
- */
-function retraduireErreurParent(
-  erreur: ErreurChamp,
-  idsEnvoyes: readonly string[],
-): ErreurChamp {
-  const correspondance = /^parents\.(\d+)\.(.+)$/.exec(erreur.champ);
-  if (correspondance) {
-    const index = Number(correspondance[1]);
-    const id = idsEnvoyes[index];
-    if (id !== undefined) {
-      return {
-        champ: `parent.${id}.${correspondance[2]}`,
-        message: erreur.message,
-      };
-    }
-  }
-  return erreur;
 }
 
 // Valeurs de démonstration : pré-remplissage actif hors build de production

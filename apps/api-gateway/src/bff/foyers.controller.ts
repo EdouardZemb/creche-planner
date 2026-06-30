@@ -16,6 +16,7 @@ import {
   type ParentVue,
 } from '../clients/foyer.client.js';
 import {
+  ajouterEnfantSchema,
   ajouterParentSchema,
   creerDossierFoyerSchema,
   ecrireFoyerScalairesSchema,
@@ -44,8 +45,9 @@ interface DossierFoyerVue {
  * `AdminGuard`). En revanche l'**édition** d'un foyer existant — ses scalaires
  * (`PUT /foyers/:id`) comme ses parents (ajout / édition / retrait) — est
  * `@FoyerScope('param:id')` : le **parent du foyer** la pilote (l'admin garde un
- * bypass réparateur), un tiers prend 403. Les **lectures** (liste/lecture de
- * foyer, liste de parents) restent ouvertes ici.
+ * bypass réparateur), un tiers prend 403. L'**ajout d'un enfant** au foyer
+ * (`POST /foyers/:id/enfants`) suit la même règle. Les **lectures** (liste/lecture
+ * de foyer, liste de parents) restent ouvertes ici.
  */
 @Controller({ path: 'foyers', version: '1' })
 export class FoyersController {
@@ -116,6 +118,22 @@ export class FoyersController {
   ): Promise<FoyerVue> {
     const saisie = valider(ecrireFoyerScalairesSchema, corps);
     return relayer(() => this.foyers.mettreAJour(id, saisie));
+  }
+
+  /**
+   * Rattache un **enfant** au foyer existant (ajout simple ; l'édition/suppression
+   * d'enfant relève d'une phase ultérieure). `@FoyerScope` : pilotable par le
+   * **parent** du foyer (admin bypass), un tiers prend 403.
+   */
+  @Post(':id/enfants')
+  @FoyerScope('param:id')
+  @HttpCode(HttpStatus.CREATED)
+  ajouterEnfant(
+    @Param('id') id: string,
+    @Body() corps: unknown,
+  ): Promise<EnfantVue> {
+    const saisie = valider(ajouterEnfantSchema, corps);
+    return relayer(() => this.foyers.ajouterEnfant(id, saisie));
   }
 
   /** Liste les parents actifs d'un foyer. */
