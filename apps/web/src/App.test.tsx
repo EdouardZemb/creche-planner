@@ -31,6 +31,9 @@ vi.mock('./foyer/ContratsPage', () => ({
 vi.mock('./planning/PlanningPage', () => ({
   PlanningPage: () => <div>PAGE_PLANNING</div>,
 }));
+vi.mock('./dashboard/DashboardJourPage', () => ({
+  DashboardJourPage: () => <div>PAGE_DASHBOARD</div>,
+}));
 vi.mock('./couts/CoutsAnnuelsPage', () => ({
   CoutsAnnuelsPage: () => <div>PAGE_COUTS</div>,
 }));
@@ -109,19 +112,19 @@ describe('App — coquille de navigation', () => {
     mockedApi.moi.mockResolvedValue({ email: null, admin: true, foyers: [] });
   });
 
-  it('Accueil : un foyer mémorisé redirige vers son planning sans appel de découverte', async () => {
+  it('Accueil : un foyer mémorisé redirige vers son tableau de bord sans appel de découverte', async () => {
     localStorage.setItem('creche:foyerId', FOYER_ID);
     rendre('/');
 
-    await screen.findByText('PAGE_PLANNING');
+    await screen.findByText('PAGE_DASHBOARD');
     expect(mockedApi.listerFoyers).not.toHaveBeenCalled();
   });
 
-  it('Accueil : sans foyer mémorisé, un foyer découvert côté serveur ouvre son planning', async () => {
+  it('Accueil : sans foyer mémorisé, un foyer découvert côté serveur ouvre son tableau de bord', async () => {
     mockedApi.listerFoyers.mockResolvedValue([{ id: FOYER_ID }]);
     rendre('/');
 
-    await screen.findByText('PAGE_PLANNING');
+    await screen.findByText('PAGE_DASHBOARD');
     // L'appel part d'un useEffect (useFoyer) : il peut suivre de peu
     // l'apparition de la page — on attend l'appel plutôt que de l'exiger.
     await waitFor(() => {
@@ -202,7 +205,7 @@ describe('App — coquille de navigation', () => {
     await screen.findByText('Foyer introuvable');
     expect(
       screen.getByRole('link', { name: 'Revenir à mon foyer' }),
-    ).toHaveAttribute('href', `/foyers/${FOYER_ID}/planning`);
+    ).toHaveAttribute('href', `/foyers/${FOYER_ID}/dashboard`);
   });
 
   it('EX-01 CA3 : panne 5xx → « Service indisponible » + bouton Réessayer', async () => {
@@ -327,7 +330,7 @@ describe('App — mode borné par identité (PR6)', () => {
     mockedApi.listerAValider.mockResolvedValue([]);
   });
 
-  it('identité + 1 foyer autorisé : ouvre directement son planning (sans découverte)', async () => {
+  it('identité + 1 foyer autorisé : ouvre directement son tableau de bord (sans découverte)', async () => {
     mockedApi.moi.mockResolvedValue({
       email: 'parent@test.fr',
       admin: false,
@@ -335,7 +338,7 @@ describe('App — mode borné par identité (PR6)', () => {
     });
     rendre('/');
 
-    await screen.findByText('PAGE_PLANNING');
+    await screen.findByText('PAGE_DASHBOARD');
     // Le foyer découle de l'identité, pas de listerFoyers (découverte héritée).
     expect(mockedApi.listerFoyers).not.toHaveBeenCalled();
   });
@@ -371,7 +374,7 @@ describe('App — mode borné par identité (PR6)', () => {
     expect(ouvertures).toHaveLength(2);
     expect(ouvertures[0]).toHaveAttribute(
       'href',
-      `/foyers/${FOYER_ID}/planning`,
+      `/foyers/${FOYER_ID}/dashboard`,
     );
   });
 
@@ -385,7 +388,7 @@ describe('App — mode borné par identité (PR6)', () => {
     rendre('/');
 
     // Le cache forgé est ignoré → on ouvre le seul foyer autorisé, pas le cache.
-    await screen.findByText('PAGE_PLANNING');
+    await screen.findByText('PAGE_DASHBOARD');
     await waitFor(() => {
       expect(mockedApi.lireFoyer).toHaveBeenCalledWith(
         FOYER_ID,
