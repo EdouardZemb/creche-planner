@@ -55,8 +55,25 @@ function couleurEtat(ligne: LigneJour): string {
 }
 
 /** Une ligne de garde du jour : pastille colorée, enfant + mode, horaire, action. */
-function RangeeJour({ ligne, foyerId }: { ligne: LigneJour; foyerId: string }) {
+function RangeeJour({
+  ligne,
+  foyerId,
+  mois,
+}: {
+  ligne: LigneJour;
+  foyerId: string;
+  mois: string;
+}) {
   const etat = LIBELLES_ETAT[ligne.etat];
+  // Deep-link (P3a) : « Modifier » ouvre le planning directement sur l'onglet
+  // enfant + le sous-onglet mode de CETTE garde, au mois affiché — au lieu du
+  // planning générique. `enfant`/`mode`/`mois` sont exactement les paramètres
+  // d'URL que lit `PlanningPage` (l'URL est sa source de vérité de sélection).
+  const cible = `/foyers/${foyerId}/planning?${new URLSearchParams({
+    enfant: ligne.enfant,
+    mode: ligne.mode,
+    mois,
+  }).toString()}`;
   return (
     <li className="jour-rangee">
       <span
@@ -81,7 +98,7 @@ function RangeeJour({ ligne, foyerId }: { ligne: LigneJour; foyerId: string }) {
         </span>
       </span>
       <Link
-        to={`/foyers/${foyerId}/planning`}
+        to={cible}
         className="btn secondaire"
         aria-label={`Modifier la garde de ${ligne.enfant}`}
       >
@@ -107,6 +124,9 @@ export function DashboardJourPage() {
   // semaine ISO qui la contient — clés stables pour `useAsync` sur la journée.
   const aujourdhui = jourCourantParis(new Date());
   const semaine = semaineIsoDeDate(aujourdhui);
+  // Mois (`YYYY-MM`) du jour affiché : porté tel quel au planning par le
+  // deep-link « Modifier » (P3a), pour atterrir sur le bon mois calendaire.
+  const mois = aujourdhui.slice(0, 7);
 
   const { data, loading, error, reload } = useAsync<SemaineBesoins>(
     (signal) => api.lireSemaineBesoins(id, semaine, { signal }),
@@ -141,7 +161,12 @@ export function DashboardJourPage() {
       {data && lignes.length > 0 && (
         <ul className="jours-liste">
           {lignes.map((ligne) => (
-            <RangeeJour key={ligne.contratId} ligne={ligne} foyerId={id} />
+            <RangeeJour
+              key={ligne.contratId}
+              ligne={ligne}
+              foyerId={id}
+              mois={mois}
+            />
           ))}
         </ul>
       )}
