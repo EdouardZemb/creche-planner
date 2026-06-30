@@ -163,19 +163,6 @@ export const gatewayOpenApiDocument = {
           },
         ],
       },
-      EtablissementVue: {
-        type: 'object',
-        description:
-          'Établissement destinataire d’un mail de service (annuaire notifications).',
-        properties: {
-          cle: { type: 'string', enum: ['CRECHE_HIRONDELLES', 'ABCM'] },
-          libelle: { type: 'string' },
-          emailService: { type: 'string', format: 'email' },
-          preavisRegle: { $ref: '#/components/schemas/PreavisRegle' },
-          actif: { type: 'boolean' },
-        },
-        required: ['cle', 'libelle', 'emailService', 'preavisRegle', 'actif'],
-      },
       EtablissementFoyerVue: {
         type: 'object',
         description:
@@ -843,8 +830,8 @@ export const gatewayOpenApiDocument = {
       get: {
         summary: 'Lister les établissements d’un foyer (entité libre)',
         description:
-          'Établissements configurables propres au foyer (P2/P3) — distincts ' +
-          'de l’ancien annuaire global à clés `/api/v1/etablissements`.',
+          'Établissements configurables propres au foyer (P2/P3), source de ' +
+          'vérité `svc-planification`.',
         parameters: [
           {
             name: 'foyerId',
@@ -987,70 +974,6 @@ export const gatewayOpenApiDocument = {
           '204': { description: 'Établissement supprimé (pas de contenu).' },
           '409': {
             description: 'Des contrats sont rattachés à l’établissement.',
-          },
-        },
-      },
-    },
-    '/api/v1/etablissements': {
-      get: {
-        summary: 'Lister les établissements destinataires',
-        description:
-          'Annuaire des établissements (crèche / ABCM) destinataires des ' +
-          'mails de service, avec leur règle de préavis.',
-        responses: {
-          '200': {
-            description: 'Établissements destinataires.',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'array',
-                  items: { $ref: '#/components/schemas/EtablissementVue' },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    '/api/v1/etablissements/{cle}': {
-      put: {
-        summary: 'Mettre à jour un établissement destinataire (upsert par clé)',
-        parameters: [
-          {
-            name: 'cle',
-            in: 'path',
-            required: true,
-            schema: { type: 'string', enum: ['CRECHE_HIRONDELLES', 'ABCM'] },
-          },
-        ],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                description:
-                  'Champs éditables de l’établissement : adresse du service et ' +
-                  'règle de préavis (libellé/actif optionnels).',
-                properties: {
-                  emailService: { type: 'string', format: 'email' },
-                  preavisRegle: { $ref: '#/components/schemas/PreavisRegle' },
-                  libelle: { type: 'string' },
-                  actif: { type: 'boolean' },
-                },
-                required: ['emailService', 'preavisRegle'],
-              },
-            },
-          },
-        },
-        responses: {
-          '200': {
-            description: 'Établissement mis à jour.',
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/EtablissementVue' },
-              },
-            },
           },
         },
       },

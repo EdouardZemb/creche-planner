@@ -4,7 +4,6 @@ import { CoutsController } from './couts.controller.js';
 import { EtablissementsFoyerController } from './etablissements-foyer.controller.js';
 import { FoyersController } from './foyers.controller.js';
 import { MoiController } from './moi.controller.js';
-import { NotificationsController } from './notifications.controller.js';
 import { ValidationsController } from './validations.controller.js';
 
 /**
@@ -18,7 +17,6 @@ import { ValidationsController } from './validations.controller.js';
     ContratsController,
     CoutsController,
     EtablissementsFoyerController,
-    NotificationsController,
     ValidationsController,
   ],
 })

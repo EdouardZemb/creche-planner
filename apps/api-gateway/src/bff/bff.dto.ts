@@ -111,17 +111,6 @@ export const preavisRegleSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
-/** Upsert d'un établissement destinataire (la clé voyage dans l'URL). */
-export const upsertEtablissementSchema = z.object({
-  emailService: z.email('adresse e-mail invalide'),
-  preavisRegle: preavisRegleSchema,
-  libelle: z.string().min(1).max(200).optional(),
-  actif: z.boolean().optional(),
-});
-
-/** Clés d'établissement acceptées en chemin (`PUT /etablissements/:cle`). */
-export const CLES_ETABLISSEMENT = ['CRECHE_HIRONDELLES', 'ABCM'] as const;
-
 /** Modes de garde proposables par un établissement (sous-ensemble informatif). */
 const MODES_ETABLISSEMENT = [
   'CRECHE_PSU',

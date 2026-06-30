@@ -71,6 +71,13 @@
       "when": 1782760000000,
       "tag": "0009_envoi_etablissement_par_id",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782846400000,
+      "tag": "0010_drop_etablissement_destinataire",
+      "breakpoints": true
     }
   ]
 }

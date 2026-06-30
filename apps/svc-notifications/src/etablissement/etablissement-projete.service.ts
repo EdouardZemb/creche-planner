@@ -10,9 +10,8 @@ import {
 
 /**
  * Vue lisible de la **fiche établissement projetée** (read model `etablissement`,
- * alimenté par `svc-planification` via le `ProjectionService`). Contrairement à
- * l'annuaire legacy `EtablissementVue` (clé fermée), elle est identifiée par l'`id`
- * réel de l'établissement (entité libre par foyer) et porte un `emailService` /
+ * alimenté par `svc-planification` via le `ProjectionService`). Identifiée par l'`id`
+ * réel de l'établissement (entité libre par foyer), elle porte un `emailService` /
  * `preavisRegle` **facultatifs** (l'event ne les transporte que s'ils sont renseignés).
  */
 export interface EtablissementProjeteVue {
@@ -27,9 +26,9 @@ export interface EtablissementProjeteVue {
 /**
  * Lecture du **read model des établissements** (entité libre par foyer, P3). Source de
  * vérité : `svc-planification`, projetée dans la table locale `etablissement` (cf.
- * `ProjectionService`). Remplace, pour le **routage des récaps**, l'annuaire legacy à
- * clé fermée (`EtablissementService` + `MODE_VERS_CLE`) : le destinataire et la règle de
- * préavis sont désormais résolus à partir du lien explicite `contrat.etablissement_id`.
+ * `ProjectionService`). Le destinataire et la règle de préavis des récaps sont résolus
+ * à partir du lien explicite `contrat.etablissement_id` (l'ancien annuaire à clé fermée
+ * et le mapping codé `mode → clé` ont été démantelés en P6).
  */
 @Injectable()
 export class EtablissementProjeteService {

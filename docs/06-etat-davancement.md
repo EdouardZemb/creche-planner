@@ -1891,7 +1891,7 @@ svc-tarification, svc-notifications]`, seul consumer `api-gateway` (l'endpoint `
 > Le `.env.server.enc` (modifié sur le serveur) a été rapatrié et **versionné** (le serveur a une deploy
 > key en lecture seule). **Rollback** : `FOYER_AUTHZ_ENFORCE` → vide/`=0` + recréer la gateway.
 
-## 25. Feature Établissements en entité libre (en cours — P1→P5 livrées, restent P4-web déjà fait, P6)
+## 25. Feature Établissements en entité libre (✅ COMPLÈTE — P1→P6 livrées)
 
 **But** — remplacer les crèches « en dur » (noms de test câblés via `MODE_VERS_CLE`) par une **vraie entité
 libre, configurable par foyer** (`etablissement`, propriété `svc-planification`), avec un **lien explicite
@@ -1954,3 +1954,34 @@ réseau Docker de la pile, variables `BACKFILL_FOYER_URL=http://svc-foyer:3002/a
 > **Idempotence & sûreté** : le script ne touche jamais un contrat déjà rattaché ni un établissement
 > existant de même nom ; le rattachement est non destructif (plannings préservés). Un re-run après échec
 > partiel reprend là où il en était. La projection notifications se met à jour via les events émis.
+
+### 25.3 P6 — Démantèlement de l'ancien modèle figé (✅ livrée)
+
+**Prérequis levé** : la feature P1→P5 est en prod (release `0.5.0`) et le back-fill a été **exécuté**
+(`0 contrat NULL`, verrou `NOT NULL` posé). Plus aucun contrat ne dépend de l'ancien routage `mode → clé` :
+on peut retirer l'ancien modèle. Aucun fallback runtime n'existait déjà (P3/P4 routaient par
+`contrat.etablissement_id`) — P6 supprime du **code mort** et les contrats publiés associés.
+
+Retiré :
+
+- **`svc-notifications`** : l'annuaire legacy à clé fermée — service `EtablissementService`, contrôleur CRUD
+  `GET /api/etablissements` + `PUT /api/etablissements/:cle`, DTO `etablissement.dto.ts`
+  (`CLES_ETABLISSEMENT`, `CleEtablissement`, `MODE_VERS_CLE`, `cleEtablissementPourMode`,
+  `CleEtablissementPipe`, `upsertEtablissementSchema`) et leurs specs. Le pipe générique `ZodValidationPipe`
+  (encore utilisé par l'envoi) a été déplacé dans `validation/validation.dto.ts`. Table
+  `etablissement_destinataire` **supprimée** (migration `0010_drop_etablissement_destinataire.sql`, journal +
+  snapshot). Le read-model projeté `etablissement` (P3) et son `EtablissementProjeteService` restent la seule
+  source de routage.
+- **`api-gateway`** : façade BFF legacy `/api/v1/etablissements[/:cle]` (`NotificationsController` + sa ligne
+  dans `bff.module.ts`), méthodes client `listerEtablissements()`/`upsertEtablissement()` +
+  `EtablissementVue`/`SaisieEtablissement` (notifications.client), `upsertEtablissementSchema`/
+  `CLES_ETABLISSEMENT` (bff.dto). Les routes per-foyer `/api/v1/foyers/:foyerId/etablissements` (P2/P4)
+  restent l'unique surface.
+- **Contrats** : schéma OpenAPI `EtablissementVue` + routes `/api/v1/etablissements[/{cle}]` retirés de
+  `gateway.openapi.ts` (13 routes au lieu de 15) ; types web régénérés (`openapi-types.gen.ts`). Pact
+  consumer/provider : les 2 interactions de l'annuaire à clé (`GET`/`PUT /api/etablissements`) et leurs
+  `stateHandlers` (seed `etablissement_destinataire`) supprimés ; pact file régénéré ; `can-i-deploy` à
+  re-vérifier vert.
+- **Seed démo** : `scripts/seed-demo.mjs` utilise déjà l'API per-foyer (les noms « Crèche … »/« École ABCM »
+  y sont de simples valeurs d'exemple, plus une énumération figée) → inchangé. Le script
+  `scripts/backfill-etablissements.mjs` (one-shot historique) conserve sa copie locale du mapping.

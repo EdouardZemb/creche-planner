@@ -8,8 +8,10 @@ import {
   ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
-import { ZodValidationPipe } from '../etablissement/etablissement.dto.js';
-import { SemaineIsoPipe } from '../validation/validation.dto.js';
+import {
+  SemaineIsoPipe,
+  ZodValidationPipe,
+} from '../validation/validation.dto.js';
 import {
   envoiEtablissementSchema,
   type EnvoiEtablissementDto,
