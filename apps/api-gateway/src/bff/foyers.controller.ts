@@ -18,6 +18,7 @@ import {
 import {
   ajouterParentSchema,
   creerDossierFoyerSchema,
+  ecrireFoyerScalairesSchema,
   modifierParentSchema,
   valider,
 } from './bff.dto.js';
@@ -38,11 +39,13 @@ interface DossierFoyerVue {
  * renvoie le foyer **et** ses enfants/parents en une réponse. Les parents
  * exposent une vraie CRUD (sous-ressource éditable, cf. notifications hebdo).
  *
- * **Provisioning admin (PR6, option b-ii)** : la **création** de foyer et toute
- * **écriture** de parent (ajout / édition / retrait) sont `@AdminSeulement()` —
- * réservées à un e-mail de `ADMIN_EMAILS` quand le gating est actif (cf.
- * `AdminGuard`). Les **lectures** (liste/lecture de foyer, liste de parents)
- * restent ouvertes ici : l'isolation d'**appartenance** par foyer relève de PR7.
+ * **Autorisation.** La **création** de foyer (`POST`) reste `@AdminSeulement()` —
+ * amorçage réservé à un e-mail de `ADMIN_EMAILS` quand le gating est actif (cf.
+ * `AdminGuard`). En revanche l'**édition** d'un foyer existant — ses scalaires
+ * (`PUT /foyers/:id`) comme ses parents (ajout / édition / retrait) — est
+ * `@FoyerScope('param:id')` : le **parent du foyer** la pilote (l'admin garde un
+ * bypass réparateur), un tiers prend 403. Les **lectures** (liste/lecture de
+ * foyer, liste de parents) restent ouvertes ici.
  */
 @Controller({ path: 'foyers', version: '1' })
 export class FoyersController {
@@ -101,6 +104,20 @@ export class FoyersController {
     });
   }
 
+  /**
+   * Édite les scalaires d'un foyer (finances/RFR/parts/nb enfants à charge).
+   * `@FoyerScope` : pilotable par le **parent** du foyer (admin bypass).
+   */
+  @Put(':id')
+  @FoyerScope('param:id')
+  mettreAJour(
+    @Param('id') id: string,
+    @Body() corps: unknown,
+  ): Promise<FoyerVue> {
+    const saisie = valider(ecrireFoyerScalairesSchema, corps);
+    return relayer(() => this.foyers.mettreAJour(id, saisie));
+  }
+
   /** Liste les parents actifs d'un foyer. */
   @Get(':id/parents')
   @FoyerScope('param:id')
@@ -108,9 +125,8 @@ export class FoyersController {
     return relayer(() => this.foyers.parents(id));
   }
 
-  /** Rattache un parent au foyer (admin). */
+  /** Rattache un parent au foyer (parent du foyer ; admin bypass). */
   @Post(':id/parents')
-  @AdminSeulement()
   @FoyerScope('param:id')
   @HttpCode(HttpStatus.CREATED)
   ajouterParent(
@@ -121,9 +137,8 @@ export class FoyersController {
     return relayer(() => this.foyers.ajouterParent(id, saisie));
   }
 
-  /** Édite un parent (champs fournis uniquement, admin). */
+  /** Édite un parent (champs fournis uniquement ; parent du foyer, admin bypass). */
   @Put(':id/parents/:parentId')
-  @AdminSeulement()
   @FoyerScope('param:id')
   modifierParent(
     @Param('id') id: string,
@@ -134,9 +149,8 @@ export class FoyersController {
     return relayer(() => this.foyers.modifierParent(id, parentId, saisie));
   }
 
-  /** Retire un parent (soft-delete côté `svc-foyer`, admin). */
+  /** Retire un parent (soft-delete côté `svc-foyer` ; parent du foyer, admin bypass). */
   @Delete(':id/parents/:parentId')
-  @AdminSeulement()
   @FoyerScope('param:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   retirerParent(

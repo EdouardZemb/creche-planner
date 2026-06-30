@@ -32,6 +32,22 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     );
   });
 
+  it('expose l’édition des scalaires d’un foyer (PUT /foyers/{id})', () => {
+    const operation = gatewayOpenApiDocument.paths['/api/v1/foyers/{id}'].put;
+    expect(operation).toBeDefined();
+    expect(
+      operation.responses['200'].content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/FoyerVue' });
+    const corps =
+      operation.requestBody.content['application/json'].schema.required;
+    expect(corps).toEqual([
+      'ressourcesMensuelles',
+      'rfr',
+      'nbEnfantsACharge',
+      'nbParts',
+    ]);
+  });
+
   it('marque les routes publiques avec security: []', () => {
     expect(gatewayOpenApiDocument.paths['/api/health'].get.security).toEqual(
       [],

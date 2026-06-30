@@ -166,6 +166,60 @@ describe('Pact consumer · api-gateway → svc-foyer', () => {
     });
   });
 
+  it('édite les scalaires du foyer de référence', async () => {
+    provider
+      .given(ETAT_FOYER_T3, { id: FOYER_REFERENCE_ID })
+      .uponReceiving('une édition des scalaires du foyer de référence')
+      .withRequest({
+        method: 'PUT',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}`,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        // Montants saisis en euros (cf. création), valeurs du foyer de référence.
+        body: {
+          ressourcesMensuelles: 6716.92,
+          rfr: 72705,
+          nbEnfantsACharge: 2,
+          nbParts: 3,
+        },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          id: uuid(FOYER_REFERENCE_ID),
+          ressourcesMensuellesCentimes: integer(671692),
+          ressourcesMensuellesEuros: decimal(6716.92),
+          rfrCentimes: integer(7270500),
+          // Entiers (cf. lecture ci-dessus) → `integer()` et non `decimal()`.
+          rfrEuros: integer(72705),
+          nbEnfantsACharge: integer(2),
+          nbParts: integer(3),
+          // Valeur exacte : le contrat fige T3 pour ce foyer.
+          tranche: 3,
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({
+            ressourcesMensuelles: 6716.92,
+            rfr: 72705,
+            nbEnfantsACharge: 2,
+            nbParts: 3,
+          }),
+        },
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { tranche: number; id: string };
+      expect(corps.tranche).toBe(3);
+      expect(corps.id).toBe(FOYER_REFERENCE_ID);
+    });
+  });
+
   it('rattache un enfant au foyer de référence existant', async () => {
     provider
       .given(ETAT_FOYER_T3, { id: FOYER_REFERENCE_ID })

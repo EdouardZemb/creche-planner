@@ -476,6 +476,53 @@ export const gatewayOpenApiDocument = {
           '404': { description: 'Foyer inconnu.' },
         },
       },
+      put: {
+        summary: 'Éditer les scalaires d’un foyer',
+        description:
+          'Met à jour les finances/RFR/parts/nb enfants à charge d’un foyer ' +
+          'existant. Les enfants et parents se gèrent via leurs propres routes.',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  ressourcesMensuelles: { type: 'number' },
+                  rfr: { type: 'number' },
+                  nbEnfantsACharge: { type: 'integer' },
+                  nbParts: { type: 'number' },
+                },
+                required: [
+                  'ressourcesMensuelles',
+                  'rfr',
+                  'nbEnfantsACharge',
+                  'nbParts',
+                ],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Foyer mis à jour.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/FoyerVue' },
+              },
+            },
+          },
+          '404': { description: 'Foyer inconnu.' },
+        },
+      },
     },
     '/api/v1/foyers/{id}/parents': {
       get: {
