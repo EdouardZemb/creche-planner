@@ -265,7 +265,7 @@ export interface paths {
         put?: never;
         /**
          * Rattacher un enfant au foyer
-         * @description Ajoute un enfant à un foyer existant (prénom + date de naissance). L’édition et la suppression d’un enfant relèvent d’une phase ultérieure.
+         * @description Ajoute un enfant à un foyer existant (prénom + date de naissance). L’édition et la suppression d’un enfant se font via /foyers/{id}/enfants/{enfantId}.
          */
         post: {
             parameters: {
@@ -305,6 +305,94 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/foyers/{id}/enfants/{enfantId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Éditer un enfant (prénom/date)
+         * @description Met à jour un enfant du foyer. Renommer un enfant n’affecte pas les contrats existants (le contrat référence l’enfant par prénom libre, dans un autre service).
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    enfantId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        prenom: string;
+                        /** Format: date */
+                        dateNaissance: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Enfant mis à jour. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EnfantVue"];
+                    };
+                };
+                /** @description Enfant inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        /**
+         * Retirer un enfant (hard delete)
+         * @description Supprime un enfant du foyer. Sans effet sur les contrats existants (couplage par prénom libre, dans un autre service).
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    enfantId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Enfant retiré (pas de contenu). */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Enfant inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;

@@ -177,6 +177,60 @@ export class FoyerClient {
     );
   }
 
+  /** PUT `/api/foyers/:id/enfants/:enfantId` — édite un enfant (prénom/date). */
+  async modifierEnfant(
+    foyerId: string,
+    enfantId: string,
+    saisie: SaisieEnfant,
+  ): Promise<EnfantVue> {
+    const base = loadConfig().foyerUrl;
+    const url =
+      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
+      `/enfants/${encodeURIComponent(enfantId)}`;
+    this.logger.debug(`PUT ${url}`);
+    return executerResilient(
+      'svc-foyer',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(saisie),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return enfantVueSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /**
+   * DELETE `/api/foyers/:id/enfants/:enfantId` — retire un enfant (hard delete
+   * côté `svc-foyer`, réponse 204 sans corps).
+   */
+  async retirerEnfant(foyerId: string, enfantId: string): Promise<void> {
+    const base = loadConfig().foyerUrl;
+    const url =
+      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
+      `/enfants/${encodeURIComponent(enfantId)}`;
+    this.logger.debug(`DELETE ${url}`);
+    await executerResilient(
+      'svc-foyer',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'DELETE',
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
   /** GET `/api/foyers` — liste les foyers existants. */
   async lister(): Promise<FoyerVue[]> {
     const base = loadConfig().foyerUrl;

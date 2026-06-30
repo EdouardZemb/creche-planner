@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ENFANT_AJOUTE_TYPE,
+  ENFANT_MODIFIE_TYPE,
+  ENFANT_RETIRE_TYPE,
   FOYER_EVENT_SOURCE,
   FOYER_MIS_A_JOUR_TYPE,
   FOYER_MIS_A_JOUR_V2_TYPE,
@@ -8,6 +10,8 @@ import {
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
   enfantAjouteEventSchema,
+  enfantModifieEventSchema,
+  enfantRetireEventSchema,
   foyerMisAJourEventSchema,
   foyerMisAJourEventV2Schema,
   parentAjouteEventSchema,
@@ -165,6 +169,65 @@ describe('contracts-foyer (événements foyer.*)', () => {
       },
     });
     expect(result.success).toBe(false);
+  });
+
+  // --- foyer.Enfant{Modifie,Retire}.v1 -------------------------------------
+
+  it('expose les types versionnés des événements enfant (modif/retrait)', () => {
+    expect(ENFANT_MODIFIE_TYPE).toBe('foyer.EnfantModifie.v1');
+    expect(ENFANT_RETIRE_TYPE).toBe('foyer.EnfantRetire.v1');
+  });
+
+  it('valide un événement foyer.EnfantModifie.v1 (état complet, même forme qu’Ajoute)', () => {
+    const event = {
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: ENFANT_MODIFIE_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        enfantId: '22222222-0000-4000-8000-000000000000',
+        prenom: 'Mia',
+        dateNaissance: '2024-12-08',
+      },
+    };
+    expect(enfantModifieEventSchema.safeParse(event).success).toBe(true);
+  });
+
+  it('rejette une date de naissance mal formée dans EnfantModifie', () => {
+    const result = enfantModifieEventSchema.safeParse({
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: ENFANT_MODIFIE_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        enfantId: '22222222-0000-4000-8000-000000000000',
+        prenom: 'Mia',
+        dateNaissance: '08/12/2024',
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('EnfantRetire.v1 ne transporte que les identités (foyerId + enfantId)', () => {
+    const event = {
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: ENFANT_RETIRE_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        enfantId: '22222222-0000-4000-8000-000000000000',
+      },
+    };
+    expect(enfantRetireEventSchema.safeParse(event).success).toBe(true);
   });
 
   // --- foyer.Parent{Ajoute,Modifie,Retire}.v1 ------------------------------

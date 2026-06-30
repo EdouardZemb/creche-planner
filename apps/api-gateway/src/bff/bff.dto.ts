@@ -46,6 +46,12 @@ export const ajouterEnfantSchema = z.object({
   dateNaissance: z.string().min(1),
 });
 
+/**
+ * Édition d'un enfant (`PUT /foyers/:id/enfants/:enfantId`) : même forme minimale
+ * que l'ajout (prénom + date) ; la validation profonde reste chez `svc-foyer`.
+ */
+export const modifierEnfantSchema = ajouterEnfantSchema;
+
 /** Création orchestrée d'un foyer + ses enfants + ses parents. */
 export const creerDossierFoyerSchema = z.object({
   ressourcesMensuelles: z.number().nonnegative(),

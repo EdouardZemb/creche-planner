@@ -97,6 +97,16 @@ export type ModifierFoyer = CorpsRequeteJson<'/api/v1/foyers/{id}', 'put'>;
 /** Un enfant à créer — dérivé du sous-schéma `enfants[]` de `CreerDossierFoyer`. */
 export type CreerEnfant = CreerDossierFoyer['enfants'][number];
 
+/**
+ * Corps d'**édition d'un enfant** (`PUT /api/v1/foyers/{id}/enfants/{enfantId}`) —
+ * prénom + date. Renommer/supprimer un enfant n'affecte pas les contrats existants
+ * (couplage par prénom libre, cf. svc-planification).
+ */
+export type ModifierEnfant = CorpsRequeteJson<
+  '/api/v1/foyers/{id}/enfants/{enfantId}',
+  'put'
+>;
+
 /** Un parent à rattacher à la création — dérivé du sous-schéma `parents[]` de `CreerDossierFoyer`. */
 export type CreerParent = NonNullable<CreerDossierFoyer['parents']>[number];
 

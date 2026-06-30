@@ -10,6 +10,8 @@ import { Money, Tranche } from '@creche-planner/shared-kernel';
 import { Enfant, Foyer } from '@creche-planner/foyer-domain';
 import {
   ENFANT_AJOUTE_TYPE,
+  ENFANT_MODIFIE_TYPE,
+  ENFANT_RETIRE_TYPE,
   FOYER_MIS_A_JOUR_TYPE,
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
@@ -18,6 +20,8 @@ import {
   foyerIdSchema,
   parentIdSchema,
   type EnfantAjoutePayload,
+  type EnfantModifiePayload,
+  type EnfantRetirePayload,
   type FoyerId,
   type FoyerMisAJourPayload,
   type ParentAjoutePayload,
@@ -38,6 +42,7 @@ import type {
   AjouterEnfantDto,
   AjouterParentDto,
   EcrireFoyerDto,
+  ModifierEnfantDto,
   ModifierParentDto,
 } from './foyer.dto.js';
 
@@ -207,6 +212,70 @@ export class FoyerService {
       .where(eq(enfant.foyerId, foyerId))
       .orderBy(asc(enfant.dateNaissance));
     return lignes.map((l) => this.versEnfantVue(l));
+  }
+
+  /** Met à jour un enfant (prénom/date) + émet `EnfantModifie` (même transaction). */
+  async modifierEnfant(
+    foyerId: string,
+    enfantId: string,
+    dto: ModifierEnfantDto,
+  ): Promise<EnfantVue> {
+    // Valide via le domaine (prénom non vide, date interprétable) avant écriture.
+    const enfantDomaine = Enfant.creer({
+      prenom: dto.prenom,
+      dateNaissance: new Date(dto.dateNaissance),
+    });
+    const ligne = await this.db.transaction(async (tx) => {
+      const maj = await tx
+        .update(enfant)
+        .set({ prenom: enfantDomaine.prenom, dateNaissance: dto.dateNaissance })
+        .where(and(eq(enfant.id, enfantId), eq(enfant.foyerId, foyerId)))
+        .returning();
+      const ligneMaj = maj[0];
+      if (!ligneMaj) {
+        throw new NotFoundException(`enfant introuvable : ${enfantId}`);
+      }
+      const payload: EnfantModifiePayload = {
+        foyerId: foyerIdSchema.parse(foyerId),
+        enfantId: enfantIdSchema.parse(enfantId),
+        prenom: enfantDomaine.prenom,
+        dateNaissance: dto.dateNaissance,
+      };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: ENFANT_MODIFIE_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+      return ligneMaj;
+    });
+    return this.versEnfantVue(ligne);
+  }
+
+  /**
+   * Retire un enfant du foyer (**hard delete** — pas de colonne `actif`, cohérent
+   * avec le `ON DELETE CASCADE`) + émet `EnfantRetire` dans la même transaction.
+   */
+  async retirerEnfant(foyerId: string, enfantId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const supprime = await tx
+        .delete(enfant)
+        .where(and(eq(enfant.id, enfantId), eq(enfant.foyerId, foyerId)))
+        .returning();
+      if (!supprime[0]) {
+        throw new NotFoundException(`enfant introuvable : ${enfantId}`);
+      }
+      const payload: EnfantRetirePayload = {
+        foyerId: foyerIdSchema.parse(foyerId),
+        enfantId: enfantIdSchema.parse(enfantId),
+      };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: ENFANT_RETIRE_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+    });
   }
 
   /** Rattache un parent + émet `ParentAjoute` dans la même transaction. */

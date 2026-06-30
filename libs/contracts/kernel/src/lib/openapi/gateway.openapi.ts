@@ -529,8 +529,8 @@ export const gatewayOpenApiDocument = {
         summary: 'Rattacher un enfant au foyer',
         description:
           'Ajoute un enfant à un foyer existant (prénom + date de ' +
-          'naissance). L’édition et la suppression d’un enfant relèvent ' +
-          'd’une phase ultérieure.',
+          'naissance). L’édition et la suppression d’un enfant se font via ' +
+          '/foyers/{id}/enfants/{enfantId}.',
         parameters: [
           {
             name: 'id',
@@ -564,6 +564,79 @@ export const gatewayOpenApiDocument = {
             },
           },
           '404': { description: 'Foyer inconnu.' },
+        },
+      },
+    },
+    '/api/v1/foyers/{id}/enfants/{enfantId}': {
+      put: {
+        summary: 'Éditer un enfant (prénom/date)',
+        description:
+          'Met à jour un enfant du foyer. Renommer un enfant n’affecte pas ' +
+          'les contrats existants (le contrat référence l’enfant par prénom ' +
+          'libre, dans un autre service).',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'enfantId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  prenom: { type: 'string' },
+                  dateNaissance: { type: 'string', format: 'date' },
+                },
+                required: ['prenom', 'dateNaissance'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Enfant mis à jour.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/EnfantVue' },
+              },
+            },
+          },
+          '404': { description: 'Enfant inconnu.' },
+        },
+      },
+      delete: {
+        summary: 'Retirer un enfant (hard delete)',
+        description:
+          'Supprime un enfant du foyer. Sans effet sur les contrats ' +
+          'existants (couplage par prénom libre, dans un autre service).',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'enfantId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '204': { description: 'Enfant retiré (pas de contenu).' },
+          '404': { description: 'Enfant inconnu.' },
         },
       },
     },

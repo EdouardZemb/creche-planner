@@ -93,6 +93,42 @@ export const enfantAjouteEventSchema = integrationEventSchema(
 );
 export type EnfantAjouteEvent = z.infer<typeof enfantAjouteEventSchema>;
 
+// --- foyer.Enfant{Modifie,Retire}.v1 ---------------------------------------
+
+/**
+ * Cycle de vie d'un **enfant** au-delà de l'ajout (cycle de vie du foyer, P4).
+ * `Modifie` transporte l'**état complet** (le consommateur projette sans relire
+ * la source, comme `EnfantAjoute`) ; `Retire` ne porte que les identités (la
+ * suppression est un **hard delete** côté svc-foyer — pas de colonne `actif` sur
+ * `enfant`, cohérent avec le `ON DELETE CASCADE`). Le couplage contrat→enfant de
+ * `svc-planification` se fait par **prénom libre** (pas par `enfantId`) : ces
+ * événements ne cascadent donc pas vers les plannings (désynchro cosmétique
+ * seulement, cf. plan §2.5).
+ */
+export const ENFANT_MODIFIE_TYPE = 'foyer.EnfantModifie.v1';
+export const ENFANT_RETIRE_TYPE = 'foyer.EnfantRetire.v1';
+
+/** État complet d'un enfant transporté par `EnfantModifie` (même forme qu'`EnfantAjoute`). */
+export const enfantModifiePayloadSchema = enfantAjoutePayloadSchema;
+export type EnfantModifiePayload = z.infer<typeof enfantModifiePayloadSchema>;
+
+/** Identités seules : la suppression est un hard delete, l'état n'est pas reporté. */
+export const enfantRetirePayloadSchema = z.object({
+  foyerId: foyerIdSchema,
+  enfantId: enfantIdSchema,
+});
+export type EnfantRetirePayload = z.infer<typeof enfantRetirePayloadSchema>;
+
+export const enfantModifieEventSchema = integrationEventSchema(
+  enfantModifiePayloadSchema,
+);
+export type EnfantModifieEvent = z.infer<typeof enfantModifieEventSchema>;
+
+export const enfantRetireEventSchema = integrationEventSchema(
+  enfantRetirePayloadSchema,
+);
+export type EnfantRetireEvent = z.infer<typeof enfantRetireEventSchema>;
+
 // --- foyer.Parent{Ajoute,Modifie,Retire}.v1 --------------------------------
 
 /**

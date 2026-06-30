@@ -23,6 +23,11 @@ const EMAIL_PARENT_EXISTANT = 'alex.dupont@example.test';
 const ETAT_FOYER_SANS_PARENT = 'un foyer de référence T3 sans parent';
 const ETAT_FOYER_AVEC_PARENT = 'un foyer de référence T3 avec un parent';
 
+// Enfant (P4) : un foyer « avec un enfant » d'id connu, cible de l'édition et du
+// retrait (le foyer est seedé puis l'enfant inséré par le stateHandler provider).
+const ENFANT_REFERENCE_ID = '22222222-2222-4222-8222-222222222222';
+const ETAT_FOYER_AVEC_ENFANT = 'un foyer de référence T3 avec un enfant';
+
 // nx lance vitest avec cwd = racine du projet (apps/api-gateway) → racine du dépôt à ../../.
 const PACTS_DIR = resolve(process.cwd(), '../../pacts');
 
@@ -261,6 +266,70 @@ describe('Pact consumer · api-gateway → svc-foyer', () => {
       expect(reponse.status).toBe(201);
       const corps = (await reponse.json()) as { foyerId: string };
       expect(corps.foyerId).toBe(FOYER_REFERENCE_ID);
+    });
+  });
+
+  it('édite un enfant du foyer de référence', async () => {
+    provider
+      .given(ETAT_FOYER_AVEC_ENFANT, {
+        foyerId: FOYER_REFERENCE_ID,
+        enfantId: ENFANT_REFERENCE_ID,
+      })
+      .uponReceiving("une édition d'enfant du foyer de référence")
+      .withRequest({
+        method: 'PUT',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/enfants/${ENFANT_REFERENCE_ID}`,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: { prenom: 'Mia-Rose', dateNaissance: '2024-12-08' },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          id: uuid(ENFANT_REFERENCE_ID),
+          foyerId: uuid(FOYER_REFERENCE_ID),
+          prenom: string('Mia-Rose'),
+          dateNaissance: string('2024-12-08'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/enfants/${ENFANT_REFERENCE_ID}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({
+            prenom: 'Mia-Rose',
+            dateNaissance: '2024-12-08',
+          }),
+        },
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { prenom: string };
+      expect(corps.prenom).toBe('Mia-Rose');
+    });
+  });
+
+  it('retire un enfant du foyer de référence (204)', async () => {
+    provider
+      .given(ETAT_FOYER_AVEC_ENFANT, {
+        foyerId: FOYER_REFERENCE_ID,
+        enfantId: ENFANT_REFERENCE_ID,
+      })
+      .uponReceiving("un retrait d'enfant du foyer de référence")
+      .withRequest({
+        method: 'DELETE',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/enfants/${ENFANT_REFERENCE_ID}`,
+      })
+      .willRespondWith({ status: 204 });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/enfants/${ENFANT_REFERENCE_ID}`,
+        { method: 'DELETE' },
+      );
+      expect(reponse.status).toBe(204);
     });
   });
 

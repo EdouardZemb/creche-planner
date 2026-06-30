@@ -16,11 +16,13 @@ import {
   ajouterEnfantSchema,
   ajouterParentSchema,
   ecrireFoyerSchema,
+  modifierEnfantSchema,
   modifierParentSchema,
   ZodValidationPipe,
   type AjouterEnfantDto,
   type AjouterParentDto,
   type EcrireFoyerDto,
+  type ModifierEnfantDto,
   type ModifierParentDto,
 } from './foyer.dto.js';
 import {
@@ -81,6 +83,24 @@ export class FoyerController {
   @Get(':id/enfants')
   listerEnfants(@Param('id', ParseUUIDPipe) id: string): Promise<EnfantVue[]> {
     return this.foyers.listerEnfants(id);
+  }
+
+  @Put(':id/enfants/:enfantId')
+  modifierEnfant(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('enfantId', ParseUUIDPipe) enfantId: string,
+    @Body(new ZodValidationPipe(modifierEnfantSchema)) dto: ModifierEnfantDto,
+  ): Promise<EnfantVue> {
+    return this.foyers.modifierEnfant(id, enfantId, dto);
+  }
+
+  @Delete(':id/enfants/:enfantId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  retirerEnfant(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('enfantId', ParseUUIDPipe) enfantId: string,
+  ): Promise<void> {
+    return this.foyers.retirerEnfant(id, enfantId);
   }
 
   @Post(':id/parents')
