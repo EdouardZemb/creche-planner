@@ -12,3 +12,4 @@ export {
   type SaisieJour,
   type SnapshotSemaine,
 } from './lib/fenetre.js';
+export { jourCourantParis } from './lib/jour-courant.js';
