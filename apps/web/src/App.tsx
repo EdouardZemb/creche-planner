@@ -11,6 +11,7 @@ import {
   useParams,
 } from 'react-router-dom';
 import { FoyerFormPage } from './foyer/FoyerFormPage';
+import { FoyerModifierPage } from './foyer/FoyerModifierPage';
 import { ContratsPage } from './foyer/ContratsPage';
 import { PlanningPage } from './planning/PlanningPage';
 import { CoutsAnnuelsPage } from './couts/CoutsAnnuelsPage';
@@ -145,6 +146,10 @@ function Entete() {
             <NavLink to={`/foyers/${id}/etablissements`}>
               Établissements
             </NavLink>
+            {/* Édition du foyer par son **propriétaire** (parent) : visible dès
+                qu'un foyer est actif, NON conditionnée à `moi.admin` (le BFF
+                borne l'écriture via `@FoyerScope`). */}
+            <NavLink to={`/foyers/${id}/modifier`}>Modifier le foyer</NavLink>
           </>
         )}
         {/* Mode borné, familles multi-foyers : accès au sélecteur. */}
@@ -274,7 +279,7 @@ function titreDepuisPathname(pathname: string): string {
   if (pathname === '/foyers/new') return 'Nouveau foyer';
   if (pathname === '/mes-foyers') return 'Mes foyers';
   const foyer =
-    /^\/foyers\/[^/]+\/(contrats|planning|couts|etablissements)$/.exec(
+    /^\/foyers\/[^/]+\/(contrats|planning|couts|etablissements|modifier)$/.exec(
       pathname,
     );
   if (foyer) {
@@ -282,6 +287,7 @@ function titreDepuisPathname(pathname: string): string {
     if (segment === 'contrats') return 'Contrats';
     if (segment === 'planning') return 'Planning';
     if (segment === 'etablissements') return 'Établissements';
+    if (segment === 'modifier') return 'Modifier le foyer';
     return 'Coûts annuels';
   }
   // Pages de récupération / 404 et redirection racine : annonce neutre.
@@ -318,6 +324,7 @@ function Coquille() {
             <Route path="planning" element={<PlanningPage />} />
             <Route path="couts" element={<CoutsAnnuelsPage />} />
             <Route path="etablissements" element={<EtablissementsPage />} />
+            <Route path="modifier" element={<FoyerModifierPage />} />
           </Route>
           <Route path="*" element={<PageIntrouvable />} />
         </Routes>
