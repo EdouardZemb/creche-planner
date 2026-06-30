@@ -205,7 +205,48 @@ export interface paths {
                 };
             };
         };
-        put?: never;
+        /**
+         * Éditer les scalaires d’un foyer
+         * @description Met à jour les finances/RFR/parts/nb enfants à charge d’un foyer existant. Les enfants et parents se gèrent via leurs propres routes.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        ressourcesMensuelles: number;
+                        rfr: number;
+                        nbEnfantsACharge: number;
+                        nbParts: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Foyer mis à jour. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FoyerVue"];
+                    };
+                };
+                /** @description Foyer inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         post?: never;
         delete?: never;
         options?: never;

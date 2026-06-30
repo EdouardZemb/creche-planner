@@ -740,6 +740,109 @@
         },
         "status": 200
       }
+    },
+    {
+      "description": "une édition des scalaires du foyer de référence",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 existe",
+          "params": {
+            "id": "11111111-1111-4111-8111-111111111111"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "nbEnfantsACharge": 2,
+          "nbParts": 3,
+          "ressourcesMensuelles": 6716.92,
+          "rfr": 72705
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "PUT",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111"
+      },
+      "response": {
+        "body": {
+          "id": "11111111-1111-4111-8111-111111111111",
+          "nbEnfantsACharge": 2,
+          "nbParts": 3,
+          "ressourcesMensuellesCentimes": 671692,
+          "ressourcesMensuellesEuros": 6716.92,
+          "rfrCentimes": 7270500,
+          "rfrEuros": 72705,
+          "tranche": 3
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.nbEnfantsACharge": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.nbParts": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.ressourcesMensuellesCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.ressourcesMensuellesEuros": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "decimal"
+                }
+              ]
+            },
+            "$.rfrCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.rfrEuros": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
     }
   ],
   "metadata": {

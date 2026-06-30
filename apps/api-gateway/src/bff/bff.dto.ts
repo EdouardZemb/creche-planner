@@ -54,6 +54,19 @@ export const creerDossierFoyerSchema = z.object({
 export type CreerDossierFoyer = z.infer<typeof creerDossierFoyerSchema>;
 
 /**
+ * Édition des **scalaires** d'un foyer (`PUT /foyers/:id`) : mêmes champs que la
+ * création **sans** `enfants`/`parents` (sous-ressources gérées via leurs propres
+ * routes). La validation profonde reste chez `svc-foyer`.
+ */
+export const ecrireFoyerScalairesSchema = z.object({
+  ressourcesMensuelles: z.number().nonnegative(),
+  rfr: z.number().nonnegative(),
+  nbEnfantsACharge: z.number().int().min(1),
+  nbParts: z.number().positive(),
+});
+export type EcrireFoyerScalaires = z.infer<typeof ecrireFoyerScalairesSchema>;
+
+/**
  * Création d'un contrat de garde. Champs communs validés ; les champs
  * spécifiques au mode (`semaineType`, `semaineAbcm`, `heuresAnnuelles…`) passent
  * via `passthrough()` et sont validés par `svc-planification`.

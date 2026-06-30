@@ -107,6 +107,58 @@ describe('FoyersController · création orchestrée', () => {
   });
 });
 
+describe('FoyersController · édition des scalaires', () => {
+  it('valide puis relaie l’édition des scalaires', async () => {
+    const mettreAJour = vi.fn().mockResolvedValue(FOYER);
+    const controller = new FoyersController({
+      mettreAJour,
+    } as unknown as FoyerClient);
+
+    const vue = await controller.mettreAJour('foyer-1', {
+      ressourcesMensuelles: 6716.92,
+      rfr: 72705,
+      nbEnfantsACharge: 2,
+      nbParts: 3,
+    });
+
+    expect(mettreAJour).toHaveBeenCalledWith('foyer-1', {
+      ressourcesMensuelles: 6716.92,
+      rfr: 72705,
+      nbEnfantsACharge: 2,
+      nbParts: 3,
+    });
+    expect(vue).toEqual(FOYER);
+  });
+
+  it('refuse un corps invalide (400, sans appel amont)', () => {
+    const mettreAJour = vi.fn();
+    const controller = new FoyersController({
+      mettreAJour,
+    } as unknown as FoyerClient);
+
+    expect(() =>
+      controller.mettreAJour('foyer-1', { ressourcesMensuelles: -1 }),
+    ).toThrow(BadRequestException);
+    expect(mettreAJour).not.toHaveBeenCalled();
+  });
+
+  it('propage une erreur amont en HttpException (relais)', async () => {
+    const mettreAJour = vi.fn().mockRejectedValue(new Error('HTTP 404'));
+    const controller = new FoyersController({
+      mettreAJour,
+    } as unknown as FoyerClient);
+
+    await expect(
+      controller.mettreAJour('foyer-1', {
+        ressourcesMensuelles: 6716.92,
+        rfr: 72705,
+        nbEnfantsACharge: 2,
+        nbParts: 3,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+});
+
 describe('FoyersController · lecture agrégée', () => {
   it('agrège foyer, enfants et parents', async () => {
     const controller = new FoyersController({

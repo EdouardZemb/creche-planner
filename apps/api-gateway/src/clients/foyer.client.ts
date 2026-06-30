@@ -128,6 +128,29 @@ export class FoyerClient {
     );
   }
 
+  /** PUT `/api/foyers/:id` — édite les scalaires d'un foyer. */
+  async mettreAJour(id: string, saisie: SaisieFoyer): Promise<FoyerVue> {
+    const base = loadConfig().foyerUrl;
+    const url = `${base}/api/foyers/${encodeURIComponent(id)}`;
+    this.logger.debug(`PUT ${url}`);
+    return executerResilient(
+      'svc-foyer',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(saisie),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return foyerVueSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
   /** POST `/api/foyers/:id/enfants` — rattache un enfant. */
   async ajouterEnfant(
     foyerId: string,
