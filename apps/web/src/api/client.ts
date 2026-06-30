@@ -6,6 +6,7 @@ import type {
   EnfantVue,
   ParentVue,
   CreerEnfant,
+  ModifierEnfant,
   CreerParent,
   ModifierParent,
   MoiVue,
@@ -210,7 +211,7 @@ export const api = {
     ).then((r) => lire<void>(r));
   },
 
-  /** Rattache un enfant au foyer — `POST /v1/foyers/:id/enfants` (201 ; ajout seul, pas d'édition). */
+  /** Rattache un enfant au foyer — `POST /v1/foyers/:id/enfants` (201). */
   ajouterEnfant(
     foyerId: string,
     saisie: CreerEnfant,
@@ -222,6 +223,43 @@ export const api = {
       body: JSON.stringify(saisie),
       ...(opts.signal ? { signal: opts.signal } : {}),
     }).then((r) => lire<EnfantVue>(r));
+  },
+
+  /**
+   * Édite un enfant (prénom/date) — `PUT /v1/foyers/:id/enfants/:enfantId`.
+   * Renommer un enfant n'affecte pas les contrats existants (couplage par prénom).
+   */
+  modifierEnfant(
+    foyerId: string,
+    enfantId: string,
+    saisie: ModifierEnfant,
+    opts: RequeteOptions = {},
+  ): Promise<EnfantVue> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/enfants/${encodeURIComponent(enfantId)}`,
+      {
+        method: 'PUT',
+        headers: entetes(true),
+        body: JSON.stringify(saisie),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<EnfantVue>(r));
+  },
+
+  /** Retire un enfant (hard delete côté service) — `DELETE /v1/foyers/:id/enfants/:enfantId` (204). */
+  retirerEnfant(
+    foyerId: string,
+    enfantId: string,
+    opts: RequeteOptions = {},
+  ): Promise<void> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/enfants/${encodeURIComponent(enfantId)}`,
+      {
+        method: 'DELETE',
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<void>(r));
   },
 
   listerContrats(

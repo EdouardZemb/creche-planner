@@ -11,7 +11,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(gatewayOpenApiDocument.info.version).toBe('1.0.0');
   });
 
-  it('expose exactement les 14 routes attendues', () => {
+  it('expose exactement les 15 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -20,6 +20,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/foyers',
         '/api/v1/foyers/{id}',
         '/api/v1/foyers/{id}/enfants',
+        '/api/v1/foyers/{id}/enfants/{enfantId}',
         '/api/v1/foyers/{id}/parents',
         '/api/v1/foyers/{id}/parents/{parentId}',
         '/api/v1/foyers/{foyerId}/etablissements',
@@ -43,6 +44,20 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     const corps =
       operation.requestBody.content['application/json'].schema.required;
     expect(corps).toEqual(['prenom', 'dateNaissance']);
+  });
+
+  it('expose l’édition et la suppression d’un enfant (PUT/DELETE /foyers/{id}/enfants/{enfantId})', () => {
+    const route =
+      gatewayOpenApiDocument.paths['/api/v1/foyers/{id}/enfants/{enfantId}'];
+    expect(route.put).toBeDefined();
+    expect(
+      route.put.responses['200'].content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/EnfantVue' });
+    expect(
+      route.put.requestBody.content['application/json'].schema.required,
+    ).toEqual(['prenom', 'dateNaissance']);
+    expect(route.delete).toBeDefined();
+    expect(route.delete.responses['204']).toBeDefined();
   });
 
   it('expose l’édition des scalaires d’un foyer (PUT /foyers/{id})', () => {

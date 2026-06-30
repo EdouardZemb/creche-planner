@@ -10,6 +10,8 @@ Schémas source de vérité : [`../events/foyer-events.ts`](../events/foyer-even
 | ------------------------ | --------------------- | -------------------------------------------- |
 | `foyer.FoyerMisAJour.v1` | `foyer.FoyerMisAJour` | Création ou mise à jour des données du foyer |
 | `foyer.EnfantAjoute.v1`  | `foyer.EnfantAjoute`  | Rattachement d'un enfant au foyer            |
+| `foyer.EnfantModifie.v1` | `foyer.EnfantModifie` | Édition d'un enfant (prénom/date)            |
+| `foyer.EnfantRetire.v1`  | `foyer.EnfantRetire`  | Retrait d'un enfant (hard delete)            |
 
 Enveloppe commune : `IntegrationEvent` (`id`, `type`, `source`, `version`,
 `occurredAt`, `traceId`, `payload`). `id` sert de **clé d'idempotence** côté
@@ -37,3 +39,12 @@ consommateur.
 
 > Consommateurs (Phase 6, `svc-tarification`) : traitement **idempotent** sur
 > `id`. La tranche est fournie pour éviter de redériver le barème côté consommateur.
+
+## `foyer.EnfantModifie.v1` / `foyer.EnfantRetire.v1` — payloads
+
+`EnfantModifie` transporte l'**état complet** de l'enfant (mêmes champs
+qu'`EnfantAjoute` : `foyerId`, `enfantId`, `prenom`, `dateNaissance`).
+`EnfantRetire` ne porte que les **identités** (`foyerId`, `enfantId`) — le retrait
+est un **hard delete** côté `svc-foyer`. Ces événements ne cascadent pas vers les
+plannings : un contrat de `svc-planification` référence l'enfant par **prénom
+libre**, pas par `enfantId` (désynchro cosmétique seulement).

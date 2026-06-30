@@ -42,8 +42,8 @@ function valeursDepuisFoyer(foyer: FoyerVue): ValeursScalairesFoyer {
  * **parent** propriétaire (BFF `@FoyerScope`). Monté sous `GardeFoyer`, qui a déjà
  * traité l'absence / panne du foyer ; on relit ici le dossier pour pré-remplir.
  * Trois blocs : les **scalaires** (P2, `PUT /v1/foyers/:id`), les **parents** (P3,
- * CRUD unitaire) et les **enfants** (P3, ajout seul). L'édition/suppression d'un
- * enfant relève d'une phase ultérieure (complément backend).
+ * CRUD unitaire) et les **enfants** (P4, CRUD unitaire : ajout / édition /
+ * suppression).
  */
 export function FoyerModifierPage() {
   useTitrePage('Modifier le foyer');

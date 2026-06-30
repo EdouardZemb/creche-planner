@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import {
   ENFANT_AJOUTE_TYPE,
+  ENFANT_MODIFIE_TYPE,
+  ENFANT_RETIRE_TYPE,
   FOYER_MIS_A_JOUR_TYPE,
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
@@ -337,6 +339,143 @@ describe('FoyerService.listerEnfants', () => {
         dateNaissance: '2024-03-15',
       },
     ]);
+  });
+});
+
+const ENFANT_ID = '44444444-4444-4444-8444-444444444444';
+
+/** Ligne enfant de référence (le read model n'a pas d'`updatedAt`). */
+function ligneEnfant(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id: ENFANT_ID,
+    foyerId: FOYER_ID,
+    prenom: 'Mia',
+    dateNaissance: '2024-03-15',
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+/**
+ * Faux `db` transactionnel pour `modifierEnfant`/`retirerEnfant` :
+ * `update().set().where().returning()` (espionné via `updateSet`) et
+ * `delete().where().returning()` renvoient `lignes` (vide ⇒ enfant introuvable) ;
+ * `insertValues` espionne l'insert d'outbox.
+ */
+function fakeDbEnfantTx(options: { lignes?: Record<string, unknown>[] } = {}): {
+  db: Database;
+  transaction: ReturnType<typeof vi.fn>;
+  insertValues: ReturnType<typeof vi.fn>;
+  updateSet: ReturnType<typeof vi.fn>;
+  deleteWhere: ReturnType<typeof vi.fn>;
+} {
+  const lignes = options.lignes ?? [];
+  const insertValues = vi.fn(() => Promise.resolve());
+  const updateSet = vi.fn(() => ({
+    where: () => ({ returning: () => Promise.resolve(lignes) }),
+  }));
+  const deleteWhere = vi.fn(() => ({
+    returning: () => Promise.resolve(lignes),
+  }));
+  const tx = {
+    insert: () => ({ values: insertValues }),
+    update: () => ({ set: updateSet }),
+    delete: () => ({ where: deleteWhere }),
+  };
+  const transaction = vi.fn(async (cb: (t: unknown) => Promise<unknown>) =>
+    cb(tx),
+  );
+  const db = { transaction } as unknown as Database;
+  return { db, transaction, insertValues, updateSet, deleteWhere };
+}
+
+describe('FoyerService.modifierEnfant', () => {
+  it('met à jour l’enfant (prénom normalisé) + ré-émet EnfantModifie (même transaction)', async () => {
+    const { db, transaction, updateSet, insertValues } = fakeDbEnfantTx({
+      lignes: [ligneEnfant({ prenom: 'Zoé', dateNaissance: '2023-03-12' })],
+    });
+    const service = new FoyerService(db);
+
+    const vue = await service.modifierEnfant(FOYER_ID, ENFANT_ID, {
+      prenom: '  Zoé ',
+      dateNaissance: '2023-03-12',
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    // Le prénom est passé par le domaine (trim) avant écriture.
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ prenom: 'Zoé', dateNaissance: '2023-03-12' }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: ENFANT_MODIFIE_TYPE,
+        payload: expect.objectContaining({
+          foyerId: FOYER_ID,
+          enfantId: ENFANT_ID,
+          prenom: 'Zoé',
+          dateNaissance: '2023-03-12',
+        }),
+      }),
+    );
+    expect(vue).toMatchObject({ id: ENFANT_ID, prenom: 'Zoé' });
+  });
+
+  it('lève NotFoundException si l’enfant est introuvable — aucun événement émis', async () => {
+    const { db, insertValues } = fakeDbEnfantTx({ lignes: [] });
+    const service = new FoyerService(db);
+
+    await expect(
+      service.modifierEnfant(FOYER_ID, ENFANT_ID, {
+        prenom: 'Zoé',
+        dateNaissance: '2023-03-12',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('un prénom vide est refusé par le domaine AVANT toute transaction', async () => {
+    const { db, transaction } = fakeDbEnfantTx({ lignes: [ligneEnfant()] });
+    const service = new FoyerService(db);
+
+    await expect(
+      service.modifierEnfant(FOYER_ID, ENFANT_ID, {
+        prenom: '   ',
+        dateNaissance: '2023-03-12',
+      }),
+    ).rejects.toThrow('prénom');
+    expect(transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('FoyerService.retirerEnfant (hard delete + événement)', () => {
+  it('supprime l’enfant + émet EnfantRetire dans la même transaction', async () => {
+    const { db, transaction, deleteWhere, insertValues } = fakeDbEnfantTx({
+      lignes: [ligneEnfant()],
+    });
+    const service = new FoyerService(db);
+
+    await service.retirerEnfant(FOYER_ID, ENFANT_ID);
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: ENFANT_RETIRE_TYPE,
+        payload: { foyerId: FOYER_ID, enfantId: ENFANT_ID },
+      }),
+    );
+  });
+
+  it('lève NotFoundException si l’enfant est introuvable — aucun événement émis', async () => {
+    const { db, insertValues } = fakeDbEnfantTx({ lignes: [] });
+    const service = new FoyerService(db);
+
+    await expect(
+      service.retirerEnfant(FOYER_ID, ENFANT_ID),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(insertValues).not.toHaveBeenCalled();
   });
 });
 

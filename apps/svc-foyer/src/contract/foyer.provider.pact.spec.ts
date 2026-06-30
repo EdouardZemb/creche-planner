@@ -23,6 +23,9 @@ const ETAT_FOYER_T3 = 'un foyer de référence T3 existe';
 // l'unicité globale `lower(email)`).
 const ETAT_FOYER_SANS_PARENT = 'un foyer de référence T3 sans parent';
 const ETAT_FOYER_AVEC_PARENT = 'un foyer de référence T3 avec un parent';
+// Enfant (P4) : seede le foyer puis (table rase) un enfant actif d'id connu pour
+// l'édition/le retrait. Idempotent (ré-exécution locale sans clash sur l'id).
+const ETAT_FOYER_AVEC_ENFANT = 'un foyer de référence T3 avec un enfant';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-foyer) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
@@ -151,6 +154,19 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
           await db`
             insert into parent (id, foyer_id, prenom, nom, email, principal, ordre, actif)
             values (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, false, 0, true)
+          `;
+        },
+        [ETAT_FOYER_AVEC_ENFANT]: async (params?: unknown): Promise<void> => {
+          const { foyerId, enfantId } = params as {
+            foyerId: string;
+            enfantId: string;
+          };
+          await seedFoyer(db, foyerId);
+          // Table rase de l'enfant visé puis (ré)insertion (idempotent).
+          await db`delete from enfant where id = ${enfantId}`;
+          await db`
+            insert into enfant (id, foyer_id, prenom, date_naissance)
+            values (${enfantId}, ${foyerId}, 'Mia', '2024-12-08')
           `;
         },
       },

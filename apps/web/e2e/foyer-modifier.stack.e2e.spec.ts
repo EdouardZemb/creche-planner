@@ -137,6 +137,63 @@ test('stack réelle : le parent ajoute puis retire un parent', async ({
   await expect(boutonRetirer).toHaveCount(0);
 });
 
+// Gestion des enfants (P4) : depuis l'écran d'édition, le parent ajoute un
+// enfant, l'édite (renommage) puis le supprime — écritures unitaires contre la
+// pile réelle (POST / PUT / DELETE /api/v1/foyers/:id/enfants[...]).
+//
+// Auto-nettoyant : la suppression est un HARD DELETE, donc l'enfant ajouté ne
+// laisse aucune trace en BDD à la fin (pas d'afterEach de restauration requis).
+// Le prénom est rendu unique par exécution pour l'identifier parmi d'éventuels
+// enfants seedés.
+test('stack réelle : le parent ajoute, édite puis supprime un enfant', async ({
+  page,
+}) => {
+  const { foyerId } = lireEtatSeed();
+  const prenom = `EnfantE2E${Date.now()}`;
+  const prenomModifie = `${prenom}-bis`;
+
+  await page.goto(urlModifier(foyerId));
+  await expect(
+    page.getByRole('heading', { name: 'Modifier le foyer' }),
+  ).toBeVisible();
+
+  // Ajout via le bloc dédié (l'écran peut déjà afficher des enfants seedés).
+  const blocAjout = page.locator('.enfant-ligne', {
+    hasText: 'Ajouter un enfant',
+  });
+  await blocAjout.getByLabel(/Prénom/).fill(prenom);
+  await blocAjout.getByLabel(/Date de naissance/).fill('2024-12-08');
+  await blocAjout.getByRole('button', { name: '+ Ajouter cet enfant' }).click();
+
+  // L'enfant ajouté apparaît comme une ligne éditable : son bouton « Supprimer »
+  // porte sa désignation (le prénom) dans son nom accessible.
+  const boutonSupprimer = page.getByRole('button', {
+    name: `Supprimer l’enfant ${prenom}`,
+  });
+  await expect(boutonSupprimer).toBeVisible();
+
+  // Édition : on renomme l'enfant dans SA ligne (celle qui porte ce bouton). Le
+  // nom accessible du bouton « Supprimer » suit le prénom saisi → après l'avoir
+  // renommé, on re-cible la ligne par le NOUVEAU nom pour enregistrer/supprimer
+  // (l'ancien locator ne matcherait plus).
+  await page
+    .locator('.enfant-ligne', { has: boutonSupprimer })
+    .getByLabel(/Prénom/)
+    .fill(prenomModifie);
+
+  const boutonSupprimerModifie = page.getByRole('button', {
+    name: `Supprimer l’enfant ${prenomModifie}`,
+  });
+  const ligneModifiee = page.locator('.enfant-ligne', {
+    has: boutonSupprimerModifie,
+  });
+  await ligneModifiee.getByRole('button', { name: 'Enregistrer' }).click();
+
+  // Suppression (hard delete) : la ligne disparaît de l'écran.
+  await boutonSupprimerModifie.click();
+  await expect(boutonSupprimerModifie).toHaveCount(0);
+});
+
 // Le point d'entrée « Modifier le foyer » est visible dans l'en-tête dès qu'un
 // foyer est actif (propriétaire ; non conditionné à un rôle admin) — et mène à
 // l'écran d'édition.

@@ -6,6 +6,8 @@ import type { EnfantVue } from '../types/bff';
 vi.mock('../api/client', () => ({
   api: {
     ajouterEnfant: vi.fn(),
+    modifierEnfant: vi.fn(),
+    retirerEnfant: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -23,6 +25,8 @@ import { api } from '../api/client';
 
 const mockedApi = api as unknown as {
   ajouterEnfant: ReturnType<typeof vi.fn>;
+  modifierEnfant: ReturnType<typeof vi.fn>;
+  retirerEnfant: ReturnType<typeof vi.fn>;
 };
 
 const FOYER_ID = 'foyer-123';
@@ -39,15 +43,23 @@ describe('EnfantsSection', () => {
     vi.clearAllMocks();
   });
 
-  it('liste les enfants existants', () => {
+  it('liste les enfants existants comme lignes éditables (prénom pré-rempli)', () => {
     render(
       <EnfantsSection
         foyerId={FOYER_ID}
         enfantsInitiaux={[enfant({ id: 'e1', prenom: 'Mia' })]}
       />,
     );
-    expect(screen.getByText('Mia')).toBeInTheDocument();
-    expect(screen.getByText(/2024-12-08/)).toBeInTheDocument();
+    // Le prénom est dans un champ éditable (valeur), pas un simple texte.
+    expect(screen.getByDisplayValue('Mia')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('2024-12-08')).toBeInTheDocument();
+  });
+
+  it('prévient que renommer/supprimer n’affecte pas les contrats existants', () => {
+    render(<EnfantsSection foyerId={FOYER_ID} enfantsInitiaux={[]} />);
+    expect(
+      screen.getByText(/n’affecte pas les contrats de garde déjà créés/),
+    ).toBeInTheDocument();
   });
 
   it('désactive l’ajout tant que les champs sont vides', () => {
@@ -63,10 +75,13 @@ describe('EnfantsSection', () => {
     );
     render(<EnfantsSection foyerId={FOYER_ID} enfantsInitiaux={[]} />);
 
-    fireEvent.change(screen.getByLabelText(/Prénom/i), {
+    const blocAjout = screen
+      .getByText('Ajouter un enfant')
+      .closest('.enfant-ligne') as HTMLElement;
+    fireEvent.change(blocAjout.querySelector('input[type="text"]')!, {
       target: { value: 'Zoé' },
     });
-    fireEvent.change(screen.getByLabelText(/Date de naissance/i), {
+    fireEvent.change(blocAjout.querySelector('input[type="date"]')!, {
       target: { value: '2023-03-12' },
     });
     fireEvent.click(
@@ -79,6 +94,50 @@ describe('EnfantsSection', () => {
         dateNaissance: '2023-03-12',
       });
     });
-    expect(await screen.findByText('Zoé')).toBeInTheDocument();
+    expect(await screen.findByDisplayValue('Zoé')).toBeInTheDocument();
+  });
+
+  it('édite un enfant existant (prénom)', async () => {
+    mockedApi.modifierEnfant.mockResolvedValueOnce(
+      enfant({ id: 'e1', prenom: 'Mia-Rose', dateNaissance: '2024-12-08' }),
+    );
+    render(
+      <EnfantsSection
+        foyerId={FOYER_ID}
+        enfantsInitiaux={[enfant({ id: 'e1', prenom: 'Mia' })]}
+      />,
+    );
+
+    fireEvent.change(screen.getByDisplayValue('Mia'), {
+      target: { value: 'Mia-Rose' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+
+    await waitFor(() => {
+      expect(mockedApi.modifierEnfant).toHaveBeenCalledWith(FOYER_ID, 'e1', {
+        prenom: 'Mia-Rose',
+        dateNaissance: '2024-12-08',
+      });
+    });
+    expect(screen.getByDisplayValue('Mia-Rose')).toBeInTheDocument();
+  });
+
+  it('supprime un enfant et le retire de la liste', async () => {
+    mockedApi.retirerEnfant.mockResolvedValueOnce(undefined);
+    render(
+      <EnfantsSection
+        foyerId={FOYER_ID}
+        enfantsInitiaux={[enfant({ id: 'e1', prenom: 'Mia' })]}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Supprimer l’enfant Mia' }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApi.retirerEnfant).toHaveBeenCalledWith(FOYER_ID, 'e1');
+    });
+    expect(screen.queryByDisplayValue('Mia')).not.toBeInTheDocument();
   });
 });

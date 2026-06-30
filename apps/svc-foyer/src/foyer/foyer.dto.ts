@@ -22,6 +22,14 @@ export const ajouterEnfantSchema = z.object({
 export type AjouterEnfantDto = z.infer<typeof ajouterEnfantSchema>;
 
 /**
+ * Édition d'un enfant (`PUT`). Prénom + date sont requis (l'écran édite les deux
+ * et l'événement `EnfantModifie` transporte l'état complet) ; même validation que
+ * l'ajout. La suppression (`DELETE`) ne porte pas de corps (hard delete).
+ */
+export const modifierEnfantSchema = ajouterEnfantSchema;
+export type ModifierEnfantDto = z.infer<typeof modifierEnfantSchema>;
+
+/**
  * Rattachement d'un parent au foyer. `email` est requis (destinataire des
  * notifications + futur identifiant de login) ; `prenom`/`nom` sont une identité
  * douce optionnelle. `principal`/`ordre` ont un défaut pour une création minimale.
