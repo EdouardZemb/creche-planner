@@ -1,3 +1,17 @@
+## 0.7.0 (2026-06-30)
+
+### 🚀 Features
+
+- **foyer:** création unique de foyer par utilisateur (P5) ([#112](https://github.com/EdouardZemb/creche-planner/pull/112))
+- **foyer:** éditer et supprimer un enfant (P4) ([#111](https://github.com/EdouardZemb/creche-planner/pull/111))
+- **foyer:** gérer parents + ajout d'enfant dans l'écran d'édition (P3) ([#110](https://github.com/EdouardZemb/creche-planner/pull/110))
+- **foyer:** exposer + autoriser l'édition d'un foyer par son parent (P1) ([#108](https://github.com/EdouardZemb/creche-planner/pull/108))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.6.0 (2026-06-30)
 
 ### 🚀 Features

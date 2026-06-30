@@ -1,3 +1,23 @@
+## 0.7.0 (2026-06-30)
+
+### 🚀 Features
+
+- **dashboard:** bandeau « coût du mois » sur « Aujourd'hui » (P3c) ([#117](https://github.com/EdouardZemb/creche-planner/pull/117))
+- **dashboard:** deep-link « Modifier » vers le contrat du planning (P3a) ([#116](https://github.com/EdouardZemb/creche-planner/pull/116))
+- **dashboard:** l'accueil atterrit sur « Aujourd'hui » (P3b) ([#115](https://github.com/EdouardZemb/creche-planner/pull/115))
+- **dashboard:** page « Aujourd'hui » branchée (PR2) ([#114](https://github.com/EdouardZemb/creche-planner/pull/114))
+- **dashboard:** logique pure « ma journée » (PR1) ([#113](https://github.com/EdouardZemb/creche-planner/pull/113))
+- **foyer:** création unique de foyer par utilisateur (P5) ([#112](https://github.com/EdouardZemb/creche-planner/pull/112))
+- **foyer:** éditer et supprimer un enfant (P4) ([#111](https://github.com/EdouardZemb/creche-planner/pull/111))
+- **foyer:** gérer parents + ajout d'enfant dans l'écran d'édition (P3) ([#110](https://github.com/EdouardZemb/creche-planner/pull/110))
+- **foyer:** écran « Modifier le foyer » — édition des scalaires (P2) ([#109](https://github.com/EdouardZemb/creche-planner/pull/109))
+- **foyer:** exposer + autoriser l'édition d'un foyer par son parent (P1) ([#108](https://github.com/EdouardZemb/creche-planner/pull/108))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.6.0 (2026-06-30)
 
 ### 🚀 Features

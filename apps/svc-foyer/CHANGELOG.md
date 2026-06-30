@@ -1,3 +1,14 @@
+## 0.7.0 (2026-06-30)
+
+### 🚀 Features
+
+- **foyer:** éditer et supprimer un enfant (P4) ([#111](https://github.com/EdouardZemb/creche-planner/pull/111))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.6.0 (2026-06-30)
 
 This was a version bump only for svc-foyer to align it with other projects, there were no code changes.
