@@ -123,16 +123,18 @@ test('stack réelle : le parent ajoute puis retire un parent', async ({
   await blocAjout.getByLabel(/Adresse e-mail/).fill(email);
   await blocAjout.getByRole('button', { name: '+ Ajouter ce parent' }).click();
 
-  // Le parent ajouté apparaît comme une ligne éditable (son e-mail est la valeur
-  // du champ) ; sa désignation par défaut (sans prénom/nom) est l'e-mail.
-  await expect(page.getByDisplayValue(email)).toBeVisible();
+  // Le parent ajouté apparaît comme une ligne éditable : son bouton « Retirer »
+  // porte sa désignation par défaut (sans prénom/nom = l'e-mail) dans son nom
+  // accessible, ce qui l'identifie sans ambiguïté parmi d'éventuels parents seedés.
+  const boutonRetirer = page.getByRole('button', {
+    name: `Retirer le parent ${email}`,
+  });
+  await expect(boutonRetirer).toBeVisible();
 
-  await page
-    .getByRole('button', { name: `Retirer le parent ${email}` })
-    .click();
+  await boutonRetirer.click();
 
-  // Retiré : la ligne disparaît de l'écran.
-  await expect(page.getByDisplayValue(email)).toHaveCount(0);
+  // Retiré : la ligne (et son bouton) disparaît de l'écran.
+  await expect(boutonRetirer).toHaveCount(0);
 });
 
 // Le point d'entrée « Modifier le foyer » est visible dans l'en-tête dès qu'un
