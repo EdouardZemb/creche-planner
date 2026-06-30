@@ -1,3 +1,14 @@
+## 0.6.0 (2026-06-30)
+
+### 🚀 Features
+
+- **planification:** verrou NOT NULL contrat→établissement + lien obligatoire (P5) ([#104](https://github.com/EdouardZemb/creche-planner/pull/104))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.5.0 (2026-06-29)
 
 ### 🚀 Features

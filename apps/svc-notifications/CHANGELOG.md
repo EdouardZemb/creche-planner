@@ -1,3 +1,14 @@
+## 0.6.0 (2026-06-30)
+
+### 🚀 Features
+
+- **etablissements:** démantèlement de l'ancien modèle figé (P6) ([#105](https://github.com/EdouardZemb/creche-planner/pull/105))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.5.0 (2026-06-29)
 
 ### 🚀 Features
