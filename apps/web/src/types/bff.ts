@@ -88,6 +88,12 @@ export type ModifierEtablissement = CorpsRequeteJson<
 /** Corps de création d'un foyer (EUROS) — dérivé du requestBody de `POST /api/v1/foyers`. */
 export type CreerDossierFoyer = CorpsRequeteJson<'/api/v1/foyers', 'post'>;
 
+/**
+ * Corps d'**édition des scalaires** d'un foyer (EUROS) — dérivé du requestBody de
+ * `PUT /api/v1/foyers/{id}` (sans enfants/parents, gérés via leurs propres routes).
+ */
+export type ModifierFoyer = CorpsRequeteJson<'/api/v1/foyers/{id}', 'put'>;
+
 /** Un enfant à créer — dérivé du sous-schéma `enfants[]` de `CreerDossierFoyer`. */
 export type CreerEnfant = CreerDossierFoyer['enfants'][number];
 

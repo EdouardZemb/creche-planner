@@ -1,5 +1,6 @@
 import type {
   CreerDossierFoyer,
+  ModifierFoyer,
   DossierFoyerVue,
   FoyerVue,
   MoiVue,
@@ -140,6 +141,20 @@ export const api = {
       headers: entetes(false),
       ...(opts.signal ? { signal: opts.signal } : {}),
     }).then((r) => lire<DossierFoyerVue>(r));
+  },
+
+  /** Édite les scalaires d'un foyer — `PUT /v1/foyers/:id` (parent du foyer ; renvoie la vue). */
+  modifierFoyer(
+    id: string,
+    saisie: ModifierFoyer,
+    opts: RequeteOptions = {},
+  ): Promise<FoyerVue> {
+    return requete(`${BASE}/v1/foyers/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: entetes(true),
+      body: JSON.stringify(saisie),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<FoyerVue>(r));
   },
 
   listerContrats(

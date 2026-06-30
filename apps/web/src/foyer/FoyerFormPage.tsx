@@ -9,9 +9,13 @@ import {
   messageErreur,
   type ErreurChamp,
 } from '../utils/erreurs';
-import { Abbr } from '../ui/Abbr';
 import { EtatVide } from '../ui/EtatVide';
 import { useMoi } from '../session/MoiContext';
+import {
+  FoyerScalairesForm,
+  type ChampScalaireFoyer,
+  type ValeursScalairesFoyer,
+} from './FoyerScalairesForm';
 import type { CreerEnfant, CreerParent } from '../types/bff';
 
 interface EtatEnfant {
@@ -93,11 +97,12 @@ export function FoyerFormPage() {
   const idBase = useId();
   const moi = useMoi();
 
-  const [ressourcesMensuelles, setRessourcesMensuelles] =
-    useState(DEFAUT_RESSOURCES);
-  const [rfr, setRfr] = useState(DEFAUT_RFR);
-  const [nbEnfantsACharge, setNbEnfantsACharge] = useState(DEFAUT_NB_ENFANTS);
-  const [nbParts, setNbParts] = useState(DEFAUT_NB_PARTS);
+  const [scalaires, setScalaires] = useState<ValeursScalairesFoyer>({
+    ressourcesMensuelles: DEFAUT_RESSOURCES,
+    rfr: DEFAUT_RFR,
+    nbEnfantsACharge: DEFAUT_NB_ENFANTS,
+    nbParts: DEFAUT_NB_PARTS,
+  });
   const [enfants, setEnfants] = useState<EtatEnfant[]>(defautEnfants);
   const [parents, setParents] = useState<EtatParent[]>(defautParents);
   const [chargement, setChargement] = useState(false);
@@ -113,6 +118,10 @@ export function FoyerFormPage() {
       focaliserSection(refErreurGlobale.current);
     }
   }, [erreurGlobale]);
+
+  function setScalaire(champ: ChampScalaireFoyer, valeur: string) {
+    setScalaires((prev) => ({ ...prev, [champ]: valeur }));
+  }
 
   function ajouterEnfant() {
     setEnfants((prev) => [...prev, nouvelEnfant()]);
@@ -192,10 +201,10 @@ export function FoyerFormPage() {
 
     try {
       const dossier = await api.creerFoyer({
-        ressourcesMensuelles: parseFloat(ressourcesMensuelles),
-        rfr: parseFloat(rfr),
-        nbEnfantsACharge: parseInt(nbEnfantsACharge, 10),
-        nbParts: parseFloat(nbParts),
+        ressourcesMensuelles: parseFloat(scalaires.ressourcesMensuelles),
+        rfr: parseFloat(scalaires.rfr),
+        nbEnfantsACharge: parseInt(scalaires.nbEnfantsACharge, 10),
+        nbParts: parseFloat(scalaires.nbParts),
         enfants: enfantsValides,
         parents: parentsValides,
       });
@@ -245,124 +254,12 @@ export function FoyerFormPage() {
       )}
 
       <form onSubmit={(ev) => void soumettre(ev)}>
-        <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-          <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-            Ressources du foyer
-          </legend>
-
-          <label htmlFor="ressourcesMensuelles">
-            Ressources mensuelles (€) <span aria-hidden="true">*</span>
-          </label>
-          <input
-            id="ressourcesMensuelles"
-            type="number"
-            step="0.01"
-            min="0"
-            required
-            aria-required="true"
-            aria-invalid={erreurPour('ressourcesMensuelles') ? true : undefined}
-            {...(erreurPour('ressourcesMensuelles')
-              ? { 'aria-describedby': idErreur('ressourcesMensuelles') }
-              : {})}
-            value={ressourcesMensuelles}
-            onChange={(e) => {
-              setRessourcesMensuelles(e.target.value);
-            }}
-            style={{ width: '100%' }}
-          />
-          {erreurPour('ressourcesMensuelles') && (
-            <span
-              id={idErreur('ressourcesMensuelles')}
-              className="debit"
-              role="alert"
-            >
-              {erreurPour('ressourcesMensuelles')}
-            </span>
-          )}
-
-          <label htmlFor="rfr">
-            Revenu fiscal de référence — <Abbr sigle="RFR" /> (€){' '}
-            <span aria-hidden="true">*</span>
-          </label>
-          <input
-            id="rfr"
-            type="number"
-            step="0.01"
-            min="0"
-            required
-            aria-required="true"
-            aria-invalid={erreurPour('rfr') ? true : undefined}
-            {...(erreurPour('rfr')
-              ? { 'aria-describedby': idErreur('rfr') }
-              : {})}
-            value={rfr}
-            onChange={(e) => {
-              setRfr(e.target.value);
-            }}
-            style={{ width: '100%' }}
-          />
-          {erreurPour('rfr') && (
-            <span id={idErreur('rfr')} className="debit" role="alert">
-              {erreurPour('rfr')}
-            </span>
-          )}
-
-          <label htmlFor="nbEnfantsACharge">
-            Nombre d&apos;enfants à charge <span aria-hidden="true">*</span>
-          </label>
-          <input
-            id="nbEnfantsACharge"
-            type="number"
-            min="1"
-            step="1"
-            required
-            aria-required="true"
-            aria-invalid={erreurPour('nbEnfantsACharge') ? true : undefined}
-            {...(erreurPour('nbEnfantsACharge')
-              ? { 'aria-describedby': idErreur('nbEnfantsACharge') }
-              : {})}
-            value={nbEnfantsACharge}
-            onChange={(e) => {
-              setNbEnfantsACharge(e.target.value);
-            }}
-            style={{ width: '100%' }}
-          />
-          {erreurPour('nbEnfantsACharge') && (
-            <span
-              id={idErreur('nbEnfantsACharge')}
-              className="debit"
-              role="alert"
-            >
-              {erreurPour('nbEnfantsACharge')}
-            </span>
-          )}
-
-          <label htmlFor="nbParts">
-            Nombre de parts fiscales <span aria-hidden="true">*</span>
-          </label>
-          <input
-            id="nbParts"
-            type="number"
-            step="0.5"
-            min="0.5"
-            required
-            aria-required="true"
-            aria-invalid={erreurPour('nbParts') ? true : undefined}
-            {...(erreurPour('nbParts')
-              ? { 'aria-describedby': idErreur('nbParts') }
-              : {})}
-            value={nbParts}
-            onChange={(e) => {
-              setNbParts(e.target.value);
-            }}
-            style={{ width: '100%' }}
-          />
-          {erreurPour('nbParts') && (
-            <span id={idErreur('nbParts')} className="debit" role="alert">
-              {erreurPour('nbParts')}
-            </span>
-          )}
-        </fieldset>
+        <FoyerScalairesForm
+          valeurs={scalaires}
+          onChange={setScalaire}
+          erreurPour={erreurPour}
+          idErreur={idErreur}
+        />
 
         <fieldset style={{ border: 'none', padding: 0, margin: '1rem 0 0' }}>
           <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
