@@ -3,6 +3,11 @@ import type {
   ModifierFoyer,
   DossierFoyerVue,
   FoyerVue,
+  EnfantVue,
+  ParentVue,
+  CreerEnfant,
+  CreerParent,
+  ModifierParent,
   MoiVue,
   CreerContrat,
   ContratVue,
@@ -155,6 +160,68 @@ export const api = {
       body: JSON.stringify(saisie),
       ...(opts.signal ? { signal: opts.signal } : {}),
     }).then((r) => lire<FoyerVue>(r));
+  },
+
+  /** Rattache un parent au foyer — `POST /v1/foyers/:id/parents` (201 ; **409** si e-mail/principal en conflit). */
+  ajouterParent(
+    foyerId: string,
+    saisie: CreerParent,
+    opts: RequeteOptions = {},
+  ): Promise<ParentVue> {
+    return requete(`${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/parents`, {
+      method: 'POST',
+      headers: entetes(true),
+      body: JSON.stringify(saisie),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<ParentVue>(r));
+  },
+
+  /** Édite un parent (champs fournis) — `PUT /v1/foyers/:id/parents/:parentId` (**409** possible). */
+  modifierParent(
+    foyerId: string,
+    parentId: string,
+    saisie: ModifierParent,
+    opts: RequeteOptions = {},
+  ): Promise<ParentVue> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/parents/${encodeURIComponent(parentId)}`,
+      {
+        method: 'PUT',
+        headers: entetes(true),
+        body: JSON.stringify(saisie),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<ParentVue>(r));
+  },
+
+  /** Retire un parent (soft-delete côté service) — `DELETE /v1/foyers/:id/parents/:parentId` (204). */
+  retirerParent(
+    foyerId: string,
+    parentId: string,
+    opts: RequeteOptions = {},
+  ): Promise<void> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/parents/${encodeURIComponent(parentId)}`,
+      {
+        method: 'DELETE',
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<void>(r));
+  },
+
+  /** Rattache un enfant au foyer — `POST /v1/foyers/:id/enfants` (201 ; ajout seul, pas d'édition). */
+  ajouterEnfant(
+    foyerId: string,
+    saisie: CreerEnfant,
+    opts: RequeteOptions = {},
+  ): Promise<EnfantVue> {
+    return requete(`${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/enfants`, {
+      method: 'POST',
+      headers: entetes(true),
+      body: JSON.stringify(saisie),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<EnfantVue>(r));
   },
 
   listerContrats(

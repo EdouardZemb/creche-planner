@@ -100,6 +100,16 @@ export type CreerEnfant = CreerDossierFoyer['enfants'][number];
 /** Un parent à rattacher à la création — dérivé du sous-schéma `parents[]` de `CreerDossierFoyer`. */
 export type CreerParent = NonNullable<CreerDossierFoyer['parents']>[number];
 
+/**
+ * Corps d'**édition d'un parent** (`PUT /api/v1/foyers/{id}/parents/{parentId}`) —
+ * tous les champs optionnels (seuls les fournis changent) ; `prenom`/`nom`
+ * acceptent `null` pour effacer l'identité douce, `actif` réactive un parent retiré.
+ */
+export type ModifierParent = CorpsRequeteJson<
+  '/api/v1/foyers/{id}/parents/{parentId}',
+  'put'
+>;
+
 // ---- Énumérations dérivées du contrat --------------------------------------
 
 /**

@@ -97,6 +97,46 @@ test.describe('stack réelle : le parent modifie les ressources de son foyer', (
   });
 });
 
+// Gestion des parents (P3) : depuis l'écran d'édition, le parent ajoute un
+// nouveau parent puis le retire — écritures unitaires contre la pile réelle
+// (POST puis DELETE /api/v1/foyers/:id/parents[...]).
+//
+// ⚠️ L'index d'unicité `lower(email)` est GLOBAL (y compris les soft-deletes) :
+// on utilise un e-mail unique par exécution pour ne pas heurter une exécution
+// précédente, et on retire le parent en fin de test pour ne rien laisser d'actif.
+test('stack réelle : le parent ajoute puis retire un parent', async ({
+  page,
+}) => {
+  const { foyerId } = lireEtatSeed();
+  const email = `parent-e2e-${Date.now()}@example.test`;
+
+  await page.goto(urlModifier(foyerId));
+  await expect(
+    page.getByRole('heading', { name: 'Modifier le foyer' }),
+  ).toBeVisible();
+
+  // Le bloc « Ajouter un parent » porte ses propres champs (l'écran peut déjà
+  // afficher des parents seedés) → on s'y limite via son conteneur.
+  const blocAjout = page.locator('.parent-ligne', {
+    hasText: 'Ajouter un parent',
+  });
+  await blocAjout.getByLabel(/Adresse e-mail/).fill(email);
+  await blocAjout.getByRole('button', { name: '+ Ajouter ce parent' }).click();
+
+  // Le parent ajouté apparaît comme une ligne éditable : son bouton « Retirer »
+  // porte sa désignation par défaut (sans prénom/nom = l'e-mail) dans son nom
+  // accessible, ce qui l'identifie sans ambiguïté parmi d'éventuels parents seedés.
+  const boutonRetirer = page.getByRole('button', {
+    name: `Retirer le parent ${email}`,
+  });
+  await expect(boutonRetirer).toBeVisible();
+
+  await boutonRetirer.click();
+
+  // Retiré : la ligne (et son bouton) disparaît de l'écran.
+  await expect(boutonRetirer).toHaveCount(0);
+});
+
 // Le point d'entrée « Modifier le foyer » est visible dans l'en-tête dès qu'un
 // foyer est actif (propriétaire ; non conditionné à un rôle admin) — et mène à
 // l'écran d'édition.

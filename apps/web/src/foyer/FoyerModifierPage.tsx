@@ -9,12 +9,19 @@ import {
   messageErreur,
   type ErreurChamp,
 } from '../utils/erreurs';
-import type { DossierFoyerVue, FoyerVue } from '../types/bff';
+import type {
+  DossierFoyerVue,
+  EnfantVue,
+  FoyerVue,
+  ParentVue,
+} from '../types/bff';
 import {
   FoyerScalairesForm,
   type ChampScalaireFoyer,
   type ValeursScalairesFoyer,
 } from './FoyerScalairesForm';
+import { ParentsSection } from './ParentsSection';
+import { EnfantsSection } from './EnfantsSection';
 
 /**
  * Valeurs de saisie (chaînes) dérivées d'un foyer chargé : on pré-remplit avec
@@ -31,11 +38,12 @@ function valeursDepuisFoyer(foyer: FoyerVue): ValeursScalairesFoyer {
 }
 
 /**
- * Écran d'édition des **scalaires** d'un foyer (P2 « cycle de vie du foyer ») :
- * pilotable par le **parent** propriétaire (BFF `PUT /v1/foyers/:id`,
- * `@FoyerScope`). Monté sous `GardeFoyer`, qui a déjà traité l'absence / panne du
- * foyer ; on relit ici le dossier pour pré-remplir le formulaire. Les enfants et
- * parents se gèrent ailleurs (P3) — hors périmètre de cet écran.
+ * Écran d'édition d'un foyer (« cycle de vie du foyer »), pilotable par le
+ * **parent** propriétaire (BFF `@FoyerScope`). Monté sous `GardeFoyer`, qui a déjà
+ * traité l'absence / panne du foyer ; on relit ici le dossier pour pré-remplir.
+ * Trois blocs : les **scalaires** (P2, `PUT /v1/foyers/:id`), les **parents** (P3,
+ * CRUD unitaire) et les **enfants** (P3, ajout seul). L'édition/suppression d'un
+ * enfant relève d'une phase ultérieure (complément backend).
  */
 export function FoyerModifierPage() {
   useTitrePage('Modifier le foyer');
@@ -63,16 +71,26 @@ export function FoyerModifierPage() {
   // `key` lie l'état initial du formulaire au foyer chargé : si l'id change, le
   // sous-composant est remonté avec les bonnes valeurs de départ.
   return (
-    <FormulaireEdition key={data.foyer.id} foyerId={id} foyer={data.foyer} />
+    <FormulaireEdition
+      key={data.foyer.id}
+      foyerId={id}
+      foyer={data.foyer}
+      parents={data.parents}
+      enfants={data.enfants}
+    />
   );
 }
 
 function FormulaireEdition({
   foyerId,
   foyer,
+  parents,
+  enfants,
 }: {
   readonly foyerId: string;
   readonly foyer: FoyerVue;
+  readonly parents: readonly ParentVue[];
+  readonly enfants: readonly EnfantVue[];
 }) {
   const navigate = useNavigate();
   const idBase = useId();
@@ -168,6 +186,13 @@ function FormulaireEdition({
           </button>
         </div>
       </form>
+
+      {/* Parents et enfants se gèrent hors du formulaire de scalaires : chaque
+          écriture est unitaire et persiste immédiatement (pas de soumission
+          groupée), et n'est donc pas emportée par « Enregistrer les
+          modifications » (qui ne concerne que les scalaires). */}
+      <ParentsSection foyerId={foyerId} parentsInitiaux={parents} />
+      <EnfantsSection foyerId={foyerId} enfantsInitiaux={enfants} />
     </div>
   );
 }

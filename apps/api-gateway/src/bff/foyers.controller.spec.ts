@@ -159,6 +159,39 @@ describe('FoyersController · édition des scalaires', () => {
   });
 });
 
+describe('FoyersController · ajout d’enfant', () => {
+  it('valide puis relaie le rattachement d’un enfant', async () => {
+    const ajouterEnfant = vi
+      .fn()
+      .mockResolvedValue({ id: 'e1', foyerId: 'foyer-1' });
+    const controller = new FoyersController({
+      ajouterEnfant,
+    } as unknown as FoyerClient);
+
+    await controller.ajouterEnfant('foyer-1', {
+      prenom: 'Mia',
+      dateNaissance: '2024-12-08',
+    });
+
+    expect(ajouterEnfant).toHaveBeenCalledWith('foyer-1', {
+      prenom: 'Mia',
+      dateNaissance: '2024-12-08',
+    });
+  });
+
+  it('refuse un enfant sans prénom (400, sans appel amont)', () => {
+    const ajouterEnfant = vi.fn();
+    const controller = new FoyersController({
+      ajouterEnfant,
+    } as unknown as FoyerClient);
+
+    expect(() =>
+      controller.ajouterEnfant('foyer-1', { dateNaissance: '2024-12-08' }),
+    ).toThrow(BadRequestException);
+    expect(ajouterEnfant).not.toHaveBeenCalled();
+  });
+});
+
 describe('FoyersController · lecture agrégée', () => {
   it('agrège foyer, enfants et parents', async () => {
     const controller = new FoyersController({
