@@ -22,8 +22,8 @@ import type {
  *
  * Lot 0 = scaffold : on ne pose que les **tables d'infra latentes** communes au
  * template (idempotence de consommation + outbox transactionnelle). Les tables
- * métier (`contrat`, `notification_hebdo`, `etablissement_destinataire`,
- * `envoi_etablissement`) arrivent aux lots suivants par migrations incrémentales.
+ * métier (`contrat`, `notification_hebdo`, `etablissement`, `envoi_etablissement`)
+ * arrivent aux lots suivants par migrations incrémentales.
  */
 
 // --- Read model : Planification (projeté depuis le stream PLANIFICATION) ----
@@ -150,35 +150,6 @@ export type PreavisRegle =
       readonly heure: string;
     };
 
-/**
- * Annuaire de contacts **propre au domaine notifications** (ce n'est PAS le
- * référentiel tarifaire). Une ligne par établissement destinataire d'un mail de
- * service, identifiée par une `cle` stable (`CRECHE_HIRONDELLES` | `ABCM`). Le
- * mapping `mode → cle` (codé : `CRECHE_PSU → CRECHE_HIRONDELLES` ;
- * `PERISCOLAIRE`/`CANTINE`/`ALSH` → `ABCM`) résout l'établissement à partir du
- * mode du contrat — rappel : il n'existe pas de mode « ABCM ». Seedée des 2
- * établissements au démarrage ; éditable via `PUT /etablissements/:cle`.
- */
-export const etablissementDestinataire = pgTable('etablissement_destinataire', {
-  id: uuid('id').primaryKey(),
-  /** Clé métier stable et unique (`CRECHE_HIRONDELLES` | `ABCM`). */
-  cle: varchar('cle', { length: 32 }).notNull().unique(),
-  /** Libellé lisible (ex. « Crèche Les Hirondelles »). */
-  libelle: varchar('libelle', { length: 200 }).notNull(),
-  /** Adresse e-mail du service destinataire des récapitulatifs. */
-  emailService: varchar('email_service', { length: 320 }).notNull(),
-  /** Règle de préavis propre à l'établissement (cf. `PreavisRegle`). */
-  preavisRegle: jsonb('preavis_regle').$type<PreavisRegle>().notNull(),
-  /** Établissement actif (un établissement inactif n'est plus notifié). */
-  actif: boolean('actif').notNull().default(true),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
-
 // --- État de validation hebdomadaire ----------------------------------------
 
 /**
@@ -286,9 +257,8 @@ export type StatutEnvoi = (typeof STATUTS_ENVOI)[number];
  * ils prouvent ce qui a réellement été adressé, indépendamment d'une édition ultérieure
  * de la fiche établissement ou du planning.
  *
- * L'établissement est désormais identifié par son `id` réel (entité libre par foyer,
- * P3), routé par le lien explicite `contrat.etablissement_id` — en remplacement de la
- * `cle` d'annuaire fermé (`CRECHE_HIRONDELLES` | `ABCM`).
+ * L'établissement est identifié par son `id` réel (entité libre par foyer, P3), routé
+ * par le lien explicite `contrat.etablissement_id`.
  */
 export const envoiEtablissement = pgTable(
   'envoi_etablissement',
@@ -372,7 +342,6 @@ export type ContratRow = typeof contrat.$inferSelect;
 export type FoyerParentRow = typeof foyerParent.$inferSelect;
 /** Read model projeté de la fiche établissement (entité libre, P3). */
 export type EtablissementProjeteRow = typeof etablissement.$inferSelect;
-export type EtablissementRow = typeof etablissementDestinataire.$inferSelect;
 export type NotificationHebdoRow = typeof notificationHebdo.$inferSelect;
 export type EnvoiEtablissementRow = typeof envoiEtablissement.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;

@@ -3,6 +3,7 @@ import {
   Injectable,
   type PipeTransform,
 } from '@nestjs/common';
+import type { ZodType } from 'zod';
 import type { StatutNotification } from '../database/schema.js';
 import type { DeltaModifs } from './validation.diff.js';
 import { estSemaineIso } from '@creche-planner/shared-semaine';
@@ -49,5 +50,24 @@ export class SemaineIsoPipe implements PipeTransform<string, string> {
       ]);
     }
     return value;
+  }
+}
+
+/** Pipe générique : valide le corps de requête contre un schéma Zod (→ 400). */
+@Injectable()
+export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
+  constructor(private readonly schema: ZodType<T>) {}
+
+  transform(value: unknown): T {
+    const resultat = this.schema.safeParse(value);
+    if (!resultat.success) {
+      throw new BadRequestException(
+        resultat.error.issues.map((i) => ({
+          champ: i.path.join('.'),
+          message: i.message,
+        })),
+      );
+    }
+    return resultat.data;
   }
 }

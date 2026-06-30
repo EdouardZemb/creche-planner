@@ -13,8 +13,6 @@ import postgres, { type Sql } from 'postgres';
  * localement si aucune base n'est joignable (le développeur sans Docker n'est pas
  * pénalisé).
  */
-const ETAT_ETABLISSEMENTS = 'des établissements destinataires existent';
-const ETAT_ETABLISSEMENT_EDITABLE = 'un établissement crèche modifiable existe';
 const ETAT_SEMAINE_A_VALIDER = 'une semaine est à valider pour un foyer';
 const ETAT_SEMAINE_VALIDABLE = 'une semaine A_VALIDER existe pour validation';
 const ETAT_BROUILLON =
@@ -22,8 +20,6 @@ const ETAT_BROUILLON =
 const ETAT_ENVOI =
   'un récap agrégé par établissement est prêt à envoyer au service';
 
-/** Id figé de la ligne crèche legacy seedée par le stateHandler (annuaire `cle`). */
-const CRECHE_ID = '99999999-9999-4999-8999-999999999999';
 /**
  * Id figé de la **fiche établissement projetée** (read model `etablissement`, P3) —
  * destinataire réel du récap agrégé, rattaché aux contrats par `etablissement_id`.
@@ -127,22 +123,6 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
       ctx.skip();
       return;
     }
-    // Upsert idempotent de l'établissement crèche (les deux états en ont besoin).
-    const seedCreche = async (): Promise<void> => {
-      await db`
-        insert into etablissement_destinataire (
-          id, cle, libelle, email_service, preavis_regle, actif
-        ) values (
-          ${CRECHE_ID}, 'CRECHE_HIRONDELLES', 'Crèche Les Hirondelles',
-          'contact-creche@example.org',
-          ${JSON.stringify({ type: 'JOURS_OUVRES', valeur: 2 })}::jsonb, true
-        )
-        on conflict (cle) do update set
-          email_service = excluded.email_service,
-          preavis_regle = excluded.preavis_regle,
-          actif = excluded.actif
-      `;
-    };
     // Upsert idempotent d'une semaine A_VALIDER (remise à l'état initial à chaque
     // interaction : la validation peut faire passer la ligne à VALIDEE).
     const seedSemaineAValider = async (): Promise<void> => {
@@ -251,8 +231,6 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
       pactUrls: [PACT_FILE],
       logLevel: 'warn',
       stateHandlers: {
-        [ETAT_ETABLISSEMENTS]: seedCreche,
-        [ETAT_ETABLISSEMENT_EDITABLE]: seedCreche,
         [ETAT_SEMAINE_A_VALIDER]: seedSemaineAValider,
         [ETAT_SEMAINE_VALIDABLE]: seedSemaineAValider,
         [ETAT_BROUILLON]: seedBrouillon,
