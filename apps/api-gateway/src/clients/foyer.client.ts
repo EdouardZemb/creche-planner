@@ -89,6 +89,37 @@ const parentVueSchema = z.object({
 
 export type ParentVue = z.infer<typeof parentVueSchema>;
 
+/**
+ * Vue lecture d'une **préférence de notification effective** d'un parent (défaut
+ * applicatif fusionné avec le choix stocké, cf. `svc-foyer`). `consentementAt` /
+ * `desabonneAt` tracent l'opt-in/opt-out (ISO ou `null` tant que non posés).
+ */
+const preferenceVueSchema = z.object({
+  typeNotification: z.string(),
+  canal: z.string(),
+  actif: z.boolean(),
+  consentementAt: z.string().nullable(),
+  desabonneAt: z.string().nullable(),
+});
+
+export type PreferenceVue = z.infer<typeof preferenceVueSchema>;
+
+/**
+ * Choix explicite `(type, canal, actif)` à matérialiser (corps du `PUT`). Relayé
+ * tel quel à `svc-foyer`, qui applique l'invariant « ≥ 1 canal actif pour un type
+ * de service ». Les enums restent des `string` ici (validation profonde en amont).
+ */
+export interface SaisiePreference {
+  readonly typeNotification: string;
+  readonly canal: string;
+  readonly actif: boolean;
+}
+
+/** Mise à jour des préférences d'un parent : liste des choix explicites. */
+export interface MajPreferencesSaisie {
+  readonly preferences: readonly SaisiePreference[];
+}
+
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
   retries: 1,
@@ -404,6 +435,66 @@ export class FoyerClient {
           throw new Error('HTTP ' + reponse.status);
         }
         return z.array(z.string()).parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /**
+   * GET `/api/foyers/:id/parents/:parentId/preferences` — préférences de
+   * notification **effectives** du parent (défaut applicatif + choix stockés).
+   */
+  async preferences(
+    foyerId: string,
+    parentId: string,
+  ): Promise<PreferenceVue[]> {
+    const base = loadConfig().foyerUrl;
+    const url =
+      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
+      `/parents/${encodeURIComponent(parentId)}/preferences`;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-foyer',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return z.array(preferenceVueSchema).parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /**
+   * PUT `/api/foyers/:id/parents/:parentId/preferences` — met à jour les
+   * préférences du parent. `svc-foyer` refuse (400) une combinaison coupant tous
+   * les canaux d'un type de service ; l'erreur est relayée telle quelle.
+   */
+  async majPreferences(
+    foyerId: string,
+    parentId: string,
+    saisie: MajPreferencesSaisie,
+  ): Promise<PreferenceVue[]> {
+    const base = loadConfig().foyerUrl;
+    const url =
+      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
+      `/parents/${encodeURIComponent(parentId)}/preferences`;
+    this.logger.debug(`PUT ${url}`);
+    return executerResilient(
+      'svc-foyer',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(saisie),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return z.array(preferenceVueSchema).parse(await reponse.json());
       },
       this.breaker,
       OPTIONS,

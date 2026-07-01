@@ -28,6 +28,13 @@ const ETAT_FOYER_AVEC_PARENT = 'un foyer de référence T3 avec un parent';
 const ENFANT_REFERENCE_ID = '22222222-2222-4222-8222-222222222222';
 const ETAT_FOYER_AVEC_ENFANT = 'un foyer de référence T3 avec un enfant';
 
+// Préférences (PR2) : un foyer « avec un parent et ses préférences » — le
+// stateHandler provider (PR1) seede le parent + une préférence EMAIL coupée pour
+// exercer lecture/écriture. E-mail dédié (unicité globale `lower(email)`).
+const EMAIL_PARENT_PREFERENCES = 'sacha.leroy@example.test';
+const ETAT_FOYER_AVEC_PREFERENCES =
+  'un foyer de référence T3 avec un parent et ses préférences';
+
 // nx lance vitest avec cwd = racine du projet (apps/api-gateway) → racine du dépôt à ../../.
 const PACTS_DIR = resolve(process.cwd(), '../../pacts');
 
@@ -490,6 +497,120 @@ describe('Pact consumer · api-gateway → svc-foyer', () => {
         { method: 'DELETE' },
       );
       expect(reponse.status).toBe(204);
+    });
+  });
+
+  it('lit les préférences de notification du parent de référence', async () => {
+    provider
+      .given(ETAT_FOYER_AVEC_PREFERENCES, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_REFERENCE_ID,
+        email: EMAIL_PARENT_PREFERENCES,
+      })
+      .uponReceiving('une lecture des préférences du parent de référence')
+      .withRequest({
+        method: 'GET',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}/preferences`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        // État effectif seedé : e-mail coupé (choix stocké), in-app au défaut.
+        // Ordre déterministe (défauts §5.1 d'abord). `consentementAt`/`desabonneAt`
+        // null tant qu'aucune trace n'est posée.
+        body: [
+          {
+            typeNotification: string('VALIDATION_HEBDO'),
+            canal: string('EMAIL'),
+            actif: boolean(false),
+            consentementAt: null,
+            desabonneAt: null,
+          },
+          {
+            typeNotification: string('VALIDATION_HEBDO'),
+            canal: string('IN_APP'),
+            actif: boolean(true),
+            consentementAt: null,
+            desabonneAt: null,
+          },
+        ],
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}/preferences`,
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { canal: string }[];
+      expect(corps.length).toBe(2);
+    });
+  });
+
+  it('met à jour les préférences du parent de référence (réactive l’e-mail)', async () => {
+    provider
+      .given(ETAT_FOYER_AVEC_PREFERENCES, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_REFERENCE_ID,
+        email: EMAIL_PARENT_PREFERENCES,
+      })
+      .uponReceiving('une mise à jour des préférences du parent de référence')
+      .withRequest({
+        method: 'PUT',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}/preferences`,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          preferences: [
+            {
+              typeNotification: 'VALIDATION_HEBDO',
+              canal: 'EMAIL',
+              actif: true,
+            },
+          ],
+        },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        // Après réactivation : e-mail actif + trace de consentement posée ; in-app
+        // reste au défaut (aucune trace). `consentementAt` = ISO (matché en type).
+        body: [
+          {
+            typeNotification: string('VALIDATION_HEBDO'),
+            canal: string('EMAIL'),
+            actif: boolean(true),
+            consentementAt: string('2026-07-01T00:00:00.000Z'),
+            desabonneAt: null,
+          },
+          {
+            typeNotification: string('VALIDATION_HEBDO'),
+            canal: string('IN_APP'),
+            actif: boolean(true),
+            consentementAt: null,
+            desabonneAt: null,
+          },
+        ],
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}/preferences`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({
+            preferences: [
+              {
+                typeNotification: 'VALIDATION_HEBDO',
+                canal: 'EMAIL',
+                actif: true,
+              },
+            ],
+          }),
+        },
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { actif: boolean }[];
+      expect(corps.length).toBe(2);
     });
   });
 });

@@ -618,6 +618,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/moi/profil": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mon profil (parent connecté) et mes préférences de notification
+         * @description Résout la ligne parent du client à partir de son e-mail vérifié (identité Cloudflare Access) et renvoie ses préférences de notification effectives. La résolution est côté serveur : le client ne fournit jamais de parentId (il ne voit que « son » profil).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Profil du parent connecté et ses préférences. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MonProfilVue"];
+                    };
+                };
+                /** @description Aucune identité établie. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Aucun profil parent pour cette identité (aucun foyer, ou foyer sans la ligne parent correspondante). */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/moi/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mettre à jour mes préférences de notification
+         * @description Met à jour les préférences (type × canal) du parent connecté. Défense en profondeur : le parentId ciblé est résolu depuis l’identité (la ligne dont l’e-mail = moi.email), jamais fourni par le client — un parent ne modifie que SA ligne. Refus (400) si la combinaison coupe tous les canaux d’un type de service (invariant ≥ 1 canal actif).
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        preferences: {
+                            /** @enum {string} */
+                            typeNotification: "VALIDATION_HEBDO" | "RECAP_SERVICE";
+                            /** @enum {string} */
+                            canal: "EMAIL" | "IN_APP";
+                            actif: boolean;
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Préférences mises à jour (état effectif renvoyé). */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PreferenceVue"][];
+                    };
+                };
+                /** @description Combinaison invalide (dernier canal d’un type de service coupé). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Aucune identité établie. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Aucun profil parent pour cette identité. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/contrats": {
         parameters: {
             query?: never;
@@ -1031,6 +1156,31 @@ export interface components {
             email: string | null;
             admin: boolean;
             foyers: string[];
+        };
+        /** @description Préférence de notification effective d’un parent (type × canal) : défaut applicatif fusionné avec le choix explicite stocké. `consentementAt`/`desabonneAt` tracent l’opt-in/opt-out (RGPD ; null tant qu’aucun choix n’a été posé). */
+        PreferenceVue: {
+            /** @enum {string} */
+            typeNotification: "VALIDATION_HEBDO" | "RECAP_SERVICE";
+            /** @enum {string} */
+            canal: "EMAIL" | "IN_APP";
+            actif: boolean;
+            /** Format: date-time */
+            consentementAt: string | null;
+            /** Format: date-time */
+            desabonneAt: string | null;
+        };
+        /** @description Vue « Mon profil » du parent connecté (A1) : sa ligne parent ciblée sur lui (résolue côté serveur depuis l’identité Cloudflare Access, jamais un parentId fourni par le client) et ses préférences de notification effectives. `foyerId`/`parentId` permettent au web de réutiliser les routes d’édition existantes sous @FoyerScope. */
+        MonProfilVue: {
+            /** Format: uuid */
+            parentId: string;
+            /** Format: uuid */
+            foyerId: string;
+            /** Format: email */
+            email: string;
+            prenom: string | null;
+            nom: string | null;
+            principal: boolean;
+            preferences: components["schemas"]["PreferenceVue"][];
         };
         /** @description Vue projetée d’un contrat de garde. */
         ContratVue: {

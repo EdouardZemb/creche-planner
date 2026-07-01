@@ -1,5 +1,14 @@
+import {
+  BadRequestException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { type FoyerClient } from '../clients/foyer.client.js';
+import {
+  type FoyerClient,
+  type ParentVue,
+  type PreferenceVue,
+} from '../clients/foyer.client.js';
 import { type RequeteIdentifiable } from '../security/identite.js';
 import { MoiController } from './moi.controller.js';
 
@@ -11,6 +20,21 @@ function fakeFoyers(
 
 function req(identite?: { email: string }): RequeteIdentifiable {
   return { headers: {}, ...(identite ? { identite } : {}) };
+}
+
+/** Fabrique une `ParentVue` minimale (identité douce nulle par défaut). */
+function parent(
+  over: Partial<ParentVue> & { id: string; email: string },
+): ParentVue {
+  return {
+    foyerId: 'f-1',
+    prenom: null,
+    nom: null,
+    principal: false,
+    ordre: 0,
+    actif: true,
+    ...over,
+  };
 }
 
 describe('MoiController (/api/v1/moi, PR6)', () => {
@@ -72,5 +96,159 @@ describe('MoiController (/api/v1/moi, PR6)', () => {
     );
     expect(moi.email).toBe('parent@example.test');
     expect(moi.foyers).toEqual([]);
+  });
+});
+
+const PREFS: PreferenceVue[] = [
+  {
+    typeNotification: 'VALIDATION_HEBDO',
+    canal: 'EMAIL',
+    actif: false,
+    consentementAt: null,
+    desabonneAt: null,
+  },
+  {
+    typeNotification: 'VALIDATION_HEBDO',
+    canal: 'IN_APP',
+    actif: true,
+    consentementAt: null,
+    desabonneAt: null,
+  },
+];
+
+describe('MoiController · /moi/profil + /moi/preferences (PR2)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('profil sans identité : 401 (identité requise)', async () => {
+    const foyers = { foyersParEmail: vi.fn() } as unknown as FoyerClient;
+    await expect(
+      new MoiController(foyers).profil(req()),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(foyers.foyersParEmail).not.toHaveBeenCalled();
+  });
+
+  it('profil : résout SA ligne (défense) et agrège ses préférences', async () => {
+    // Le foyer contient deux parents ; seule la ligne dont l'e-mail == identité
+    // doit être retenue (jamais celle de l'autre parent).
+    const autre = parent({
+      id: 'p-autre',
+      email: 'autre@example.test',
+      prenom: 'Autre',
+    });
+    const moi = parent({
+      id: 'p-moi',
+      email: 'Moi@Example.test',
+      prenom: 'Moi',
+      principal: true,
+    });
+    const foyers = {
+      foyersParEmail: vi.fn(async () => ['f-1']),
+      parents: vi.fn(async () => [autre, moi]),
+      preferences: vi.fn(async () => PREFS),
+    } as unknown as FoyerClient;
+
+    const vue = await new MoiController(foyers).profil(
+      // Casse différente : la résolution est insensible à la casse.
+      req({ email: 'moi@example.test' }),
+    );
+
+    expect(vue).toEqual({
+      parentId: 'p-moi',
+      foyerId: 'f-1',
+      email: 'Moi@Example.test',
+      prenom: 'Moi',
+      nom: null,
+      principal: true,
+      preferences: PREFS,
+    });
+    // Défense : les préférences sont lues pour MA ligne, pas celle de l'autre.
+    expect(foyers.preferences).toHaveBeenCalledWith('f-1', 'p-moi');
+  });
+
+  it('profil : identité sans ligne parent correspondante → 404', async () => {
+    const foyers = {
+      foyersParEmail: vi.fn(async () => ['f-1']),
+      parents: vi.fn(async () => [
+        parent({ id: 'p-autre', email: 'autre@example.test' }),
+      ]),
+      preferences: vi.fn(),
+    } as unknown as FoyerClient;
+
+    await expect(
+      new MoiController(foyers).profil(req({ email: 'moi@example.test' })),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    // On n'a jamais lu les préférences d'un parent qui n'est pas le mien.
+    expect(foyers.preferences).not.toHaveBeenCalled();
+  });
+
+  it('preferences : met à jour SA ligne uniquement (parentId résolu, jamais fourni)', async () => {
+    const autre = parent({ id: 'p-autre', email: 'autre@example.test' });
+    const moi = parent({ id: 'p-moi', email: 'moi@example.test' });
+    const majResultat: PreferenceVue[] = [
+      { ...PREFS[0]!, actif: true, consentementAt: '2026-07-01T00:00:00.000Z' },
+      PREFS[1]!,
+    ];
+    const foyers = {
+      foyersParEmail: vi.fn(async () => ['f-1']),
+      parents: vi.fn(async () => [autre, moi]),
+      majPreferences: vi.fn(async () => majResultat),
+    } as unknown as FoyerClient;
+
+    const corps = {
+      preferences: [
+        { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: true },
+      ],
+    };
+    const vue = await new MoiController(foyers).majPreferences(
+      req({ email: 'moi@example.test' }),
+      corps,
+    );
+
+    expect(vue).toEqual(majResultat);
+    // Défense en profondeur : c'est bien MA ligne (p-moi) qui est modifiée.
+    expect(foyers.majPreferences).toHaveBeenCalledWith('f-1', 'p-moi', corps);
+  });
+
+  it('preferences : corps invalide → 400 (avant tout appel amont)', async () => {
+    const foyers = {
+      foyersParEmail: vi.fn(),
+      majPreferences: vi.fn(),
+    } as unknown as FoyerClient;
+
+    await expect(
+      new MoiController(foyers).majPreferences(
+        req({ email: 'moi@example.test' }),
+        {
+          preferences: [
+            { typeNotification: 'INCONNU', canal: 'EMAIL', actif: true },
+          ],
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(foyers.majPreferences).not.toHaveBeenCalled();
+  });
+
+  it('preferences : liste vide → 400 (au moins une préférence)', async () => {
+    const foyers = {
+      foyersParEmail: vi.fn(),
+      majPreferences: vi.fn(),
+    } as unknown as FoyerClient;
+
+    await expect(
+      new MoiController(foyers).majPreferences(
+        req({ email: 'moi@example.test' }),
+        {
+          preferences: [],
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('preferences sans identité : 401', async () => {
+    const foyers = { majPreferences: vi.fn() } as unknown as FoyerClient;
+    await expect(
+      new MoiController(foyers).majPreferences(req(), { preferences: [] }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(foyers.majPreferences).not.toHaveBeenCalled();
   });
 });

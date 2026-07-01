@@ -326,6 +326,99 @@
       }
     },
     {
+      "description": "une lecture des préférences du parent de référence",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 avec un parent et ses préférences",
+          "params": {
+            "email": "sacha.leroy@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "parentId": "33333333-3333-4333-8333-333333333333"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111/parents/33333333-3333-4333-8333-333333333333/preferences"
+      },
+      "response": {
+        "body": [
+          {
+            "actif": false,
+            "canal": "EMAIL",
+            "consentementAt": null,
+            "desabonneAt": null,
+            "typeNotification": "VALIDATION_HEBDO"
+          },
+          {
+            "actif": true,
+            "canal": "IN_APP",
+            "consentementAt": null,
+            "desabonneAt": null,
+            "typeNotification": "VALIDATION_HEBDO"
+          }
+        ],
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$[0].actif": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[0].canal": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[0].typeNotification": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[1].actif": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[1].canal": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[1].typeNotification": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "une lecture du foyer de référence",
       "providerStates": [
         {
@@ -634,6 +727,119 @@
               ]
             },
             "$[*].principal": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {},
+          "status": {}
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une mise à jour des préférences du parent de référence",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 avec un parent et ses préférences",
+          "params": {
+            "email": "sacha.leroy@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "parentId": "33333333-3333-4333-8333-333333333333"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "preferences": [
+            {
+              "actif": true,
+              "canal": "EMAIL",
+              "typeNotification": "VALIDATION_HEBDO"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "PUT",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111/parents/33333333-3333-4333-8333-333333333333/preferences"
+      },
+      "response": {
+        "body": [
+          {
+            "actif": true,
+            "canal": "EMAIL",
+            "consentementAt": "2026-07-01T00:00:00.000Z",
+            "desabonneAt": null,
+            "typeNotification": "VALIDATION_HEBDO"
+          },
+          {
+            "actif": true,
+            "canal": "IN_APP",
+            "consentementAt": null,
+            "desabonneAt": null,
+            "typeNotification": "VALIDATION_HEBDO"
+          }
+        ],
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$[0].actif": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[0].canal": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[0].consentementAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[0].typeNotification": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[1].actif": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[1].canal": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[1].typeNotification": {
               "combine": "AND",
               "matchers": [
                 {

@@ -1,8 +1,23 @@
-import { Controller, Get, Logger, Req } from '@nestjs/common';
-import { FoyerClient } from '../clients/foyer.client.js';
+import {
+  Body,
+  Controller,
+  Get,
+  Logger,
+  NotFoundException,
+  Put,
+  Req,
+  UnauthorizedException,
+} from '@nestjs/common';
+import {
+  FoyerClient,
+  type ParentVue,
+  type PreferenceVue,
+} from '../clients/foyer.client.js';
 import { loadConfig } from '../config.js';
 import { estAdmin, estGatingAdminActif } from '../security/admin.js';
 import type { RequeteIdentifiable } from '../security/identite.js';
+import { majPreferencesSchema, valider } from './bff.dto.js';
+import { relayer } from './relais.js';
 
 /**
  * Identité courante du client (Cloudflare Access B1) et ses droits, résolus
@@ -21,6 +36,22 @@ interface MoiVue {
   readonly admin: boolean;
   /** Ids des foyers dont l'e-mail est parent **actif** (vide sans identité). */
   readonly foyers: readonly string[];
+}
+
+/**
+ * Vue « Mon profil » du parent connecté (A1) : sa ligne parent ciblée sur *lui*
+ * (résolue depuis l'identité, jamais un `parentId` fourni par le client) et ses
+ * préférences de notification effectives. `foyerId`/`parentId` servent au web pour
+ * réutiliser les routes d'édition existantes sous `@FoyerScope`.
+ */
+interface MonProfilVue {
+  readonly parentId: string;
+  readonly foyerId: string;
+  readonly email: string;
+  readonly prenom: string | null;
+  readonly nom: string | null;
+  readonly principal: boolean;
+  readonly preferences: readonly PreferenceVue[];
 }
 
 /**
@@ -58,5 +89,79 @@ export class MoiController {
     }
 
     return { email, admin, foyers };
+  }
+
+  /**
+   * `GET /api/v1/moi/profil` — « Mon profil » : la ligne parent du client connecté
+   * + ses préférences de notification. **401** si aucune identité, **404** si
+   * l'identité ne correspond à aucun parent (aucun foyer, ou foyer sans sa ligne).
+   */
+  @Get('profil')
+  async profil(@Req() req: RequeteIdentifiable): Promise<MonProfilVue> {
+    const email = req.identite?.email;
+    if (email === undefined) {
+      throw new UnauthorizedException('identité requise');
+    }
+    const { foyerId, parent } = await this.resoudreParentCourant(email);
+    const preferences = await relayer(() =>
+      this.foyers.preferences(foyerId, parent.id),
+    );
+    return {
+      parentId: parent.id,
+      foyerId,
+      email: parent.email,
+      prenom: parent.prenom,
+      nom: parent.nom,
+      principal: parent.principal,
+      preferences,
+    };
+  }
+
+  /**
+   * `PUT /api/v1/moi/preferences` — met à jour les préférences du parent connecté.
+   * **Défense en profondeur** : le `parentId` ciblé est **résolu depuis l'identité**
+   * (la ligne dont l'e-mail = `moi.email`), jamais fourni par le client — un parent
+   * ne peut donc modifier que **sa** ligne. `svc-foyer` refuse (400 relayé) une
+   * combinaison coupant tous les canaux d'un type de service.
+   */
+  @Put('preferences')
+  async majPreferences(
+    @Req() req: RequeteIdentifiable,
+    @Body() corps: unknown,
+  ): Promise<PreferenceVue[]> {
+    const email = req.identite?.email;
+    if (email === undefined) {
+      throw new UnauthorizedException('identité requise');
+    }
+    const saisie = valider(majPreferencesSchema, corps);
+    const { foyerId, parent } = await this.resoudreParentCourant(email);
+    return relayer(() =>
+      this.foyers.majPreferences(foyerId, parent.id, saisie),
+    );
+  }
+
+  /**
+   * Résout **la** ligne parent du client à partir de son e-mail vérifié : parmi les
+   * foyers dont il est parent actif, on ne retient que la ligne dont l'e-mail
+   * correspond (insensible à la casse). L'e-mail étant un identifiant **global
+   * unique**, il y a au plus une telle ligne — mais le filtre reste explicite
+   * (défense en profondeur : on n'édite jamais la ligne d'un autre parent du foyer).
+   * `404` si aucune ligne ne correspond (identité sans foyer / sans parent).
+   */
+  private async resoudreParentCourant(
+    email: string,
+  ): Promise<{ foyerId: string; parent: ParentVue }> {
+    const foyers = await relayer(() => this.foyers.foyersParEmail(email));
+    const cible = email.trim().toLowerCase();
+    for (const foyerId of foyers) {
+      const parents = await relayer(() => this.foyers.parents(foyerId));
+      const parent = parents.find(
+        (p) => p.email.trim().toLowerCase() === cible,
+      );
+      if (parent !== undefined) {
+        return { foyerId, parent };
+      }
+    }
+    throw new NotFoundException('aucun profil parent pour cette identité');
   }
 }
