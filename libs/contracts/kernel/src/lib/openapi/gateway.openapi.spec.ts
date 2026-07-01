@@ -11,7 +11,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(gatewayOpenApiDocument.info.version).toBe('1.0.0');
   });
 
-  it('expose exactement les 15 routes attendues', () => {
+  it('expose exactement les 17 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -26,12 +26,36 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/foyers/{foyerId}/etablissements',
         '/api/v1/foyers/{foyerId}/etablissements/{id}',
         '/api/v1/moi',
+        '/api/v1/moi/profil',
+        '/api/v1/moi/preferences',
         '/api/v1/contrats',
         '/api/v1/contrats/{id}/plannings/{mois}',
         '/api/v1/couts',
         '/api/v1/couts/annuel',
       ].sort(),
     );
+  });
+
+  it('expose le profil du parent connecté + ses préférences (GET /moi/profil, PUT /moi/preferences)', () => {
+    const profil = gatewayOpenApiDocument.paths['/api/v1/moi/profil'].get;
+    expect(profil).toBeDefined();
+    expect(profil.responses['200'].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/MonProfilVue',
+    });
+    expect(profil.responses['401']).toBeDefined();
+    expect(profil.responses['404']).toBeDefined();
+
+    const maj = gatewayOpenApiDocument.paths['/api/v1/moi/preferences'].put;
+    expect(maj).toBeDefined();
+    expect(maj.requestBody.content['application/json'].schema.required).toEqual(
+      ['preferences'],
+    );
+    expect(maj.responses['200'].content['application/json'].schema).toEqual({
+      type: 'array',
+      items: { $ref: '#/components/schemas/PreferenceVue' },
+    });
+    // Invariant service (≥ 1 canal actif) : le refus 400 est documenté.
+    expect(maj.responses['400']).toBeDefined();
   });
 
   it('documente le 409 create-once sur la création de foyer (POST /foyers)', () => {
@@ -106,6 +130,8 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(schemas.EnfantVue).toBeDefined();
     expect(schemas.ParentVue).toBeDefined();
     expect(schemas.MoiVue).toBeDefined();
+    expect(schemas.MonProfilVue).toBeDefined();
+    expect(schemas.PreferenceVue).toBeDefined();
     expect(schemas.ContratVue).toBeDefined();
     expect(schemas.Ligne).toBeDefined();
     expect(schemas.CoutMoisVue).toBeDefined();

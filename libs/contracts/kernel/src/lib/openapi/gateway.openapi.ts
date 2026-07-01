@@ -106,6 +106,61 @@ export const gatewayOpenApiDocument = {
         },
         required: ['email', 'admin', 'foyers'],
       },
+      PreferenceVue: {
+        type: 'object',
+        description:
+          'Préférence de notification effective d’un parent (type × canal) : ' +
+          'défaut applicatif fusionné avec le choix explicite stocké. ' +
+          '`consentementAt`/`desabonneAt` tracent l’opt-in/opt-out (RGPD ; null ' +
+          'tant qu’aucun choix n’a été posé).',
+        properties: {
+          typeNotification: {
+            type: 'string',
+            enum: ['VALIDATION_HEBDO', 'RECAP_SERVICE'],
+          },
+          canal: { type: 'string', enum: ['EMAIL', 'IN_APP'] },
+          actif: { type: 'boolean' },
+          consentementAt: { type: ['string', 'null'], format: 'date-time' },
+          desabonneAt: { type: ['string', 'null'], format: 'date-time' },
+        },
+        required: [
+          'typeNotification',
+          'canal',
+          'actif',
+          'consentementAt',
+          'desabonneAt',
+        ],
+      },
+      MonProfilVue: {
+        type: 'object',
+        description:
+          'Vue « Mon profil » du parent connecté (A1) : sa ligne parent ciblée ' +
+          'sur lui (résolue côté serveur depuis l’identité Cloudflare Access, ' +
+          'jamais un parentId fourni par le client) et ses préférences de ' +
+          'notification effectives. `foyerId`/`parentId` permettent au web de ' +
+          'réutiliser les routes d’édition existantes sous @FoyerScope.',
+        properties: {
+          parentId: { type: 'string', format: 'uuid' },
+          foyerId: { type: 'string', format: 'uuid' },
+          email: { type: 'string', format: 'email' },
+          prenom: { type: ['string', 'null'] },
+          nom: { type: ['string', 'null'] },
+          principal: { type: 'boolean' },
+          preferences: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/PreferenceVue' },
+          },
+        },
+        required: [
+          'parentId',
+          'foyerId',
+          'email',
+          'prenom',
+          'nom',
+          'principal',
+          'preferences',
+        ],
+      },
       ContratVue: {
         type: 'object',
         description: 'Vue projetée d’un contrat de garde.',
@@ -811,6 +866,100 @@ export const gatewayOpenApiDocument = {
               },
             },
           },
+        },
+      },
+    },
+    '/api/v1/moi/profil': {
+      get: {
+        summary:
+          'Mon profil (parent connecté) et mes préférences de notification',
+        description:
+          'Résout la ligne parent du client à partir de son e-mail vérifié ' +
+          '(identité Cloudflare Access) et renvoie ses préférences de ' +
+          'notification effectives. La résolution est côté serveur : le client ' +
+          'ne fournit jamais de parentId (il ne voit que « son » profil).',
+        responses: {
+          '200': {
+            description: 'Profil du parent connecté et ses préférences.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/MonProfilVue' },
+              },
+            },
+          },
+          '401': { description: 'Aucune identité établie.' },
+          '404': {
+            description:
+              'Aucun profil parent pour cette identité (aucun foyer, ou foyer ' +
+              'sans la ligne parent correspondante).',
+          },
+        },
+      },
+    },
+    '/api/v1/moi/preferences': {
+      put: {
+        summary: 'Mettre à jour mes préférences de notification',
+        description:
+          'Met à jour les préférences (type × canal) du parent connecté. ' +
+          'Défense en profondeur : le parentId ciblé est résolu depuis ' +
+          'l’identité (la ligne dont l’e-mail = moi.email), jamais fourni par ' +
+          'le client — un parent ne modifie que SA ligne. Refus (400) si la ' +
+          'combinaison coupe tous les canaux d’un type de service (invariant ' +
+          '≥ 1 canal actif).',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Liste non vide des choix explicites (type, canal, actif) à ' +
+                  'matérialiser ; les combinaisons absentes retombent sur le ' +
+                  'défaut applicatif.',
+                properties: {
+                  preferences: {
+                    type: 'array',
+                    minItems: 1,
+                    items: {
+                      type: 'object',
+                      properties: {
+                        typeNotification: {
+                          type: 'string',
+                          enum: ['VALIDATION_HEBDO', 'RECAP_SERVICE'],
+                        },
+                        canal: {
+                          type: 'string',
+                          enum: ['EMAIL', 'IN_APP'],
+                        },
+                        actif: { type: 'boolean' },
+                      },
+                      required: ['typeNotification', 'canal', 'actif'],
+                    },
+                  },
+                },
+                required: ['preferences'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Préférences mises à jour (état effectif renvoyé).',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/PreferenceVue' },
+                },
+              },
+            },
+          },
+          '400': {
+            description:
+              'Combinaison invalide (dernier canal d’un type de service coupé).',
+          },
+          '401': { description: 'Aucune identité établie.' },
+          '404': { description: 'Aucun profil parent pour cette identité.' },
         },
       },
     },

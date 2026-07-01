@@ -100,6 +100,32 @@ export const modifierContratSchema = creerContratSchema;
 /** Corps d'écriture de planning : relayé tel quel au service propriétaire. */
 export const ecrirePlanningSchema = z.object({}).passthrough();
 
+// Enums de notification inlinés à la frontière BFF (comme `MODES_ETABLISSEMENT`) :
+// la source de vérité reste `contracts-foyer` ; on évite une arête de dépendance
+// vers la lib de contrats pour une simple validation de forme. La validation
+// profonde (invariant « ≥ 1 canal actif ») reste chez `svc-foyer`.
+const TYPES_NOTIFICATION = ['VALIDATION_HEBDO', 'RECAP_SERVICE'] as const;
+const CANAUX = ['EMAIL', 'IN_APP'] as const;
+
+/**
+ * Mise à jour des **préférences de notification** du parent courant
+ * (`PUT /moi/preferences`). Liste non vide des choix explicites `(type, canal,
+ * actif)` ; le `parentId`/`foyerId` sont résolus **côté serveur** depuis
+ * l'identité (jamais fournis par le client). La validation profonde reste amont.
+ */
+export const majPreferencesSchema = z.object({
+  preferences: z
+    .array(
+      z.object({
+        typeNotification: z.enum(TYPES_NOTIFICATION),
+        canal: z.enum(CANAUX),
+        actif: z.boolean(),
+      }),
+    )
+    .min(1, 'au moins une préférence attendue'),
+});
+export type MajPreferences = z.infer<typeof majPreferencesSchema>;
+
 // Semaine ISO `YYYY-Www` (01-53). La validation profonde reste au service.
 const SEMAINE_ISO = /^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$/;
 /** Semaine ISO au format `YYYY-Www`. */
