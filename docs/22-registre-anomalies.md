@@ -22,21 +22,22 @@
 
 ## 2. Registre
 
-| ID    | Anomalie                                                                     | Gravité | Niveau de détection                      | Phase d'intro.          | Commit / réf.            | Statut |
-| ----- | ---------------------------------------------------------------------------- | :-----: | ---------------------------------------- | ----------------------- | ------------------------ | :----: |
-| AN-01 | Barre de navigation non réactive : contrats invisibles après création foyer  |   🟧    | E2E stack réelle (validation navigateur) | P8 Web                  | `10d5f8d`                |   ✅   |
-| AN-02 | `semaineType`/`semaineAbcm` tronqués (pas les 7 jours envoyés)               |   🟥    | E2E stack réelle                         | P8 Web                  | `79afcc6`                |   ✅   |
-| AN-03 | Heures annuelles fractionnaires rejetées (colonne `integer` → 885,5 → 500)   |   🟥    | E2E stack réelle                         | P5 Planification        | `c7993ba`                |   ✅   |
-| AN-04 | Garde de période absente des calendriers : jours « Cantine » fantômes        |   🟧    | E2E stack réelle                         | P10 Front               | doc 06 §19.6 (Phase 15)  |   ✅   |
-| AN-05 | Jours « gardés » marqués sans plage réelle (week-end gardé, doc 14)          |   🟧    | E2E stack réelle                         | P8 Web                  | `576286c`                |   ✅   |
-| AN-06 | Latence `/couts/annuel` ~7 s / 502 sous 12 requêtes concurrentes             |   🟥    | Performance (validation sous charge)     | P7 Gateway/Tarification | `9bf00a6` (doc 06 §19.7) |   ✅   |
-| AN-07 | Modale de confirmation ne focalise pas « Annuler » (EC-01)                   |   🟨    | a11y (axe-core / runbook)                | P12 a11y                | `fc90085`                |   ✅   |
-| AN-08 | A11y de l'UI d'ajustement de planning insuffisante                           |   🟨    | a11y (axe-core)                          | P10 Front               | `e44a13b`                |   ✅   |
-| AN-09 | Build Docker des services cassé (deps OTel/zod non embarquées)               |   🟥    | Smoke-stack (boot pile)                  | P9 Durcissement         | `3878cf0`                |   ✅   |
-| AN-10 | Foyer périmé mémorisé au chargement (état UI incohérent)                     |   🟨    | E2E / composant                          | P8 Web                  | `33167ac`                |   ✅   |
-| AN-11 | Erreur de modification durable de contrat détruisant l'état UI               |   🟧    | Composant (test de non-régression)       | P10 Front               | `f1c5a20`                |   ✅   |
-| AN-12 | Édition / suppression de contrat absente (seul le planning mensuel éditable) |   🟧    | Validation manuelle (backlog)            | P7 Gateway/UI           | doc 06 §13 (backlog 1)   |   🔄   |
-| AN-13 | Prestations non filtrées par période de validité côté **domaine**            |   🟧    | Validation manuelle (backlog)            | P5 Planification        | doc 06 §13 (backlog 2)   |  🔄¹   |
+| ID    | Anomalie                                                                                                                  | Gravité | Niveau de détection                      | Phase d'intro.          | Commit / réf.            | Statut |
+| ----- | ------------------------------------------------------------------------------------------------------------------------- | :-----: | ---------------------------------------- | ----------------------- | ------------------------ | :----: |
+| AN-01 | Barre de navigation non réactive : contrats invisibles après création foyer                                               |   🟧    | E2E stack réelle (validation navigateur) | P8 Web                  | `10d5f8d`                |   ✅   |
+| AN-02 | `semaineType`/`semaineAbcm` tronqués (pas les 7 jours envoyés)                                                            |   🟥    | E2E stack réelle                         | P8 Web                  | `79afcc6`                |   ✅   |
+| AN-03 | Heures annuelles fractionnaires rejetées (colonne `integer` → 885,5 → 500)                                                |   🟥    | E2E stack réelle                         | P5 Planification        | `c7993ba`                |   ✅   |
+| AN-04 | Garde de période absente des calendriers : jours « Cantine » fantômes                                                     |   🟧    | E2E stack réelle                         | P10 Front               | doc 06 §19.6 (Phase 15)  |   ✅   |
+| AN-05 | Jours « gardés » marqués sans plage réelle (week-end gardé, doc 14)                                                       |   🟧    | E2E stack réelle                         | P8 Web                  | `576286c`                |   ✅   |
+| AN-06 | Latence `/couts/annuel` ~7 s / 502 sous 12 requêtes concurrentes                                                          |   🟥    | Performance (validation sous charge)     | P7 Gateway/Tarification | `9bf00a6` (doc 06 §19.7) |   ✅   |
+| AN-07 | Modale de confirmation ne focalise pas « Annuler » (EC-01)                                                                |   🟨    | a11y (axe-core / runbook)                | P12 a11y                | `fc90085`                |   ✅   |
+| AN-08 | A11y de l'UI d'ajustement de planning insuffisante                                                                        |   🟨    | a11y (axe-core)                          | P10 Front               | `e44a13b`                |   ✅   |
+| AN-09 | Build Docker des services cassé (deps OTel/zod non embarquées)                                                            |   🟥    | Smoke-stack (boot pile)                  | P9 Durcissement         | `3878cf0`                |   ✅   |
+| AN-10 | Foyer périmé mémorisé au chargement (état UI incohérent)                                                                  |   🟨    | E2E / composant                          | P8 Web                  | `33167ac`                |   ✅   |
+| AN-11 | Erreur de modification durable de contrat détruisant l'état UI                                                            |   🟧    | Composant (test de non-régression)       | P10 Front               | `f1c5a20`                |   ✅   |
+| AN-12 | Édition / suppression de contrat absente (seul le planning mensuel éditable)                                              |   🟧    | Validation manuelle (backlog)            | P7 Gateway/UI           | doc 06 §13 (backlog 1)   |   🔄   |
+| AN-13 | Prestations non filtrées par période de validité côté **domaine**                                                         |   🟧    | Validation manuelle (backlog)            | P5 Planification        | doc 06 §13 (backlog 2)   |  🔄¹   |
+| AN-14 | Allowlist mailer compare le `to` **entier** (`includes`), pas par destinataire → bloque tout dès qu'un foyer a ≥2 parents |   🟧    | Revue de code (activation envoi réel)    | Lot 2 Notifications     | doc 06 §23 (2026-06-30)  |   🔄   |
 
 > ¹ AN-13 : **atténué** côté affichage (les calendriers front filtrent par `[valideDu, valideAu]`,
 > cf. AN-04) ; la garde de période est **correcte côté `svc-tarification`** (coût juste). Le
@@ -47,7 +48,7 @@
 ## 3. DDP par niveau de détection
 
 Defect Detection Percentage = part des défauts **trouvés** à chaque niveau (sur 11 défauts clos
-AN-01..11 ; les 2 ouverts AN-12/13 sont issus de la validation manuelle, hors calcul DDP).
+AN-01..11 ; les 3 ouverts AN-12/13 (validation manuelle) et AN-14 (revue de code) sont hors calcul DDP).
 
 | Niveau de détection        | Défauts trouvés           | DDP      |
 | -------------------------- | ------------------------- | -------- |
