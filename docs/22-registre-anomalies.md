@@ -37,7 +37,7 @@
 | AN-11 | Erreur de modification durable de contrat détruisant l'état UI                                                            |   🟧    | Composant (test de non-régression)       | P10 Front               | `f1c5a20`                |   ✅   |
 | AN-12 | Édition / suppression de contrat absente (seul le planning mensuel éditable)                                              |   🟧    | Validation manuelle (backlog)            | P7 Gateway/UI           | doc 06 §13 (backlog 1)   |   🔄   |
 | AN-13 | Prestations non filtrées par période de validité côté **domaine**                                                         |   🟧    | Validation manuelle (backlog)            | P5 Planification        | doc 06 §13 (backlog 2)   |  🔄¹   |
-| AN-14 | Allowlist mailer compare le `to` **entier** (`includes`), pas par destinataire → bloque tout dès qu'un foyer a ≥2 parents |   🟧    | Revue de code (activation envoi réel)    | Lot 2 Notifications     | doc 06 §23 (2026-06-30)  |   🔄   |
+| AN-14 | Allowlist mailer compare le `to` **entier** (`includes`), pas par destinataire → bloque tout dès qu'un foyer a ≥2 parents |   🟧    | Revue de code (activation envoi réel)    | Lot 2 Notifications     | PR #128                  |   ✅   |
 
 > ¹ AN-13 : **atténué** côté affichage (les calendriers front filtrent par `[valideDu, valideAu]`,
 > cf. AN-04) ; la garde de période est **correcte côté `svc-tarification`** (coût juste). Le
@@ -47,21 +47,22 @@
 
 ## 3. DDP par niveau de détection
 
-Defect Detection Percentage = part des défauts **trouvés** à chaque niveau (sur 11 défauts clos
-AN-01..11 ; les 3 ouverts AN-12/13 (validation manuelle) et AN-14 (revue de code) sont hors calcul DDP).
+Defect Detection Percentage = part des défauts **trouvés** à chaque niveau (sur 12 défauts clos
+AN-01..11 et AN-14 ; les 2 ouverts AN-12/13 (validation manuelle) sont hors calcul DDP).
 
 | Niveau de détection        | Défauts trouvés           | DDP      |
 | -------------------------- | ------------------------- | -------- |
-| **E2E stack réelle**       | AN-01, 02, 03, 04, 05, 10 | **55 %** |
-| a11y (axe-core)            | AN-07, 08                 | 18 %     |
-| Performance                | AN-06                     | 9 %      |
-| Smoke-stack                | AN-09                     | 9 %      |
-| Composant (non-régression) | AN-11                     | 9 %      |
+| **E2E stack réelle**       | AN-01, 02, 03, 04, 05, 10 | **50 %** |
+| a11y (axe-core)            | AN-07, 08                 | 17 %     |
+| Performance                | AN-06                     | 8 %      |
+| Smoke-stack                | AN-09                     | 8 %      |
+| Composant (non-régression) | AN-11                     | 8 %      |
+| Revue de code (audit)      | AN-14                     | 8 %      |
 | Unitaire domaine           | 0                         | 0 %      |
 
 ### Lecture
 
-- **L'E2E stack réelle est le filet le plus productif** (55 % des défauts) : tous des défauts
+- **L'E2E stack réelle est le filet le plus productif** (50 % des défauts) : tous des défauts
   **d'intégration** que l'E2E **mocké** ne pouvait pas révéler — confirme empiriquement la règle
   d'équipe ([doc 03](03-standards-developpement.md) §6) née de la doc 14.
 - **0 défaut trouvé au niveau unitaire domaine** : cohérent avec la couverture 100 % + MBT (les
@@ -69,7 +70,10 @@ AN-01..11 ; les 3 ouverts AN-12/13 (validation manuelle) et AN-14 (revue de code
   rendu). → Angle d'amélioration : étendre BVA/tables de décision aux DTO d'entrée (suivi P3-5).
 - **Aucune fuite vers la production** : tous les défauts clos ont été pris **avant** mise en usage,
   par un niveau de test ou la validation — mais la **fuite inter-niveaux** (unit → intégration) est
-  réelle et désormais **mesurée** (et non plus masquée par l'auto-évaluation « 0 bug »).
+  réelle et désormais **mesurée** (et non plus masquée par l'auto-évaluation « 0 bug »). AN-14
+  dormait certes dans du code **déployé** (envoi réel actif), mais la revue de code l'a pris avant
+  tout déclenchement en usage : les chemins d'envoi actuels (récap = 1 mail/parent, mail service =
+  1 adresse) ne passent jamais de `to` multiple.
 
 ---
 
