@@ -353,6 +353,10 @@ services:
       NATS_URL: nats://nats:4222
       # Relecture du planning pour le diff de validation hebdomadaire (Lot 4).
       PLANIFICATION_URL: http://svc-planification:3004
+      # Frappe des jetons de désabonnement one-click (RFC 8058, PR5) : svc-notifications
+      # appelle svc-foyer (agrégat propriétaire du jeton) via DesabonnementClient. URL
+      # interne, identique en prod/staging → dans le compose de base (pas dans l'override).
+      FOYER_URL: http://svc-foyer:3002
       OTEL_SERVICE_NAME: svc-notifications
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:

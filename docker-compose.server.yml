@@ -134,6 +134,15 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://foyer:${PG_FOYER_PWD:?defini .env.server}@postgres-foyer:5432/foyer
+      # Désabonnement one-click (RFC 8058, PR5) : svc-foyer signe les jetons
+      # `desabonnement_token` (HMAC). REQUIS en prod (`:?`) — un secret vide/faible
+      # rendrait les jetons forgeables. À définir dans .env.server PUIS .env.server.enc
+      # (sops, cf. doc 29) AVANT le prochain déploiement, comme PG_NOTIFICATIONS_PWD :
+      # sans lui, `docker compose config` échoue et le déploiement est refusé. Le défaut
+      # de dev de config.ts n'est JAMAIS un secret de prod. Cf. .env.server.example.
+      DESABONNEMENT_TOKEN_SECRET: ${DESABONNEMENT_TOKEN_SECRET:?defini .env.server}
+      # Durée de validité d'un lien de désabonnement (jours) — défaut sain 30.
+      DESABONNEMENT_TOKEN_TTL_JOURS: ${DESABONNEMENT_TOKEN_TTL_JOURS:-30}
 
   svc-planification:
     image: ghcr.io/edouardzemb/creche-planner/svc-planification:${IMAGE_TAG:-main}
@@ -164,6 +173,13 @@ services:
       DATABASE_URL: postgres://notifications:${PG_NOTIFICATIONS_PWD:?defini .env.server}@postgres-notifications:5432/notifications
       # URL publique = base du lien « valider la semaine » inséré dans les mails.
       NOTIF_APP_URL: ${SERVER_ORIGIN:?defini .env.server}
+      # Désabonnement one-click (RFC 8058, PR5) : base publique de l'API gateway,
+      # cible de l'en-tête `List-Unsubscribe` (POST direct du client de messagerie sur
+      # ${SERVER_ORIGIN}/api/v1/desabonnement?token=…). Même origine publique que le front.
+      NOTIF_PUBLIC_API_URL: ${SERVER_ORIGIN:?defini .env.server}
+      # Adresse `mailto:` optionnelle ajoutée à l'en-tête List-Unsubscribe (repli non
+      # one-click, RFC 2369). Vide → seule l'URL HTTPS one-click est publiée.
+      NOTIF_UNSUBSCRIBE_MAILTO: ${NOTIF_UNSUBSCRIBE_MAILTO:-}
       # Transport SMTP (Gmail) — voir config.ts (clés SMTP_USER/SMTP_PASSWORD). Le mot
       # de passe est celui d'Alertmanager (app password Gmail), non redupliqué.
       SMTP_USER: ${NOTIF_SMTP_USER:-}
