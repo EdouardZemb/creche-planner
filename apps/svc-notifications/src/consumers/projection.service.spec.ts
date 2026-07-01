@@ -11,6 +11,7 @@ import {
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
+  PREFERENCES_NOTIF_MODIFIEES_TYPE,
 } from '@creche-planner/contracts-foyer';
 import { ProjectionService } from './projection.service.js';
 import type { Database } from '../database/database.types.js';
@@ -133,6 +134,25 @@ function evenementParentRetire(id: string): unknown {
     occurredAt: '2026-09-16T00:00:00.000Z',
     traceId: 'trace-pr',
     payload: { foyerId: FOYER_ID, parentId: PARENT_ID },
+  };
+}
+
+function evenementPreferences(id: string): unknown {
+  return {
+    id,
+    type: PREFERENCES_NOTIF_MODIFIEES_TYPE,
+    source: 'svc-foyer',
+    version: 1,
+    occurredAt: '2026-09-15T00:00:00.000Z',
+    traceId: 'trace-pref',
+    payload: {
+      foyerId: FOYER_ID,
+      parentId: PARENT_ID,
+      preferences: [
+        { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: false },
+        { typeNotification: 'VALIDATION_HEBDO', canal: 'IN_APP', actif: true },
+      ],
+    },
   };
 }
 
@@ -330,6 +350,43 @@ describe('ProjectionService.traiter (Notifications)', () => {
           PARENT_AJOUTE_TYPE,
           '55555555-5555-4555-8555-555555555555',
         ),
+      ),
+    ).resolves.toBe(true);
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('projette un PreferencesNotifModifiees valide (stream FOYER) et acquitte', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementPreferences('77777777-7777-4777-8777-777777777777'),
+      ),
+    ).resolves.toBe(true);
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('NAK (re-livraison) si le payload PreferencesNotifModifiees est invalide', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter('FOYER', {
+        ...(evenementPreferences(
+          '77777777-7777-4777-8777-aaaaaaaaaaaa',
+        ) as Record<string, unknown>),
+        payload: { parentId: 'pas-un-uuid' },
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('idempotent : un PreferencesNotifModifiees doublon (marqueur présent) acquitte sans projeter', async () => {
+    const db = fakeDb(false); // marquerTraite renvoie vide ⇒ doublon
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementPreferences('77777777-7777-4777-8777-bbbbbbbbbbbb'),
       ),
     ).resolves.toBe(true);
     expect(db.transaction).toHaveBeenCalledTimes(1);

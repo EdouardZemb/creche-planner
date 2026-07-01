@@ -166,7 +166,7 @@ describe('SchedulerHebdo.declencher', () => {
   it('repli : foyer sans parent → mail vers NOTIF_EMAIL_PARENT', async () => {
     await scheduler(MARDI_8H01, [contratRow()], d).declencher();
 
-    expect(d.emailsActifs).toHaveBeenCalledWith(FOYER_A);
+    expect(d.emailsActifs).toHaveBeenCalledWith(FOYER_A, 'VALIDATION_HEBDO');
     const message = d.envoyer.mock.calls[0]?.[0] as { to: string };
     expect(message.to).toBe('parent@test');
   });
@@ -208,8 +208,8 @@ describe('SchedulerHebdo.declencher', () => {
     ).declencher();
 
     expect(d.envoyer).toHaveBeenCalledTimes(2);
-    expect(d.emailsActifs).toHaveBeenCalledWith(FOYER_A);
-    expect(d.emailsActifs).toHaveBeenCalledWith(FOYER_B);
+    expect(d.emailsActifs).toHaveBeenCalledWith(FOYER_A, 'VALIDATION_HEBDO');
+    expect(d.emailsActifs).toHaveBeenCalledWith(FOYER_B, 'VALIDATION_HEBDO');
   });
 
   it('un lundi : ne déclenche rien', async () => {

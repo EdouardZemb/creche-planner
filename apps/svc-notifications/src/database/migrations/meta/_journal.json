@@ -78,6 +78,13 @@
       "when": 1782846400000,
       "tag": "0010_drop_etablissement_destinataire",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782915701846,
+      "tag": "0011_preference_notification",
+      "breakpoints": true
     }
   ]
 }

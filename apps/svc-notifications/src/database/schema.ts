@@ -133,6 +133,48 @@ export const foyerParent = pgTable('foyer_parent', {
     .defaultNow(),
 });
 
+// --- Read model : Préférences de notification (projeté depuis le stream FOYER)
+
+/**
+ * Projection des **préférences de notification** d'un parent (event
+ * `foyer.PreferencesNotifModifiees.v1`, stream `FOYER`, émis par `svc-foyer` qui en
+ * est **propriétaire**, cf. `.claude/plans/parent-profil-notifications.md` §5.2).
+ * Notifications projette ce read model pour **filtrer les destinataires** du récap
+ * hebdo : à l'envoi, un parent dont la préférence `(type, 'EMAIL')` est `actif = false`
+ * est retiré de la liste `to` (cf. `DestinatairesService`).
+ *
+ * Une ligne = un triplet `(parent_id, type_notification, canal)`. **L'absence de
+ * ligne vaut le défaut applicatif** (§5.1 : actif) : svc-foyer ne matérialise une
+ * ligne que lorsqu'un choix explicite est posé, l'event transporte l'**état complet**
+ * des préférences du parent, et la projection remplace l'ensemble des lignes du
+ * parent (delete + upsert dans une transaction). Alimenté idempotemment via
+ * `processed_event`. On ne projette que ce qui sert le routage (`actif`) ; les traces
+ * RGPD (`consentement_at`/`desabonne_at`) restent côté svc-foyer.
+ */
+export const preferenceNotification = pgTable(
+  'preference_notification',
+  {
+    /** Identité du parent amont (= `parent.id` de svc-foyer). */
+    parentId: uuid('parent_id').notNull(),
+    /** Type de notification (`VALIDATION_HEBDO` | `RECAP_SERVICE` | …). */
+    typeNotification: varchar('type_notification', { length: 64 }).notNull(),
+    /** Canal de délivrance (`EMAIL` | `IN_APP` | (futur) `PUSH`). */
+    canal: varchar('canal', { length: 32 }).notNull(),
+    /** Préférence active pour ce triplet (une ligne coupée retire le destinataire). */
+    actif: boolean('actif').notNull().default(true),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique('preference_notification_parent_type_canal_uq').on(
+      table.parentId,
+      table.typeNotification,
+      table.canal,
+    ),
+  ],
+);
+
 // --- Annuaire des établissements destinataires ------------------------------
 
 /**
@@ -340,6 +382,9 @@ export const outbox = pgTable('outbox', {
 
 export type ContratRow = typeof contrat.$inferSelect;
 export type FoyerParentRow = typeof foyerParent.$inferSelect;
+/** Read model projeté d'une préférence de notification (triplet parent×type×canal). */
+export type PreferenceNotificationRow =
+  typeof preferenceNotification.$inferSelect;
 /** Read model projeté de la fiche établissement (entité libre, P3). */
 export type EtablissementProjeteRow = typeof etablissement.$inferSelect;
 export type NotificationHebdoRow = typeof notificationHebdo.$inferSelect;

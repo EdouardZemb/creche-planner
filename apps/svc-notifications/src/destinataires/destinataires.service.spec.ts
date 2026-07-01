@@ -1,41 +1,51 @@
 import { describe, expect, it } from 'vitest';
 import { DestinatairesService } from './destinataires.service.js';
 import type { Database } from '../database/database.types.js';
-import type { FoyerParentRow } from '../database/schema.js';
 
 /**
- * Tests du service de résolution des destinataires, sans Postgres : le filtre
- * `foyer + actif` est délégué à SQL (non évalué ici) ; la base factice renvoie le jeu
- * fourni. On vérifie donc le **tri** (principal d'abord puis e-mail) et le **mapping**
- * vers les seuls e-mails, ainsi que le cas vide (qui déclenchera le repli côté scheduler).
+ * Tests du service de résolution des destinataires, sans Postgres. La base factice
+ * honore la forme `select().from().leftJoin().where()` et renvoie le jeu de lignes
+ * **jointes** fourni (`{ email, principal, preferenceActive }`), où `preferenceActive`
+ * matérialise le résultat de la jointure gauche sur `preference_notification` :
+ * `null` = pas de ligne (défaut applicatif §5.1), `true`/`false` = préférence explicite.
+ * Le prédicat SQL (`foyer + actif` + jointure `type/canal`) n'est pas évalué ici : on
+ * vérifie le **filtre applicatif** (préférence coupée ⇒ parent retiré, ligne absente ⇒
+ * conservé), le **tri** (principal d'abord puis e-mail), le **mapping** vers les seuls
+ * e-mails, et le cas vide (qui déclenchera le repli côté scheduler).
  */
 
-function ligne(partiel: Partial<FoyerParentRow> = {}): FoyerParentRow {
+interface LigneJointe {
+  email: string;
+  principal: boolean;
+  preferenceActive: boolean | null;
+}
+
+function ligne(partiel: Partial<LigneJointe> = {}): LigneJointe {
   return {
-    parentId: '88888888-8888-4888-8888-888888888888',
-    foyerId: '22222222-2222-4222-8222-222222222222',
     email: 'parent@test',
     principal: false,
-    actif: true,
-    updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    preferenceActive: null,
     ...partiel,
   };
 }
 
-function fakeBase(lignes: FoyerParentRow[]): Database {
+function fakeBase(lignes: LigneJointe[]): Database {
   return {
     select: () => ({
       from: () => ({
-        where: () => Promise.resolve(lignes),
+        leftJoin: () => ({
+          where: () => Promise.resolve(lignes),
+        }),
       }),
     }),
   } as unknown as Database;
 }
 
 const FOYER = '22222222-2222-4222-8222-222222222222';
+const TYPE = 'VALIDATION_HEBDO' as const;
 
 describe('DestinatairesService.emailsActifs', () => {
-  it('place le principal en tête puis trie par e-mail', async () => {
+  it('place le principal en tête puis trie par e-mail (préférence absente = défaut)', async () => {
     const service = new DestinatairesService(
       fakeBase([
         ligne({ email: 'zoe@test', principal: false }),
@@ -44,22 +54,56 @@ describe('DestinatairesService.emailsActifs', () => {
       ]),
     );
 
-    await expect(service.emailsActifs(FOYER)).resolves.toEqual([
+    await expect(service.emailsActifs(FOYER, TYPE)).resolves.toEqual([
       'maman@test',
       'papa@test',
       'zoe@test',
     ]);
   });
 
-  it('foyer sans parent actif : liste vide (repli côté appelant)', async () => {
+  it('foyer sans parent joignable : liste vide (repli côté appelant)', async () => {
     const service = new DestinatairesService(fakeBase([]));
-    await expect(service.emailsActifs(FOYER)).resolves.toEqual([]);
+    await expect(service.emailsActifs(FOYER, TYPE)).resolves.toEqual([]);
   });
 
   it('un seul parent : sa seule adresse', async () => {
     const service = new DestinatairesService(
       fakeBase([ligne({ email: 'seul@test' })]),
     );
-    await expect(service.emailsActifs(FOYER)).resolves.toEqual(['seul@test']);
+    await expect(service.emailsActifs(FOYER, TYPE)).resolves.toEqual([
+      'seul@test',
+    ]);
+  });
+
+  it('préférence e-mail coupée (actif=false) : le parent est retiré des destinataires', async () => {
+    const service = new DestinatairesService(
+      fakeBase([
+        ligne({ email: 'maman@test', principal: true, preferenceActive: true }),
+        ligne({ email: 'papa@test', preferenceActive: false }), // a coupé l'e-mail
+      ]),
+    );
+
+    await expect(service.emailsActifs(FOYER, TYPE)).resolves.toEqual([
+      'maman@test',
+    ]);
+  });
+
+  it('préférence explicitement active (actif=true) : le parent est conservé', async () => {
+    const service = new DestinatairesService(
+      fakeBase([ligne({ email: 'optin@test', preferenceActive: true })]),
+    );
+    await expect(service.emailsActifs(FOYER, TYPE)).resolves.toEqual([
+      'optin@test',
+    ]);
+  });
+
+  it('tous les parents ont coupé l’e-mail : liste vide (repli côté appelant)', async () => {
+    const service = new DestinatairesService(
+      fakeBase([
+        ligne({ email: 'maman@test', preferenceActive: false }),
+        ligne({ email: 'papa@test', preferenceActive: false }),
+      ]),
+    );
+    await expect(service.emailsActifs(FOYER, TYPE)).resolves.toEqual([]);
   });
 });

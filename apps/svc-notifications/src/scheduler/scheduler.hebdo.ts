@@ -8,7 +8,11 @@ import {
 import { and, gte, isNull, lte, or } from 'drizzle-orm';
 import { DRIZZLE, MailerService } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
-import { contrat, type ContratRow } from '../database/schema.js';
+import {
+  contrat,
+  TYPE_VALIDATION_HEBDO,
+  type ContratRow,
+} from '../database/schema.js';
 import { ValidationService } from '../validation/validation.service.js';
 import {
   EtablissementProjeteService,
@@ -220,8 +224,10 @@ export class SchedulerHebdo
   /**
    * Compose et envoie **un** mail récap du mardi pour un foyer, regroupant tous ses
    * contrats fraîchement notifiés. Destinataires = e-mails des parents **actifs** du
-   * foyer ; **repli** sur `NOTIF_EMAIL_PARENT` + warning si le foyer n'en a aucun
-   * (dépréciation progressive). Les garde-fous du `MailerService` s'appliquent au `to`.
+   * foyer **dont le canal e-mail n'est pas coupé** pour `VALIDATION_HEBDO` (préférences
+   * projetées, PR4) ; **repli** sur `NOTIF_EMAIL_PARENT` + warning si aucun parent n'a
+   * d'e-mail actif (dépréciation progressive). Les garde-fous du `MailerService`
+   * (dry-run/allowlist) s'appliquent au `to`.
    */
   private async envoyerRecapFoyer(
     foyerId: string,
@@ -243,7 +249,10 @@ export class SchedulerHebdo
       lienApp: `${this.options.appUrl}/planning?semaine=${semaineIso}`,
     });
 
-    const emails = await this.destinataires.emailsActifs(foyerId);
+    const emails = await this.destinataires.emailsActifs(
+      foyerId,
+      TYPE_VALIDATION_HEBDO,
+    );
     const repli = emails.length === 0;
     if (repli) {
       this.logger.warn(
