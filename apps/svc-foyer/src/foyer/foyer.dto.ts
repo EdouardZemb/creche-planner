@@ -4,6 +4,10 @@ import {
   type PipeTransform,
 } from '@nestjs/common';
 import { z, type ZodType } from 'zod';
+import {
+  canalSchema,
+  typeNotificationSchema,
+} from '@creche-planner/contracts-foyer';
 
 /** Création/mise à jour des finances d'un foyer. Montants saisis en **euros**. */
 export const ecrireFoyerSchema = z.object({
@@ -58,6 +62,27 @@ export const modifierParentSchema = z.object({
   actif: z.boolean().optional(),
 });
 export type ModifierParentDto = z.infer<typeof modifierParentSchema>;
+
+/**
+ * Mise à jour des **préférences de notification** d'un parent (`PUT`). On envoie
+ * la liste des choix explicites `(type, canal, actif)` à matérialiser ; les
+ * combinaisons absentes retombent sur le défaut applicatif (§5.1). `min(1)` : un
+ * `PUT` vide n'a pas de sens (l'écran envoie toujours l'état des cases). Le
+ * doublon `(type, canal)` est écarté par l'unicité en base ; l'invariant « ≥ 1
+ * canal actif pour un type de service » est appliqué par le service (400).
+ */
+export const majPreferencesSchema = z.object({
+  preferences: z
+    .array(
+      z.object({
+        typeNotification: typeNotificationSchema,
+        canal: canalSchema,
+        actif: z.boolean(),
+      }),
+    )
+    .min(1, 'au moins une préférence attendue'),
+});
+export type MajPreferencesDto = z.infer<typeof majPreferencesSchema>;
 
 /** Pipe générique : valide le corps de requête contre un schéma Zod (→ 400). */
 @Injectable()

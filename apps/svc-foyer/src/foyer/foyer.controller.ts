@@ -16,12 +16,14 @@ import {
   ajouterEnfantSchema,
   ajouterParentSchema,
   ecrireFoyerSchema,
+  majPreferencesSchema,
   modifierEnfantSchema,
   modifierParentSchema,
   ZodValidationPipe,
   type AjouterEnfantDto,
   type AjouterParentDto,
   type EcrireFoyerDto,
+  type MajPreferencesDto,
   type ModifierEnfantDto,
   type ModifierParentDto,
 } from './foyer.dto.js';
@@ -30,6 +32,7 @@ import {
   type EnfantVue,
   type FoyerVue,
   type ParentVue,
+  type PreferenceVue,
 } from './foyer.service.js';
 
 @Controller('foyers')
@@ -133,5 +136,27 @@ export class FoyerController {
     @Param('parentId', ParseUUIDPipe) parentId: string,
   ): Promise<void> {
     return this.foyers.retirerParent(id, parentId);
+  }
+
+  /** Préférences de notification effectives du parent (défaut §5.1 + choix stockés). */
+  @Get(':id/parents/:parentId/preferences')
+  lirePreferences(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('parentId', ParseUUIDPipe) parentId: string,
+  ): Promise<PreferenceVue[]> {
+    return this.foyers.lirePreferences(id, parentId);
+  }
+
+  /**
+   * Met à jour les préférences du parent. `400` si l'état résultant coupe tous les
+   * canaux d'un type de service (invariant ≥ 1 canal actif, §5.3).
+   */
+  @Put(':id/parents/:parentId/preferences')
+  majPreferences(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('parentId', ParseUUIDPipe) parentId: string,
+    @Body(new ZodValidationPipe(majPreferencesSchema)) dto: MajPreferencesDto,
+  ): Promise<PreferenceVue[]> {
+    return this.foyers.majPreferences(id, parentId, dto);
   }
 }

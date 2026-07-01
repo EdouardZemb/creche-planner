@@ -9,6 +9,8 @@ import {
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
+  PREFERENCES_NOTIF_MODIFIEES_TYPE,
+  canalSchema,
   enfantAjouteEventSchema,
   enfantModifieEventSchema,
   enfantRetireEventSchema,
@@ -16,6 +18,9 @@ import {
   foyerMisAJourEventV2Schema,
   parentAjouteEventSchema,
   parentRetireEventSchema,
+  preferenceNotificationIdSchema,
+  preferencesNotifModifieesEventSchema,
+  typeNotificationSchema,
 } from '../../index.js';
 
 describe('contracts-foyer (événements foyer.*)', () => {
@@ -290,5 +295,79 @@ describe('contracts-foyer (événements foyer.*)', () => {
       },
     };
     expect(parentRetireEventSchema.safeParse(event).success).toBe(true);
+  });
+
+  // --- Préférences de notification (PR1) -----------------------------------
+
+  it('expose les enums partagés type/canal et le type versionné de l’événement', () => {
+    expect(PREFERENCES_NOTIF_MODIFIEES_TYPE).toBe(
+      'foyer.PreferencesNotifModifiees.v1',
+    );
+    expect(typeNotificationSchema.options).toEqual([
+      'VALIDATION_HEBDO',
+      'RECAP_SERVICE',
+    ]);
+    expect(canalSchema.options).toEqual(['EMAIL', 'IN_APP']);
+  });
+
+  it('preferenceNotificationIdSchema brande un UUID valide et rejette le reste', () => {
+    expect(
+      preferenceNotificationIdSchema.safeParse(
+        '44444444-0000-4000-8000-000000000000',
+      ).success,
+    ).toBe(true);
+    expect(
+      preferenceNotificationIdSchema.safeParse('pas-un-uuid').success,
+    ).toBe(false);
+  });
+
+  it('valide un événement foyer.PreferencesNotifModifiees.v1 (état complet)', () => {
+    const event = {
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: PREFERENCES_NOTIF_MODIFIEES_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        parentId: '33333333-0000-4000-8000-000000000000',
+        preferences: [
+          {
+            typeNotification: 'VALIDATION_HEBDO',
+            canal: 'EMAIL',
+            actif: false,
+            desabonneAt: '2026-07-01T09:00:00.000Z',
+          },
+          {
+            typeNotification: 'VALIDATION_HEBDO',
+            canal: 'IN_APP',
+            actif: true,
+          },
+        ],
+      },
+    };
+    expect(preferencesNotifModifieesEventSchema.safeParse(event).success).toBe(
+      true,
+    );
+  });
+
+  it('rejette un canal hors enum dans PreferencesNotifModifiees', () => {
+    const result = preferencesNotifModifieesEventSchema.safeParse({
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: PREFERENCES_NOTIF_MODIFIEES_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        parentId: '33333333-0000-4000-8000-000000000000',
+        preferences: [
+          { typeNotification: 'VALIDATION_HEBDO', canal: 'SMS', actif: true },
+        ],
+      },
+    });
+    expect(result.success).toBe(false);
   });
 });

@@ -15,6 +15,13 @@
       "when": 1782458497820,
       "tag": "0001_parent",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782898265014,
+      "tag": "0002_unique_naoko",
+      "breakpoints": true
     }
   ]
 }

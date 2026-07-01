@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ENFANT_AJOUTE_TYPE,
   ENFANT_MODIFIE_TYPE,
@@ -8,10 +12,15 @@ import {
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
+  PREFERENCES_NOTIF_MODIFIEES_TYPE,
 } from '@creche-planner/contracts-foyer';
 import { FoyerService } from './foyer.service.js';
 import type { Database } from '../database/database.types.js';
-import type { FoyerRow, ParentRow } from '../database/schema.js';
+import type {
+  FoyerRow,
+  ParentRow,
+  PreferenceNotificationRow,
+} from '../database/schema.js';
 import type { EcrireFoyerDto } from './foyer.dto.js';
 
 /**
@@ -768,5 +777,268 @@ describe('FoyerService.foyersParEmail (résolution identité→foyers)', () => {
     const db = {} as unknown as Database;
     const service = new FoyerService(db);
     expect(await service.foyersParEmail('   ')).toEqual([]);
+  });
+});
+
+// --- Préférences de notification (PR1) -------------------------------------
+
+/** Ligne de préférence stockée de référence. */
+function lignePref(
+  overrides: Partial<PreferenceNotificationRow> = {},
+): PreferenceNotificationRow {
+  return {
+    id: '66666666-6666-4666-8666-666666666666',
+    parentId: PARENT_ID,
+    typeNotification: 'VALIDATION_HEBDO',
+    canal: 'EMAIL',
+    actif: true,
+    consentementAt: null,
+    desabonneAt: null,
+    sourceDernier: 'ECRAN',
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+/**
+ * Faux `db` **transactionnel** pour `majPreferences`. Le 1er `select` interne
+ * répond la présence du parent (`parent` défini ⇒ trouvé) ; le 2nd renvoie
+ * `readback` (l'état relu après upsert, qui pilote invariant + événement).
+ * `insertValues` espionne tout `insert(...).values(...)` ; les inserts de
+ * préférence exposent `.onConflictDoUpdate()` (upsert idempotent sur la clé
+ * unique) dont les arguments sont capturés dans `onConflictArgs`.
+ */
+function fakeDbPreferencesTx(options: {
+  parent?: Pick<ParentRow, 'id' | 'foyerId'>;
+  readback?: PreferenceNotificationRow[];
+}): {
+  db: Database;
+  transaction: ReturnType<typeof vi.fn>;
+  insertValues: ReturnType<typeof vi.fn>;
+  onConflictArgs: unknown[];
+} {
+  const onConflictArgs: unknown[] = [];
+  const insertValues = vi.fn(() =>
+    Object.assign(Promise.resolve(), {
+      onConflictDoUpdate: (arg: unknown) => {
+        onConflictArgs.push(arg);
+        return Promise.resolve();
+      },
+    }),
+  );
+  const parents = options.parent ? [options.parent] : [];
+  const readback = options.readback ?? [];
+  let selectCount = 0;
+  const select = vi.fn(() => {
+    const lignes = selectCount++ === 0 ? parents : readback;
+    return { from: () => ({ where: () => Promise.resolve(lignes) }) };
+  });
+  const tx = { select, insert: () => ({ values: insertValues }) };
+  const transaction = vi.fn(async (cb: (t: unknown) => Promise<unknown>) =>
+    cb(tx),
+  );
+  const db = { transaction } as unknown as Database;
+  return { db, transaction, insertValues, onConflictArgs };
+}
+
+/** Faux `db` pour les lectures de `lirePreferences` (parent puis préférences). */
+function fakeDbPreferencesLecture(options: {
+  parent?: Pick<ParentRow, 'id' | 'foyerId'>;
+  rows?: PreferenceNotificationRow[];
+}): Database {
+  let count = 0;
+  const select = vi.fn(() => {
+    const lignes =
+      count++ === 0
+        ? options.parent
+          ? [options.parent]
+          : []
+        : (options.rows ?? []);
+    return { from: () => ({ where: () => Promise.resolve(lignes) }) };
+  });
+  return { select } as unknown as Database;
+}
+
+describe('FoyerService.lirePreferences (défauts fusionnés)', () => {
+  it('renvoie la matrice par défaut (VALIDATION_HEBDO e-mail + in-app actifs) sans ligne stockée', async () => {
+    const db = fakeDbPreferencesLecture({
+      parent: { id: PARENT_ID, foyerId: FOYER_ID },
+      rows: [],
+    });
+    const service = new FoyerService(db);
+
+    const prefs = await service.lirePreferences(FOYER_ID, PARENT_ID);
+    expect(prefs).toEqual([
+      {
+        typeNotification: 'VALIDATION_HEBDO',
+        canal: 'EMAIL',
+        actif: true,
+        consentementAt: null,
+        desabonneAt: null,
+      },
+      {
+        typeNotification: 'VALIDATION_HEBDO',
+        canal: 'IN_APP',
+        actif: true,
+        consentementAt: null,
+        desabonneAt: null,
+      },
+    ]);
+  });
+
+  it('surcharge le défaut par le choix explicite stocké (e-mail coupé, désabo tracé)', async () => {
+    const db = fakeDbPreferencesLecture({
+      parent: { id: PARENT_ID, foyerId: FOYER_ID },
+      rows: [
+        lignePref({
+          canal: 'EMAIL',
+          actif: false,
+          desabonneAt: new Date('2026-07-01T09:00:00Z'),
+        }),
+      ],
+    });
+    const service = new FoyerService(db);
+
+    const prefs = await service.lirePreferences(FOYER_ID, PARENT_ID);
+    expect(prefs[0]).toMatchObject({
+      canal: 'EMAIL',
+      actif: false,
+      desabonneAt: '2026-07-01T09:00:00.000Z',
+    });
+    // L'in-app non stocké retombe sur le défaut actif.
+    expect(prefs[1]).toMatchObject({ canal: 'IN_APP', actif: true });
+  });
+
+  it('lève NotFoundException si le parent n’appartient pas au foyer', async () => {
+    const db = fakeDbPreferencesLecture({ rows: [] });
+    const service = new FoyerService(db);
+    await expect(
+      service.lirePreferences(FOYER_ID, PARENT_ID),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('FoyerService.majPreferences (upsert + outbox + invariant)', () => {
+  it('upsert les préférences + émet PreferencesNotifModifiees (état complet) dans la même transaction', async () => {
+    const { db, transaction, insertValues, onConflictArgs } =
+      fakeDbPreferencesTx({
+        parent: { id: PARENT_ID, foyerId: FOYER_ID },
+        readback: [
+          lignePref({ canal: 'EMAIL', actif: false }),
+          lignePref({
+            id: '77777777-7777-4777-8777-777777777777',
+            canal: 'IN_APP',
+            actif: true,
+          }),
+        ],
+      });
+    const service = new FoyerService(db);
+
+    const prefs = await service.majPreferences(FOYER_ID, PARENT_ID, {
+      preferences: [
+        { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: false },
+        { typeNotification: 'VALIDATION_HEBDO', canal: 'IN_APP', actif: true },
+      ],
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    // Upsert idempotent : un onConflictDoUpdate par préférence, ciblant la clé
+    // unique (parent, type, canal).
+    expect(onConflictArgs).toHaveLength(2);
+    expect(onConflictArgs[0]).toMatchObject({
+      target: expect.arrayContaining([expect.anything()]),
+    });
+    // L'événement : même transaction, état complet, tranche e-mail coupée.
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: PREFERENCES_NOTIF_MODIFIEES_TYPE,
+        payload: expect.objectContaining({
+          foyerId: FOYER_ID,
+          parentId: PARENT_ID,
+          preferences: [
+            {
+              typeNotification: 'VALIDATION_HEBDO',
+              canal: 'EMAIL',
+              actif: false,
+            },
+            {
+              typeNotification: 'VALIDATION_HEBDO',
+              canal: 'IN_APP',
+              actif: true,
+            },
+          ],
+        }),
+      }),
+    );
+    expect(prefs).toEqual([
+      {
+        typeNotification: 'VALIDATION_HEBDO',
+        canal: 'EMAIL',
+        actif: false,
+        consentementAt: null,
+        desabonneAt: null,
+      },
+      {
+        typeNotification: 'VALIDATION_HEBDO',
+        canal: 'IN_APP',
+        actif: true,
+        consentementAt: null,
+        desabonneAt: null,
+      },
+    ]);
+  });
+
+  it('INVARIANT ≥1 canal : refuse (400) de couper tous les canaux d’un type de service — AUCUN événement émis', async () => {
+    const { db, insertValues } = fakeDbPreferencesTx({
+      parent: { id: PARENT_ID, foyerId: FOYER_ID },
+      readback: [
+        lignePref({ canal: 'EMAIL', actif: false }),
+        lignePref({
+          id: '77777777-7777-4777-8777-777777777777',
+          canal: 'IN_APP',
+          actif: false,
+        }),
+      ],
+    });
+    const service = new FoyerService(db);
+
+    await expect(
+      service.majPreferences(FOYER_ID, PARENT_ID, {
+        preferences: [
+          {
+            typeNotification: 'VALIDATION_HEBDO',
+            canal: 'EMAIL',
+            actif: false,
+          },
+          {
+            typeNotification: 'VALIDATION_HEBDO',
+            canal: 'IN_APP',
+            actif: false,
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    // L'invariant est contrôlé AVANT l'insert outbox : pas d'événement fantôme
+    // (et sur une vraie base la transaction est annulée avec les upserts).
+    const aEmisEvenement = insertValues.mock.calls.some(
+      (c) =>
+        (c[0] as { type?: string }).type === PREFERENCES_NOTIF_MODIFIEES_TYPE,
+    );
+    expect(aEmisEvenement).toBe(false);
+  });
+
+  it('lève NotFoundException si le parent n’appartient pas au foyer — aucun upsert ni événement', async () => {
+    const { db, insertValues } = fakeDbPreferencesTx({ readback: [] });
+    const service = new FoyerService(db);
+
+    await expect(
+      service.majPreferences(FOYER_ID, PARENT_ID, {
+        preferences: [
+          { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: true },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(insertValues).not.toHaveBeenCalled();
   });
 });

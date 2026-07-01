@@ -91,6 +91,65 @@ export const parent = pgTable(
 );
 
 /**
+ * **Préférence de notification** d'un parent : une ligne par triplet
+ * `(parent, type, canal)` (cf. `.claude/plans/parent-profil-notifications.md`
+ * §3.1). Table dédiée (pas des colonnes sur `parent`) : cardinalité type×canal
+ * variable et extensible sans migration à chaque nouveau type. **L'absence de
+ * ligne = valeur par défaut applicative** (on ne matérialise qu'un choix
+ * explicite) ⇒ migration purement additive, aucun back-fill. `consentement_at`
+ * (opt-in) / `desabonne_at` (opt-out) tracent le consentement RGPD ;
+ * `source_dernier` note l'origine du dernier changement (écran / lien désabo).
+ */
+export const preferenceNotification = pgTable(
+  'preference_notification',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    parentId: uuid('parent_id')
+      .notNull()
+      .references(() => parent.id, { onDelete: 'cascade' }),
+    typeNotification: varchar('type_notification', { length: 64 }).notNull(),
+    canal: varchar('canal', { length: 32 }).notNull(),
+    actif: boolean('actif').notNull().default(true),
+    consentementAt: timestamp('consentement_at', { withTimezone: true }),
+    desabonneAt: timestamp('desabonne_at', { withTimezone: true }),
+    sourceDernier: varchar('source_dernier', { length: 32 })
+      .notNull()
+      .default('DEFAUT'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('preference_notification_unique_idx').on(
+      table.parentId,
+      table.typeNotification,
+      table.canal,
+    ),
+  ],
+);
+
+/**
+ * Jeton de **désabonnement one-click** (RFC 8058, PR5). `jti` = identifiant du
+ * jeton signé, `utilise_le` NULL tant qu'inutilisé (usage one-shot), `expire_le`
+ * borne la validité. Créé ici (PR1) pour que le modèle soit complet et la
+ * migration additive ; l'endpoint public qui l'exploite arrive en PR5.
+ */
+export const desabonnementToken = pgTable('desabonnement_token', {
+  jti: uuid('jti').primaryKey(),
+  parentId: uuid('parent_id')
+    .notNull()
+    .references(() => parent.id, { onDelete: 'cascade' }),
+  typeNotification: varchar('type_notification', { length: 64 }).notNull(),
+  canal: varchar('canal', { length: 32 }).notNull(),
+  emisLe: timestamp('emis_le', { withTimezone: true }).notNull().defaultNow(),
+  utiliseLe: timestamp('utilise_le', { withTimezone: true }),
+  expireLe: timestamp('expire_le', { withTimezone: true }).notNull(),
+});
+
+/**
  * Outbox transactionnelle (doc 06 §8.4). L'événement est inséré **dans la même
  * transaction** que le changement d'état ; un relais le publie ensuite sur NATS
  * et renseigne `published_at`. `id` = identifiant d'enveloppe = **clé d'idempotence**.
@@ -109,4 +168,7 @@ export const outbox = pgTable('outbox', {
 export type FoyerRow = typeof foyer.$inferSelect;
 export type EnfantRow = typeof enfant.$inferSelect;
 export type ParentRow = typeof parent.$inferSelect;
+export type PreferenceNotificationRow =
+  typeof preferenceNotification.$inferSelect;
+export type DesabonnementTokenRow = typeof desabonnementToken.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;
