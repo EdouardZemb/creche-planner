@@ -89,11 +89,13 @@ sans modifier le use case (OCP). C'est le seul point d'extension anticipé (YAGN
   (ex. repo en mémoire ET repo SQL passent les mêmes tests) → garantit LSP.
 - **Outils** : Vitest (unit/intégration), Playwright (E2E UI), Supertest (API).
 - **Couverture** : objectif **100 % du domaine** (`domain/`), **enforced** par des seuils
-  `vitest` bloquants (`libs/*/domain/vitest.config.mts`). Aucun seuil global chiffré n'est imposé
-  sur les apps/contrats : la couverture y est **mesurée et publiée** en CI (lcov + json-summary,
-  cf. [doc 18](18-audit-gestion-tests-ctal-tm-tmmi.md) §8 P1-2) **sans porte chiffrée** — la valeur
-  n'est pas dans la métrique mais dans le test. La couverture est un garde-fou, pas un but ; pas de
-  test « pour la métrique ».
+  `vitest` bloquants (`libs/*/domain/vitest.config.mts`). Sur les **apps** (gateway, services,
+  web), pas de cible chiffrée a priori : des seuils **RATCHET** sont posés au niveau **constaté**
+  (arrondi à l'entier inférieur, audit 2026-07 lot 1a) dans chaque `vitest.config.mts` — ils
+  bloquent toute régression sans pousser au test « pour la métrique ». On les remonte quand la
+  couverture réelle progresse, on ne les abaisse jamais. La couverture est aussi **mesurée et
+  publiée** en CI (lcov + json-summary, cf. [doc 18](18-audit-gestion-tests-ctal-tm-tmmi.md) §8
+  P1-2) et comparée à la baseline `main` (AQ-06). Les contrats restent mesurés sans porte chiffrée.
 - **Données de test** : pattern _Object Mother_ / _builders_ pour Foyer, Contrat, Planning.
 
 ## 7. Outillage & qualité
