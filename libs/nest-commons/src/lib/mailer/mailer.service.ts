@@ -12,6 +12,7 @@ type TransportMail = ReturnType<typeof createTransport>;
 
 /** Message à émettre. `html` et `text` sont optionnels (au moins l'un fourni). */
 export interface MessageMail {
+  /** Destinataire(s) : une adresse, ou plusieurs séparées par des virgules. */
   to: string;
   subject: string;
   html?: string;
@@ -35,6 +36,33 @@ export interface ResultatEnvoi {
 }
 
 /**
+ * Partition des destinataires du champ `to` (adresses séparées par des
+ * virgules) selon l'allowlist : `autorises` partiront, `filtres` sont
+ * neutralisés. Allowlist vide ⇒ aucun filtrage (tout le monde est autorisé).
+ *
+ * Chaque adresse est vérifiée **individuellement** (AN-14) : comparer le `to`
+ * entier bloquerait tout envoi dès qu'un foyer compte ≥ 2 parents, et une
+ * adresse non autorisée (ex. une vraie crèche) ne doit jamais passer au motif
+ * qu'elle voyage avec une adresse autorisée.
+ */
+export function partitionnerParAllowlist(
+  to: string,
+  allowlist: readonly string[],
+): { autorises: readonly string[]; filtres: readonly string[] } {
+  const tous = to
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (allowlist.length === 0) {
+    return { autorises: tous, filtres: [] };
+  }
+  return {
+    autorises: tous.filter((d) => allowlist.includes(d)),
+    filtres: tous.filter((d) => !allowlist.includes(d)),
+  };
+}
+
+/**
  * Service e-mail applicatif : enveloppe `nodemailer.createTransport`. L'effet de
  * bord sortant est protégé par deux garde-fous — `dryRun` et `allowlist` — qui
  * court-circuitent le transport sans jamais ouvrir de connexion SMTP.
@@ -49,9 +77,12 @@ export class MailerService {
   ) {}
 
   /**
-   * Émet un message. Si `dryRun` est actif **ou** si le destinataire n'est pas
-   * dans l'allowlist (quand celle-ci est renseignée), l'envoi est journalisé et
-   * neutralisé : retour `{ messageId: null, dryRun: true }`, transport intact.
+   * Émet un message. Si `dryRun` est actif, l'envoi est journalisé et neutralisé :
+   * retour `{ messageId: null, dryRun: true }`, transport intact. Quand l'allowlist
+   * est renseignée, chaque destinataire du `to` est vérifié **individuellement**
+   * (AN-14) : les adresses hors liste sont neutralisées (journalisées) sans bloquer
+   * les autres ; si plus aucun destinataire ne subsiste, l'envoi entier est
+   * neutralisé comme un dry-run.
    */
   async envoyer({
     to,
@@ -64,16 +95,22 @@ export class MailerService {
       this.logger.log(`Dry-run — envoi neutralisé vers ${to} (« ${subject} »)`);
       return { messageId: null, dryRun: true };
     }
-    if (!this.estAutorise(to)) {
+    const { autorises, filtres } = partitionnerParAllowlist(
+      to,
+      this.options.allowlist,
+    );
+    if (filtres.length > 0) {
       this.logger.warn(
-        `Destinataire hors allowlist — envoi neutralisé vers ${to} (« ${subject} »)`,
+        `Destinataire(s) hors allowlist — neutralisé(s) : ${filtres.join(', ')} (« ${subject} »)`,
       );
+    }
+    if (autorises.length === 0) {
       return { messageId: null, dryRun: true };
     }
 
     const info = await this.obtenirTransport().sendMail({
       from: this.options.from,
-      to,
+      to: autorises.join(', '),
       subject,
       html,
       text,
@@ -82,13 +119,6 @@ export class MailerService {
       ...(headers ? { headers } : {}),
     });
     return { messageId: info.messageId, dryRun: false };
-  }
-
-  /** Allowlist vide ⇒ aucun filtrage ; sinon le `to` doit y figurer. */
-  private estAutorise(to: string): boolean {
-    return (
-      this.options.allowlist.length === 0 || this.options.allowlist.includes(to)
-    );
   }
 
   /** Transport créé paresseusement : le mot de passe n'est lu qu'au 1ᵉʳ envoi réel. */

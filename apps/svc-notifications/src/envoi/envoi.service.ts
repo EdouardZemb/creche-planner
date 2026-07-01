@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
-import { DRIZZLE, MailerService } from '@creche-planner/nest-commons';
+import {
+  DRIZZLE,
+  MailerService,
+  partitionnerParAllowlist,
+} from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   contrat,
@@ -297,15 +301,18 @@ export class EnvoiService {
 
   /**
    * Dry-run **effectif** pour un destinataire : actif si le bac à sable global l'est,
-   * ou si une allowlist est renseignée et n'inclut pas l'adresse (même logique que
-   * `MailerService`). Pilote le bandeau d'avertissement avant l'envoi.
+   * ou si l'allowlist (vérifiée **par adresse**, AN-14 — même logique que
+   * `MailerService`) ne retient aucun destinataire. Pilote le bandeau
+   * d'avertissement avant l'envoi.
    */
   private dryRunEffectif(destinataire: string): boolean {
     const { dryRun, allowlist } = loadConfig().email;
     if (dryRun) {
       return true;
     }
-    return allowlist.length > 0 && !allowlist.includes(destinataire);
+    return (
+      partitionnerParAllowlist(destinataire, allowlist).autorises.length === 0
+    );
   }
 
   private async envoiExistant(

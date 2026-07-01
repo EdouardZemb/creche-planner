@@ -67,6 +67,63 @@ describe('MailerService', () => {
     expect(resultat).toEqual({ messageId: null, dryRun: true });
   });
 
+  // Non-régression AN-14 : l'allowlist se vérifie PAR destinataire, jamais sur le
+  // champ `to` entier (un foyer à ≥ 2 parents était bloqué en bloc).
+  it('AN-14 — foyer avec 2 parents autorisés : les deux adresses reçoivent', async () => {
+    const service = new MailerService(
+      options({
+        dryRun: false,
+        allowlist: ['parent1@test', 'parent2@test'],
+      }),
+    );
+
+    const resultat = await service.envoyer({
+      ...MESSAGE,
+      to: 'parent1@test, parent2@test',
+    });
+
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'parent1@test, parent2@test' }),
+    );
+    expect(resultat).toEqual({ messageId: '<msg-123@test>', dryRun: false });
+  });
+
+  it('AN-14 — adresse hors allowlist filtrée sans bloquer les autres (jamais vers une vraie crèche)', async () => {
+    const service = new MailerService(
+      options({ dryRun: false, allowlist: ['parent1@test'] }),
+    );
+
+    // L'adresse réelle de la crèche ne figure pas dans l'allowlist : elle doit
+    // être neutralisée même si elle voyage avec une adresse autorisée.
+    const resultat = await service.envoyer({
+      ...MESSAGE,
+      to: 'parent1@test, jaudrey@cscpapin.asso.fr',
+    });
+
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    // `to` émis strictement égal à la seule adresse autorisée : l'adresse de la
+    // crèche réelle n'apparaît nulle part dans le message parti au transport.
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'parent1@test' }),
+    );
+    expect(resultat).toEqual({ messageId: '<msg-123@test>', dryRun: false });
+  });
+
+  it('AN-14 — aucun destinataire retenu : envoi entier neutralisé (dryRun=true)', async () => {
+    const service = new MailerService(
+      options({ dryRun: false, allowlist: ['parent1@test'] }),
+    );
+
+    const resultat = await service.envoyer({
+      ...MESSAGE,
+      to: 'inconnu@test, jaudrey@cscpapin.asso.fr',
+    });
+
+    expect(sendMail).not.toHaveBeenCalled();
+    expect(resultat).toEqual({ messageId: null, dryRun: true });
+  });
+
   it('envoi nominal : appelle le transport une fois et remonte le messageId', async () => {
     const service = new MailerService(
       options({ dryRun: false, allowlist: ['parent@test'] }),
