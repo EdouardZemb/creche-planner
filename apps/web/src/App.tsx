@@ -17,6 +17,7 @@ import { ContratsPage } from './foyer/ContratsPage';
 import { PlanningPage } from './planning/PlanningPage';
 import { CoutsAnnuelsPage } from './couts/CoutsAnnuelsPage';
 import { EtablissementsPage } from './etablissements/EtablissementsPage';
+import { MonProfilPage } from './profil/MonProfilPage';
 import { PastilleAValider } from './notifications/PastilleAValider';
 import { getFoyerId, setFoyerId, effacerFoyerId } from './utils/store';
 import { seReconnecter } from './utils/reconnexion';
@@ -170,6 +171,10 @@ function Entete() {
         {moi.foyers.length > 1 && (
           <NavLink to="/mes-foyers">Mes foyers</NavLink>
         )}
+        {/* « Mon profil » (A1) : édition de sa ligne parent + préférences de
+            notification. Visible dès qu'une identité est établie (le BFF résout
+            « moi » depuis l'e-mail vérifié) ; masqué en mode hérité sans identité. */}
+        {moi.email !== null && <NavLink to="/mon-profil">Mon profil</NavLink>}
         {/* P5 : hors d'un contexte foyer (le bloc `id` ci-dessus porte déjà
             « Modifier le foyer »), raccourci vers l'édition de SON foyer dès
             qu'au moins un foyer est rattaché. */}
@@ -302,6 +307,7 @@ function PageIntrouvable() {
 function titreDepuisPathname(pathname: string): string {
   if (pathname === '/foyers/new') return 'Nouveau foyer';
   if (pathname === '/mes-foyers') return 'Mes foyers';
+  if (pathname === '/mon-profil') return 'Mon profil';
   const foyer =
     /^\/foyers\/[^/]+\/(dashboard|contrats|planning|couts|etablissements|modifier)$/.exec(
       pathname,
@@ -343,6 +349,7 @@ function Coquille() {
         <Routes>
           <Route path="/" element={<Accueil />} />
           <Route path="/mes-foyers" element={<MesFoyersPage />} />
+          <Route path="/mon-profil" element={<MonProfilPage />} />
           <Route path="/foyers/new" element={<FoyerFormPage />} />
           <Route path="/foyers/:foyerId" element={<GardeFoyer />}>
             <Route path="dashboard" element={<DashboardJourPage />} />

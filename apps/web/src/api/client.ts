@@ -10,6 +10,9 @@ import type {
   CreerParent,
   ModifierParent,
   MoiVue,
+  MonProfilVue,
+  PreferenceVue,
+  MajPreferences,
   CreerContrat,
   ContratVue,
   ContratLocal,
@@ -121,6 +124,37 @@ export const api = {
       headers: entetes(false),
       ...(opts.signal ? { signal: opts.signal } : {}),
     }).then((r) => lire<MoiVue>(r));
+  },
+
+  /**
+   * Mon profil (parent connecté) + mes préférences de notification —
+   * `GET /v1/moi/profil`. La ligne parent est résolue **côté serveur** depuis
+   * l'identité (le client ne fournit jamais de parentId) : **401** sans identité,
+   * **404** si aucune ligne parent ne correspond.
+   */
+  monProfil(opts: RequeteOptions = {}): Promise<MonProfilVue> {
+    return requete(`${BASE}/v1/moi/profil`, {
+      headers: entetes(false),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<MonProfilVue>(r));
+  },
+
+  /**
+   * Met à jour mes préférences de notification — `PUT /v1/moi/preferences`
+   * (renvoie l'état effectif). Le parent visé est résolu serveur depuis
+   * l'identité (on ne modifie que SA ligne) ; **400** si la combinaison coupe
+   * tous les canaux d'un type de service (invariant ≥ 1 canal actif).
+   */
+  majPreferences(
+    saisie: MajPreferences,
+    opts: RequeteOptions = {},
+  ): Promise<PreferenceVue[]> {
+    return requete(`${BASE}/v1/moi/preferences`, {
+      method: 'PUT',
+      headers: entetes(true),
+      body: JSON.stringify(saisie),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<PreferenceVue[]>(r));
   },
 
   creerFoyer(
