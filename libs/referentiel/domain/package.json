@@ -20,7 +20,20 @@
     "tags": [
       "type:domain",
       "context:referentiel"
-    ]
+    ],
+    "targets": {
+      "mutation": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "stryker run",
+          "cwd": "libs/referentiel/domain"
+        },
+        "dependsOn": [
+          "^build"
+        ],
+        "cache": false
+      }
+    }
   },
   "dependencies": {
     "@creche-planner/shared-kernel": "workspace:*",

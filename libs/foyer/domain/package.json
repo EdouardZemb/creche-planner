@@ -20,7 +20,20 @@
     "tags": [
       "type:domain",
       "context:foyer"
-    ]
+    ],
+    "targets": {
+      "mutation": {
+        "executor": "nx:run-commands",
+        "options": {
+          "command": "stryker run",
+          "cwd": "libs/foyer/domain"
+        },
+        "dependsOn": [
+          "^build"
+        ],
+        "cache": false
+      }
+    }
   },
   "dependencies": {
     "@creche-planner/shared-kernel": "workspace:*",
