@@ -1986,3 +1986,62 @@ Retiré :
 - **Seed démo** : `scripts/seed-demo.mjs` utilise déjà l'API per-foyer (les noms « Crèche … »/« École ABCM »
   y sont de simples valeurs d'exemple, plus une énumération figée) → inchangé. Le script
   `scripts/backfill-etablissements.mjs` (one-shot historique) conserve sa copie locale du mapping.
+
+## 26. Feature Profil parent & préférences de notification (✅ COMPLÈTE — 7/7 PR livrées)
+
+**But** — donner au **parent connecté** (identité CF Access, déjà en prod) la maîtrise de (A1) ses
+informations via une page dédiée **« Mon profil »**, et (N3) **la façon dont il est notifié** :
+préférences `type × canal` (`VALIDATION_HEBDO`/`RECAP_SERVICE` × `EMAIL`/`IN_APP`), **désabonnement
+one-click RFC 8058**, et **inbox in-app** (lu/non-lu). Plan `.claude/plans/parent-profil-notifications.md`.
+Décisions d'archi figées dans [ADR-0006](adr/0006-preferences-notification-et-desabonnement.md) :
+préférences dans **svc-foyer** (agrégat parent) → projection NATS vers svc-notifications ⇒ **zéro
+nouveau Pact** (`can-i-deploy` inchangé) ; jeton de désabonnement **en table** (one-shot, auditable).
+Invariant de service : `VALIDATION_HEBDO` **jamais coupée totalement** (≥ 1 canal actif).
+
+### 26.1 Découpage livré (7 PR phasées, CI verte à chaque étape)
+
+| PR                                                                 | Périmètre                                                                                                                                                                                                                                                 | Squash    |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| PR1 [#119](https://github.com/EdouardZemb/creche-planner/pull/119) | svc-foyer : contrats (id brandé, enums, event `PreferencesNotifModifiees.v1`), tables `preference_notification` + `desabonnement_token` (migration additive `0002`), service `lire/majPreferences` (invariant ≥1 canal), controller, provider Pact states | `4ecc3a9` |
+| PR2 [#120](https://github.com/EdouardZemb/creche-planner/pull/120) | api-gateway/BFF : `GET /moi/profil` + `PUT /moi/preferences` (parentId résolu **serveur**, défense « seulement ma ligne »), OpenAPI (15→17 routes), Pact consumer                                                                                         | `4104791` |
+| PR3 [#121](https://github.com/EdouardZemb/creche-planner/pull/121) | web : route `/mon-profil` + tableau type×canal (verrou dernier canal, feedback optimiste), 0 migration/0 OpenAPI                                                                                                                                          | `829f7ed` |
+| PR4 [#122](https://github.com/EdouardZemb/creche-planner/pull/122) | svc-notifications : projection `preference_notification` (durable existant, migration `0011`), `emailsActifs(foyerId, type)` filtre les destinataires — **opt-out e-mail fonctionnel**                                                                    | `a2fb909` |
+| PR5 [#123](https://github.com/EdouardZemb/creche-planner/pull/123) | désabonnement RFC 8058 : en-têtes `List-Unsubscribe`(+one-click), jeton HMAC one-shot (svc-foyer), endpoint public `@Public` rate-limité (gateway), page web `/desabonnement`. **Récap mardi → 1 mail/parent**                                            | `400f845` |
+| PR6 [#124](https://github.com/EdouardZemb/creche-planner/pull/124) | inbox in-app : table `notification` (migration `0012`), cloche + compteur non-lus (entête web), journal informationnel (ne duplique pas « Valider »)                                                                                                      | `6e88c40` |
+| PR7 (ce lot)                                                       | config/secret + doc : câblage Compose, secret de signature, ADR-0006, cette section, mémoire                                                                                                                                                              | —         |
+
+### 26.2 PR7 — config / doc (aucune logique métier nouvelle)
+
+- **Secret de signature des jetons de désabonnement** `DESABONNEMENT_TOKEN_SECRET` (svc-foyer, PR5) :
+  câblé **requis** dans `docker-compose.server.yml` (`${DESABONNEMENT_TOKEN_SECRET:?}`) — un secret
+  vide/faible rendrait les jetons **forgeables**. Documenté dans `.env.server.example` (générer
+  `openssl rand -hex 32`) ; `.env.staging.example` note qu'il n'est **pas** requis en staging (pile
+  `docker-compose.staging.yml` sans override prod, aucun mail réel → défaut de dev). CI
+  `config-validation` reçoit une valeur factice `DESABONNEMENT_TOKEN_SECRET=ci`.
+- **URLs câblées** : `FOYER_URL: http://svc-foyer:3002` pour svc-notifications (frappe des jetons via
+  `DesabonnementClient`) → compose de **base** (URL interne, identique en prod/staging) ;
+  `NOTIF_PUBLIC_API_URL: ${SERVER_ORIGIN}` (cible one-click des e-mails) + `NOTIF_UNSUBSCRIBE_MAILTO`
+  (optionnel) → override **server** (prod).
+- **`can-i-deploy.mjs` inchangé** : la feature n'ajoute aucune paire consommateur→provider (option
+  projection NATS, cf. ADR-0006). Les provider states svc-foyer sont enrichis, pas la matrice.
+
+### 26.3 ⚠️ Pré-requis de déploiement (geste humain HORS-PR, avant le prochain train de release)
+
+Comme `PG_NOTIFICATIONS_PWD` au Lot 7 : **avant** de promouvoir la release qui embarque cette feature,
+ajouter `DESABONNEMENT_TOKEN_SECRET` (aléa fort) à `.env.server` **puis** au `.env.server.enc` (sops,
+cf. [doc 29](exploitation/29-rotation-secrets.md)) **sur le serveur** (la clé privée age n'est pas dans
+le repo). Sans lui, `docker compose config` échoue et le déploiement est refusé (fail hard voulu).
+
+```sh
+# SUR LE SERVEUR (clone prod)
+openssl rand -hex 32                       # générer la valeur
+EDITOR=nano bash scripts/sops-edit.sh      # ajouter DESABONNEMENT_TOKEN_SECRET=<valeur>
+git add .env.server.enc && git commit -m "chore(secrets): DESABONNEMENT_TOKEN_SECRET (feature préférences notif)" && git push
+# puis, au déploiement du train : le conteneur svc-foyer prend le secret ; recréer si déjà démarré.
+```
+
+Migrations additives embarquées par le train : svc-foyer `0002` (2 tables), svc-notifications `0011`
+(projection préférences) + `0012` (inbox `notification`). État à la rédaction : **PR1→7 mergées, PAS
+ENCORE déployées en prod** (prod @ `0.7.0` ; partira au prochain train de release). Reste **hors code**
+un smoke self-service live par un parent CF Access (édition profil + toggle préférences + clic
+désabonnement one-click depuis un vrai e-mail).

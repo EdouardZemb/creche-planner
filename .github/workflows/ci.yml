@@ -876,6 +876,9 @@ jobs:
           SERVER_DOMAIN: config-validation.invalid
           CLOUDFLARE_TUNNEL_TOKEN: ci
           ALERTMANAGER_SMTP_PASSWORD: ci
+          # Secret de signature des jetons de désabonnement (PR7) : `${VAR:?}` requis
+          # par svc-foyer dans l'override prod → valeur factice pour valider la STRUCTURE.
+          DESABONNEMENT_TOKEN_SECRET: ci
         run: docker compose -f docker-compose.yml -f docker-compose.server.yml config -q
 
       # 1bis) Merge dev/CI + STAGING (Phase 8) valide. La pile de staging
