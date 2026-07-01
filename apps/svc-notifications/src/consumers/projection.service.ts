@@ -18,9 +18,11 @@ import {
   parentAjouteEventSchema,
   parentModifieEventSchema,
   parentRetireEventSchema,
+  preferencesNotifModifieesEventSchema,
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
+  PREFERENCES_NOTIF_MODIFIEES_TYPE,
 } from '@creche-planner/contracts-foyer';
 import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
@@ -28,6 +30,7 @@ import {
   contrat,
   etablissement,
   foyerParent,
+  preferenceNotification,
   processedEvent,
 } from '../database/schema.js';
 
@@ -57,6 +60,14 @@ type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
  * (`planification.Etablissement{Cree,Modifie,Supprime}.v1`) : Notifications cesse
  * d'être source de vérité (plus de seed en dur) et résout le destinataire réel du
  * récap par le lien explicite `contrat.etablissement_id` (lui aussi désormais projeté).
+ *
+ * Depuis PR4 « préférences de notification », il projette enfin le read model
+ * `preference_notification` depuis le stream `FOYER`
+ * (`foyer.PreferencesNotifModifiees.v1`) : c'est ce read model qui rend l'opt-out
+ * e-mail **fonctionnel** (un parent ayant coupé le canal `EMAIL` pour un type est
+ * retiré des destinataires, cf. `DestinatairesService`). L'event transporte l'état
+ * **complet** des préférences du parent ; la projection remplace l'ensemble des lignes
+ * du parent (delete + upsert dans une transaction).
  */
 @Injectable()
 export class ProjectionService {
@@ -102,6 +113,9 @@ export class ProjectionService {
           return true;
         case PARENT_RETIRE_TYPE:
           await this.appliquerParentRetire(stream, donnees);
+          return true;
+        case PREFERENCES_NOTIF_MODIFIEES_TYPE:
+          await this.appliquerPreferencesNotif(stream, donnees);
           return true;
         case ETABLISSEMENT_CREE_TYPE:
           await this.appliquerEtablissementEtat(
@@ -327,6 +341,53 @@ export class ProjectionService {
         .update(foyerParent)
         .set({ actif: false, updatedAt: new Date() })
         .where(eq(foyerParent.parentId, evt.payload.parentId));
+    });
+  }
+
+  /**
+   * `PreferencesNotifModifiees` : l'event transporte l'**état complet** des préférences
+   * du parent (même patron que `ParentAjoute`/`ParentModifie` : le consommateur projette
+   * sans relire la source). On **remplace** l'ensemble des lignes du parent dans la
+   * même transaction — `delete` de toutes ses préférences puis upsert de chaque ligne de
+   * l'event — de sorte qu'une préférence **remise au défaut** côté svc-foyer (ligne
+   * retirée de l'event) disparaisse aussi ici. On ne projette que `actif` (le routage
+   * n'a besoin de rien d'autre) ; l'absence de ligne vaut le défaut applicatif (actif).
+   * Idempotent via `processed_event`.
+   */
+  private async appliquerPreferencesNotif(
+    stream: string,
+    donnees: unknown,
+  ): Promise<void> {
+    const evt = preferencesNotifModifieesEventSchema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      const p = evt.payload;
+      // Remplace l'état : on efface les préférences existantes du parent…
+      await tx
+        .delete(preferenceNotification)
+        .where(eq(preferenceNotification.parentId, p.parentId));
+      // …puis on (ré)insère l'état complet porté par l'event.
+      for (const pref of p.preferences) {
+        await tx
+          .insert(preferenceNotification)
+          .values({
+            parentId: p.parentId,
+            typeNotification: pref.typeNotification,
+            canal: pref.canal,
+            actif: pref.actif,
+            updatedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: [
+              preferenceNotification.parentId,
+              preferenceNotification.typeNotification,
+              preferenceNotification.canal,
+            ],
+            set: { actif: pref.actif, updatedAt: new Date() },
+          });
+      }
     });
   }
 

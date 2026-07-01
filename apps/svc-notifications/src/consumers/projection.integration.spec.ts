@@ -12,6 +12,7 @@ import {
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
+  PREFERENCES_NOTIF_MODIFIEES_TYPE,
 } from '@creche-planner/contracts-foyer';
 import { ProjectionService } from './projection.service.js';
 import type { Database } from '../database/database.types.js';
@@ -19,6 +20,7 @@ import {
   contrat,
   etablissement,
   foyerParent,
+  preferenceNotification,
   processedEvent,
 } from '../database/schema.js';
 
@@ -511,6 +513,130 @@ function evenementEtablissementSupprime(id: string): unknown {
     payload: { etablissementId: ETAB_ID },
   };
 }
+
+interface PrefEntree {
+  typeNotification: string;
+  canal: string;
+  actif: boolean;
+}
+
+function evenementPreferences(id: string, preferences: PrefEntree[]): unknown {
+  return {
+    id,
+    type: PREFERENCES_NOTIF_MODIFIEES_TYPE,
+    source: 'svc-foyer',
+    version: 1,
+    occurredAt: '2026-09-15T00:00:00.000Z',
+    traceId: 'trace-pref',
+    payload: { foyerId: FOYER_ID, parentId: PARENT_ID, preferences },
+  };
+}
+
+describe('Projection preference_notification (préférences, stream FOYER)', () => {
+  it('projette l’état complet des préférences du parent (une ligne par triplet)', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementPreferences('11111111-1111-4111-8111-ffffffffffff', [
+          {
+            typeNotification: 'VALIDATION_HEBDO',
+            canal: 'EMAIL',
+            actif: false,
+          },
+          {
+            typeNotification: 'VALIDATION_HEBDO',
+            canal: 'IN_APP',
+            actif: true,
+          },
+        ]),
+      ),
+    ).resolves.toBe(true);
+
+    expect(lignesDe(preferenceNotification)).toHaveLength(2);
+    expect(lignesDe(preferenceNotification)).toContainEqual(
+      expect.objectContaining({
+        parentId: PARENT_ID,
+        typeNotification: 'VALIDATION_HEBDO',
+        canal: 'EMAIL',
+        actif: false,
+      }),
+    );
+    expect(lignesDe(processedEvent)).toHaveLength(1);
+  });
+
+  it('idempotence REJOUÉE : la même enveloppe ré-livrée (at-least-once) est un no-op', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    const ID = '11111111-1111-4111-8111-ffffffffffff';
+    await projection.traiter(
+      'FOYER',
+      evenementPreferences(ID, [
+        { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: false },
+      ]),
+    );
+
+    // Rejeu de la MÊME enveloppe (même id) avec un état altéré : si la projection
+    // était ré-appliquée, `actif` passerait à true.
+    await projection.traiter(
+      'FOYER',
+      evenementPreferences(ID, [
+        { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: true },
+      ]),
+    );
+
+    expect(lignesDe(preferenceNotification)).toHaveLength(1);
+    expect(lignesDe(preferenceNotification)[0]).toMatchObject({ actif: false });
+    expect(lignesDe(processedEvent)).toHaveLength(1);
+  });
+
+  it('remplace l’état complet : une préférence remise au défaut (retirée de l’event) disparaît', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    await projection.traiter(
+      'FOYER',
+      evenementPreferences('11111111-1111-4111-8111-ffffffffffff', [
+        { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: false },
+        { typeNotification: 'VALIDATION_HEBDO', canal: 'IN_APP', actif: false },
+      ]),
+    );
+    expect(lignesDe(preferenceNotification)).toHaveLength(2);
+
+    // Nouvel event (id différent) portant un état RÉDUIT : la ligne IN_APP a été
+    // remise au défaut côté svc-foyer et n'est plus transportée → elle doit disparaître.
+    await projection.traiter(
+      'FOYER',
+      evenementPreferences('22222222-2222-4222-8222-ffffffffffff', [
+        { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: true },
+      ]),
+    );
+
+    expect(lignesDe(preferenceNotification)).toHaveLength(1);
+    expect(lignesDe(preferenceNotification)[0]).toMatchObject({
+      canal: 'EMAIL',
+      actif: true,
+    });
+    expect(lignesDe(processedEvent)).toHaveLength(2);
+  });
+
+  it('NAK (re-livraison) si le payload est invalide', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await expect(
+      projection.traiter('FOYER', {
+        ...(evenementPreferences('33333333-3333-4333-8333-ffffffffffff', [
+          { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: true },
+        ]) as Record<string, unknown>),
+        payload: { parentId: 'pas-un-uuid' },
+      }),
+    ).resolves.toBe(false);
+    expect(lignesDe(preferenceNotification)).toHaveLength(0);
+    expect(lignesDe(processedEvent)).toHaveLength(0);
+  });
+});
 
 describe('Projection établissement (fiche projetée, stream PLANIFICATION)', () => {
   it('EtablissementCree projette la fiche (nom/email/préavis/types/actif)', async () => {
