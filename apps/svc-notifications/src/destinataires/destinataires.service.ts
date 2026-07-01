@@ -8,6 +8,9 @@ import { foyerParent, preferenceNotification } from '../database/schema.js';
 /** Canal e-mail (seul canal filtré par la résolution des destinataires du récap). */
 const CANAL_EMAIL = 'EMAIL';
 
+/** Canal in-app (inbox générique, PR6) : résolution des destinataires de l'inbox. */
+const CANAL_IN_APP = 'IN_APP';
+
 /** Destinataire e-mail résolu : e-mail **et** `parentId` (jeton de désabonnement PR5). */
 export interface DestinataireActif {
   readonly parentId: string;
@@ -83,5 +86,40 @@ export class DestinatairesService {
     return (await this.destinatairesActifs(foyerId, typeNotification)).map(
       (d) => d.email,
     );
+  }
+
+  /**
+   * **Parents (ids) destinataires de l'inbox in-app** (PR6) : parents actifs du foyer
+   * **dont la préférence `(type, 'IN_APP')` est active**. Même règle §5.1 que le canal
+   * e-mail — **ligne absente ⇒ défaut applicatif (actif)** : un parent n'est retiré que
+   * s'il a explicitement coupé son canal in-app pour ce type. Indépendant du canal
+   * e-mail : un parent qui a coupé l'e-mail mais gardé l'in-app reçoit l'entrée
+   * d'inbox (et inversement). Renvoie les `parentId` (l'inbox est keyée par parent) ;
+   * l'ordre n'importe pas (une entrée par parent).
+   */
+  async destinatairesInApp(
+    foyerId: string,
+    typeNotification: TypeNotification,
+  ): Promise<string[]> {
+    const lignes = await this.db
+      .select({
+        parentId: foyerParent.parentId,
+        preferenceActive: preferenceNotification.actif,
+      })
+      .from(foyerParent)
+      .leftJoin(
+        preferenceNotification,
+        and(
+          eq(preferenceNotification.parentId, foyerParent.parentId),
+          eq(preferenceNotification.typeNotification, typeNotification),
+          eq(preferenceNotification.canal, CANAL_IN_APP),
+        ),
+      )
+      .where(
+        and(eq(foyerParent.foyerId, foyerId), eq(foyerParent.actif, true)),
+      );
+    return lignes
+      .filter((l) => l.preferenceActive !== false) // NULL (défaut) ou true ⇒ conservé
+      .map((l) => l.parentId);
   }
 }

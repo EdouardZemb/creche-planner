@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  index,
   jsonb,
   pgTable,
   text,
@@ -339,6 +340,45 @@ export const envoiEtablissement = pgTable(
   ],
 );
 
+// --- Inbox in-app (journal informationnel du parent) ------------------------
+
+/**
+ * **Inbox in-app générique** d'un parent (PR6, `.claude/plans/parent-profil-
+ * notifications.md` §5.6). Journal des notifications reçues « dans l'application » :
+ * une ligne est créée **au même moment que l'envoi e-mail** lorsque la préférence
+ * `(type, 'IN_APP')` du parent est active (cf. `SchedulerHebdo`). C'est un **journal
+ * informationnel** (lu/non-lu) — il ne **duplique pas** l'action « Valider » : l'état
+ * actionnable de la validation hebdo reste porté par `notification_hebdo` (encart
+ * `A_VALIDER`). L'inbox se contente d'archiver « telle notification a été émise ».
+ *
+ * Clé technique `id` (pas d'unicité métier : c'est un journal append-only, une même
+ * semaine peut légitimement générer plusieurs entrées si le catalogue de types
+ * s'élargit). `lu_le` nul tant que le parent n'a pas ouvert/accusé la notification ;
+ * le compteur de non-lus de la cloche compte les lignes `lu_le IS NULL`. Index sur
+ * `parent_id` : la lecture se fait toujours par parent (résolu côté BFF depuis
+ * l'identité). Aucune projection : les lignes sont écrites directement par le service
+ * (pas d'event amont), à la différence des read models ci-dessus.
+ */
+export const notification = pgTable(
+  'notification',
+  {
+    id: uuid('id').primaryKey(),
+    /** Parent destinataire (= `parent.id` de svc-foyer, résolu côté BFF). */
+    parentId: uuid('parent_id').notNull(),
+    /** Type de notification (`VALIDATION_HEBDO` | …), miroir du catalogue applicatif. */
+    type: varchar('type', { length: 64 }).notNull(),
+    /** Sujet court (titre affiché dans le panneau de la cloche). */
+    sujet: varchar('sujet', { length: 300 }).notNull(),
+    /** Corps informationnel (texte rendu, figé à la création). */
+    corps: text('corps').notNull(),
+    /** Horodatage de création (tri antéchronologique du panneau). */
+    creeLe: timestamp('cree_le', { withTimezone: true }).notNull().defaultNow(),
+    /** Horodatage de lecture par le parent (`null` = non lu, compté par la cloche). */
+    luLe: timestamp('lu_le', { withTimezone: true }),
+  },
+  (table) => [index('notification_parent_id_idx').on(table.parentId)],
+);
+
 // --- Idempotence de consommation --------------------------------------------
 
 /**
@@ -389,5 +429,7 @@ export type PreferenceNotificationRow =
 export type EtablissementProjeteRow = typeof etablissement.$inferSelect;
 export type NotificationHebdoRow = typeof notificationHebdo.$inferSelect;
 export type EnvoiEtablissementRow = typeof envoiEtablissement.$inferSelect;
+/** Ligne de l'inbox in-app d'un parent (journal informationnel lu/non-lu, PR6). */
+export type NotificationRow = typeof notification.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;

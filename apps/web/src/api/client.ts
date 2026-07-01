@@ -13,6 +13,8 @@ import type {
   MonProfilVue,
   PreferenceVue,
   MajPreferences,
+  InboxVue,
+  NotificationInApp,
   CreerContrat,
   ContratVue,
   ContratLocal,
@@ -173,6 +175,38 @@ export const api = {
         ...(opts.signal ? { signal: opts.signal } : {}),
       },
     ).then((r) => lire<void>(r));
+  },
+
+  /**
+   * Mon inbox in-app (parent connecté) — `GET /v1/moi/notifications` : notifications
+   * récentes + compteur de non-lus (cloche). Le parent est résolu serveur depuis
+   * l'identité ; **401** sans identité, **404** sans ligne parent (la cloche masque
+   * alors le compteur).
+   */
+  listerNotifications(opts: RequeteOptions = {}): Promise<InboxVue> {
+    return requete(`${BASE}/v1/moi/notifications`, {
+      headers: entetes(false),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<InboxVue>(r));
+  },
+
+  /**
+   * Marque une de mes notifications comme lue — `POST /v1/moi/notifications/:id/lu`
+   * (renvoie l'état mis à jour). Le parent est résolu serveur (on ne marque que SA
+   * notification) ; **404** si l'id est inconnu ou appartient à un autre parent.
+   */
+  marquerNotificationLue(
+    id: string,
+    opts: RequeteOptions = {},
+  ): Promise<NotificationInApp> {
+    return requete(
+      `${BASE}/v1/moi/notifications/${encodeURIComponent(id)}/lu`,
+      {
+        method: 'POST',
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<NotificationInApp>(r));
   },
 
   creerFoyer(

@@ -4,6 +4,9 @@ import {
   Get,
   Logger,
   NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Post,
   Put,
   Req,
   UnauthorizedException,
@@ -13,6 +16,11 @@ import {
   type ParentVue,
   type PreferenceVue,
 } from '../clients/foyer.client.js';
+import {
+  NotificationsClient,
+  type InboxVue,
+  type NotificationInAppVue,
+} from '../clients/notifications.client.js';
 import { loadConfig } from '../config.js';
 import { estAdmin, estGatingAdminActif } from '../security/admin.js';
 import type { RequeteIdentifiable } from '../security/identite.js';
@@ -64,7 +72,10 @@ interface MonProfilVue {
 export class MoiController {
   private readonly logger = new Logger(MoiController.name);
 
-  constructor(private readonly foyers: FoyerClient) {}
+  constructor(
+    private readonly foyers: FoyerClient,
+    private readonly notifications: NotificationsClient,
+  ) {}
 
   @Get()
   async lire(@Req() req: RequeteIdentifiable): Promise<MoiVue> {
@@ -137,6 +148,45 @@ export class MoiController {
     const { foyerId, parent } = await this.resoudreParentCourant(email);
     return relayer(() =>
       this.foyers.majPreferences(foyerId, parent.id, saisie),
+    );
+  }
+
+  /**
+   * `GET /api/v1/moi/notifications` — inbox in-app du parent connecté (PR6, §5.6) :
+   * ses notifications récentes + le compteur de non-lus (cloche). Le `parentId` est
+   * **résolu côté serveur** depuis l'identité (jamais fourni par le client), puis passé
+   * à `svc-notifications`. **401** sans identité, **404** si l'identité n'a pas de ligne
+   * parent. C'est un **journal informationnel** : il ne porte pas l'action « Valider »
+   * (celle-ci reste sur `/notifications/a-valider`).
+   */
+  @Get('notifications')
+  async notificationsInbox(@Req() req: RequeteIdentifiable): Promise<InboxVue> {
+    const email = req.identite?.email;
+    if (email === undefined) {
+      throw new UnauthorizedException('identité requise');
+    }
+    const { parent } = await this.resoudreParentCourant(email);
+    return relayer(() => this.notifications.listerInbox(parent.id));
+  }
+
+  /**
+   * `POST /api/v1/moi/notifications/:id/lu` — marque une notification du parent connecté
+   * comme lue (accusé de lecture). **Défense en profondeur** : le `parentId` est résolu
+   * depuis l'identité et scope l'écriture côté service — un parent ne marque que **sa**
+   * notification (**404** relayé si l'id est inconnu ou appartient à un autre parent).
+   */
+  @Post('notifications/:id/lu')
+  async marquerNotificationLue(
+    @Req() req: RequeteIdentifiable,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<NotificationInAppVue> {
+    const email = req.identite?.email;
+    if (email === undefined) {
+      throw new UnauthorizedException('identité requise');
+    }
+    const { parent } = await this.resoudreParentCourant(email);
+    return relayer(() =>
+      this.notifications.marquerNotificationLue(parent.id, id),
     );
   }
 

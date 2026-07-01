@@ -63,6 +63,7 @@ vi.mock('./api/client', () => {
       lireFoyer: vi.fn(),
       listerFoyers: vi.fn(),
       listerAValider: vi.fn(),
+      listerNotifications: vi.fn(),
       moi: vi.fn(),
     },
     ApiError,
@@ -85,6 +86,7 @@ const mockedApi = api as unknown as {
   lireFoyer: ReturnType<typeof vi.fn>;
   listerFoyers: ReturnType<typeof vi.fn>;
   listerAValider: ReturnType<typeof vi.fn>;
+  listerNotifications: ReturnType<typeof vi.fn>;
   moi: ReturnType<typeof vi.fn>;
 };
 
@@ -107,6 +109,11 @@ describe('App — coquille de navigation', () => {
     mockedApi.listerFoyers.mockResolvedValue([]);
     // Pastille de validation (Lot 4) dans la nav : rien à valider par défaut.
     mockedApi.listerAValider.mockResolvedValue([]);
+    // Cloche in-app (PR6) : inbox vide par défaut (rendue quand une identité existe).
+    mockedApi.listerNotifications.mockResolvedValue({
+      notifications: [],
+      nonLus: 0,
+    });
     // Par défaut : aucune identité (mode hérité) + admin permissif → la prod
     // actuelle / les tests historiques conservent leur comportement.
     mockedApi.moi.mockResolvedValue({ email: null, admin: true, foyers: [] });

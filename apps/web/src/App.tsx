@@ -20,6 +20,7 @@ import { EtablissementsPage } from './etablissements/EtablissementsPage';
 import { MonProfilPage } from './profil/MonProfilPage';
 import { DesabonnementPage } from './desabonnement/DesabonnementPage';
 import { PastilleAValider } from './notifications/PastilleAValider';
+import { ClocheNotifications } from './notifications/ClocheNotifications';
 import { getFoyerId, setFoyerId, effacerFoyerId } from './utils/store';
 import { seReconnecter } from './utils/reconnexion';
 import { api } from './api/client';
@@ -176,6 +177,10 @@ function Entete() {
             notification. Visible dès qu'une identité est établie (le BFF résout
             « moi » depuis l'e-mail vérifié) ; masqué en mode hérité sans identité. */}
         {moi.email !== null && <NavLink to="/mon-profil">Mon profil</NavLink>}
+        {/* Cloche in-app (PR6) : journal des notifications reçues + compteur de
+            non-lus. Visible dès qu'une identité est établie (le BFF résout le parent
+            depuis l'e-mail vérifié) ; masquée en mode hérité sans identité. */}
+        {moi.email !== null && <ClocheNotifications />}
         {/* P5 : hors d'un contexte foyer (le bloc `id` ci-dessus porte déjà
             « Modifier le foyer »), raccourci vers l'édition de SON foyer dès
             qu'au moins un foyer est rattaché. */}
