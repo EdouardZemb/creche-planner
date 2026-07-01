@@ -188,3 +188,83 @@ export const parentRetireEventSchema = integrationEventSchema(
   parentRetirePayloadSchema,
 );
 export type ParentRetireEvent = z.infer<typeof parentRetireEventSchema>;
+
+// --- Préférences de notification (profil parent, PR1) ----------------------
+
+/**
+ * Identité brandée d'une **préférence de notification** (parse-don't-validate).
+ * Une ligne = un triplet `(parent, type de notification, canal)` : cf.
+ * `.claude/plans/parent-profil-notifications.md` §3.1.
+ */
+export const preferenceNotificationIdSchema = z
+  .string()
+  .uuid()
+  .brand<'PreferenceNotificationId'>();
+export type PreferenceNotificationId = z.infer<
+  typeof preferenceNotificationIdSchema
+>;
+
+/**
+ * **Type de notification** adressé au parent. Enum partagé (contrat) entre
+ * svc-foyer (propriétaire), le BFF et svc-notifications (projection) :
+ * - `VALIDATION_HEBDO` : rappel du mardi « valider la semaine N+1 » (transactionnel) ;
+ * - `RECAP_SERVICE` : récap sortant vers l'établissement (non désabonnable côté parent).
+ */
+export const TYPES_NOTIFICATION = [
+  'VALIDATION_HEBDO',
+  'RECAP_SERVICE',
+] as const;
+export const typeNotificationSchema = z.enum(TYPES_NOTIFICATION);
+export type TypeNotification = (typeof TYPES_NOTIFICATION)[number];
+
+/**
+ * **Canal** de délivrance d'une notification. `PUSH` reste hors périmètre mais le
+ * modèle est prévu extensible (nouvel item d'enum, migration additive nulle car
+ * les préférences vivent dans une table dédiée).
+ */
+export const CANAUX = ['EMAIL', 'IN_APP'] as const;
+export const canalSchema = z.enum(CANAUX);
+export type Canal = (typeof CANAUX)[number];
+
+// --- foyer.PreferencesNotifModifiees.v1 ------------------------------------
+
+/** Nom métier versionné (champ `type` de l'enveloppe). */
+export const PREFERENCES_NOTIF_MODIFIEES_TYPE =
+  'foyer.PreferencesNotifModifiees.v1';
+
+/**
+ * État d'**une** préférence transporté par l'événement (matrice type × canal).
+ * `consentementAt`/`desabonneAt` tracent l'opt-in/opt-out (RGPD, §7) ; optionnels
+ * (absents tant qu'aucun choix explicite n'a été posé — la valeur reste le défaut
+ * applicatif).
+ */
+export const preferenceNotifSchema = z.object({
+  typeNotification: typeNotificationSchema,
+  canal: canalSchema,
+  actif: z.boolean(),
+  consentementAt: z.iso.datetime().optional(),
+  desabonneAt: z.iso.datetime().optional(),
+});
+export type PreferenceNotif = z.infer<typeof preferenceNotifSchema>;
+
+/**
+ * **État complet** des préférences d'un parent (le consommateur projette sans
+ * relire la source, même patron que `ParentAjoute`/`ParentModifie`). Émis dans la
+ * même transaction que l'écriture via l'outbox → stream `FOYER`. Payload PII
+ * (identifie un parent) : flux interne, cf. plan §7.
+ */
+export const preferencesNotifModifieesPayloadSchema = z.object({
+  foyerId: foyerIdSchema,
+  parentId: parentIdSchema,
+  preferences: z.array(preferenceNotifSchema),
+});
+export type PreferencesNotifModifieesPayload = z.infer<
+  typeof preferencesNotifModifieesPayloadSchema
+>;
+
+export const preferencesNotifModifieesEventSchema = integrationEventSchema(
+  preferencesNotifModifieesPayloadSchema,
+);
+export type PreferencesNotifModifieesEvent = z.infer<
+  typeof preferencesNotifModifieesEventSchema
+>;

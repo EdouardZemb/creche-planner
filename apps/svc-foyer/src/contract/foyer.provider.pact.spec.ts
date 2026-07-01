@@ -26,6 +26,12 @@ const ETAT_FOYER_AVEC_PARENT = 'un foyer de référence T3 avec un parent';
 // Enfant (P4) : seede le foyer puis (table rase) un enfant actif d'id connu pour
 // l'édition/le retrait. Idempotent (ré-exécution locale sans clash sur l'id).
 const ETAT_FOYER_AVEC_ENFANT = 'un foyer de référence T3 avec un enfant';
+// Préférences (PR1, consommé en PR2) : seede foyer + parent connu + une
+// préférence stockée (e-mail coupé) pour exercer lecture/écriture des préférences.
+// Idempotent (purge parent par id ET par e-mail avant réinsertion — unicité
+// globale `lower(email)` ; la préférence cascade au `delete` du parent).
+const ETAT_FOYER_AVEC_PREFERENCES =
+  'un foyer de référence T3 avec un parent et ses préférences';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-foyer) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
@@ -167,6 +173,28 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
           await db`
             insert into enfant (id, foyer_id, prenom, date_naissance)
             values (${enfantId}, ${foyerId}, 'Mia', '2024-12-08')
+          `;
+        },
+        [ETAT_FOYER_AVEC_PREFERENCES]: async (
+          params?: unknown,
+        ): Promise<void> => {
+          const { foyerId, parentId, email } = params as {
+            foyerId: string;
+            parentId: string;
+            email: string;
+          };
+          await seedFoyer(db, foyerId);
+          // Table rase du parent visé (les préférences cascadent au delete).
+          await db`delete from parent where foyer_id = ${foyerId}`;
+          await db`delete from parent where lower(email) = lower(${email})`;
+          await db`
+            insert into parent (id, foyer_id, prenom, nom, email, principal, ordre, actif)
+            values (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, true, 0, true)
+          `;
+          // Un choix explicite stocké : e-mail coupé (in-app reste au défaut).
+          await db`
+            insert into preference_notification (parent_id, type_notification, canal, actif, source_dernier)
+            values (${parentId}, 'VALIDATION_HEBDO', 'EMAIL', false, 'ECRAN')
           `;
         },
       },
