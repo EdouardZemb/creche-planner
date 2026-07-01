@@ -84,4 +84,40 @@ describe('MailerService', () => {
     });
     expect(resultat).toEqual({ messageId: '<msg-123@test>', dryRun: false });
   });
+
+  it('transmet les en-têtes additionnels (List-Unsubscribe RFC 8058) au transport', async () => {
+    const service = new MailerService(
+      options({ dryRun: false, allowlist: ['parent@test'] }),
+    );
+    const headers = {
+      'List-Unsubscribe':
+        '<https://app/desabonnement?token=abc>, <mailto:unsub@test>',
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    };
+
+    await service.envoyer({ ...MESSAGE, headers });
+
+    expect(sendMail).toHaveBeenCalledWith({
+      from: 'Crèche Planner <expediteur@test>',
+      to: 'parent@test',
+      subject: 'Valider la semaine 2026-W27',
+      html: '<p>bonjour</p>',
+      text: 'bonjour',
+      headers,
+    });
+  });
+
+  it('sans en-têtes : n’ajoute pas de clé `headers` au message (envois existants inchangés)', async () => {
+    const service = new MailerService(
+      options({ dryRun: false, allowlist: ['parent@test'] }),
+    );
+
+    await service.envoyer(MESSAGE);
+
+    // Aucun `headers` ne doit apparaître dans le message émis (les envois
+    // existants — et leurs assertions `toHaveBeenCalledWith` — restent inchangés).
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.not.objectContaining({ headers: expect.anything() }),
+    );
+  });
 });

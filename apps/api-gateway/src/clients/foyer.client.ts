@@ -500,4 +500,26 @@ export class FoyerClient {
       OPTIONS,
     );
   }
+
+  /**
+   * POST `/api/desabonnement` — consomme un jeton de désabonnement one-click
+   * (RFC 8058). **Volontairement SANS retry ni circuit-breaker** : l'opération est
+   * **one-shot** (le jeton est brûlé au premier succès) ; un ré-essai transformerait
+   * un 204 réussi en 400 « déjà utilisé ». On propage donc le statut amont tel quel
+   * (204 succès, `409` dernier canal d'un service, `400` jeton invalide/expiré/déjà
+   * utilisé) via `Error('HTTP <code>')`, que `relayer` réémet à l'identique.
+   */
+  async desabonner(token: string): Promise<void> {
+    const base = loadConfig().foyerUrl;
+    const url = `${base}/api/desabonnement`;
+    this.logger.debug(`POST ${url}`);
+    const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    if (!reponse.ok) {
+      throw new Error('HTTP ' + reponse.status);
+    }
+  }
 }

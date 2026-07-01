@@ -8,6 +8,12 @@ import { foyerParent, preferenceNotification } from '../database/schema.js';
 /** Canal e-mail (seul canal filtré par la résolution des destinataires du récap). */
 const CANAL_EMAIL = 'EMAIL';
 
+/** Destinataire e-mail résolu : e-mail **et** `parentId` (jeton de désabonnement PR5). */
+export interface DestinataireActif {
+  readonly parentId: string;
+  readonly email: string;
+}
+
 /**
  * Résolution des **destinataires e-mail** du récap hebdomadaire à partir du read model
  * `foyer_parent` (projeté depuis le stream `FOYER`, cf. `ProjectionService`), **filtrée
@@ -31,12 +37,13 @@ export class DestinatairesService {
    * le foyer n'a aucun parent joignable (l'appelant déclenche alors le repli vers
    * l'adresse globale).
    */
-  async emailsActifs(
+  async destinatairesActifs(
     foyerId: string,
     typeNotification: TypeNotification,
-  ): Promise<string[]> {
+  ): Promise<DestinataireActif[]> {
     const lignes = await this.db
       .select({
+        parentId: foyerParent.parentId,
         email: foyerParent.email,
         principal: foyerParent.principal,
         preferenceActive: preferenceNotification.actif,
@@ -61,6 +68,20 @@ export class DestinatairesService {
           Number(b.principal) - Number(a.principal) ||
           a.email.localeCompare(b.email),
       )
-      .map((l) => l.email);
+      .map((l) => ({ parentId: l.parentId, email: l.email }));
+  }
+
+  /**
+   * Variante ne renvoyant que les **e-mails** (compat PR4). Le récap one-click (PR5)
+   * utilise `destinatairesActifs` pour disposer aussi du `parentId` (jeton de
+   * désabonnement lié au parent).
+   */
+  async emailsActifs(
+    foyerId: string,
+    typeNotification: TypeNotification,
+  ): Promise<string[]> {
+    return (await this.destinatairesActifs(foyerId, typeNotification)).map(
+      (d) => d.email,
+    );
   }
 }

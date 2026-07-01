@@ -43,8 +43,22 @@ export interface ServiceConfig {
   readonly natsUrl: string;
   /** Base URL de `svc-planification` (relecture du planning pour le diff de validation). */
   readonly planificationUrl: string;
+  /** Base URL de `svc-foyer` (émission des jetons de désabonnement one-click, PR5). */
+  readonly foyerUrl: string;
   /** URL publique du front : base du lien « valider » inséré dans les mails récap. */
   readonly appUrl: string;
+  /**
+   * Base publique de l'**API gateway** (origine) : cible de l'en-tête one-click
+   * `List-Unsubscribe` (`${publicApiUrl}/api/v1/desabonnement?token=…`, POST direct
+   * du client de messagerie, RFC 8058). En prod, même origine que le front.
+   */
+  readonly publicApiUrl: string;
+  /**
+   * Adresse `mailto:` de repli du désabonnement (RFC 8058 recommande une seconde
+   * option à l'en-tête `List-Unsubscribe`). Vide ⇒ seul le lien HTTPS one-click
+   * est publié (suffisant pour la conformité one-click).
+   */
+  readonly unsubscribeMailto: string;
   /** Heure de déclenchement du scheduler du mardi, exprimée en `Europe/Paris` (0-23). */
   readonly schedulerHeure: number;
   readonly email: EmailConfig;
@@ -68,7 +82,11 @@ export function loadConfig(): ServiceConfig {
     natsUrl: process.env['NATS_URL'] ?? 'nats://localhost:4222',
     planificationUrl:
       process.env['PLANIFICATION_URL'] ?? 'http://localhost:3004',
+    foyerUrl: process.env['FOYER_URL'] ?? 'http://localhost:3002',
     appUrl: process.env['NOTIF_APP_URL'] ?? 'http://localhost:4200',
+    publicApiUrl:
+      process.env['NOTIF_PUBLIC_API_URL'] ?? 'http://localhost:3000',
+    unsubscribeMailto: process.env['NOTIF_UNSUBSCRIBE_MAILTO'] ?? '',
     schedulerHeure: Number(process.env['NOTIF_SCHEDULER_HEURE'] ?? 8),
     email: {
       host: process.env['SMTP_HOST'] ?? 'smtp.gmail.com',

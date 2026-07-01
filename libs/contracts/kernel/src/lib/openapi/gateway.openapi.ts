@@ -963,6 +963,43 @@ export const gatewayOpenApiDocument = {
         },
       },
     },
+    '/api/v1/desabonnement': {
+      post: {
+        summary: 'Désabonnement one-click (RFC 8058)',
+        description:
+          'Endpoint PUBLIC (sans session) de désabonnement one-click. Ciblé par ' +
+          'l’en-tête List-Unsubscribe des e-mails (POST direct du client de ' +
+          'messagerie). Le seul paramètre est un jeton signé opaque (aucun e-mail ' +
+          'ni identifiant ⇒ pas d’énumération) ; l’usage est one-shot. Toujours ' +
+          'soumis à la limitation de débit.',
+        security: [],
+        parameters: [
+          {
+            name: 'token',
+            in: 'query',
+            required: true,
+            description:
+              'Jeton de désabonnement signé (lié à parent/type/canal).',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '204': {
+            description: 'Désabonnement enregistré (canal e-mail coupé).',
+          },
+          '400': {
+            description:
+              'Lien invalide, expiré ou déjà utilisé (message générique).',
+          },
+          '409': {
+            description:
+              'Dernier canal actif d’un type de service : ce canal ne peut être ' +
+              'coupé (gérez vos préférences).',
+          },
+          '429': { description: 'Trop de requêtes (limitation de débit).' },
+        },
+      },
+    },
     '/api/v1/contrats': {
       get: {
         summary: 'Lister les contrats d’un foyer',

@@ -15,6 +15,7 @@ import type { Database } from '../database/database.types.js';
  */
 
 interface LigneJointe {
+  parentId: string;
   email: string;
   principal: boolean;
   preferenceActive: boolean | null;
@@ -22,6 +23,7 @@ interface LigneJointe {
 
 function ligne(partiel: Partial<LigneJointe> = {}): LigneJointe {
   return {
+    parentId: 'parent-id',
     email: 'parent@test',
     principal: false,
     preferenceActive: null,
@@ -105,5 +107,22 @@ describe('DestinatairesService.emailsActifs', () => {
       ]),
     );
     await expect(service.emailsActifs(FOYER, TYPE)).resolves.toEqual([]);
+  });
+});
+
+describe('DestinatairesService.destinatairesActifs', () => {
+  it('rend le parentId + e-mail de chaque destinataire (jeton de désabonnement PR5)', async () => {
+    const service = new DestinatairesService(
+      fakeBase([
+        ligne({ parentId: 'p-zoe', email: 'zoe@test', principal: false }),
+        ligne({ parentId: 'p-maman', email: 'maman@test', principal: true }),
+      ]),
+    );
+
+    // Principal d'abord (comme `emailsActifs`), avec le parentId conservé.
+    await expect(service.destinatairesActifs(FOYER, TYPE)).resolves.toEqual([
+      { parentId: 'p-maman', email: 'maman@test' },
+      { parentId: 'p-zoe', email: 'zoe@test' },
+    ]);
   });
 });

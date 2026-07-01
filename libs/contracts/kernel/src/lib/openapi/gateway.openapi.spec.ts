@@ -11,7 +11,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(gatewayOpenApiDocument.info.version).toBe('1.0.0');
   });
 
-  it('expose exactement les 17 routes attendues', () => {
+  it('expose exactement les 18 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -28,6 +28,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/moi',
         '/api/v1/moi/profil',
         '/api/v1/moi/preferences',
+        '/api/v1/desabonnement',
         '/api/v1/contrats',
         '/api/v1/contrats/{id}/plannings/{mois}',
         '/api/v1/couts',

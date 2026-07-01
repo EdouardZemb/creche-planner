@@ -3,6 +3,7 @@ import { loadConfig } from '../config.js';
 import { EtablissementModule } from '../etablissement/etablissement.module.js';
 import { ValidationModule } from '../validation/validation.module.js';
 import { DestinatairesModule } from '../destinataires/destinataires.module.js';
+import { DesabonnementModule } from '../desabonnement/desabonnement.module.js';
 import { CLOCK, horlogeSysteme } from './clock.js';
 import { SchedulerHebdo } from './scheduler.hebdo.js';
 import { OPTIONS_SCHEDULER } from './scheduler.options.js';
@@ -18,7 +19,12 @@ import { OPTIONS_SCHEDULER } from './scheduler.options.js';
  * foyer, PR4) via leurs modules.
  */
 @Module({
-  imports: [ValidationModule, EtablissementModule, DestinatairesModule],
+  imports: [
+    ValidationModule,
+    EtablissementModule,
+    DestinatairesModule,
+    DesabonnementModule,
+  ],
   providers: [
     SchedulerHebdo,
     { provide: CLOCK, useValue: horlogeSysteme },
@@ -30,6 +36,8 @@ import { OPTIONS_SCHEDULER } from './scheduler.options.js';
           heureDeclenchement: config.schedulerHeure,
           emailParent: config.email.parent,
           appUrl: config.appUrl,
+          publicApiUrl: config.publicApiUrl,
+          unsubscribeMailto: config.unsubscribeMailto,
         };
       },
     },

@@ -16,6 +16,12 @@ export interface MessageMail {
   subject: string;
   html?: string;
   text?: string;
+  /**
+   * En-têtes SMTP additionnels (nom → valeur), transmis tels quels au transport.
+   * Sert notamment aux en-têtes de désabonnement RFC 8058 (`List-Unsubscribe`,
+   * `List-Unsubscribe-Post`). N'affecte pas les garde-fous `dryRun`/`allowlist`.
+   */
+  headers?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -52,6 +58,7 @@ export class MailerService {
     subject,
     html,
     text,
+    headers,
   }: MessageMail): Promise<ResultatEnvoi> {
     if (this.options.dryRun) {
       this.logger.log(`Dry-run — envoi neutralisé vers ${to} (« ${subject} »)`);
@@ -70,6 +77,9 @@ export class MailerService {
       subject,
       html,
       text,
+      // En-têtes additionnels seulement s'ils sont fournis, pour ne pas modifier
+      // le message émis (et les assertions de test) des envois existants.
+      ...(headers ? { headers } : {}),
     });
     return { messageId: info.messageId, dryRun: false };
   }

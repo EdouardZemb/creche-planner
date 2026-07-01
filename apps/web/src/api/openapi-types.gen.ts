@@ -743,6 +743,67 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/desabonnement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Désabonnement one-click (RFC 8058)
+         * @description Endpoint PUBLIC (sans session) de désabonnement one-click. Ciblé par l’en-tête List-Unsubscribe des e-mails (POST direct du client de messagerie). Le seul paramètre est un jeton signé opaque (aucun e-mail ni identifiant ⇒ pas d’énumération) ; l’usage est one-shot. Toujours soumis à la limitation de débit.
+         */
+        post: {
+            parameters: {
+                query: {
+                    /** @description Jeton de désabonnement signé (lié à parent/type/canal). */
+                    token: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Désabonnement enregistré (canal e-mail coupé). */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Lien invalide, expiré ou déjà utilisé (message générique). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Dernier canal actif d’un type de service : ce canal ne peut être coupé (gérez vos préférences). */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Trop de requêtes (limitation de débit). */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/contrats": {
         parameters: {
             query?: never;
