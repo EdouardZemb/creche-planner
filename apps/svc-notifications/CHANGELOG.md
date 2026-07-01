@@ -1,3 +1,16 @@
+## 0.8.0 (2026-07-01)
+
+### 🚀 Features
+
+- **inbox:** inbox in-app générique (PR6) ([#124](https://github.com/EdouardZemb/creche-planner/pull/124))
+- **desabonnement:** désabonnement one-click RFC 8058 (PR5) ([#123](https://github.com/EdouardZemb/creche-planner/pull/123))
+- **svc-notifications:** projection préférences notif + filtrage des destinataires e-mail (PR4) ([#122](https://github.com/EdouardZemb/creche-planner/pull/122))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.7.0 (2026-06-30)
 
 This was a version bump only for svc-notifications to align it with other projects, there were no code changes.
