@@ -36,6 +36,32 @@ export type ParentVue = SchemaComposant<'ParentVue'>;
 /** Identité courante + droits (admin, foyers autorisés) — dérivée de `components.schemas.MoiVue`. */
 export type MoiVue = SchemaComposant<'MoiVue'>;
 
+/**
+ * Vue « Mon profil » du parent connecté (A1) — dérivée de
+ * `components.schemas.MonProfilVue` : sa ligne parent ciblée sur lui (résolue
+ * côté serveur depuis l'identité) + ses préférences de notification effectives.
+ */
+export type MonProfilVue = SchemaComposant<'MonProfilVue'>;
+
+/**
+ * Préférence de notification effective (type × canal) — dérivée de
+ * `components.schemas.PreferenceVue` (défaut applicatif fusionné avec le choix
+ * explicite stocké).
+ */
+export type PreferenceVue = SchemaComposant<'PreferenceVue'>;
+
+/** Type de notification préférençable — dérivé de l'enum de `PreferenceVue`. */
+export type TypeNotification = PreferenceVue['typeNotification'];
+
+/** Canal de notification — dérivé de l'enum de `PreferenceVue`. */
+export type CanalNotification = PreferenceVue['canal'];
+
+/**
+ * Corps d'écriture des préférences de notification — dérivé du requestBody de
+ * `PUT /api/v1/moi/preferences` (`{ preferences: [{ typeNotification, canal, actif }] }`).
+ */
+export type MajPreferences = CorpsRequeteJson<'/api/v1/moi/preferences', 'put'>;
+
 /** Vue projetée d'un contrat — dérivée de `components.schemas.ContratVue`. */
 export type ContratVue = SchemaComposant<'ContratVue'>;
 
