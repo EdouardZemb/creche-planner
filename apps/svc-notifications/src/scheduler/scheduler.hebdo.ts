@@ -24,6 +24,7 @@ import {
 } from '@creche-planner/shared-semaine';
 import { recapMardi } from '../email/templates/recapMardi.js';
 import { DestinatairesService } from '../destinataires/destinataires.service.js';
+import { DesabonnementClient } from '../desabonnement/desabonnement.client.js';
 import { CLOCK, type Clock } from './clock.js';
 import {
   OPTIONS_SCHEDULER,
@@ -71,6 +72,7 @@ export class SchedulerHebdo
     private readonly validation: ValidationService,
     private readonly etablissements: EtablissementProjeteService,
     private readonly destinataires: DestinatairesService,
+    private readonly desabonnement: DesabonnementClient,
     private readonly mailer: MailerService,
   ) {}
 
@@ -222,12 +224,17 @@ export class SchedulerHebdo
   }
 
   /**
-   * Compose et envoie **un** mail récap du mardi pour un foyer, regroupant tous ses
-   * contrats fraîchement notifiés. Destinataires = e-mails des parents **actifs** du
-   * foyer **dont le canal e-mail n'est pas coupé** pour `VALIDATION_HEBDO` (préférences
-   * projetées, PR4) ; **repli** sur `NOTIF_EMAIL_PARENT` + warning si aucun parent n'a
-   * d'e-mail actif (dépréciation progressive). Les garde-fous du `MailerService`
-   * (dry-run/allowlist) s'appliquent au `to`.
+   * Compose et envoie le récap du mardi d'un foyer, regroupant tous ses contrats
+   * fraîchement notifiés. Destinataires = parents **actifs** du foyer **dont le canal
+   * e-mail n'est pas coupé** pour `VALIDATION_HEBDO` (préférences projetées, PR4).
+   *
+   * RFC 8058 (PR5) : **un mail par destinataire** (et non un `to` groupé), afin de
+   * poser un en-tête `List-Unsubscribe` **propre au parent** (jeton one-shot frappé
+   * auprès de `svc-foyer`). Si la frappe du jeton échoue (dégradation propre), le mail
+   * part quand même, sans en-tête ni lien de désabonnement. **Repli** sur
+   * `NOTIF_EMAIL_PARENT` (un seul mail, sans désabonnement — ce n'est pas un parent
+   * réel) + warning si aucun parent n'a d'e-mail actif. Les garde-fous du
+   * `MailerService` (dry-run/allowlist) s'appliquent à chaque `to`.
    */
   private async envoyerRecapFoyer(
     foyerId: string,
@@ -243,34 +250,77 @@ export class SchedulerHebdo
         preavisRegle: etab?.preavisRegle ?? null,
       };
     });
-    const message = recapMardi({
-      enfants,
-      semaineIso,
-      lienApp: `${this.options.appUrl}/planning?semaine=${semaineIso}`,
-    });
+    const lienApp = `${this.options.appUrl}/planning?semaine=${semaineIso}`;
 
-    const emails = await this.destinataires.emailsActifs(
+    const destinataires = await this.destinataires.destinatairesActifs(
       foyerId,
       TYPE_VALIDATION_HEBDO,
     );
-    const repli = emails.length === 0;
-    if (repli) {
+
+    if (destinataires.length === 0) {
       this.logger.warn(
         `Foyer ${foyerId} sans parent destinataire — repli sur NOTIF_EMAIL_PARENT (${this.options.emailParent}, déprécié)`,
       );
+      const message = recapMardi({ enfants, semaineIso, lienApp });
+      const resultat = await this.mailer.envoyer({
+        to: this.options.emailParent,
+        subject: message.subject,
+        html: message.html,
+        text: message.text,
+      });
+      this.logger.log(
+        `Récap mardi ${resultat.dryRun ? '(dry-run) ' : ''}foyer ${foyerId} (${String(enfants.length)} enfant(s), repli) — semaine ${semaineIso}`,
+      );
+      return;
     }
-    // `MessageMail.to` est un `string` : on joint les parents en liste SMTP standard.
-    const to = repli ? this.options.emailParent : emails.join(', ');
 
-    const resultat = await this.mailer.envoyer({
-      to,
-      subject: message.subject,
-      html: message.html,
-      text: message.text,
-    });
-    this.logger.log(
-      `Récap mardi ${resultat.dryRun ? '(dry-run) ' : ''}foyer ${foyerId} (${String(enfants.length)} enfant(s), ${repli ? 'repli' : `${String(emails.length)} parent(s)`}) — semaine ${semaineIso}`,
-    );
+    for (const dest of destinataires) {
+      const token = await this.desabonnement.emettreJeton({
+        foyerId,
+        parentId: dest.parentId,
+        typeNotification: TYPE_VALIDATION_HEBDO,
+        canal: 'EMAIL',
+      });
+      const message = recapMardi({
+        enfants,
+        semaineIso,
+        lienApp,
+        ...(token
+          ? {
+              lienDesabonnement: `${this.options.appUrl}/desabonnement?token=${encodeURIComponent(token)}`,
+            }
+          : {}),
+      });
+      const resultat = await this.mailer.envoyer({
+        to: dest.email,
+        subject: message.subject,
+        html: message.html,
+        text: message.text,
+        ...(token ? { headers: this.entetesDesabonnement(token) } : {}),
+      });
+      this.logger.log(
+        `Récap mardi ${resultat.dryRun ? '(dry-run) ' : ''}foyer ${foyerId} → ${dest.email} (${String(enfants.length)} enfant(s)${token ? '' : ', sans désabonnement'}) — semaine ${semaineIso}`,
+      );
+    }
+  }
+
+  /**
+   * En-têtes de désabonnement **RFC 8058** pour un jeton donné : le lien HTTPS
+   * one-click (POST direct du client de messagerie vers la gateway) et, si
+   * configuré, un `mailto:` de repli, plus l'en-tête `List-Unsubscribe-Post`.
+   */
+  private entetesDesabonnement(token: string): Record<string, string> {
+    const oneClick = `${this.options.publicApiUrl}/api/v1/desabonnement?token=${encodeURIComponent(token)}`;
+    const parties = [`<${oneClick}>`];
+    if (this.options.unsubscribeMailto) {
+      parties.push(
+        `<mailto:${this.options.unsubscribeMailto}?subject=desabonnement>`,
+      );
+    }
+    return {
+      'List-Unsubscribe': parties.join(', '),
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    };
   }
 
   /**

@@ -157,6 +157,24 @@ export const api = {
     }).then((r) => lire<PreferenceVue[]>(r));
   },
 
+  /**
+   * Désabonnement one-click (RFC 8058) — `POST /v1/desabonnement?token=…`. Endpoint
+   * **public** (aucune session requise) : le jeton signé opaque est le seul
+   * paramètre. **204** succès ; l'appelant distingue **409** (dernier canal d'un
+   * type de service, non coupable) et **400** (lien invalide/expiré/déjà utilisé)
+   * via `ApiError.status`.
+   */
+  desabonner(token: string, opts: RequeteOptions = {}): Promise<void> {
+    return requete(
+      `${BASE}/v1/desabonnement?token=${encodeURIComponent(token)}`,
+      {
+        method: 'POST',
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<void>(r));
+  },
+
   creerFoyer(
     saisie: CreerDossierFoyer,
     opts: RequeteOptions = {},

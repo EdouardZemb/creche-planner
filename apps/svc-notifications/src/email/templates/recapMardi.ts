@@ -33,6 +33,14 @@ export interface RecapMardiParams {
   readonly semaineIso: string;
   /** Lien profond vers l'écran de validation du front. */
   readonly lienApp: string;
+  /**
+   * Lien **visible** de désabonnement (RFC 8058, PR5) vers la page publique de
+   * confirmation, **propre au destinataire** (jeton one-shot). Facultatif : absent
+   * en repli (adresse globale) ou si l'émission du jeton a échoué — le mail part
+   * alors sans pied de page de désabonnement, mais reste conforme (l'en-tête
+   * `List-Unsubscribe` est posé séparément par l'appelant quand un jeton existe).
+   */
+  readonly lienDesabonnement?: string;
 }
 
 /** Message rendu prêt pour `MailerService.envoyer` (sujet + corps HTML et texte). */
@@ -106,7 +114,7 @@ function enumerer(noms: readonly string[]): string {
  * des enfants/contrats d'un foyer notifiés cette semaine.
  */
 export function recapMardi(params: RecapMardiParams): MessageRendu {
-  const { enfants, semaineIso, lienApp } = params;
+  const { enfants, semaineIso, lienApp, lienDesabonnement } = params;
   const subject = `Valider le planning de la semaine ${semaineIso}`;
   const preavis = preavisDistincts(enfants);
   const pluriel = enfants.length > 1;
@@ -122,12 +130,20 @@ export function recapMardi(params: RecapMardiParams): MessageRendu {
     ? `Les plannings de ${enumerer(nomsHtml)} pour la semaine <strong>${semaineIso}</strong> sont à valider.`
     : `Le planning de ${enumerer(nomsHtml)} pour la semaine <strong>${semaineIso}</strong> est à valider.`;
 
+  const pieds = lienDesabonnement
+    ? {
+        html: `<p style="color:#666;font-size:0.85em">Vous ne souhaitez plus recevoir ces rappels par e-mail ? <a href="${echapper(lienDesabonnement)}">Se désabonner</a>.</p>`,
+        text: `Se désabonner de ces rappels par e-mail : ${lienDesabonnement}`,
+      }
+    : null;
+
   const html = [
     '<p>Bonjour,</p>',
     `<p>${phraseHtml}</p>`,
     `<p><a href="${lienHtml}">${subject}</a></p>`,
     ...preavis.map((p) => `<p>${echapper(p)}</p>`),
     '<p>— Crèche Planner</p>',
+    ...(pieds ? [pieds.html] : []),
   ].join('\n');
 
   const text = [
@@ -139,6 +155,7 @@ export function recapMardi(params: RecapMardiParams): MessageRendu {
     ...(preavis.length > 0 ? ['', ...preavis] : []),
     '',
     '— Crèche Planner',
+    ...(pieds ? ['', pieds.text] : []),
   ].join('\n');
 
   return { subject, html, text };

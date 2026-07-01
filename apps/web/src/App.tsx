@@ -18,6 +18,7 @@ import { PlanningPage } from './planning/PlanningPage';
 import { CoutsAnnuelsPage } from './couts/CoutsAnnuelsPage';
 import { EtablissementsPage } from './etablissements/EtablissementsPage';
 import { MonProfilPage } from './profil/MonProfilPage';
+import { DesabonnementPage } from './desabonnement/DesabonnementPage';
 import { PastilleAValider } from './notifications/PastilleAValider';
 import { getFoyerId, setFoyerId, effacerFoyerId } from './utils/store';
 import { seReconnecter } from './utils/reconnexion';
@@ -308,6 +309,7 @@ function titreDepuisPathname(pathname: string): string {
   if (pathname === '/foyers/new') return 'Nouveau foyer';
   if (pathname === '/mes-foyers') return 'Mes foyers';
   if (pathname === '/mon-profil') return 'Mon profil';
+  if (pathname === '/desabonnement') return 'Désabonnement';
   const foyer =
     /^\/foyers\/[^/]+\/(dashboard|contrats|planning|couts|etablissements|modifier)$/.exec(
       pathname,
@@ -350,6 +352,7 @@ function Coquille() {
           <Route path="/" element={<Accueil />} />
           <Route path="/mes-foyers" element={<MesFoyersPage />} />
           <Route path="/mon-profil" element={<MonProfilPage />} />
+          <Route path="/desabonnement" element={<DesabonnementPage />} />
           <Route path="/foyers/new" element={<FoyerFormPage />} />
           <Route path="/foyers/:foyerId" element={<GardeFoyer />}>
             <Route path="dashboard" element={<DashboardJourPage />} />

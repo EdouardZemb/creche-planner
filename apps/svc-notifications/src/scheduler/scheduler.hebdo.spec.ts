@@ -6,7 +6,11 @@ import type { OptionsScheduler } from './scheduler.options.js';
 import type { Database } from '../database/database.types.js';
 import type { ContratRow } from '../database/schema.js';
 import type { ValidationService } from '../validation/validation.service.js';
-import type { DestinatairesService } from '../destinataires/destinataires.service.js';
+import type {
+  DestinataireActif,
+  DestinatairesService,
+} from '../destinataires/destinataires.service.js';
+import type { DesabonnementClient } from '../desabonnement/desabonnement.client.js';
 import type {
   EtablissementProjeteService,
   EtablissementProjeteVue,
@@ -15,13 +19,15 @@ import type {
 /**
  * Tests du scheduler du mardi avec **horloge mockée** (jamais `new Date()` dans la
  * logique) et sans Postgres ni SMTP : `ValidationService`, `EtablissementProjeteService`,
- * `DestinatairesService` et `MailerService` sont des doubles vitest, la base ne sert
- * qu'à lister les contrats actifs (le prédicat drizzle n'est pas évalué — la fonction
- * renvoie le jeu fourni).
+ * `DestinatairesService`, `DesabonnementClient` et `MailerService` sont des doubles
+ * vitest, la base ne sert qu'à lister les contrats actifs (le prédicat drizzle n'est pas
+ * évalué — la fonction renvoie le jeu fourni).
  *
- * Couvre la PR4 « parents du foyer » : idempotence figée **par contrat** mais **envoi
- * regroupé par foyer** (un mail par foyer), destinataires = parents actifs résolus
- * (`DestinatairesService`), **repli** sur `NOTIF_EMAIL_PARENT` si le foyer n'en a aucun.
+ * Couvre PR4 « parents du foyer » **et** PR5 « désabonnement RFC 8058 » : idempotence
+ * figée **par contrat**, **un mail par destinataire** (jeton one-shot + en-tête
+ * `List-Unsubscribe` propres au parent), **repli** sur `NOTIF_EMAIL_PARENT` (un seul
+ * mail, sans désabonnement) si le foyer n'a aucun parent joignable, **dégradation
+ * propre** (mail sans en-tête) si la frappe du jeton échoue.
  *
  * Instants de référence (`Europe/Paris` est en CEST = UTC+2 en juin) :
  * - mardi 2026-06-23 08:01 Paris = 2026-06-23T06:01:00Z → dans la fenêtre ;
@@ -48,6 +54,8 @@ const OPTIONS: OptionsScheduler = {
   heureDeclenchement: 8,
   emailParent: 'parent@test',
   appUrl: 'https://app.test',
+  publicApiUrl: 'https://api.test',
+  unsubscribeMailto: '',
 };
 
 function contratRow(partiel: Partial<ContratRow> = {}): ContratRow {
@@ -97,17 +105,23 @@ interface Doubles {
   notifier: ReturnType<typeof vi.fn>;
   etablissements: EtablissementProjeteService;
   destinataires: DestinatairesService;
-  emailsActifs: ReturnType<typeof vi.fn>;
+  destinatairesActifs: ReturnType<typeof vi.fn>;
+  desabonnement: DesabonnementClient;
+  emettreJeton: ReturnType<typeof vi.fn>;
   mailer: MailerService;
   envoyer: ReturnType<typeof vi.fn>;
 }
 
 function doubles(
   annuaire: EtablissementProjeteVue[] = [ETAB_CRECHE],
-  emails: string[] = [],
+  destinatairesActifsListe: DestinataireActif[] = [],
+  token: string | undefined = 'jeton-abc',
 ): Doubles {
   const notifier = vi.fn(() => Promise.resolve(true));
-  const emailsActifs = vi.fn(() => Promise.resolve(emails));
+  const destinatairesActifs = vi.fn(() =>
+    Promise.resolve(destinatairesActifsListe),
+  );
+  const emettreJeton = vi.fn(() => Promise.resolve(token));
   const envoyer = vi.fn(() =>
     Promise.resolve({ messageId: null, dryRun: true }),
   );
@@ -118,9 +132,11 @@ function doubles(
       lister: vi.fn(() => Promise.resolve(annuaire)),
     } as unknown as EtablissementProjeteService,
     destinataires: {
-      emailsActifs,
+      destinatairesActifs,
     } as unknown as DestinatairesService,
-    emailsActifs,
+    destinatairesActifs,
+    desabonnement: { emettreJeton } as unknown as DesabonnementClient,
+    emettreJeton,
     mailer: { envoyer } as unknown as MailerService,
     envoyer,
   };
@@ -134,6 +150,7 @@ function scheduler(iso: string, contrats: ContratRow[], d: Doubles) {
     d.validation,
     d.etablissements,
     d.destinataires,
+    d.desabonnement,
     d.mailer,
   );
 }
@@ -163,41 +180,95 @@ describe('SchedulerHebdo.declencher', () => {
     );
   });
 
-  it('repli : foyer sans parent → mail vers NOTIF_EMAIL_PARENT', async () => {
+  it('repli : foyer sans parent → un mail vers NOTIF_EMAIL_PARENT, sans en-tête ni jeton', async () => {
     await scheduler(MARDI_8H01, [contratRow()], d).declencher();
 
-    expect(d.emailsActifs).toHaveBeenCalledWith(FOYER_A, 'VALIDATION_HEBDO');
-    const message = d.envoyer.mock.calls[0]?.[0] as { to: string };
+    expect(d.destinatairesActifs).toHaveBeenCalledWith(
+      FOYER_A,
+      'VALIDATION_HEBDO',
+    );
+    const message = d.envoyer.mock.calls[0]?.[0] as {
+      to: string;
+      headers?: unknown;
+    };
     expect(message.to).toBe('parent@test');
+    // Le repli n'est pas un parent réel : ni jeton, ni en-tête de désabonnement.
+    expect(message.headers).toBeUndefined();
+    expect(d.emettreJeton).not.toHaveBeenCalled();
   });
 
-  it('envoie aux parents actifs du foyer (liste SMTP) quand ils existent', async () => {
-    const dd = doubles([ETAB_CRECHE], ['maman@test', 'papa@test']);
+  it('un mail par parent actif, chacun avec son en-tête List-Unsubscribe (RFC 8058)', async () => {
+    const dd = doubles(
+      [ETAB_CRECHE],
+      [
+        { parentId: 'p1', email: 'maman@test' },
+        { parentId: 'p2', email: 'papa@test' },
+      ],
+    );
     await scheduler(MARDI_8H01, [contratRow()], dd).declencher();
 
-    const message = dd.envoyer.mock.calls[0]?.[0] as { to: string };
-    expect(message.to).toBe('maman@test, papa@test');
+    // Un mail distinct par destinataire (et non un `to` groupé).
+    expect(dd.envoyer).toHaveBeenCalledTimes(2);
+    const tos = dd.envoyer.mock.calls.map((c) => (c[0] as { to: string }).to);
+    expect(tos).toEqual(['maman@test', 'papa@test']);
+
+    // Jeton frappé par parent (lié au triplet parent/type/canal).
+    expect(dd.emettreJeton).toHaveBeenCalledWith({
+      foyerId: FOYER_A,
+      parentId: 'p1',
+      typeNotification: 'VALIDATION_HEBDO',
+      canal: 'EMAIL',
+    });
+
+    // En-têtes RFC 8058 : lien one-click HTTPS vers la gateway + one-click POST.
+    const premier = dd.envoyer.mock.calls[0]?.[0] as {
+      headers?: Record<string, string>;
+    };
+    expect(premier.headers?.['List-Unsubscribe']).toContain(
+      'https://api.test/api/v1/desabonnement?token=jeton-abc',
+    );
+    expect(premier.headers?.['List-Unsubscribe-Post']).toBe(
+      'List-Unsubscribe=One-Click',
+    );
   });
 
-  it('regroupe les contrats d’un même foyer en UN SEUL mail', async () => {
+  it('jeton indisponible : le mail part quand même, sans en-tête ni lien (dégradation propre)', async () => {
+    const dd = doubles([ETAB_CRECHE], [{ parentId: 'p1', email: 'solo@test' }]);
+    // Frappe du jeton indisponible (svc-foyer injoignable) ⇒ dégradation propre.
+    dd.emettreJeton.mockResolvedValue(undefined);
+    await scheduler(MARDI_8H01, [contratRow()], dd).declencher();
+
+    expect(dd.envoyer).toHaveBeenCalledTimes(1);
+    const message = dd.envoyer.mock.calls[0]?.[0] as {
+      to: string;
+      headers?: unknown;
+      text: string;
+    };
+    expect(message.to).toBe('solo@test');
+    expect(message.headers).toBeUndefined();
+    expect(message.text).not.toContain('/desabonnement');
+  });
+
+  it('regroupe les contrats d’un même foyer en UN mail par parent (enfants groupés)', async () => {
+    const dd = doubles([ETAB_CRECHE], [{ parentId: 'p1', email: 'solo@test' }]);
     await scheduler(
       MARDI_8H01,
       [
         contratRow({ id: 'c1', enfant: 'Léa', mode: 'CRECHE_PSU' }),
         contratRow({ id: 'c2', enfant: 'Tom', mode: 'CRECHE_PSU' }),
       ],
-      d,
+      dd,
     ).declencher();
 
-    // Idempotence figée PAR CONTRAT (2 appels) mais UN SEUL mail pour le foyer.
-    expect(d.notifier).toHaveBeenCalledTimes(2);
-    expect(d.envoyer).toHaveBeenCalledTimes(1);
-    const message = d.envoyer.mock.calls[0]?.[0] as { text: string };
+    // Idempotence figée PAR CONTRAT (2 appels) mais UN mail (un seul parent).
+    expect(dd.notifier).toHaveBeenCalledTimes(2);
+    expect(dd.envoyer).toHaveBeenCalledTimes(1);
+    const message = dd.envoyer.mock.calls[0]?.[0] as { text: string };
     expect(message.text).toContain('Léa');
     expect(message.text).toContain('Tom');
   });
 
-  it('foyers distincts : un mail par foyer', async () => {
+  it('foyers distincts : au moins un envoi par foyer (repli chacun)', async () => {
     await scheduler(
       MARDI_8H01,
       [
@@ -208,8 +279,14 @@ describe('SchedulerHebdo.declencher', () => {
     ).declencher();
 
     expect(d.envoyer).toHaveBeenCalledTimes(2);
-    expect(d.emailsActifs).toHaveBeenCalledWith(FOYER_A, 'VALIDATION_HEBDO');
-    expect(d.emailsActifs).toHaveBeenCalledWith(FOYER_B, 'VALIDATION_HEBDO');
+    expect(d.destinatairesActifs).toHaveBeenCalledWith(
+      FOYER_A,
+      'VALIDATION_HEBDO',
+    );
+    expect(d.destinatairesActifs).toHaveBeenCalledWith(
+      FOYER_B,
+      'VALIDATION_HEBDO',
+    );
   });
 
   it('un lundi : ne déclenche rien', async () => {
@@ -240,7 +317,10 @@ describe('SchedulerHebdo.declencher', () => {
   });
 
   it('résout les préavis distincts (crèche + ABCM) dans le mail groupé du foyer', async () => {
-    const dd = doubles([ETAB_CRECHE, ETAB_ABCM]);
+    const dd = doubles(
+      [ETAB_CRECHE, ETAB_ABCM],
+      [{ parentId: 'p1', email: 'solo@test' }],
+    );
     await scheduler(
       MARDI_8H01,
       [

@@ -21,7 +21,6 @@ import {
   enfantIdSchema,
   foyerIdSchema,
   parentIdSchema,
-  type Canal,
   type EnfantAjoutePayload,
   type EnfantModifiePayload,
   type EnfantRetirePayload,
@@ -29,8 +28,6 @@ import {
   type FoyerMisAJourPayload,
   type ParentAjoutePayload,
   type ParentRetirePayload,
-  type PreferencesNotifModifieesPayload,
-  type TypeNotification,
 } from '@creche-planner/contracts-foyer';
 import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
@@ -43,7 +40,6 @@ import {
   type EnfantRow,
   type FoyerRow,
   type ParentRow,
-  type PreferenceNotificationRow,
 } from '../database/schema.js';
 import type {
   AjouterEnfantDto,
@@ -53,6 +49,15 @@ import type {
   ModifierEnfantDto,
   ModifierParentDto,
 } from './foyer.dto.js';
+import {
+  fusionnerDefauts,
+  payloadPreferences,
+  typeServiceInjoignable,
+  type PreferenceVue,
+} from './preferences.util.js';
+
+// Ré-export pour compatibilité des imports existants (`foyer.controller.ts`, tests).
+export type { PreferenceVue };
 
 /** Client transactionnel Drizzle (1er paramètre du callback `db.transaction`). */
 type DbTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -85,47 +90,6 @@ export interface ParentVue {
   readonly principal: boolean;
   readonly ordre: number;
   readonly actif: boolean;
-}
-
-/**
- * Projection **effective** d'une préférence : le défaut applicatif (§5.1) fusionné
- * avec l'éventuel choix explicite stocké. `consentementAt`/`desabonneAt` sont des
- * ISO (ou `null` tant que non posés).
- */
-export interface PreferenceVue {
-  readonly typeNotification: TypeNotification;
-  readonly canal: Canal;
-  readonly actif: boolean;
-  readonly consentementAt: string | null;
-  readonly desabonneAt: string | null;
-}
-
-/**
- * **Matrice par défaut** des préférences exposées au parent (§5.1). Seule la
- * validation hebdo est configurable ; le récap au service n'est pas désabonnable
- * côté parent (il part quoi qu'il arrive) et n'a donc pas de défaut ici. Une
- * combinaison absente de la base retombe sur `actif` par défaut.
- */
-const DEFAUTS_PREFERENCES: readonly {
-  readonly typeNotification: TypeNotification;
-  readonly canal: Canal;
-  readonly actif: boolean;
-}[] = [
-  { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: true },
-  { typeNotification: 'VALIDATION_HEBDO', canal: 'IN_APP', actif: true },
-];
-
-/**
- * Types **de service** (transactionnels) : au moins un canal doit rester actif —
- * on ne peut jamais se rendre injoignable pour une notification de service (§5.3).
- */
-const TYPES_SERVICE: ReadonlySet<TypeNotification> = new Set([
-  'VALIDATION_HEBDO',
-]);
-
-/** Clé de fusion défaut/stocké d'une préférence : `type|canal`. */
-function clePreference(typeNotification: string, canal: string): string {
-  return `${typeNotification}|${canal}`;
 }
 
 /** Détection d'une violation d'unicité Postgres (`23505`) portée par `postgres`. */
@@ -476,7 +440,7 @@ export class FoyerService {
       .select()
       .from(preferenceNotification)
       .where(eq(preferenceNotification.parentId, parentId));
-    return this.fusionnerDefauts(rows);
+    return fusionnerDefauts(rows);
   }
 
   /**
@@ -535,11 +499,19 @@ export class FoyerService {
         .select()
         .from(preferenceNotification)
         .where(eq(preferenceNotification.parentId, parentId));
-      const effectives = this.fusionnerDefauts(rows);
-      this.validerInvariantService(effectives);
-      await tx
-        .insert(outbox)
-        .values(this.evenementPreferences(foyerId, parentId, effectives));
+      const effectives = fusionnerDefauts(rows);
+      const typeFautif = typeServiceInjoignable(effectives);
+      if (typeFautif) {
+        throw new BadRequestException(
+          `au moins un canal doit rester actif pour ${typeFautif}`,
+        );
+      }
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: PREFERENCES_NOTIF_MODIFIEES_TYPE,
+        payload: payloadPreferences(foyerId, parentId, effectives),
+        traceId: traceIdCourant(),
+      });
       return effectives;
     });
   }
@@ -676,89 +648,5 @@ export class FoyerService {
       throw new NotFoundException(`parent introuvable : ${parentId}`);
     }
     return ligne;
-  }
-
-  /**
-   * Fusionne la **matrice par défaut** (§5.1) avec les lignes stockées : chaque
-   * défaut est émis (surchargé par sa ligne si elle existe), puis toute ligne
-   * stockée hors défaut (extensibilité). Ordre stable (défauts d'abord) pour des
-   * tests déterministes.
-   */
-  private fusionnerDefauts(rows: PreferenceNotificationRow[]): PreferenceVue[] {
-    const parCle = new Map(
-      rows.map((r) => [clePreference(r.typeNotification, r.canal), r]),
-    );
-    const vus = new Set<string>();
-    const resultat: PreferenceVue[] = [];
-    const pousser = (
-      typeNotification: TypeNotification,
-      canal: Canal,
-      actifDefaut: boolean,
-    ): void => {
-      const cle = clePreference(typeNotification, canal);
-      if (vus.has(cle)) {
-        return;
-      }
-      vus.add(cle);
-      const row = parCle.get(cle);
-      resultat.push({
-        typeNotification,
-        canal,
-        actif: row ? row.actif : actifDefaut,
-        consentementAt: row?.consentementAt?.toISOString() ?? null,
-        desabonneAt: row?.desabonneAt?.toISOString() ?? null,
-      });
-    };
-    for (const d of DEFAUTS_PREFERENCES) {
-      pousser(d.typeNotification, d.canal, d.actif);
-    }
-    for (const r of rows) {
-      pousser(
-        r.typeNotification as TypeNotification,
-        r.canal as Canal,
-        r.actif,
-      );
-    }
-    return resultat;
-  }
-
-  /**
-   * Invariant §5.3 : pour chaque type **de service** présent, au moins un canal
-   * doit rester actif. Lève un 400 sinon (rollback dans la transaction d'écriture).
-   */
-  private validerInvariantService(effectives: PreferenceVue[]): void {
-    for (const type of TYPES_SERVICE) {
-      const canaux = effectives.filter((p) => p.typeNotification === type);
-      if (canaux.length > 0 && !canaux.some((p) => p.actif)) {
-        throw new BadRequestException(
-          `au moins un canal doit rester actif pour ${type}`,
-        );
-      }
-    }
-  }
-
-  /** Ligne d'outbox `PreferencesNotifModifiees` (état complet des préférences). */
-  private evenementPreferences(
-    foyerId: string,
-    parentId: string,
-    effectives: PreferenceVue[],
-  ): typeof outbox.$inferInsert {
-    const payload: PreferencesNotifModifieesPayload = {
-      foyerId: foyerIdSchema.parse(foyerId),
-      parentId: parentIdSchema.parse(parentId),
-      preferences: effectives.map((p) => ({
-        typeNotification: p.typeNotification,
-        canal: p.canal,
-        actif: p.actif,
-        ...(p.consentementAt ? { consentementAt: p.consentementAt } : {}),
-        ...(p.desabonneAt ? { desabonneAt: p.desabonneAt } : {}),
-      })),
-    };
-    return {
-      id: randomUUID(),
-      type: PREFERENCES_NOTIF_MODIFIEES_TYPE,
-      payload,
-      traceId: traceIdCourant(),
-    };
   }
 }

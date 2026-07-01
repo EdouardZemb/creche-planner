@@ -11,6 +11,13 @@ export interface OptionsScheduler {
   readonly heureDeclenchement: number;
   /** Adresse du parent destinataire du mail récapitulatif. */
   readonly emailParent: string;
-  /** URL publique du front, base du lien « valider » inséré dans le mail. */
+  /** URL publique du front, base du lien « valider » et du lien de désabonnement. */
   readonly appUrl: string;
+  /**
+   * Base publique de l'API gateway : cible de l'en-tête one-click `List-Unsubscribe`
+   * (`${publicApiUrl}/api/v1/desabonnement?token=…`, RFC 8058, PR5).
+   */
+  readonly publicApiUrl: string;
+  /** Adresse `mailto:` de repli du désabonnement (vide ⇒ seul le lien HTTPS est publié). */
+  readonly unsubscribeMailto: string;
 }
