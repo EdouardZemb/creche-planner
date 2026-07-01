@@ -76,5 +76,11 @@ ENV NODE_ENV=production
 ENV APP=$APP
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/apps/$APP/dist ./
+# Défense en profondeur : le runtime tourne sans root DANS l'image (uid/gid 1000
+# = user `node` de node:24-slim), en plus du `user: 1000` du compose serveur.
+# Rien n'exige root ici : les services écoutent sur 3000+, n'écrivent aucun
+# fichier (logs sur stdout, migrations lues depuis l'image) et /app copié par
+# root reste lisible en lecture seule.
+USER 1000:1000
 # Démarre le bundle du service ciblé (main.js à la racine de l'image).
 CMD ["node", "main.js"]
