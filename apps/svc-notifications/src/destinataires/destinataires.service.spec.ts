@@ -126,3 +126,35 @@ describe('DestinatairesService.destinatairesActifs', () => {
     ]);
   });
 });
+
+describe('DestinatairesService.destinatairesInApp', () => {
+  it('rend les parentId dont le canal in-app est actif (ligne absente = défaut §5.1)', async () => {
+    const service = new DestinatairesService(
+      fakeBase([
+        ligne({ parentId: 'p1' }), // préférence absente ⇒ défaut actif
+        ligne({ parentId: 'p2', preferenceActive: true }), // opt-in explicite
+      ]),
+    );
+    await expect(service.destinatairesInApp(FOYER, TYPE)).resolves.toEqual([
+      'p1',
+      'p2',
+    ]);
+  });
+
+  it('canal in-app coupé (actif=false) : le parent est retiré', async () => {
+    const service = new DestinatairesService(
+      fakeBase([
+        ligne({ parentId: 'p1', preferenceActive: true }),
+        ligne({ parentId: 'p2', preferenceActive: false }), // a coupé l'in-app
+      ]),
+    );
+    await expect(service.destinatairesInApp(FOYER, TYPE)).resolves.toEqual([
+      'p1',
+    ]);
+  });
+
+  it('foyer sans parent : liste vide (aucune entrée d’inbox)', async () => {
+    const service = new DestinatairesService(fakeBase([]));
+    await expect(service.destinatairesInApp(FOYER, TYPE)).resolves.toEqual([]);
+  });
+});

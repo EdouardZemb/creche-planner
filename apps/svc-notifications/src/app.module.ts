@@ -16,6 +16,7 @@ import { ConsumersModule } from './consumers/consumers.module.js';
 import { EtablissementModule } from './etablissement/etablissement.module.js';
 import { ValidationModule } from './validation/validation.module.js';
 import { EnvoiModule } from './envoi/envoi.module.js';
+import { InboxModule } from './inbox/inbox.module.js';
 import { SchedulerModule } from './scheduler/scheduler.module.js';
 
 /**
@@ -58,6 +59,7 @@ function optionsMailer(): OptionsMailer {
     EtablissementModule,
     ValidationModule,
     EnvoiModule,
+    InboxModule,
     SchedulerModule,
   ],
 })

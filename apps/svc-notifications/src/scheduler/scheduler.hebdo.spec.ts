@@ -11,6 +11,7 @@ import type {
   DestinatairesService,
 } from '../destinataires/destinataires.service.js';
 import type { DesabonnementClient } from '../desabonnement/desabonnement.client.js';
+import type { InboxService } from '../inbox/inbox.service.js';
 import type {
   EtablissementProjeteService,
   EtablissementProjeteVue,
@@ -106,8 +107,11 @@ interface Doubles {
   etablissements: EtablissementProjeteService;
   destinataires: DestinatairesService;
   destinatairesActifs: ReturnType<typeof vi.fn>;
+  destinatairesInApp: ReturnType<typeof vi.fn>;
   desabonnement: DesabonnementClient;
   emettreJeton: ReturnType<typeof vi.fn>;
+  inbox: InboxService;
+  creerInApp: ReturnType<typeof vi.fn>;
   mailer: MailerService;
   envoyer: ReturnType<typeof vi.fn>;
 }
@@ -116,12 +120,17 @@ function doubles(
   annuaire: EtablissementProjeteVue[] = [ETAB_CRECHE],
   destinatairesActifsListe: DestinataireActif[] = [],
   token: string | undefined = 'jeton-abc',
+  destinatairesInAppListe: string[] = [],
 ): Doubles {
   const notifier = vi.fn(() => Promise.resolve(true));
   const destinatairesActifs = vi.fn(() =>
     Promise.resolve(destinatairesActifsListe),
   );
+  const destinatairesInApp = vi.fn(() =>
+    Promise.resolve(destinatairesInAppListe),
+  );
   const emettreJeton = vi.fn(() => Promise.resolve(token));
+  const creerInApp = vi.fn(() => Promise.resolve());
   const envoyer = vi.fn(() =>
     Promise.resolve({ messageId: null, dryRun: true }),
   );
@@ -133,10 +142,14 @@ function doubles(
     } as unknown as EtablissementProjeteService,
     destinataires: {
       destinatairesActifs,
+      destinatairesInApp,
     } as unknown as DestinatairesService,
     destinatairesActifs,
+    destinatairesInApp,
     desabonnement: { emettreJeton } as unknown as DesabonnementClient,
     emettreJeton,
+    inbox: { creer: creerInApp } as unknown as InboxService,
+    creerInApp,
     mailer: { envoyer } as unknown as MailerService,
     envoyer,
   };
@@ -151,6 +164,7 @@ function scheduler(iso: string, contrats: ContratRow[], d: Doubles) {
     d.etablissements,
     d.destinataires,
     d.desabonnement,
+    d.inbox,
     d.mailer,
   );
 }
@@ -351,5 +365,68 @@ describe('SchedulerHebdo.declencher', () => {
 
     expect(d.notifier).not.toHaveBeenCalled();
     expect(d.envoyer).not.toHaveBeenCalled();
+  });
+
+  // ---- Volet in-app (PR6) : création au canal IN_APP -----------------------
+
+  it('canal IN_APP actif : crée une entrée d’inbox par parent (VALIDATION_HEBDO)', async () => {
+    const dd = doubles(
+      [ETAB_CRECHE],
+      [{ parentId: 'p1', email: 'solo@test' }],
+      'jeton-abc',
+      ['p1', 'p2'], // deux parents avec IN_APP actif
+    );
+    await scheduler(
+      MARDI_8H01,
+      [contratRow({ enfant: 'Léa' })],
+      dd,
+    ).declencher();
+
+    expect(dd.destinatairesInApp).toHaveBeenCalledWith(
+      FOYER_A,
+      'VALIDATION_HEBDO',
+    );
+    expect(dd.creerInApp).toHaveBeenCalledTimes(2);
+    const entree = dd.creerInApp.mock.calls[0]?.[0] as {
+      parentId: string;
+      type: string;
+      sujet: string;
+      corps: string;
+    };
+    expect(entree.parentId).toBe('p1');
+    expect(entree.type).toBe('VALIDATION_HEBDO');
+    expect(entree.sujet).toContain(SEMAINE_N1);
+    expect(entree.corps).toContain('Léa');
+  });
+
+  it('canal IN_APP coupé (aucun destinataire in-app) : ne crée aucune entrée', async () => {
+    // `d` par défaut : destinatairesInApp renvoie [] (tous coupés / aucun parent).
+    await scheduler(MARDI_8H01, [contratRow()], d).declencher();
+
+    expect(d.creerInApp).not.toHaveBeenCalled();
+  });
+
+  it('in-app indépendant de l’e-mail : créé même si l’envoi e-mail retombe sur le repli', async () => {
+    // Aucun parent e-mail (→ repli NOTIF_EMAIL_PARENT) mais un parent a l’IN_APP actif.
+    const dd = doubles([ETAB_CRECHE], [], 'jeton-abc', ['p1']);
+    await scheduler(MARDI_8H01, [contratRow()], dd).declencher();
+
+    expect(dd.envoyer.mock.calls[0]?.[0]).toMatchObject({ to: 'parent@test' });
+    expect(dd.creerInApp).toHaveBeenCalledTimes(1);
+    expect(dd.creerInApp.mock.calls[0]?.[0]).toMatchObject({ parentId: 'p1' });
+  });
+
+  it('échec de création in-app : journalisé sans interrompre l’envoi e-mail', async () => {
+    const dd = doubles(
+      [ETAB_CRECHE],
+      [{ parentId: 'p1', email: 'solo@test' }],
+      'jeton-abc',
+      ['p1'],
+    );
+    dd.creerInApp.mockRejectedValue(new Error('base indisponible'));
+    await scheduler(MARDI_8H01, [contratRow()], dd).declencher();
+
+    // Dégradation propre : l’e-mail part quand même.
+    expect(dd.envoyer).toHaveBeenCalledTimes(1);
   });
 });

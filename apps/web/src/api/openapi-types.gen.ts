@@ -743,6 +743,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/moi/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mon inbox in-app (notifications + compteur de non-lus)
+         * @description Inbox in-app du parent connecté (PR6, §5.6) : ses notifications récentes et le nombre de non-lus (cloche). Le parentId est résolu côté serveur depuis l’identité (le client ne voit que « ses » notifications). Journal informationnel : ne duplique pas l’action « Valider » (portée par /notifications/a-valider).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Inbox du parent connecté. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InboxVue"];
+                    };
+                };
+                /** @description Aucune identité établie. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Aucun profil parent pour cette identité. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/moi/notifications/{id}/lu": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Marquer une de mes notifications comme lue
+         * @description Accusé de lecture d’une notification du parent connecté (idempotent). Défense en profondeur : le parentId est résolu depuis l’identité et scope l’écriture — un parent ne marque que SA notification (404 si l’id est inconnu ou appartient à un autre parent).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Notification marquée comme lue (état renvoyé). */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NotificationInApp"];
+                    };
+                };
+                /** @description Aucune identité établie. */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Notification inconnue (ou appartenant à un autre parent), ou aucun profil parent pour cette identité. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/desabonnement": {
         parameters: {
             query?: never;
@@ -1242,6 +1350,23 @@ export interface components {
             nom: string | null;
             principal: boolean;
             preferences: components["schemas"]["PreferenceVue"][];
+        };
+        /** @description Une notification de l’inbox in-app d’un parent (PR6, journal informationnel lu/non-lu). `luLe` null tant qu’elle n’est pas lue. C’est un journal : il n’expose pas d’action « Valider » (celle-ci reste portée par l’encart A_VALIDER). */
+        NotificationInApp: {
+            /** Format: uuid */
+            id: string;
+            type: string;
+            sujet: string;
+            corps: string;
+            /** Format: date-time */
+            creeLe: string;
+            /** Format: date-time */
+            luLe: string | null;
+        };
+        /** @description Panneau de l’inbox in-app du parent connecté : ses notifications récentes (les plus récentes d’abord) et le compteur total de non-lus (cloche). `nonLus` n’est pas borné par la taille de `notifications`. */
+        InboxVue: {
+            notifications: components["schemas"]["NotificationInApp"][];
+            nonLus: number;
         };
         /** @description Vue projetée d’un contrat de garde. */
         ContratVue: {

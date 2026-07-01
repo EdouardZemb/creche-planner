@@ -62,6 +62,18 @@ export type CanalNotification = PreferenceVue['canal'];
  */
 export type MajPreferences = CorpsRequeteJson<'/api/v1/moi/preferences', 'put'>;
 
+/**
+ * Une notification de l'**inbox in-app** (PR6, journal informationnel lu/non-lu) —
+ * dérivée de `components.schemas.NotificationInApp`. `luLe` null tant que non lue.
+ */
+export type NotificationInApp = SchemaComposant<'NotificationInApp'>;
+
+/**
+ * Panneau de l'inbox in-app (notifications récentes + compteur de non-lus) — dérivé de
+ * la réponse 200 de `GET /api/v1/moi/notifications` (`components.schemas.InboxVue`).
+ */
+export type InboxVue = ReponseJson<'/api/v1/moi/notifications', 'get', 200>;
+
 /** Vue projetée d'un contrat — dérivée de `components.schemas.ContratVue`. */
 export type ContratVue = SchemaComposant<'ContratVue'>;
 

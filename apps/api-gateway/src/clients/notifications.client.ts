@@ -96,6 +96,26 @@ export type EnvoiEtablissementResultat = z.infer<
   typeof envoiEtablissementResultatSchema
 >;
 
+/** Une notification in-app d'un parent (inbox générique, PR6). */
+const notificationInAppSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  sujet: z.string(),
+  corps: z.string(),
+  creeLe: z.string(),
+  luLe: z.string().nullable(),
+});
+
+export type NotificationInAppVue = z.infer<typeof notificationInAppSchema>;
+
+/** Panneau de l'inbox : les notifications récentes + le compteur de non-lus. */
+const inboxSchema = z.object({
+  notifications: z.array(notificationInAppSchema),
+  nonLus: z.number(),
+});
+
+export type InboxVue = z.infer<typeof inboxSchema>;
+
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
   retries: 1,
@@ -180,6 +200,59 @@ export class NotificationsClient {
           throw new Error('HTTP ' + reponse.status);
         }
         return brouillonEtablissementSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /**
+   * GET `/api/moi/notifications?parent=` — inbox in-app d'un parent (liste récente +
+   * compteur de non-lus). Le `parentId` est résolu **côté BFF** depuis l'identité
+   * (jamais fourni par le navigateur), puis relayé ici comme un `foyer` de la validation.
+   */
+  async listerInbox(parentId: string): Promise<InboxVue> {
+    const base = loadConfig().notificationsUrl;
+    const url = `${base}/api/moi/notifications?parent=${encodeURIComponent(parentId)}`;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-notifications',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return inboxSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /**
+   * POST `/api/moi/notifications/:id/lu?parent=` — marque une notification du parent
+   * comme lue (accusé de lecture). Le `parentId` scope l'écriture côté service
+   * (défense en profondeur : un parent ne marque que **ses** notifications ; 404 sinon).
+   */
+  async marquerNotificationLue(
+    parentId: string,
+    id: string,
+  ): Promise<NotificationInAppVue> {
+    const base = loadConfig().notificationsUrl;
+    const url =
+      `${base}/api/moi/notifications/${encodeURIComponent(id)}/lu` +
+      `?parent=${encodeURIComponent(parentId)}`;
+    this.logger.debug(`POST ${url}`);
+    return executerResilient(
+      'svc-notifications',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'POST',
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return notificationInAppSchema.parse(await reponse.json());
       },
       this.breaker,
       OPTIONS,

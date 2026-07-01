@@ -25,6 +25,8 @@ import {
 import { recapMardi } from '../email/templates/recapMardi.js';
 import { DestinatairesService } from '../destinataires/destinataires.service.js';
 import { DesabonnementClient } from '../desabonnement/desabonnement.client.js';
+import { InboxService } from '../inbox/inbox.service.js';
+import { messageValidationHebdo } from '../inbox/inbox.message.js';
 import { CLOCK, type Clock } from './clock.js';
 import {
   OPTIONS_SCHEDULER,
@@ -73,6 +75,7 @@ export class SchedulerHebdo
     private readonly etablissements: EtablissementProjeteService,
     private readonly destinataires: DestinatairesService,
     private readonly desabonnement: DesabonnementClient,
+    private readonly inbox: InboxService,
     private readonly mailer: MailerService,
   ) {}
 
@@ -252,6 +255,15 @@ export class SchedulerHebdo
     });
     const lienApp = `${this.options.appUrl}/planning?semaine=${semaineIso}`;
 
+    // Volet in-app (PR6) : indépendant de l'e-mail. Une entrée d'inbox est créée pour
+    // chaque parent dont le canal IN_APP est actif pour ce type — au même moment que
+    // l'envoi e-mail, sans dupliquer l'action « Valider » (journal informationnel).
+    await this.creerNotificationsInApp(
+      foyerId,
+      contratsFoyer.map((c) => c.enfant),
+      semaineIso,
+    );
+
     const destinataires = await this.destinataires.destinatairesActifs(
       foyerId,
       TYPE_VALIDATION_HEBDO,
@@ -301,6 +313,43 @@ export class SchedulerHebdo
       this.logger.log(
         `Récap mardi ${resultat.dryRun ? '(dry-run) ' : ''}foyer ${foyerId} → ${dest.email} (${String(enfants.length)} enfant(s)${token ? '' : ', sans désabonnement'}) — semaine ${semaineIso}`,
       );
+    }
+  }
+
+  /**
+   * Crée une entrée d'**inbox in-app** (PR6, §5.6) pour chaque parent du foyer dont le
+   * canal `IN_APP` est actif pour `VALIDATION_HEBDO` (défaut §5.1 : actif). Le message
+   * est **informationnel** — il annonce que le planning de la semaine est à valider,
+   * sans porter l'action « Valider » (celle-ci reste dans l'encart `A_VALIDER`). Une
+   * frappe qui échoue est journalisée sans interrompre l'envoi e-mail (dégradation
+   * propre : l'in-app est un complément, pas un bloqueur du récap).
+   */
+  private async creerNotificationsInApp(
+    foyerId: string,
+    noms: readonly string[],
+    semaineIso: string,
+  ): Promise<void> {
+    const parents = await this.destinataires.destinatairesInApp(
+      foyerId,
+      TYPE_VALIDATION_HEBDO,
+    );
+    if (parents.length === 0) {
+      return;
+    }
+    const { sujet, corps } = messageValidationHebdo({ noms, semaineIso });
+    for (const parentId of parents) {
+      try {
+        await this.inbox.creer({
+          parentId,
+          type: TYPE_VALIDATION_HEBDO,
+          sujet,
+          corps,
+        });
+      } catch (erreur) {
+        this.logger.warn(
+          `Inbox in-app non créée pour le parent ${parentId} (foyer ${foyerId}, semaine ${semaineIso}) : ${(erreur as Error).message}`,
+        );
+      }
     }
   }
 

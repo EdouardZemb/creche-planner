@@ -161,6 +161,38 @@ export const gatewayOpenApiDocument = {
           'preferences',
         ],
       },
+      NotificationInApp: {
+        type: 'object',
+        description:
+          'Une notification de l’inbox in-app d’un parent (PR6, journal ' +
+          'informationnel lu/non-lu). `luLe` null tant qu’elle n’est pas lue. ' +
+          'C’est un journal : il n’expose pas d’action « Valider » (celle-ci reste ' +
+          'portée par l’encart A_VALIDER).',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          type: { type: 'string' },
+          sujet: { type: 'string' },
+          corps: { type: 'string' },
+          creeLe: { type: 'string', format: 'date-time' },
+          luLe: { type: ['string', 'null'], format: 'date-time' },
+        },
+        required: ['id', 'type', 'sujet', 'corps', 'creeLe', 'luLe'],
+      },
+      InboxVue: {
+        type: 'object',
+        description:
+          'Panneau de l’inbox in-app du parent connecté : ses notifications ' +
+          'récentes (les plus récentes d’abord) et le compteur total de non-lus ' +
+          '(cloche). `nonLus` n’est pas borné par la taille de `notifications`.',
+        properties: {
+          notifications: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/NotificationInApp' },
+          },
+          nonLus: { type: 'integer', minimum: 0 },
+        },
+        required: ['notifications', 'nonLus'],
+      },
       ContratVue: {
         type: 'object',
         description: 'Vue projetée d’un contrat de garde.',
@@ -960,6 +992,63 @@ export const gatewayOpenApiDocument = {
           },
           '401': { description: 'Aucune identité établie.' },
           '404': { description: 'Aucun profil parent pour cette identité.' },
+        },
+      },
+    },
+    '/api/v1/moi/notifications': {
+      get: {
+        summary: 'Mon inbox in-app (notifications + compteur de non-lus)',
+        description:
+          'Inbox in-app du parent connecté (PR6, §5.6) : ses notifications ' +
+          'récentes et le nombre de non-lus (cloche). Le parentId est résolu ' +
+          'côté serveur depuis l’identité (le client ne voit que « ses » ' +
+          'notifications). Journal informationnel : ne duplique pas l’action ' +
+          '« Valider » (portée par /notifications/a-valider).',
+        responses: {
+          '200': {
+            description: 'Inbox du parent connecté.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/InboxVue' },
+              },
+            },
+          },
+          '401': { description: 'Aucune identité établie.' },
+          '404': { description: 'Aucun profil parent pour cette identité.' },
+        },
+      },
+    },
+    '/api/v1/moi/notifications/{id}/lu': {
+      post: {
+        summary: 'Marquer une de mes notifications comme lue',
+        description:
+          'Accusé de lecture d’une notification du parent connecté (idempotent). ' +
+          'Défense en profondeur : le parentId est résolu depuis l’identité et ' +
+          'scope l’écriture — un parent ne marque que SA notification (404 si ' +
+          'l’id est inconnu ou appartient à un autre parent).',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Notification marquée comme lue (état renvoyé).',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/NotificationInApp' },
+              },
+            },
+          },
+          '401': { description: 'Aucune identité établie.' },
+          '404': {
+            description:
+              'Notification inconnue (ou appartenant à un autre parent), ou ' +
+              'aucun profil parent pour cette identité.',
+          },
         },
       },
     },

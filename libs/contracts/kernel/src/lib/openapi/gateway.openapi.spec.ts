@@ -11,7 +11,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(gatewayOpenApiDocument.info.version).toBe('1.0.0');
   });
 
-  it('expose exactement les 18 routes attendues', () => {
+  it('expose exactement les 20 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -28,6 +28,8 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/moi',
         '/api/v1/moi/profil',
         '/api/v1/moi/preferences',
+        '/api/v1/moi/notifications',
+        '/api/v1/moi/notifications/{id}/lu',
         '/api/v1/desabonnement',
         '/api/v1/contrats',
         '/api/v1/contrats/{id}/plannings/{mois}',
@@ -57,6 +59,24 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     });
     // Invariant service (≥ 1 canal actif) : le refus 400 est documenté.
     expect(maj.responses['400']).toBeDefined();
+  });
+
+  it('expose l’inbox in-app (GET /moi/notifications, POST /moi/notifications/{id}/lu)', () => {
+    const inbox = gatewayOpenApiDocument.paths['/api/v1/moi/notifications'].get;
+    expect(inbox).toBeDefined();
+    expect(inbox.responses['200'].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/InboxVue',
+    });
+    expect(inbox.responses['401']).toBeDefined();
+    expect(inbox.responses['404']).toBeDefined();
+
+    const lu =
+      gatewayOpenApiDocument.paths['/api/v1/moi/notifications/{id}/lu'].post;
+    expect(lu).toBeDefined();
+    expect(lu.responses['200'].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/NotificationInApp',
+    });
+    expect(lu.responses['404']).toBeDefined();
   });
 
   it('documente le 409 create-once sur la création de foyer (POST /foyers)', () => {
@@ -133,6 +153,8 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(schemas.MoiVue).toBeDefined();
     expect(schemas.MonProfilVue).toBeDefined();
     expect(schemas.PreferenceVue).toBeDefined();
+    expect(schemas.NotificationInApp).toBeDefined();
+    expect(schemas.InboxVue).toBeDefined();
     expect(schemas.ContratVue).toBeDefined();
     expect(schemas.Ligne).toBeDefined();
     expect(schemas.CoutMoisVue).toBeDefined();
