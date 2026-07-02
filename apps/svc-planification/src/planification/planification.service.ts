@@ -6,24 +6,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
-import { Duree } from '@creche-planner/shared-kernel';
 import {
   ContratCreche,
-  InscriptionAbcm,
-  PlageHoraire,
-  SemaineType,
-  type AbsenceCreche,
-  type ExceptionJour,
-  type JourAlsh,
-  type JourSupplementaireCreche,
+  genererPrestationMois,
+  semaineTypeDepuisJson,
   type PlanningMensuel,
-  type PrestationMois,
-  type SaisieGenerationAlsh,
-  type SaisieGenerationCantine,
-  type SaisieGenerationCreche,
-  type SaisieGenerationPeriscolaire,
-  type SaisieSemaineType,
   type SemaineTypeAbcm,
+  type SemaineTypeJson,
 } from '@creche-planner/planification-domain';
 import {
   CONTRAT_CREE_TYPE,
@@ -45,7 +34,6 @@ import {
   etablissement,
   outbox,
   planningMois,
-  type ContratRow,
 } from '../database/schema.js';
 import {
   joursDeLaSemaine,
@@ -96,30 +84,6 @@ export interface PrestationVue {
   readonly [cle: string]: unknown;
 }
 
-/** Forme JSON de la semaine type crèche stockée en base. */
-interface PlageJson {
-  readonly debutHeures: number;
-  readonly debutMinutes: number;
-  readonly finHeures: number;
-  readonly finMinutes: number;
-}
-type SemaineTypeJson = Record<string, PlageJson[]>;
-
-/** Plage horaire (heures/minutes d'arrivée et de départ). */
-interface PlageHeures {
-  readonly debutHeures: number;
-  readonly debutMinutes: number;
-  readonly finHeures: number;
-  readonly finMinutes: number;
-}
-
-/** Durée d'une plage (fin − début) ; `zero` si la plage est incohérente. */
-function dureeDePlage(p: PlageHeures): Duree {
-  const debut = p.debutHeures * 60 + p.debutMinutes;
-  const fin = p.finHeures * 60 + p.finMinutes;
-  return fin > debut ? Duree.depuisMinutes(fin - debut) : Duree.zero();
-}
-
 /** Transaction Drizzle (le `tx` passé au callback de `db.transaction`). */
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 
@@ -139,7 +103,7 @@ export class PlanificationService {
         valideAu: dto.valideAu ?? dto.valideDu,
         heuresAnnuellesContractualisees: dto.heuresAnnuellesContractualisees,
         nbMensualites: dto.nbMensualites,
-        semaineType: this.semaineTypeDepuisJson(dto.semaineType),
+        semaineType: semaineTypeDepuisJson(dto.semaineType),
       });
     }
 
@@ -265,7 +229,7 @@ export class PlanificationService {
         valideAu: dto.valideAu ?? dto.valideDu,
         heuresAnnuellesContractualisees: dto.heuresAnnuellesContractualisees,
         nbMensualites: dto.nbMensualites,
-        semaineType: this.semaineTypeDepuisJson(dto.semaineType),
+        semaineType: semaineTypeDepuisJson(dto.semaineType),
       });
     }
 
@@ -646,118 +610,22 @@ export class PlanificationService {
       (plannings[0]?.saisie as EcrirePlanningDto | undefined) ?? {};
     const joursNonFacturables = await this.referentiel.joursNonFacturables();
 
-    const prestation = this.genererPrestation(
-      ligne,
+    // La génération est pure (domaine) : le service ne fait que relire la ligne
+    // et lui passer sa forme brute persistée (colonnes JSON typées `unknown`).
+    const prestation = genererPrestationMois(
+      {
+        mode: ligne.mode,
+        valideDu: ligne.valideDu,
+        valideAu: ligne.valideAu,
+        heuresAnnuellesContractualisees: ligne.heuresAnnuellesContractualisees,
+        nbMensualites: ligne.nbMensualites,
+        semaineType: ligne.semaineType as SemaineTypeJson | null,
+        semaineAbcm: ligne.semaineAbcm as SemaineTypeAbcm | null,
+      },
       mois,
       saisie,
       joursNonFacturables,
     );
     return { mois, prestations: [prestation] };
-  }
-
-  /** Aiguille vers le générateur du domaine selon le mode du contrat. */
-  private genererPrestation(
-    ligne: ContratRow,
-    mois: string,
-    saisie: EcrirePlanningDto,
-    joursNonFacturables: readonly string[],
-  ): PrestationMois {
-    if (ligne.mode === 'CRECHE_PSU') {
-      const contratCreche = ContratCreche.creer({
-        valideDu: ligne.valideDu,
-        valideAu: ligne.valideAu ?? ligne.valideDu,
-        heuresAnnuellesContractualisees:
-          ligne.heuresAnnuellesContractualisees ?? 0,
-        nbMensualites: ligne.nbMensualites ?? 1,
-        semaineType: this.semaineTypeDepuisJson(
-          (ligne.semaineType as SemaineTypeJson | null) ?? {},
-        ),
-      });
-      const saisieCreche: SaisieGenerationCreche = {
-        mois,
-        complement:
-          saisie.complementMinutes !== undefined
-            ? Duree.depuisMinutes(saisie.complementMinutes)
-            : Duree.zero(),
-        joursSupplementaires: (saisie.joursSupplementaires ?? [])
-          .map(
-            (j): JourSupplementaireCreche => ({
-              date: j.date,
-              duree: dureeDePlage(j),
-            }),
-          )
-          // Plage incohérente (fin ≤ début) → durée nulle, ignorée (sans complément).
-          .filter((j) => !j.duree.estZero()),
-        absences: (saisie.absences ?? []).map(
-          (a): AbsenceCreche => ({
-            ...(a.date !== undefined ? { date: a.date } : {}),
-            duree: dureeDePlage(a),
-            preavisJours: a.preavisJours,
-            certificatMaladie: a.certificatMaladie,
-          }),
-        ),
-        joursNonFacturables,
-      };
-      return contratCreche.genererPrestationsMois(saisieCreche);
-    }
-
-    const inscription = InscriptionAbcm.creer({
-      semaine: (ligne.semaineAbcm as SemaineTypeAbcm | null) ?? {},
-      valideDu: ligne.valideDu,
-      ...(ligne.valideAu !== null ? { valideAu: ligne.valideAu } : {}),
-    });
-    const exceptions = (saisie.exceptions ?? []).map(
-      (e): ExceptionJour => ({
-        date: e.date,
-        ...(e.cantine !== undefined ? { cantine: e.cantine } : {}),
-        ...(e.periMatin !== undefined ? { periMatin: e.periMatin } : {}),
-        ...(e.periSoir !== undefined ? { periSoir: e.periSoir } : {}),
-      }),
-    );
-    if (ligne.mode === 'CANTINE') {
-      const saisieCantine: SaisieGenerationCantine = {
-        mois,
-        pai: saisie.pai ?? false,
-        exceptions,
-        joursNonFacturables,
-      };
-      return inscription.genererPrestationsCantine(saisieCantine);
-    }
-    if (ligne.mode === 'PERISCOLAIRE') {
-      const saisiePeri: SaisieGenerationPeriscolaire = {
-        mois,
-        exceptions,
-        joursNonFacturables,
-      };
-      return inscription.genererPrestationsPeriscolaire(saisiePeri);
-    }
-    const saisieAlsh: SaisieGenerationAlsh = {
-      mois,
-      joursAlsh: (saisie.joursAlsh ?? []).map(
-        (j): JourAlsh => ({
-          date: j.date,
-          type: j.type,
-          ...(j.repas !== undefined ? { repas: j.repas } : {}),
-        }),
-      ),
-      joursNonFacturables,
-    };
-    return inscription.genererPrestationsAlsh(saisieAlsh);
-  }
-
-  /** Reconstruit la `SemaineType` du domaine depuis sa forme JSON stockée. */
-  private semaineTypeDepuisJson(json: SemaineTypeJson): SemaineType {
-    const saisie: SaisieSemaineType = {};
-    for (const [jour, plages] of Object.entries(json)) {
-      (saisie as Record<string, PlageHoraire[]>)[jour] = plages.map((p) =>
-        PlageHoraire.creer(
-          p.debutHeures,
-          p.debutMinutes,
-          p.finHeures,
-          p.finMinutes,
-        ),
-      );
-    }
-    return SemaineType.creer(saisie);
   }
 }
