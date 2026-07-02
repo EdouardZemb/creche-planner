@@ -1,0 +1,18 @@
+{
+  "commentaire": "Oracle des montants attendus par scripts/seed-demo.mjs --verify (audit 2026-07). Chaque cible lie son montant au cas de calcul de docs/02-modele-de-cout.md §6 qui le justifie : si l'algorithme tarifaire ou le jeu de référence change, ce fichier ET le doc évoluent ensemble dans un diff versionné — l'oracle n'est plus codé en dur dans le script et ne peut plus devenir silencieusement faux.",
+  "cibles": [
+    {
+      "mois": "2026-03",
+      "attendu": "crèche Zoé 412,20 € + Mia 438,96 € = 851,16 €",
+      "cas": "docs/02-modele-de-cout.md §6 PSU : CT-02 (mensualité Mia 885,50/7 = 126,50 h × 3,47 = 438,96 €) + CT-03 (mensualité Zoé 831,50/7 = 118,79 h × 3,47 = 412,20 €) = CT-04 (total foyer crèche, mois standard : 851,16 €). Tolérance ±10 c : arrondis d'agrégation.",
+      "attenduCentimes": 85116,
+      "toleranceCentimes": 10
+    },
+    {
+      "mois": "2026-10",
+      "attendu": "ABCM Zoé (cantine + péri soir) > 0",
+      "cas": "docs/02-modele-de-cout.md §7-§8 : après la transition crèche→école (rentrée sept. 2026), Zoé est en cantine + périscolaire soir (cf. CT-10/CT-11 pour les barèmes). Le montant exact dépend du calendrier scolaire du mois → pas de montant figé, seuil strictement positif.",
+      "minCentimes": 1
+    }
+  ]
+}

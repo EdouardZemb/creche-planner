@@ -47,6 +47,7 @@ const BASE_URL = process.env.SEED_BASE_URL ?? 'http://localhost:3000/api/v1';
 const ICI = dirname(fileURLToPath(import.meta.url));
 const STATE_PATH = join(ICI, '.seed-demo-state.json');
 const LOCAL_OVERRIDE_PATH = join(ICI, 'seed.local.json');
+const ORACLE_PATH = join(ICI, 'seed-oracle.json');
 const VERIFIER = process.argv.includes('--verify');
 
 // --- Jeu de données de référence (fictif) ---------------------------------
@@ -428,28 +429,18 @@ async function ecrirePlannings(contratId, cle) {
  * tarification), si un montant cible attendu strictement positif reste à 0 / absent,
  * ou s'écarte trop de la valeur connue, le script échoue (`process.exit(1)`).
  *
- * Montants attendus :
- *  - crèche mars 2026 : Zoé 412,20 € + Mia 438,96 € = 851,16 € (85116 c),
- *    tolérance ±10 c (arrondis) ;
- *  - ABCM octobre 2026 (cantine + péri soir Zoé) : strictement positif.
+ * Les montants attendus vivent dans l'oracle VERSIONNÉ `scripts/seed-oracle.json`
+ * (audit 2026-07) : chaque cible y référence le cas de calcul de
+ * `docs/02-modele-de-cout.md` §6 qui la justifie. Si l'algorithme tarifaire change,
+ * l'oracle évolue dans le même diff — il n'est plus codé en dur ici.
  */
 async function verifierCouts(foyerId) {
   console.log('\n🔎 Vérification des coûts calculés (projection asynchrone)…');
-  const cibles = [
-    {
-      mois: '2026-03',
-      attendu: 'crèche Zoé 412,20 € + Mia 438,96 € = 851,16 €',
-      // Égalité à la tolérance près (en centimes).
-      attenduCentimes: 85116,
-      toleranceCentimes: 10,
-    },
-    {
-      mois: '2026-10',
-      attendu: 'ABCM Zoé (cantine + péri soir) > 0',
-      // Pas de montant exact figé : on exige seulement un coût strictement positif.
-      minCentimes: 1,
-    },
-  ];
+  /**
+   * @type {{ cibles: Array<{ mois: string, attendu: string, cas: string,
+   *   attenduCentimes?: number, toleranceCentimes?: number, minCentimes?: number }> }}
+   */
+  const { cibles } = JSON.parse(await readFile(ORACLE_PATH, 'utf8'));
   const eur = (centimes) => (centimes / 100).toFixed(2) + ' €';
   const echecs = [];
 
