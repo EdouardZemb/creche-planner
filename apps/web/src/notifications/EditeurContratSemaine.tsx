@@ -1,13 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type {
-  AbsenceCreche,
   ContratBesoinsSemaine,
-  EcrireSemaineBesoins,
   ExceptionAbcm,
-  JourAlsh,
-  JourSupplementaire,
-  PlageHoraire,
   StatutNotification,
 } from '../types/bff';
 import {
@@ -31,101 +26,13 @@ import {
   formaterPlage,
 } from '../planning/heures';
 import { useEcritureSemaine } from './useEcritureSemaine';
+import { initBesoins, versCorps, type BesoinsEtat } from './besoinsSemaine';
 
 // Édition des besoins **datés** d'un contrat sur la seule semaine notifiée.
 // Contrairement aux calendriers mensuels, la vue hebdomadaire ne connaît pas la
 // semaine-type du contrat (le BFF ne renvoie que les entrées datées) : on édite
 // donc directement ces entrées, jour par jour, sans repère « jour gardé ».
-
-interface AbsenceEtat extends PlageHoraire {
-  date: string;
-  preavisJours: number;
-  certificatMaladie: boolean;
-}
-
-interface JourSupEtat extends PlageHoraire {
-  date: string;
-}
-
-interface AlshEtat {
-  date: string;
-  type: 'COMPLETE' | 'DEMI';
-  repas: boolean;
-}
-
-interface BesoinsEtat {
-  absences: AbsenceEtat[];
-  joursSup: JourSupEtat[];
-  exceptions: ExceptionAbcm[];
-  joursAlsh: AlshEtat[];
-}
-
-/** Aplati les besoins datés de la semaine (par jour) en listes par catégorie. */
-function initBesoins(contrat: ContratBesoinsSemaine): BesoinsEtat {
-  const absences: AbsenceEtat[] = [];
-  const joursSup: JourSupEtat[] = [];
-  const exceptions: ExceptionAbcm[] = [];
-  const joursAlsh: AlshEtat[] = [];
-  for (const jour of Object.values(contrat.besoins)) {
-    for (const a of jour.absences) {
-      if (a.date === undefined) continue;
-      absences.push({
-        date: a.date,
-        debutHeures: a.debutHeures,
-        debutMinutes: a.debutMinutes,
-        finHeures: a.finHeures,
-        finMinutes: a.finMinutes,
-        preavisJours: a.preavisJours,
-        certificatMaladie: a.certificatMaladie,
-      });
-    }
-    for (const j of jour.joursSupplementaires) {
-      joursSup.push({
-        date: j.date,
-        debutHeures: j.debutHeures,
-        debutMinutes: j.debutMinutes,
-        finHeures: j.finHeures,
-        finMinutes: j.finMinutes,
-      });
-    }
-    exceptions.push(...jour.exceptions);
-    for (const j of jour.joursAlsh) {
-      joursAlsh.push({ date: j.date, type: j.type, repas: j.repas ?? false });
-    }
-  }
-  return { absences, joursSup, exceptions, joursAlsh };
-}
-
-/** Corps d'écriture (catégories datées non vides) depuis l'état d'édition. */
-function versCorps(etat: BesoinsEtat): EcrireSemaineBesoins {
-  const absences: AbsenceCreche[] = etat.absences.map((a) => ({
-    date: a.date,
-    debutHeures: a.debutHeures,
-    debutMinutes: a.debutMinutes,
-    finHeures: a.finHeures,
-    finMinutes: a.finMinutes,
-    preavisJours: a.preavisJours,
-    certificatMaladie: a.certificatMaladie,
-  }));
-  const joursSupplementaires: JourSupplementaire[] = etat.joursSup.map((j) => ({
-    date: j.date,
-    debutHeures: j.debutHeures,
-    debutMinutes: j.debutMinutes,
-    finHeures: j.finHeures,
-    finMinutes: j.finMinutes,
-  }));
-  const joursAlsh: JourAlsh[] = etat.joursAlsh.map((j) => ({
-    date: j.date,
-    type: j.type,
-    ...(j.repas ? { repas: j.repas } : {}),
-  }));
-  return {
-    ...(joursSupplementaires.length > 0 ? { joursSupplementaires } : {}),
-    ...(absences.length > 0 ? { absences } : {}),
-    ...(etat.exceptions.length > 0 ? { exceptions: etat.exceptions } : {}),
-    ...(joursAlsh.length > 0 ? { joursAlsh } : {}),
-  };
-}
+// L'aplatissement/reconstruction des besoins vit dans `besoinsSemaine.ts` (pur).
 
 /** Forme de la modale d'édition d'un jour (champs selon le mode). */
 interface FormJour {
