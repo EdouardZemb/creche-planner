@@ -7,7 +7,7 @@ import {
   executerOuRepli,
   fetchAvecTimeout,
   type OptionsResilience,
-} from '../fallback/resilience.js';
+} from '@creche-planner/resilience';
 
 /** Réponse de `POST /api/desabonnement/jetons` : le jeton signé + son expiration. */
 const jetonReponseSchema = z.object({

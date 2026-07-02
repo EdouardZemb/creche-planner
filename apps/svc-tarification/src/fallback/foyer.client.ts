@@ -6,7 +6,7 @@ import {
   executerOuRepli,
   fetchAvecTimeout,
   type OptionsResilience,
-} from './resilience.js';
+} from '@creche-planner/resilience';
 
 /** Repli synchrone d'un foyer (forme exposée par `svc-foyer` `GET /api/foyers/:id`). */
 const foyerReponseSchema = z.object({

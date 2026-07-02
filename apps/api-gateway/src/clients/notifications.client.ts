@@ -6,7 +6,7 @@ import {
   executerResilient,
   fetchAvecTimeout,
   type OptionsResilience,
-} from './resilience.js';
+} from '@creche-planner/resilience';
 
 /** Statut d'une validation hebdomadaire renvoyé par `svc-notifications`. */
 const statutSchema = z.enum(['A_VALIDER', 'VALIDEE', 'VALIDEE_AVEC_MODIFS']);

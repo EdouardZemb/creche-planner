@@ -7,7 +7,7 @@ import {
   executerOuRepli,
   fetchAvecTimeout,
   type OptionsResilience,
-} from './resilience.js';
+} from '@creche-planner/resilience';
 
 /**
  * Compteur des relectures de planning faites par `svc-notifications` vers
