@@ -27,15 +27,12 @@ const RACINE = process.cwd();
 const PACTS_DIR = join(RACINE, 'pacts');
 
 // Le seul consommateur HTTP est la gateway (BFF). Chaque service métier qui
-// expose une API consommée par la gateway DOIT avoir un pact provider.
+// expose une API consommée par la gateway DOIT avoir un pact provider. La liste
+// des providers vient de la source unique de topologie (scripts/services.json).
 const CONSOMMATEUR_ATTENDU = 'api-gateway';
-const PROVIDERS_ATTENDUS = [
-  'svc-foyer',
-  'svc-referentiel',
-  'svc-planification',
-  'svc-tarification',
-  'svc-notifications',
-];
+const PROVIDERS_ATTENDUS = JSON.parse(
+  readFileSync(join(RACINE, 'scripts', 'services.json'), 'utf8'),
+).providersPact;
 
 /** @type {string[]} */
 const erreurs = [];

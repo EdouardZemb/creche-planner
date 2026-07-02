@@ -42,7 +42,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -120,6 +120,27 @@ const UP_SERVICES = (process.env.DEPLOY_UP_SERVICES ?? '')
   .trim()
   .split(/\s+/)
   .filter(Boolean);
+
+// Garde-fou (audit 2026-07) : chaque service de DEPLOY_UP_SERVICES doit exister
+// dans la source unique de topologie (scripts/services.json) — attrape une faute
+// de frappe de .env.staging avant le `up`. AVERTISSEMENT seulement : un souci de
+// lecture du fichier ne doit JAMAIS bloquer un déploiement (prod comprise).
+try {
+  const { servicesApplicatifs } = JSON.parse(
+    readFileSync(join(RACINE, 'scripts', 'services.json'), 'utf8'),
+  );
+  for (const s of UP_SERVICES) {
+    if (!servicesApplicatifs.includes(s)) {
+      console.warn(
+        `⚠️ DEPLOY_UP_SERVICES : service "${s}" inconnu de scripts/services.json (faute de frappe ?).`,
+      );
+    }
+  }
+} catch (e) {
+  console.warn(
+    `⚠️ scripts/services.json illisible (${e.message}) — garde-fou DEPLOY_UP_SERVICES sauté.`,
+  );
+}
 
 const GATEWAY_IMAGE = `ghcr.io/edouardzemb/creche-planner/api-gateway:${IMAGE_TAG}`;
 
