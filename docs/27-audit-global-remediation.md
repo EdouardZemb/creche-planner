@@ -67,8 +67,8 @@ Access et les ports ne sont pas publiés. AQ-01 n'ajoute qu'un garde-fou défens
 | ✅ **AQ-11** | P2       | SAST absent (CodeQL en pause, GHAS indisponible en privé gratuit)                                                   | Semgrep OSS en CI, règles TS/NestJS de base, bloquant sur ERROR              | `.github/workflows/ci.yml`                                                                                |
 | ✅ **AQ-12** | P2       | `extraireErreurs` dupliquée ; échec quota `sessionStorage` silencieux                                               | Fonction extraite dans `utils/` ; warning console + info utilisateur         | `apps/web/src/foyer/FoyerFormPage.tsx`, `ContratForm.tsx`, `apps/web/src/hooks/usePersistanceAbsences.ts` |
 | ✅ **AQ-13** | P3       | 100 % de couverture ne prouve pas que les assertions mordent (pas de mutation testing)                              | Stryker sur ≥ 2 libs domaine, score ≥ 80 %, mutants survivants triés         | `libs/tarification/domain`, `libs/planification/domain`                                                   |
-| **AQ-14**    | P3       | Événements NATS documentés seulement en code ; rétention JetStream non documentée ; rebinding consumer à délai fixe | AsyncAPI par contexte + doc rétention + backoff exponentiel                  | `libs/contracts/*/`, `apps/svc-tarification/src/consumers/jetstream.consumer.ts`, `docs/exploitation/`    |
-| **AQ-15**    | P3       | CI jusqu'à ~50 min (smoke-stack + e2e-stack séquentiels, rebuilds) ; pas de healthcheck apps                        | smoke/e2e parallélisés ou mutualisés, cache buildx, healthchecks 5 apps      | `.github/workflows/ci.yml`, `docker-compose.yml`                                                          |
+| 🔶 **AQ-14** | P3       | Événements NATS documentés seulement en code ; rétention JetStream non documentée ; rebinding consumer à délai fixe | AsyncAPI par contexte + doc rétention + backoff exponentiel                  | `libs/contracts/*/`, `apps/svc-tarification/src/consumers/jetstream.consumer.ts`, `docs/exploitation/`    |
+| 🔶 **AQ-15** | P3       | CI jusqu'à ~50 min (smoke-stack + e2e-stack séquentiels, rebuilds) ; pas de healthcheck apps                        | smoke/e2e parallélisés ou mutualisés, cache buildx, healthchecks 5 apps      | `.github/workflows/ci.yml`, `docker-compose.yml`                                                          |
 | **AQ-16**    | P3       | Pas d'index de navigation docs, pas de CONTRIBUTING.md, `caddy-root.crt` à la racine, étapes onboarding implicites  | Index « par où commencer », CONTRIBUTING, cert déplacé, README complété      | `docs/README.md` (nouveau), `.github/CONTRIBUTING.md`, `README.md`                                        |
 | **AQ-17**    | P3       | Mineurs backend : pas de timeout sur transactions Drizzle ; rate-limit mémoire non documenté mono-instance          | Timeout configuré + commentaire/doc sur la limite du rate-limit              | `apps/svc-*/src/database/`, `apps/api-gateway/src/security/rate-limit.guard.ts`                           |
 | **AQ-18**    | P3       | Pas de lazy loading des routes web (acceptable à 5 écrans, à faire si le périmètre grossit)                         | `React.lazy` + `Suspense` sur les pages lourdes, bundle initial réduit       | `apps/web/src/App.tsx`                                                                                    |
@@ -76,6 +76,25 @@ Access et les ports ne sont pas publiés. AQ-01 n'ajoute qu'un garde-fou défens
 Priorités : **P1** = quick wins correctness/a11y (< 1 j cumulé) ; **P2** = chantiers
 structurants (mesure, factorisation, tests manquants, typage) ; **P3** = robustesse
 & polissage. AQ-18 est optionnel (déclencheur : ajout d'un 6ᵉ écran).
+
+> **Revue de statut (2026-07-02)** — re-vérifiée **action par action dans le code et la
+> CI** (pas sur déclaration). Légende : ✅ livré · 🔶 partiellement livré (détail §3) ·
+> sans coche = ouvert.
+>
+> - **AQ-01→13 : livrées et toujours en place** (garde-fou `GATEWAY_TOKEN` dans
+>   `config.ts`, job `pact-drift`, `z.iso.date()`, région live du calendrier,
+>   baseline de couverture en CI, `libs/nest-commons`, specs `foyer.service.spec.ts` /
+>   `referentiel.service.spec.ts`, `projection.integration.spec.ts`,
+>   `openapi-types-drift`, `sast-semgrep`, `utils/erreurs.ts`, `mutation.yml`).
+> - **AQ-14 🔶** : backoff progressif livré (natif JetStream) ; AsyncAPI et doc de
+>   rétention toujours manquants. **AQ-15 🔶** : smoke/e2e parallélisés + cache buildx
+>   GHA ; healthchecks des apps hors gateway manquants.
+> - **AQ-16** : en cours (index docs + CONTRIBUTING, session du 2026-07-02).
+>   **AQ-17, AQ-18** : ouverts.
+>
+> ⚠️ **Numéros de PR** : les PR de ce plan (#39→#48, sessions A→H) datent d'**avant la
+> publication du dépôt** (2026-06-18, historique squashé dans l'import initial `4f36e3e`).
+> Ces numéros ne correspondent à **aucune PR du dépôt public actuel** — cf. §5.
 
 ---
 
@@ -211,6 +230,12 @@ et traiter de la même façon ceux qui sont en code de prod.
 **Critère de sortie.** Plus aucun `as unknown as` en code de production ; test du
 cas « prestation malformée → erreur explicite » vert ; suite tarification verte.
 
+> **MÀJ 2026-07-02** : le constat d'origine (cast dans `cout.service.ts`) reste corrigé.
+> Une occurrence est toutefois **réapparue depuis** en code de production —
+> [semaine-besoins.ts:169](../apps/api-gateway/src/bff/semaine-besoins.ts) — lecture
+> **défensive et commentée** d'un champ `passthrough` (parse en échec ⇒ champ omis,
+> pas de crash). Assumée en l'état ; à résorber si le champ intègre un jour le contrat typé.
+
 ---
 
 ### AQ-04 — Validation réelle des dates au référentiel · P1
@@ -267,6 +292,11 @@ de détection de flakiness. Déjà pointé par la doc 18 (KPI §1.3) sans outill
 **Critère de sortie.** Chaque run de `main` publie ses artefacts ; une PR qui fait
 baisser la couverture domaine échoue avec un message comparatif ; le summary
 affiche couverture + retries.
+
+> **MÀJ 2026-07-02** : renforcée depuis par l'audit 2026-07 (lot 1a) — couverture
+> **mesurée avec seuils ratchet** sur les 5 services et le web
+> ([#130](https://github.com/EdouardZemb/creche-planner/pull/130), après réactivation
+> de la couverture gateway [#129](https://github.com/EdouardZemb/creche-planner/pull/129)).
 
 ---
 
@@ -420,6 +450,11 @@ un test à renforcer, soit du code mort à supprimer.
 tarification) ; mutants survivants triés (issue ou correction) ; cible
 reproductible documentée dans la doc 20/21.
 
+> **MÀJ 2026-07-02** : au-delà du périmètre initial (tarification + planification),
+> Stryker est exécuté en workflow dédié (`.github/workflows/mutation.yml`) et **étendu
+> à `foyer-domain` et `referentiel-domain`**
+> ([#131](https://github.com/EdouardZemb/creche-planner/pull/131)).
+
 ---
 
 ### AQ-14 — AsyncAPI, rétention JetStream, backoff consumer · P3
@@ -441,6 +476,13 @@ test unitaire.
 **Critère de sortie.** AsyncAPI valides (`asyncapi validate` ou lint équivalent)
 référencées par les README de libs ; doc rétention publiée ; backoff testé.
 
+> **MÀJ 2026-07-02 — 🔶 partiellement livré.** Le point (3) est réglé autrement que
+> par l'esquisse : le rebinding à délai fixe a laissé place au **backoff progressif natif
+> JetStream** (`ConsumerConfig.backoff` = 1 s/5 s/15 s/30 s + `max_deliver`,
+> [jetstream.consumer.ts](../apps/svc-tarification/src/consumers/jetstream.consumer.ts)).
+> Restent ouverts : (1) AsyncAPI par contexte, (2) doc de rétention des streams
+> (seule la rétention Loki est documentée dans `observabilite.md`, pas celle de JetStream).
+
 ---
 
 ### AQ-15 — CI plus rapide · P3
@@ -460,6 +502,14 @@ Ajouter des healthchecks aux 5 apps dans [docker-compose.yml](../docker-compose.
 
 **Critère de sortie.** Durée totale CI réduite d'au moins 30 % (mesurée avant/après
 sur 3 runs) ; `up --wait` attend réellement la santé des apps.
+
+> **MÀJ 2026-07-02 — 🔶 partiellement livré.** `smoke-stack` et `e2e-stack` sont
+> désormais des **jobs frères parallèles** (mêmes `needs: [ci, pact-can-i-deploy,
+affected-images]`) et `build-images` utilise le **cache buildx GHA**
+> (`cache-from/to: type=gha` par projet). Restent : healthchecks compose des apps autres
+> que la gateway (les `svc-*` et `web` n'en ont pas ; seuls l'infra et `api-gateway` en
+> ont) et l'éventuelle mutualisation de pile entre smoke et e2e (chacun refait son
+> `up --build`).
 
 ---
 
@@ -503,6 +553,13 @@ poser un timeout (ou `statement_timeout` côté pool pg) — ne pas inventer de 
 **Critère de sortie.** Timeout effectif démontré par un test (transaction qui
 dort > timeout → erreur) ; documentation à jour.
 
+> **MÀJ 2026-07-02 — ouvert.** Aucun `statement_timeout`/timeout de transaction posé
+> (vérifié : zéro occurrence dans le code). Le point (2) est en partie couvert : l'en-tête
+> de [rate-limit.guard.ts](../apps/api-gateway/src/security/rate-limit.guard.ts) documente
+> l'état **en mémoire, par instance** ; côté surveillance, l'alerte Prometheus
+> `PostgresLongRunningTransaction` (`docker/prometheus/alerts.yml`) atténue le risque (1)
+> sans le clore.
+
 ---
 
 ### AQ-18 — Lazy loading des routes web (optionnel) · P3
@@ -544,17 +601,24 @@ l'effort doit basculer sur la **valeur utilisateur** :
 Cocher ici au fil des sessions (convention doc 25 : ✅ dans le tableau §1 +
 mention de la PR).
 
-| Session | Branche                           | Actions     | PR                                                           | État                 |
-| ------- | --------------------------------- | ----------- | ------------------------------------------------------------ | -------------------- |
-| A       | `fix/audit-quickwins-backend`     | AQ-01/03/04 | [#40](https://github.com/EdouardZemb/creche-planner/pull/40) | ✅ Fait (2026-06-11) |
-| B       | `ci/pact-drift-check`             | AQ-02       | [#39](https://github.com/EdouardZemb/creche-planner/pull/39) | ✅ Fait (2026-06-11) |
-| C       | `fix/web-a11y-annonces`           | AQ-05/12    | [#41](https://github.com/EdouardZemb/creche-planner/pull/41) | ✅ Fait (2026-06-11) |
-| D       | `ci/metriques-historisees`        | AQ-06/11    | [#42](https://github.com/EdouardZemb/creche-planner/pull/42) | ✅ Fait (2026-06-12) |
-| E       | `refactor/nest-commons`           | AQ-07       | [#43](https://github.com/EdouardZemb/creche-planner/pull/43) | ✅ Fait (2026-06-12) |
-| F       | `test/services-foyer-referentiel` | AQ-08/09    | [#45](https://github.com/EdouardZemb/creche-planner/pull/45) | ✅ Fait (2026-06-12) |
-| G       | `feat/web-types-openapi`          | AQ-10       | [#46](https://github.com/EdouardZemb/creche-planner/pull/46) | ✅ Fait (2026-06-12) |
-| H       | `test/mutation-stryker`           | AQ-13       | [#48](https://github.com/EdouardZemb/creche-planner/pull/48) | ✅ Fait (2026-06-12) |
-| I       | `docs/asyncapi-nats`              | AQ-14       | —                                                            | À faire              |
-| J       | `ci/pipeline-parallele`           | AQ-15       | —                                                            | À faire              |
-| K       | `docs/index-et-contributing`      | AQ-16       | —                                                            | À faire              |
-| —       | (opportuniste)                    | AQ-17/18    | —                                                            | Optionnel            |
+| Session | Branche                           | Actions     | PR            | État                                                              |
+| ------- | --------------------------------- | ----------- | ------------- | ----------------------------------------------------------------- |
+| A       | `fix/audit-quickwins-backend`     | AQ-01/03/04 | #40 (privée)¹ | ✅ Fait (2026-06-11)                                              |
+| B       | `ci/pact-drift-check`             | AQ-02       | #39 (privée)¹ | ✅ Fait (2026-06-11)                                              |
+| C       | `fix/web-a11y-annonces`           | AQ-05/12    | #41 (privée)¹ | ✅ Fait (2026-06-11)                                              |
+| D       | `ci/metriques-historisees`        | AQ-06/11    | #42 (privée)¹ | ✅ Fait (2026-06-12)                                              |
+| E       | `refactor/nest-commons`           | AQ-07       | #43 (privée)¹ | ✅ Fait (2026-06-12)                                              |
+| F       | `test/services-foyer-referentiel` | AQ-08/09    | #45 (privée)¹ | ✅ Fait (2026-06-12)                                              |
+| G       | `feat/web-types-openapi`          | AQ-10       | #46 (privée)¹ | ✅ Fait (2026-06-12)                                              |
+| H       | `test/mutation-stryker`           | AQ-13       | #48 (privée)¹ | ✅ Fait (2026-06-12)                                              |
+| I       | `docs/asyncapi-nats`              | AQ-14       | —             | 🔶 Partiel (backoff livré ; AsyncAPI + rétention à faire)         |
+| J       | `ci/pipeline-parallele`           | AQ-15       | —             | 🔶 Partiel (parallélisation + cache faits ; healthchecks à faire) |
+| K       | `docs/index-et-contributing`      | AQ-16       | —             | 🔄 En cours (session 2026-07-02)                                  |
+| —       | (opportuniste)                    | AQ-17/18    | —             | Ouvert / optionnel                                                |
+
+> ¹ **PR de l'ancien dépôt privé** : ces sessions ont été mergées **avant la publication
+> du dépôt** (2026-06-18). L'historique a été squashé dans l'import initial public
+> `4f36e3e` : ces numéros ne correspondent à **aucune PR du dépôt public actuel** (les
+> #39→#48 publics portent sur d'autres sujets — p. ex. le #40 public est une PR de
+> roadmap CI/CD). La preuve du « fait » est le **code lui-même**, re-vérifié le
+> 2026-07-02 (encart §1).
