@@ -612,20 +612,20 @@ l'effort doit basculer sur la **valeur utilisateur** :
 Cocher ici au fil des sessions (convention doc 25 : ✅ dans le tableau §1 +
 mention de la PR).
 
-| Session | Branche                           | Actions     | PR            | État                                                              |
-| ------- | --------------------------------- | ----------- | ------------- | ----------------------------------------------------------------- |
-| A       | `fix/audit-quickwins-backend`     | AQ-01/03/04 | #40 (privée)¹ | ✅ Fait (2026-06-11)                                              |
-| B       | `ci/pact-drift-check`             | AQ-02       | #39 (privée)¹ | ✅ Fait (2026-06-11)                                              |
-| C       | `fix/web-a11y-annonces`           | AQ-05/12    | #41 (privée)¹ | ✅ Fait (2026-06-11)                                              |
-| D       | `ci/metriques-historisees`        | AQ-06/11    | #42 (privée)¹ | ✅ Fait (2026-06-12)                                              |
-| E       | `refactor/nest-commons`           | AQ-07       | #43 (privée)¹ | ✅ Fait (2026-06-12)                                              |
-| F       | `test/services-foyer-referentiel` | AQ-08/09    | #45 (privée)¹ | ✅ Fait (2026-06-12)                                              |
-| G       | `feat/web-types-openapi`          | AQ-10       | #46 (privée)¹ | ✅ Fait (2026-06-12)                                              |
-| H       | `test/mutation-stryker`           | AQ-13       | #48 (privée)¹ | ✅ Fait (2026-06-12)                                              |
-| I       | `docs/asyncapi-nats`              | AQ-14       | —             | 🔶 Partiel (backoff livré ; AsyncAPI + rétention à faire)         |
-| J       | `ci/pipeline-parallele`           | AQ-15       | —             | 🔶 Partiel (parallélisation + cache faits ; healthchecks à faire) |
-| K       | `docs/index-et-contributing`      | AQ-16       | (cette PR)    | ✅ Fait (2026-07-02)                                              |
-| —       | (opportuniste)                    | AQ-17/18    | —             | Ouvert / optionnel                                                |
+| Session | Branche                           | Actions     | PR                                                             | État                                                              |
+| ------- | --------------------------------- | ----------- | -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| A       | `fix/audit-quickwins-backend`     | AQ-01/03/04 | #40 (privée)¹                                                  | ✅ Fait (2026-06-11)                                              |
+| B       | `ci/pact-drift-check`             | AQ-02       | #39 (privée)¹                                                  | ✅ Fait (2026-06-11)                                              |
+| C       | `fix/web-a11y-annonces`           | AQ-05/12    | #41 (privée)¹                                                  | ✅ Fait (2026-06-11)                                              |
+| D       | `ci/metriques-historisees`        | AQ-06/11    | #42 (privée)¹                                                  | ✅ Fait (2026-06-12)                                              |
+| E       | `refactor/nest-commons`           | AQ-07       | #43 (privée)¹                                                  | ✅ Fait (2026-06-12)                                              |
+| F       | `test/services-foyer-referentiel` | AQ-08/09    | #45 (privée)¹                                                  | ✅ Fait (2026-06-12)                                              |
+| G       | `feat/web-types-openapi`          | AQ-10       | #46 (privée)¹                                                  | ✅ Fait (2026-06-12)                                              |
+| H       | `test/mutation-stryker`           | AQ-13       | #48 (privée)¹                                                  | ✅ Fait (2026-06-12)                                              |
+| I       | `docs/asyncapi-nats`              | AQ-14       | —                                                              | 🔶 Partiel (backoff livré ; AsyncAPI + rétention à faire)         |
+| J       | `ci/pipeline-parallele`           | AQ-15       | —                                                              | 🔶 Partiel (parallélisation + cache faits ; healthchecks à faire) |
+| K       | `docs/index-et-contributing`      | AQ-16       | [#143](https://github.com/EdouardZemb/creche-planner/pull/143) | ✅ Fait (2026-07-02)                                              |
+| —       | (opportuniste)                    | AQ-17/18    | —                                                              | Ouvert / optionnel                                                |
 
 > ¹ **PR de l'ancien dépôt privé** : ces sessions ont été mergées **avant la publication
 > du dépôt** (2026-06-18). L'historique a été squashé dans l'import initial public
