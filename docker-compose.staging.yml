@@ -37,6 +37,11 @@
 #
 # `image:` PRIME sur le `build:` du fichier de base au merge → staging CONSOMME les
 # images GHCR `:main` publiées par la CI (parité d'artefact), il ne reconstruit pas.
+#
+# TOPOLOGIE : la liste des services applicatifs (`image:` ci-dessous) doit rester
+# alignée sur la source unique scripts/services.json (audit 2026-07) —
+# scripts/staging-poll.mjs vérifie cette cohérence à chaque tick et échoue en cas
+# de dérive.
 
 name: creche-planner-staging
 

@@ -49,20 +49,16 @@ import { homedir } from 'node:os';
 const RACINE = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const IMAGE_TAG = process.env.IMAGE_TAG ?? 'main';
-const REGISTRE = 'ghcr.io/edouardzemb/creche-planner';
-// Images APPLICATIVES déployables sur staging — À GARDER SYNCHRONISÉ avec la liste
-// `image:` de docker-compose.staging.yml ET DEPLOY_UP_SERVICES de .env.staging. Triées
-// (l'ordre n'influe PAS sur l'agrégat — agregerDigests() trie — mais une liste ordonnée
-// se compare plus vite au compose). On ne dérive pas du YAML pour rester sans dépendance.
-const PROJETS_DEPLOYABLES = [
-  'api-gateway',
-  'svc-foyer',
-  'svc-notifications',
-  'svc-planification',
-  'svc-referentiel',
-  'svc-tarification',
-  'web',
-];
+// Images APPLICATIVES déployables sur staging : lues depuis la source UNIQUE de
+// topologie (scripts/services.json, audit 2026-07). La cohérence avec la liste
+// `image:` de docker-compose.staging.yml est vérifiée à chaque tick
+// (`verifierCoherenceCompose`) ; DEPLOY_UP_SERVICES de .env.staging reste à
+// aligner côté serveur (garde-fou non bloquant dans deploy.mjs).
+const TOPOLOGIE = JSON.parse(
+  readFileSync(join(RACINE, 'scripts', 'services.json'), 'utf8'),
+);
+const REGISTRE = TOPOLOGIE.registre;
+const PROJETS_DEPLOYABLES = TOPOLOGIE.servicesApplicatifs;
 const IMAGE_REFS = PROJETS_DEPLOYABLES.map(
   (projet) => `${REGISTRE}/${projet}:${IMAGE_TAG}`,
 );
@@ -155,8 +151,44 @@ function ecrireMarqueur(digest) {
   }
 }
 
+/**
+ * Vérifie que la liste `image:` de docker-compose.staging.yml correspond EXACTEMENT
+ * aux `servicesApplicatifs` de scripts/services.json (source unique). Une dérive
+ * (service ajouté au compose sans la source, ou l'inverse) faisait auparavant
+ * dériver silencieusement la sonde de digest — on échoue désormais explicitement.
+ */
+function verifierCoherenceCompose() {
+  const compose = readFileSync(
+    join(RACINE, 'docker-compose.staging.yml'),
+    'utf8',
+  );
+  const motif = new RegExp(`image:\\s*${REGISTRE}/([a-z0-9-]+):`, 'g');
+  const duCompose = new Set([...compose.matchAll(motif)].map((m) => m[1]));
+  const duJson = new Set(PROJETS_DEPLOYABLES);
+  const manquants = [...duJson].filter((s) => !duCompose.has(s));
+  const inconnus = [...duCompose].filter((s) => !duJson.has(s));
+  if (manquants.length > 0 || inconnus.length > 0) {
+    console.error(
+      '  ✗ Dérive de topologie entre scripts/services.json et docker-compose.staging.yml :',
+    );
+    for (const s of manquants)
+      console.error(
+        `      - "${s}" attendu (services.json) mais absent du compose staging`,
+      );
+    for (const s of inconnus)
+      console.error(
+        `      - "${s}" présent dans le compose staging mais absent de services.json`,
+      );
+    console.error(
+      '    → aligner les deux AVANT de poller (source unique : scripts/services.json).',
+    );
+    process.exit(1);
+  }
+}
+
 function main() {
   console.log('═══ Poller staging creche-planner (Phase 8) ═══');
+  verifierCoherenceCompose();
   console.log(
     `  images=${PROJETS_DEPLOYABLES.length} (${PROJETS_DEPLOYABLES.join(', ')}) @ :${IMAGE_TAG} · marqueur=${MARKER}`,
   );

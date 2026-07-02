@@ -1,0 +1,20 @@
+{
+  "commentaire": "Source UNIQUE de la topologie des services (audit 2026-07). Consommée par scripts/staging-poll.mjs (images deployables a sonder), .github/workflows/scripts/can-i-deploy.mjs (matrice de contrats Pact) et scripts/deploy.mjs (garde-fou DEPLOY_UP_SERVICES). docker-compose.staging.yml doit rester aligne sur servicesApplicatifs : staging-poll.mjs verifie la coherence a chaque tick et echoue explicitement en cas de derive. Les pollers et deploy.mjs tournent depuis un clone git du depot (prod ET staging, cf. docs/exploitation/24) : ce fichier est donc present dans leur contexte d'execution via git pull.",
+  "registre": "ghcr.io/edouardzemb/creche-planner",
+  "servicesApplicatifs": [
+    "api-gateway",
+    "svc-foyer",
+    "svc-notifications",
+    "svc-planification",
+    "svc-referentiel",
+    "svc-tarification",
+    "web"
+  ],
+  "providersPact": [
+    "svc-foyer",
+    "svc-referentiel",
+    "svc-planification",
+    "svc-tarification",
+    "svc-notifications"
+  ]
+}
