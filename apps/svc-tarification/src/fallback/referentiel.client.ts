@@ -6,7 +6,7 @@ import {
   executerOuRepli,
   fetchAvecTimeout,
   type OptionsResilience,
-} from './resilience.js';
+} from '@creche-planner/resilience';
 
 /** Grille ABCM applicable renvoyée par `svc-referentiel` (`GET /api/grilles/applicable`). */
 const grilleReponseSchema = z

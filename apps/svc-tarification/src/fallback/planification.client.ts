@@ -7,7 +7,7 @@ import {
   executerOuRepli,
   fetchAvecTimeout,
   type OptionsResilience,
-} from './resilience.js';
+} from '@creche-planner/resilience';
 
 /**
  * Compteur du **couplage runtime résiduel assumé** (DEC-05, ADR-0004) : nombre de

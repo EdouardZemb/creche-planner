@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { z } from 'zod';
-import { loadConfig } from '../config.js';
+import { z, type ZodType } from 'zod';
 import {
   CircuitBreaker,
-  executerResilient,
   fetchAvecTimeout,
   type OptionsResilience,
-} from './resilience.js';
+} from '@creche-planner/resilience';
+import { loadConfig } from '../config.js';
+import { appelResilient, type MethodeHttp } from './appel-resilient.js';
 
 /** Saisie de création d'un foyer (montants en euros saisis par l'usager). */
 export interface SaisieFoyer {
@@ -130,56 +130,65 @@ const OPTIONS: OptionsResilience = {
  * Client REST résilient vers `svc-foyer` (port 3002). Sur le chemin critique
  * du BFF : timeout + retry borné + circuit-breaker, mais **propagation** des
  * erreurs (`executerResilient`) afin que le contrôleur remonte un code propre.
+ * Le squelette commun par endpoint (fetch + garde `ok` + parse Zod) est
+ * factorisé dans `appelResilient` ; chaque méthode ne déclare plus que sa
+ * méthode HTTP, son chemin, son corps éventuel et le schéma de sa réponse.
  */
 @Injectable()
 export class FoyerClient {
   private readonly logger = new Logger(FoyerClient.name);
   private readonly breaker = new CircuitBreaker();
 
+  /** Appel résilient vers `svc-foyer`, `chemin` relatif à la base configurée. */
+  private appel<T>(config: {
+    methode: MethodeHttp;
+    chemin: string;
+    corps?: unknown;
+    schema: ZodType<T>;
+  }): Promise<T>;
+  private appel(config: {
+    methode: MethodeHttp;
+    chemin: string;
+    corps?: unknown;
+  }): Promise<void>;
+  private appel<T>(config: {
+    methode: MethodeHttp;
+    chemin: string;
+    corps?: unknown;
+    schema?: ZodType<T> | undefined;
+  }): Promise<T | void> {
+    const commun = {
+      service: 'svc-foyer',
+      logger: this.logger,
+      breaker: this.breaker,
+      options: OPTIONS,
+      methode: config.methode,
+      url: `${loadConfig().foyerUrl}${config.chemin}`,
+      corps: config.corps,
+    };
+    return config.schema === undefined
+      ? appelResilient(commun)
+      : appelResilient({ ...commun, schema: config.schema });
+  }
+
   /** POST `/api/foyers` — crée un foyer. */
   async creerFoyer(saisie: SaisieFoyer): Promise<FoyerVue> {
-    const base = loadConfig().foyerUrl;
-    const url = `${base}/api/foyers`;
-    this.logger.debug(`POST ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(saisie),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return foyerVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'POST',
+      chemin: '/api/foyers',
+      corps: saisie,
+      schema: foyerVueSchema,
+    });
   }
 
   /** PUT `/api/foyers/:id` — édite les scalaires d'un foyer. */
   async mettreAJour(id: string, saisie: SaisieFoyer): Promise<FoyerVue> {
-    const base = loadConfig().foyerUrl;
-    const url = `${base}/api/foyers/${encodeURIComponent(id)}`;
-    this.logger.debug(`PUT ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(saisie),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return foyerVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'PUT',
+      chemin: `/api/foyers/${encodeURIComponent(id)}`,
+      corps: saisie,
+      schema: foyerVueSchema,
+    });
   }
 
   /** POST `/api/foyers/:id/enfants` — rattache un enfant. */
@@ -187,25 +196,12 @@ export class FoyerClient {
     foyerId: string,
     saisie: SaisieEnfant,
   ): Promise<EnfantVue> {
-    const base = loadConfig().foyerUrl;
-    const url = `${base}/api/foyers/${encodeURIComponent(foyerId)}/enfants`;
-    this.logger.debug(`POST ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(saisie),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return enfantVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'POST',
+      chemin: `/api/foyers/${encodeURIComponent(foyerId)}/enfants`,
+      corps: saisie,
+      schema: enfantVueSchema,
+    });
   }
 
   /** PUT `/api/foyers/:id/enfants/:enfantId` — édite un enfant (prénom/date). */
@@ -214,27 +210,14 @@ export class FoyerClient {
     enfantId: string,
     saisie: SaisieEnfant,
   ): Promise<EnfantVue> {
-    const base = loadConfig().foyerUrl;
-    const url =
-      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
-      `/enfants/${encodeURIComponent(enfantId)}`;
-    this.logger.debug(`PUT ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(saisie),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return enfantVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'PUT',
+      chemin:
+        `/api/foyers/${encodeURIComponent(foyerId)}` +
+        `/enfants/${encodeURIComponent(enfantId)}`,
+      corps: saisie,
+      schema: enfantVueSchema,
+    });
   }
 
   /**
@@ -242,100 +225,48 @@ export class FoyerClient {
    * côté `svc-foyer`, réponse 204 sans corps).
    */
   async retirerEnfant(foyerId: string, enfantId: string): Promise<void> {
-    const base = loadConfig().foyerUrl;
-    const url =
-      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
-      `/enfants/${encodeURIComponent(enfantId)}`;
-    this.logger.debug(`DELETE ${url}`);
-    await executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'DELETE',
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    await this.appel({
+      methode: 'DELETE',
+      chemin:
+        `/api/foyers/${encodeURIComponent(foyerId)}` +
+        `/enfants/${encodeURIComponent(enfantId)}`,
+    });
   }
 
   /** GET `/api/foyers` — liste les foyers existants. */
   async lister(): Promise<FoyerVue[]> {
-    const base = loadConfig().foyerUrl;
-    const url = `${base}/api/foyers`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return z.array(foyerVueSchema).parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin: '/api/foyers',
+      schema: z.array(foyerVueSchema),
+    });
   }
 
   /** GET `/api/foyers/:id` — lit un foyer. */
   async foyer(foyerId: string): Promise<FoyerVue> {
-    const base = loadConfig().foyerUrl;
-    const url = `${base}/api/foyers/${encodeURIComponent(foyerId)}`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return foyerVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/foyers/${encodeURIComponent(foyerId)}`,
+      schema: foyerVueSchema,
+    });
   }
 
   /** GET `/api/foyers/:id/enfants` — liste les enfants du foyer. */
   async enfants(foyerId: string): Promise<EnfantVue[]> {
-    const base = loadConfig().foyerUrl;
-    const url = `${base}/api/foyers/${encodeURIComponent(foyerId)}/enfants`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return z.array(enfantVueSchema).parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/foyers/${encodeURIComponent(foyerId)}/enfants`,
+      schema: z.array(enfantVueSchema),
+    });
   }
 
   /** GET `/api/foyers/:id/parents` — liste les parents actifs du foyer. */
   async parents(foyerId: string): Promise<ParentVue[]> {
-    const base = loadConfig().foyerUrl;
-    const url = `${base}/api/foyers/${encodeURIComponent(foyerId)}/parents`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return z.array(parentVueSchema).parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/foyers/${encodeURIComponent(foyerId)}/parents`,
+      schema: z.array(parentVueSchema),
+    });
   }
 
   /** POST `/api/foyers/:id/parents` — rattache un parent. */
@@ -343,25 +274,12 @@ export class FoyerClient {
     foyerId: string,
     saisie: SaisieParent,
   ): Promise<ParentVue> {
-    const base = loadConfig().foyerUrl;
-    const url = `${base}/api/foyers/${encodeURIComponent(foyerId)}/parents`;
-    this.logger.debug(`POST ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(saisie),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return parentVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'POST',
+      chemin: `/api/foyers/${encodeURIComponent(foyerId)}/parents`,
+      corps: saisie,
+      schema: parentVueSchema,
+    });
   }
 
   /** PUT `/api/foyers/:id/parents/:parentId` — édite un parent (champs fournis). */
@@ -370,27 +288,14 @@ export class FoyerClient {
     parentId: string,
     saisie: ModifierParentSaisie,
   ): Promise<ParentVue> {
-    const base = loadConfig().foyerUrl;
-    const url =
-      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
-      `/parents/${encodeURIComponent(parentId)}`;
-    this.logger.debug(`PUT ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(saisie),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return parentVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'PUT',
+      chemin:
+        `/api/foyers/${encodeURIComponent(foyerId)}` +
+        `/parents/${encodeURIComponent(parentId)}`,
+      corps: saisie,
+      schema: parentVueSchema,
+    });
   }
 
   /**
@@ -398,24 +303,12 @@ export class FoyerClient {
    * côté `svc-foyer`, réponse 204 sans corps).
    */
   async retirerParent(foyerId: string, parentId: string): Promise<void> {
-    const base = loadConfig().foyerUrl;
-    const url =
-      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
-      `/parents/${encodeURIComponent(parentId)}`;
-    this.logger.debug(`DELETE ${url}`);
-    await executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'DELETE',
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    await this.appel({
+      methode: 'DELETE',
+      chemin:
+        `/api/foyers/${encodeURIComponent(foyerId)}` +
+        `/parents/${encodeURIComponent(parentId)}`,
+    });
   }
 
   /**
@@ -424,21 +317,11 @@ export class FoyerClient {
    * l'autorisation par foyer (préparé pour le guard d'identité B1, PR5).
    */
   async foyersParEmail(email: string): Promise<string[]> {
-    const base = loadConfig().foyerUrl;
-    const url = `${base}/api/foyers?parentEmail=${encodeURIComponent(email)}`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return z.array(z.string()).parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/foyers?parentEmail=${encodeURIComponent(email)}`,
+      schema: z.array(z.string()),
+    });
   }
 
   /**
@@ -449,23 +332,13 @@ export class FoyerClient {
     foyerId: string,
     parentId: string,
   ): Promise<PreferenceVue[]> {
-    const base = loadConfig().foyerUrl;
-    const url =
-      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
-      `/parents/${encodeURIComponent(parentId)}/preferences`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return z.array(preferenceVueSchema).parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin:
+        `/api/foyers/${encodeURIComponent(foyerId)}` +
+        `/parents/${encodeURIComponent(parentId)}/preferences`,
+      schema: z.array(preferenceVueSchema),
+    });
   }
 
   /**
@@ -478,27 +351,14 @@ export class FoyerClient {
     parentId: string,
     saisie: MajPreferencesSaisie,
   ): Promise<PreferenceVue[]> {
-    const base = loadConfig().foyerUrl;
-    const url =
-      `${base}/api/foyers/${encodeURIComponent(foyerId)}` +
-      `/parents/${encodeURIComponent(parentId)}/preferences`;
-    this.logger.debug(`PUT ${url}`);
-    return executerResilient(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(saisie),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return z.array(preferenceVueSchema).parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'PUT',
+      chemin:
+        `/api/foyers/${encodeURIComponent(foyerId)}` +
+        `/parents/${encodeURIComponent(parentId)}/preferences`,
+      corps: saisie,
+      schema: z.array(preferenceVueSchema),
+    });
   }
 
   /**
@@ -519,7 +379,7 @@ export class FoyerClient {
       body: JSON.stringify({ token }),
     });
     if (!reponse.ok) {
-      throw new Error('HTTP ' + reponse.status);
+      throw new Error('HTTP ' + String(reponse.status));
     }
   }
 }

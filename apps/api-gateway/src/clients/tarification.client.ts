@@ -6,7 +6,7 @@ import {
   executerResilient,
   fetchAvecTimeout,
   type OptionsResilience,
-} from './resilience.js';
+} from '@creche-planner/resilience';
 
 /** Ligne de coût (débit/crédit) en centimes. */
 const ligneVueSchema = z.object({

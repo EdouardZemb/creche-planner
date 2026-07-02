@@ -6,7 +6,7 @@ import {
   executerResilient,
   fetchAvecTimeout,
   type OptionsResilience,
-} from './resilience.js';
+} from '@creche-planner/resilience';
 
 /**
  * Saisie de création d'un contrat. Le corps est une union discriminée par
