@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
 import {
   creerContratSchema,
   ecrirePlanningSchema,
   modifierContratSchema,
   rattacherEtablissementSchema,
   ISO_MOIS,
+  ZodValidationPipe,
 } from './planification.dto.js';
 
 /**
@@ -473,4 +475,29 @@ describe('ISO_MOIS', () => {
       expect(ISO_MOIS.test(mois)).toBe(true);
     },
   );
+});
+
+describe('ZodValidationPipe', () => {
+  const pipe = new ZodValidationPipe(rattacherEtablissementSchema);
+
+  it('renvoie la valeur parsée quand le corps est valide', () => {
+    expect(pipe.transform({ etablissementId: ETAB_ID })).toEqual({
+      etablissementId: ETAB_ID,
+    });
+  });
+
+  it('lève BadRequestException (champ + message) quand le corps est invalide', () => {
+    expect(() => pipe.transform({ etablissementId: 'pas-un-uuid' })).toThrow(
+      BadRequestException,
+    );
+    try {
+      pipe.transform({ etablissementId: 'pas-un-uuid' });
+    } catch (erreur) {
+      const reponse = (erreur as BadRequestException).getResponse() as {
+        message: { champ: string; message: string }[];
+      };
+      expect(reponse.message[0]?.champ).toBe('etablissementId');
+      expect(reponse.message[0]?.message).toBeTruthy();
+    }
+  });
 });

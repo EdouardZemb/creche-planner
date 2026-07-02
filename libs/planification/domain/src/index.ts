@@ -35,6 +35,23 @@ export type {
   SaisieGenerationAlsh,
 } from './lib/inscription-abcm.js';
 
+// Génération depuis la forme brute persistée (JSON contrat + saisie mensuelle)
+export {
+  dureeDePlage,
+  genererPrestationMois,
+  semaineTypeDepuisJson,
+} from './lib/generation-prestations.js';
+export type {
+  AbsenceCrecheJson,
+  ContratPourGeneration,
+  ExceptionJourJson,
+  JourAlshJson,
+  JourSupplementaireJson,
+  PlageHeuresJson,
+  SaisiePlanningJson,
+  SemaineTypeJson,
+} from './lib/generation-prestations.js';
+
 // « Prestations du mois » (forme exposée à l'app et à la tarification)
 export type {
   PlanningMensuel,
