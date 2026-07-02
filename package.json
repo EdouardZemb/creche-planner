@@ -30,7 +30,7 @@
     "@nx/vite": "22.7.5",
     "@nx/vitest": "22.7.5",
     "@nx/web": "22.7.5",
-    "@nx/webpack": "22.7.5",
+    "@nx/webpack": "23.0.1",
     "@stryker-mutator/core": "9.6.1",
     "@stryker-mutator/vitest-runner": "9.6.1",
     "@swc-node/register": "1.11.1",
