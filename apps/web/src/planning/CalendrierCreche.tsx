@@ -35,82 +35,17 @@ import {
   ARRIVEE_DEFAUT,
   DEPART_DEFAUT,
   versHhmm,
-  minutesDeHhmm,
   plageDepuisHeures,
   plageValide,
 } from './heures';
-
-// Type d'ajustement saisi : décrit la PRÉSENCE de l'enfant. La fenêtre d'absence
-// stockée (durée = fin − début) en est dérivée — l'utilisateur ne saisit plus
-// directement la fenêtre, ce qui levait l'ambiguïté « départ à 16h » → 8h déduites.
-type TypeAbsence =
-  | 'journee'
-  | 'departAvance'
-  | 'arriveeRetardee'
-  | 'personnalise';
-
-// Heures saisies : `heure` pour les types à un seul champ (départ avancé /
-// arrivée retardée), `arrivee`/`depart` pour la fenêtre libre « personnalisé ».
-interface SaisieHeures {
-  arrivee: string;
-  depart: string;
-  heure: string;
-}
-
-// Options (et ordre) du sélecteur de type d'absence, partagées modale ↔ lot.
-const TYPES_ABSENCE: readonly { valeur: TypeAbsence; libelle: string }[] = [
-  { valeur: 'journee', libelle: 'Absence toute la journée' },
-  { valeur: 'departAvance', libelle: 'Départ avancé' },
-  { valeur: 'arriveeRetardee', libelle: 'Arrivée retardée' },
-  { valeur: 'personnalise', libelle: 'Absence personnalisée' },
-];
-
-/**
- * Dérive la FENÊTRE D'ABSENCE (`PlageHoraire`, durée = fin − début) à stocker,
- * depuis le type d'ajustement (qui décrit la présence) et la plage de garde du
- * jour (`garde`, A = arrivée / D = départ). `null` si la saisie est incohérente
- * (heure hors garde, plage personnalisée invalide, jour non gardé) → à ignorer.
- *
- * - `journee` → toute la garde [A, D].
- * - `departAvance` (présent jusqu'à `h`) → [h, D], avec A < h < D.
- * - `arriveeRetardee` (présent à partir de `h`) → [A, h], avec A < h < D.
- * - `personnalise` → fenêtre libre [arrivee, depart], si cohérente.
- */
-function fenetreAbsence(
-  type: TypeAbsence,
-  saisie: SaisieHeures,
-  garde: { arrivee: string; depart: string } | null,
-): PlageHoraire | null {
-  if (type === 'personnalise') {
-    return plageValide(saisie.arrivee, saisie.depart)
-      ? plageDepuisHeures(saisie.arrivee, saisie.depart)
-      : null;
-  }
-  if (garde === null) return null;
-  if (type === 'journee') {
-    return plageDepuisHeures(garde.arrivee, garde.depart);
-  }
-  const a = minutesDeHhmm(garde.arrivee);
-  const d = minutesDeHhmm(garde.depart);
-  const h = minutesDeHhmm(saisie.heure);
-  if (saisie.heure === '' || h <= a || h >= d) return null;
-  return type === 'departAvance'
-    ? plageDepuisHeures(saisie.heure, garde.depart)
-    : plageDepuisHeures(garde.arrivee, saisie.heure);
-}
-
-/**
- * Validité d'une saisie INDÉPENDAMMENT du jour (pour activer un bouton de lot,
- * où chaque jour porte sa propre garde). La cohérence avec la garde de chaque
- * jour est vérifiée à l'application, via `fenetreAbsence`.
- */
-function saisieAbsenceValide(type: TypeAbsence, saisie: SaisieHeures): boolean {
-  if (type === 'journee') return true;
-  if (type === 'personnalise') {
-    return plageValide(saisie.arrivee, saisie.depart);
-  }
-  return saisie.heure !== '';
-}
+import {
+  TYPES_ABSENCE,
+  fenetreAbsence,
+  plageGardeDuJour,
+  saisieAbsenceValide,
+  typeAbsenceDepuisFenetre,
+  type TypeAbsence,
+} from './saisieAbsence';
 
 export interface CalendrierCrecheProps {
   contrat: ContratLocal;
@@ -310,16 +245,7 @@ export function CalendrierCreche({
   // Plage de garde du contrat pour un jour (arrivée du 1er créneau → départ du
   // dernier), pour pré-remplir une absence pleine journée. `null` si non gardé.
   const plageContratJour = useCallback(
-    (iso: string): { arrivee: string; depart: string } | null => {
-      const plages = semaineType[jourSemaineDeIso(iso)] ?? [];
-      const premier = plages[0];
-      const dernier = plages[plages.length - 1];
-      if (!premier || !dernier) return null;
-      return {
-        arrivee: versHhmm(premier.debutHeures, premier.debutMinutes),
-        depart: versHhmm(dernier.finHeures, dernier.finMinutes),
-      };
-    },
+    (iso: string) => plageGardeDuJour(semaineType, iso),
     [semaineType],
   );
 
@@ -473,24 +399,14 @@ export function CalendrierCreche({
           // Reconstruit le type d'ajustement depuis la fenêtre stockée (la
           // fenêtre d'absence redevient une présence saisie) pour un aller-retour
           // fidèle dans la modale.
-          const classe = classerAbsence(existing, garde);
-          const debut = versHhmm(existing.debutHeures, existing.debutMinutes);
-          const fin = versHhmm(existing.finHeures, existing.finMinutes);
-          let typeAbsence: TypeAbsence = 'personnalise';
-          let heure = '';
-          if (classe.statut === 'absent') {
-            typeAbsence = 'journee';
-          } else if (classe.libelle === 'Départ avancé') {
-            typeAbsence = 'departAvance';
-            heure = debut;
-          } else if (classe.libelle === 'Arrivée retardée') {
-            typeAbsence = 'arriveeRetardee';
-            heure = fin;
-          }
+          const { typeAbsence, heure } = typeAbsenceDepuisFenetre(
+            existing,
+            garde,
+          );
           setDialogKind('absence');
           setDialogForm({
-            arrivee: debut,
-            depart: fin,
+            arrivee: versHhmm(existing.debutHeures, existing.debutMinutes),
+            depart: versHhmm(existing.finHeures, existing.finMinutes),
             heure,
             typeAbsence,
             preavisJours: existing.preavisJours,
