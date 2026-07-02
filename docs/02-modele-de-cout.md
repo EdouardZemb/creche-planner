@@ -192,6 +192,13 @@ rattachement     = fin de période (mai 2027 pour 2026/2027)
 
 ## 6. Cas de test de référence (oracle)
 
+> **Vérification vivante** : `scripts/seed-demo.mjs --verify` rejoue une partie de
+> ces cas contre la pile réelle. Les montants attendus sont externalisés dans
+> l'oracle versionné [`scripts/seed-oracle.json`](../scripts/seed-oracle.json),
+> où chaque cible référence le cas CT-xx de cette section qui la justifie
+> (CT-02 + CT-03 = CT-04 pour la crèche de mars 2026). Si un barème ou une
+> formule change ici, mettre à jour l'oracle dans le même diff.
+
 ### PSU
 
 - **CT-01** Tarif horaire : 6 716,92 × 0,0516 % = **3,47 €/h**.
