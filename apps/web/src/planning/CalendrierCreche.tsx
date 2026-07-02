@@ -1,10 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import FullCalendar from '@fullcalendar/react';
-import dayGridPlugin from '@fullcalendar/daygrid';
-import interactionPlugin from '@fullcalendar/interaction';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DateClickArg } from '@fullcalendar/interaction';
 import type { EventInput } from '@fullcalendar/core';
-import { api } from '../api/client';
 import type {
   ContratLocal,
   AbsenceCreche,
@@ -15,16 +11,17 @@ import type {
 } from '../types/bff';
 import { joursDuMois, jourSemaineDeIso, formaterDateFr } from '../utils/dates';
 import { couleurDuMode } from '../utils/couleurs';
-import { messageErreur } from '../utils/erreurs';
 import { Modale } from '../ui/Modale';
-import { ModaleConfirmation } from '../ui/ModaleConfirmation';
-import { StatutSauvegarde } from '../ui/StatutSauvegarde';
 import { usePersistanceAbsences } from '../hooks/usePersistanceAbsences';
-import { useAnnonce } from '../hooks/useAnnonce';
-import { usePlanning } from './usePlanning';
-import { useSaisieServeur } from './useSaisieServeur';
 import { LegendePlanning } from './LegendePlanning';
-import { ChoixPortee, type Portee } from './ChoixPortee';
+import { ChoixPortee } from './ChoixPortee';
+import { BarreStatutCalendrier } from './BarreStatutCalendrier';
+import { CalendrierMois } from './CalendrierMois';
+import { ModaleContratDurable } from './ModaleContratDurable';
+import {
+  socleContratDurable,
+  useCalendrierContrat,
+} from './useCalendrierContrat';
 import { classerAbsence } from './etatJourGarde';
 import {
   couleurAjoute,
@@ -89,24 +86,12 @@ export function CalendrierCreche({
   onEnregistre,
   onContratModifie,
 }: CalendrierCrecheProps) {
-  const { etat, erreur, ecrire } = usePlanning(onEnregistre);
-
-  // AQ-05 : région live annonçant chaque mutation du calendrier aux lecteurs
-  // d'écran (la sauvegarde est différée de 800 ms, le retour visuel ne suffit pas).
-  const { annoncer, regionLiveProps } = useAnnonce();
-
   // Persistance locale par (contrat, mois) : brouillon entre deux navigations.
   // La source de vérité reste le serveur (réhydraté ci-dessous).
   const persistAbsences =
     usePersistanceAbsences<EtatAbsence>('creche:absences');
   const persistJoursSup =
     usePersistanceAbsences<EtatJourSup>('creche:joursSup');
-
-  const { saisie: saisieServeur, chargee } = useSaisieServeur(
-    contrat.id,
-    mois,
-    simule,
-  );
 
   const [complementMinutes, setComplementMinutes] = useState<
     number | undefined
@@ -117,6 +102,73 @@ export function CalendrierCreche({
   const [joursSup, setJoursSup] = useState<EtatJourSup[]>(() =>
     persistJoursSup.lire(contrat.id, mois),
   );
+  const [selection, setSelection] = useState<Set<string>>(() => new Set());
+
+  const majAbsences = useCallback(
+    (nouvelles: EtatAbsence[]) => {
+      setAbsences(nouvelles);
+      persistAbsences.ecrire(contrat.id, mois, nouvelles);
+    },
+    [persistAbsences.ecrire, contrat.id, mois],
+  );
+
+  const majJoursSup = useCallback(
+    (nouveaux: EtatJourSup[]) => {
+      setJoursSup(nouveaux);
+      persistJoursSup.ecrire(contrat.id, mois, nouveaux);
+    },
+    [persistJoursSup.ecrire, contrat.id, mois],
+  );
+
+  // Remplacement complet du contrat (PUT) pour la portée « tous les X » : la
+  // semaine type modifiée est le payload, le reste du contrat est reconduit.
+  const construireCorpsDurable = useCallback(
+    (
+      semaineTypeModifiee: ContratLocal['semaineType'],
+    ): CreerContratCreche & LienEtablissementSaisie => ({
+      mode: 'CRECHE_PSU',
+      heuresAnnuellesContractualisees:
+        contrat.heuresAnnuellesContractualisees ?? 0,
+      nbMensualites: contrat.nbMensualites ?? 7,
+      semaineType: semaineTypeModifiee ?? {},
+      ...socleContratDurable(contrat),
+    }),
+    [contrat],
+  );
+
+  const reinitialiserSaisie = useCallback(() => {
+    majAbsences([]);
+    majJoursSup([]);
+    setComplementMinutes(undefined);
+  }, [majAbsences, majJoursSup]);
+
+  // Enveloppe commune : écriture debouncée + statut, réhydratation serveur,
+  // annonces (AQ-05), portée et flux de modification durable du contrat.
+  const {
+    ecrire,
+    erreur,
+    etatStatut,
+    saisieServeur,
+    chargee,
+    annoncer,
+    regionLiveProps,
+    estDansPeriode,
+    portee,
+    setPortee,
+    confirmationDurable,
+    demanderConfirmationDurable,
+    confirmerDurable,
+    annulerDurable,
+    erreurDurable,
+  } = useCalendrierContrat<ContratLocal['semaineType']>({
+    contrat,
+    mois,
+    simule,
+    onEnregistre,
+    onContratModifie,
+    construireCorpsDurable,
+    reinitialiserSaisie,
+  });
 
   useEffect(() => {
     setAbsences(persistAbsences.lire(contrat.id, mois));
@@ -167,22 +219,6 @@ export function CalendrierCreche({
     persistJoursSup.ecrire,
   ]);
 
-  const majAbsences = useCallback(
-    (nouvelles: EtatAbsence[]) => {
-      setAbsences(nouvelles);
-      persistAbsences.ecrire(contrat.id, mois, nouvelles);
-    },
-    [persistAbsences.ecrire, contrat.id, mois],
-  );
-
-  const majJoursSup = useCallback(
-    (nouveaux: EtatJourSup[]) => {
-      setJoursSup(nouveaux);
-      persistJoursSup.ecrire(contrat.id, mois, nouveaux);
-    },
-    [persistJoursSup.ecrire, contrat.id, mois],
-  );
-
   // Modale jour : « absence » (jour gardé) ou « ajout » (jour non gardé).
   const [dialogDate, setDialogDate] = useState<string | null>(null);
   const [dialogKind, setDialogKind] = useState<'absence' | 'ajout'>('absence');
@@ -203,7 +239,6 @@ export function CalendrierCreche({
     preavisJours: 0,
     certificatMaladie: false,
   });
-  const [portee, setPortee] = useState<Portee>('mois');
 
   // Saisie en lot d'absences (accessible clavier).
   const [lotForm, setLotForm] = useState<{
@@ -221,26 +256,8 @@ export function CalendrierCreche({
     preavisJours: 0,
     certificatMaladie: false,
   });
-  const [selection, setSelection] = useState<Set<string>>(() => new Set());
-
-  // Confirmation d'une modification durable du contrat.
-  // Erreur d'une modification durable (PUT contrat) : affichée sans détruire
-  // l'état local. L'opération est atomique côté service (transaction Drizzle) et
-  // un 429 est rejeté par la gateway avant tout effet → le contrat reste intact.
-  const [erreurDurable, setErreurDurable] = useState<string | null>(null);
-  const [confirmationDurable, setConfirmationDurable] = useState<{
-    semaineType: ContratLocal['semaineType'];
-    message: string;
-  } | null>(null);
 
   const semaineType = contrat.semaineType ?? {};
-
-  const estDansPeriode = useCallback(
-    (iso: string): boolean =>
-      iso >= contrat.valideDu &&
-      (contrat.valideAu === null || iso <= contrat.valideAu),
-    [contrat.valideDu, contrat.valideAu],
-  );
 
   // Plage de garde du contrat pour un jour (arrivée du 1er créneau → départ du
   // dernier), pour pré-remplir une absence pleine journée. `null` si non gardé.
@@ -451,48 +468,6 @@ export function CalendrierCreche({
     [ouvrirSaisie],
   );
 
-  // Applique la modification durable confirmée (modifie le contrat).
-  const appliquerDurable = useCallback(
-    (semaineTypeModifiee: ContratLocal['semaineType']) => {
-      // Remplacement complet du contrat (PUT) : le lien établissement est
-      // OBLIGATOIRE depuis P5 (`etablissement_id` NOT NULL) → on RECONDUIT celui
-      // du contrat courant, sinon le service rejette en 400.
-      const lien: LienEtablissementSaisie = contrat.etablissementId
-        ? { etablissementId: contrat.etablissementId }
-        : {};
-      const corps: CreerContratCreche & LienEtablissementSaisie = {
-        mode: 'CRECHE_PSU',
-        foyerId: contrat.foyerId,
-        enfant: contrat.enfant,
-        valideDu: contrat.valideDu,
-        valideAu: contrat.valideAu,
-        heuresAnnuellesContractualisees:
-          contrat.heuresAnnuellesContractualisees ?? 0,
-        nbMensualites: contrat.nbMensualites ?? 7,
-        semaineType: semaineTypeModifiee ?? {},
-        ...lien,
-      };
-      setErreurDurable(null);
-      api
-        .modifierContrat(contrat.id, corps)
-        .then(() => {
-          setErreurDurable(null);
-          majAbsences([]);
-          majJoursSup([]);
-          setComplementMinutes(undefined);
-          annoncer('Contrat modifié, saisies du mois réinitialisées');
-          onContratModifie?.();
-        })
-        .catch((e: unknown) => {
-          // Échec (429, réseau, validation…) : le contrat n'a PAS été modifié
-          // (PUT atomique + court-circuit gateway). On signale l'erreur sans
-          // toucher à l'état local — l'utilisateur peut réessayer.
-          setErreurDurable(messageErreur(e));
-        });
-    },
-    [contrat, majAbsences, majJoursSup, onContratModifie, annoncer],
-  );
-
   const confirmerDialog = useCallback(() => {
     if (dialogDate === null) return;
     const date = dialogDate;
@@ -505,10 +480,10 @@ export function CalendrierCreche({
       if (portee === 'tous') {
         const nouvelleSemaine = { ...semaineType };
         nouvelleSemaine[jourSemaine] = [plage];
-        setConfirmationDurable({
-          semaineType: nouvelleSemaine,
-          message: `Ajouter ce jour de garde tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
-        });
+        demanderConfirmationDurable(
+          nouvelleSemaine,
+          `Ajouter ce jour de garde tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
+        );
         setDialogDate(null);
         return;
       }
@@ -529,10 +504,10 @@ export function CalendrierCreche({
     if (portee === 'tous') {
       const nouvelleSemaine = { ...semaineType };
       nouvelleSemaine[jourSemaine] = [];
-      setConfirmationDurable({
-        semaineType: nouvelleSemaine,
-        message: `Retirer ce jour de garde tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
-      });
+      demanderConfirmationDurable(
+        nouvelleSemaine,
+        `Retirer ce jour de garde tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
+      );
       setDialogDate(null);
       return;
     }
@@ -572,6 +547,7 @@ export function CalendrierCreche({
     majJoursSup,
     annoncer,
     plageContratJour,
+    demanderConfirmationDurable,
   ]);
 
   const supprimerDialog = useCallback(() => {
@@ -687,11 +663,6 @@ export function CalendrierCreche({
     [absences, joursSup, envoyer],
   );
 
-  const etatStatut = etat === 'enregistre' || etat === 'erreur' ? etat : 'idle';
-  const initialDate = `${mois}-01`;
-  const calKey = useRef(0);
-  calKey.current = parseInt(mois.replace('-', ''), 10);
-
   // Validité de la saisie de la modale : pour une absence, la fenêtre dérivée
   // du type doit être cohérente avec la garde du jour ; pour un ajout, la plage
   // de présence saisie doit être cohérente.
@@ -706,14 +677,22 @@ export function CalendrierCreche({
     <div>
       {/* AQ-05 : annonce des mutations du calendrier aux lecteurs d'écran. */}
       <p {...regionLiveProps} className="sr-only" />
-      <div
-        style={{
-          marginBottom: '0.75rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem',
-          flexWrap: 'wrap',
-        }}
+      <BarreStatutCalendrier
+        etatStatut={etatStatut}
+        erreur={erreur}
+        erreurDurable={erreurDurable}
+        apres={
+          (persistAbsences.indisponible || persistJoursSup.indisponible) && (
+            <span
+              role="status"
+              className="muted"
+              style={{ fontSize: '0.82rem' }}
+            >
+              Mémorisation locale indisponible : la saisie en cours sera perdue
+              si vous changez de mois avant la sauvegarde.
+            </span>
+          )
+        }
       >
         <label
           style={{
@@ -737,28 +716,7 @@ export function CalendrierCreche({
             }}
           />
         </label>
-        <StatutSauvegarde etat={etatStatut} />
-        {etat === 'erreur' && erreur && (
-          <span className="muted" style={{ fontSize: '0.82rem' }}>
-            {erreur}
-          </span>
-        )}
-        {erreurDurable && (
-          <span
-            role="alert"
-            className="muted"
-            style={{ fontSize: '0.82rem', color: 'var(--erreur, #b00020)' }}
-          >
-            {erreurDurable}
-          </span>
-        )}
-        {(persistAbsences.indisponible || persistJoursSup.indisponible) && (
-          <span role="status" className="muted" style={{ fontSize: '0.82rem' }}>
-            Mémorisation locale indisponible : la saisie en cours sera perdue si
-            vous changez de mois avant la sauvegarde.
-          </span>
-        )}
-      </div>
+      </BarreStatutCalendrier>
 
       <LegendePlanning
         couleurGarde={couleurGarde}
@@ -774,16 +732,10 @@ export function CalendrierCreche({
         autre jour pour ajouter un jour de garde. Liste clavier ci-dessous.
       </div>
 
-      <FullCalendar
-        key={calKey.current}
-        plugins={[dayGridPlugin, interactionPlugin]}
-        initialView="dayGridMonth"
-        locale="fr"
-        initialDate={initialDate}
-        headerToolbar={false}
-        height="auto"
+      <CalendrierMois
+        mois={mois}
         events={events}
-        dateClick={handleDateClick}
+        onDateClick={handleDateClick}
       />
 
       {/* Saisie en lot d'absences (accessible clavier). */}
@@ -1252,21 +1204,10 @@ export function CalendrierCreche({
       )}
 
       {/* Confirmation d'une modification durable du contrat. */}
-      <ModaleConfirmation
-        ouvert={confirmationDurable !== null}
-        titre="Modifier le contrat ?"
-        message={confirmationDurable?.message ?? ''}
-        libelleConfirmer="Modifier le contrat"
-        destructif
-        onConfirmer={() => {
-          if (confirmationDurable) {
-            appliquerDurable(confirmationDurable.semaineType);
-          }
-          setConfirmationDurable(null);
-        }}
-        onAnnuler={() => {
-          setConfirmationDurable(null);
-        }}
+      <ModaleContratDurable
+        confirmation={confirmationDurable}
+        onConfirmer={confirmerDurable}
+        onAnnuler={annulerDurable}
       />
     </div>
   );
