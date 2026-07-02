@@ -1,10 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import FullCalendar from '@fullcalendar/react';
-import dayGridPlugin from '@fullcalendar/daygrid';
-import interactionPlugin from '@fullcalendar/interaction';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DateClickArg } from '@fullcalendar/interaction';
 import type { EventInput } from '@fullcalendar/core';
-import { api } from '../api/client';
 import type {
   ContratLocal,
   JourAlsh,
@@ -15,16 +11,17 @@ import type {
 } from '../types/bff';
 import { joursDuMois, jourSemaineDeIso, formaterDateFr } from '../utils/dates';
 import { couleurDuMode } from '../utils/couleurs';
-import { messageErreur } from '../utils/erreurs';
 import { Modale } from '../ui/Modale';
-import { ModaleConfirmation } from '../ui/ModaleConfirmation';
-import { StatutSauvegarde } from '../ui/StatutSauvegarde';
-import { useAnnonce } from '../hooks/useAnnonce';
-import { usePlanning } from './usePlanning';
-import { useSaisieServeur } from './useSaisieServeur';
 import { LegendePlanning } from './LegendePlanning';
-import { ChoixPortee, type Portee } from './ChoixPortee';
+import { ChoixPortee } from './ChoixPortee';
 import { couleurAjoute, couleurRetire } from './couleursPlanning';
+import { BarreStatutCalendrier } from './BarreStatutCalendrier';
+import { CalendrierMois } from './CalendrierMois';
+import { ModaleContratDurable } from './ModaleContratDurable';
+import {
+  socleContratDurable,
+  useCalendrierContrat,
+} from './useCalendrierContrat';
 
 export interface CalendrierAbcmProps {
   contrat: ContratLocal;
@@ -56,23 +53,59 @@ export function CalendrierAbcm({
   onEnregistre,
   onContratModifie,
 }: CalendrierAbcmProps) {
-  const { etat, erreur, ecrire } = usePlanning(onEnregistre);
   const mode = contrat.mode as 'CANTINE' | 'PERISCOLAIRE' | 'ALSH';
-
-  // AQ-05 : région live annonçant chaque mutation du calendrier aux lecteurs
-  // d'écran (la sauvegarde est différée de 800 ms, le retour visuel ne suffit pas).
-  const { annoncer, regionLiveProps } = useAnnonce();
-
-  const { saisie: saisieServeur, chargee } = useSaisieServeur(
-    contrat.id,
-    mois,
-    simule,
-  );
 
   const [pai, setPai] = useState<boolean | undefined>(undefined);
   const [joursAlsh, setJoursAlsh] = useState<EtatAlsh[]>([]);
   // Ajustements ponctuels par date (CANTINE / PERISCOLAIRE).
   const [exceptions, setExceptions] = useState<ExceptionAbcm[]>([]);
+
+  // Remplacement complet du contrat (PUT) pour la portée « tous les X » : la
+  // semaine ABCM modifiée est le payload, le reste du contrat est reconduit.
+  const construireCorpsDurable = useCallback(
+    (
+      semaineModifiee: ContratLocal['semaineAbcm'],
+    ): CreerContratAbcm & LienEtablissementSaisie => ({
+      mode,
+      semaineAbcm: semaineModifiee ?? {},
+      ...socleContratDurable(contrat),
+    }),
+    [mode, contrat],
+  );
+
+  const reinitialiserSaisie = useCallback(() => {
+    setExceptions([]);
+    setPai(undefined);
+    setJoursAlsh([]);
+  }, []);
+
+  // Enveloppe commune : écriture debouncée + statut, réhydratation serveur,
+  // annonces (AQ-05), portée et flux de modification durable du contrat.
+  const {
+    ecrire,
+    erreur,
+    etatStatut,
+    saisieServeur,
+    chargee,
+    annoncer,
+    regionLiveProps,
+    estDansPeriode,
+    portee,
+    setPortee,
+    confirmationDurable,
+    demanderConfirmationDurable,
+    confirmerDurable,
+    annulerDurable,
+    erreurDurable,
+  } = useCalendrierContrat<ContratLocal['semaineAbcm']>({
+    contrat,
+    mois,
+    simule,
+    onEnregistre,
+    onContratModifie,
+    construireCorpsDurable,
+    reinitialiserSaisie,
+  });
 
   // Réhydratation depuis le serveur (source de vérité, durabilité multi-poste).
   useEffect(() => {
@@ -110,26 +143,8 @@ export function CalendrierAbcm({
     matin: boolean;
     soir: boolean;
   }>({ cantine: false, matin: false, soir: false });
-  const [portee, setPortee] = useState<Portee>('mois');
-
-  // Confirmation d'une modification durable du contrat.
-  const [confirmationDurable, setConfirmationDurable] = useState<{
-    semaineAbcm: ContratLocal['semaineAbcm'];
-    message: string;
-  } | null>(null);
-  // Erreur d'une modification durable (PUT contrat) : affichée sans détruire
-  // l'état local. L'opération est atomique côté service et un 429 est rejeté
-  // par la gateway avant tout effet → le contrat reste intact.
-  const [erreurDurable, setErreurDurable] = useState<string | null>(null);
 
   const semaineAbcm = contrat.semaineAbcm ?? {};
-
-  const estDansPeriode = useCallback(
-    (iso: string): boolean =>
-      iso >= contrat.valideDu &&
-      (contrat.valideAu === null || iso <= contrat.valideAu),
-    [contrat.valideDu, contrat.valideAu],
-  );
 
   const inscriptionsTemplate = useCallback(
     (iso: string): InscriptionsJour => semaineAbcm[jourSemaineDeIso(iso)] ?? {},
@@ -317,44 +332,6 @@ export function CalendrierAbcm({
     [mode, inscriptionsTemplate],
   );
 
-  const appliquerDurableAbcm = useCallback(
-    (semaineModifiee: ContratLocal['semaineAbcm']) => {
-      // Remplacement complet du contrat (PUT) : le lien établissement est
-      // OBLIGATOIRE depuis P5 (`etablissement_id` NOT NULL) → on RECONDUIT celui
-      // du contrat courant, sinon le service rejette en 400.
-      const lien: LienEtablissementSaisie = contrat.etablissementId
-        ? { etablissementId: contrat.etablissementId }
-        : {};
-      const corps: CreerContratAbcm & LienEtablissementSaisie = {
-        mode,
-        foyerId: contrat.foyerId,
-        enfant: contrat.enfant,
-        valideDu: contrat.valideDu,
-        valideAu: contrat.valideAu,
-        semaineAbcm: semaineModifiee ?? {},
-        ...lien,
-      };
-      setErreurDurable(null);
-      api
-        .modifierContrat(contrat.id, corps)
-        .then(() => {
-          setErreurDurable(null);
-          setExceptions([]);
-          setPai(undefined);
-          setJoursAlsh([]);
-          annoncer('Contrat modifié, saisies du mois réinitialisées');
-          onContratModifie?.();
-        })
-        .catch((e: unknown) => {
-          // Échec (429, réseau, validation…) : le contrat n'a PAS été modifié
-          // (PUT atomique + court-circuit gateway). On signale l'erreur sans
-          // toucher à l'état local — l'utilisateur peut réessayer.
-          setErreurDurable(messageErreur(e));
-        });
-    },
-    [mode, contrat, onContratModifie, annoncer],
-  );
-
   const confirmerAjustement = useCallback(() => {
     if (dialogDate === null) return;
     const date = dialogDate;
@@ -367,10 +344,10 @@ export function CalendrierAbcm({
         mode === 'CANTINE'
           ? { ...t, cantine: dialogForm.cantine }
           : { ...t, periMatin: dialogForm.matin, periSoir: dialogForm.soir };
-      setConfirmationDurable({
-        semaineAbcm: nouvelle,
-        message: `Appliquer ce changement à tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
-      });
+      demanderConfirmationDurable(
+        nouvelle,
+        `Appliquer ce changement à tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
+      );
       setDialogDate(null);
       return;
     }
@@ -400,6 +377,7 @@ export function CalendrierAbcm({
     pai,
     envoyer,
     annoncer,
+    demanderConfirmationDurable,
   ]);
 
   const reinitialiserJour = useCallback(() => {
@@ -468,25 +446,16 @@ export function CalendrierAbcm({
     [joursAlsh, exceptions, envoyer, annoncer],
   );
 
-  const etatStatut = etat === 'enregistre' || etat === 'erreur' ? etat : 'idle';
-  const initialDate = `${mois}-01`;
-  const calKey = useRef(0);
-  calKey.current = parseInt(mois.replace('-', ''), 10);
-
   const aExistant = (iso: string) => exceptions.some((e) => e.date === iso);
 
   return (
     <div>
       {/* AQ-05 : annonce des mutations du calendrier aux lecteurs d'écran. */}
       <p {...regionLiveProps} className="sr-only" />
-      <div
-        style={{
-          marginBottom: '0.75rem',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem',
-          flexWrap: 'wrap',
-        }}
+      <BarreStatutCalendrier
+        etatStatut={etatStatut}
+        erreur={erreur}
+        erreurDurable={erreurDurable}
       >
         {mode === 'CANTINE' && (
           <label
@@ -516,23 +485,7 @@ export function CalendrierAbcm({
             utiliser la liste ci-dessous au clavier.
           </span>
         )}
-
-        <StatutSauvegarde etat={etatStatut} />
-        {etat === 'erreur' && erreur && (
-          <span className="muted" style={{ fontSize: '0.82rem' }}>
-            {erreur}
-          </span>
-        )}
-        {erreurDurable && (
-          <span
-            role="alert"
-            className="muted"
-            style={{ fontSize: '0.82rem', color: 'var(--erreur, #b00020)' }}
-          >
-            {erreurDurable}
-          </span>
-        )}
-      </div>
+      </BarreStatutCalendrier>
 
       {mode !== 'ALSH' && (
         <>
@@ -555,16 +508,10 @@ export function CalendrierAbcm({
         </>
       )}
 
-      <FullCalendar
-        key={calKey.current}
-        plugins={[dayGridPlugin, interactionPlugin]}
-        initialView="dayGridMonth"
-        locale="fr"
-        initialDate={initialDate}
-        headerToolbar={false}
-        height="auto"
+      <CalendrierMois
+        mois={mois}
         events={events}
-        dateClick={handleDateClick}
+        onDateClick={handleDateClick}
       />
 
       {/* Alternative clavier ALSH. */}
@@ -832,21 +779,10 @@ export function CalendrierAbcm({
       )}
 
       {/* Confirmation d'une modification durable du contrat. */}
-      <ModaleConfirmation
-        ouvert={confirmationDurable !== null}
-        titre="Modifier le contrat ?"
-        message={confirmationDurable?.message ?? ''}
-        libelleConfirmer="Modifier le contrat"
-        destructif
-        onConfirmer={() => {
-          if (confirmationDurable) {
-            appliquerDurableAbcm(confirmationDurable.semaineAbcm);
-          }
-          setConfirmationDurable(null);
-        }}
-        onAnnuler={() => {
-          setConfirmationDurable(null);
-        }}
+      <ModaleContratDurable
+        confirmation={confirmationDurable}
+        onConfirmer={confirmerDurable}
+        onAnnuler={annulerDurable}
       />
     </div>
   );
