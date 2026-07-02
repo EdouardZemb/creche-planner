@@ -327,6 +327,22 @@ describe('genererPrestationMois (cantine)', () => {
     expect(presta.nbJours).toBe(1);
   });
 
+  it('valideAu borne la facturation : les jours du mois après la fin sont exclus', () => {
+    const presta = genererPrestationMois(
+      contratAbcm(
+        'CANTINE',
+        { LUNDI: { cantine: true } },
+        { valideAu: '2026-10-12' },
+      ),
+      MOIS,
+      {},
+      [],
+    ) as PrestationsMoisCantine;
+
+    // Lundis d'octobre 2026 : 05, 12, 19, 26 — seuls 05 et 12 sont ≤ valideAu.
+    expect(presta.nbJours).toBe(2);
+  });
+
   it('valideAu null → période ouverte : les jours du mois restent facturables', () => {
     const presta = genererPrestationMois(
       contratAbcm('CANTINE', { LUNDI: { cantine: true } }, { valideAu: null }),
