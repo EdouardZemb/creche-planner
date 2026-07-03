@@ -83,3 +83,4 @@ scripts/parents-backfill.json
 !.env.server.enc
 # Certificat racine exporté de Caddy (autorité TLS locale)
 caddy-root.crt
+.nx/migrate-runs
