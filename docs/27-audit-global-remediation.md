@@ -624,7 +624,7 @@ mention de la PR).
 | H       | `test/mutation-stryker`           | AQ-13       | #48 (privée)¹                                                  | ✅ Fait (2026-06-12)                                              |
 | I       | `docs/asyncapi-nats`              | AQ-14       | —                                                              | 🔶 Partiel (backoff livré ; AsyncAPI + rétention à faire)         |
 | J       | `ci/pipeline-parallele`           | AQ-15       | —                                                              | 🔶 Partiel (parallélisation + cache faits ; healthchecks à faire) |
-| K       | `docs/index-et-contributing`      | AQ-16       | [#143](https://github.com/EdouardZemb/creche-planner/pull/143) | ✅ Fait (2026-07-02)                                              |
+| K       | `docs/index-et-contributing`      | AQ-16       | [#145](https://github.com/EdouardZemb/creche-planner/pull/145) | ✅ Fait (2026-07-02)                                              |
 | —       | (opportuniste)                    | AQ-17/18    | —                                                              | Ouvert / optionnel                                                |
 
 > ¹ **PR de l'ancien dépôt privé** : ces sessions ont été mergées **avant la publication
