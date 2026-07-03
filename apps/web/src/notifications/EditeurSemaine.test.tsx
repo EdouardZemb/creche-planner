@@ -216,9 +216,13 @@ describe('EditeurSemaine', () => {
     rendre();
 
     await screen.findByText(/Léa — Crèche/);
-    // Léa (Crèche Les Hirondelles) est le premier bloc contrat → premier « Valider ».
-    const validers = screen.getAllByRole('button', { name: 'Valider' });
-    await user.click(validers[0]!);
+    // Chaque bloc contrat porte son propre « Valider » : l'aria-label suffixé
+    // enfant/mode permet de cibler celui de Léa sans compter sur l'ordre DOM.
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Valider la semaine du 29 juin au 5 juillet — Léa, Crèche',
+      }),
+    );
 
     await waitFor(() => {
       expect(api.validerSemaine).toHaveBeenCalledWith('c-lea', '2026-W27');

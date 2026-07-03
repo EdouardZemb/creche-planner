@@ -9,6 +9,7 @@ import {
   jourSemaineDeIso,
   formaterDateFr,
   formaterDateCourtFr,
+  libelleSemaine,
   LIBELLES_JOURS,
   LIBELLES_JOURS_COURT,
 } from '../utils/dates';
@@ -402,6 +403,11 @@ export function EditeurContratSemaine({
             void valider();
           }}
           disabled={enValidation || etatSave === 'en-cours'}
+          // L'éditeur hebdo empile un bloc par contrat : plusieurs boutons
+          // « Valider » coexistent. Le suffixe enfant/mode rend chaque cible
+          // unique pour les technologies d'assistance (même pattern que
+          // `ariaLabel()` dans EncartValidation).
+          aria-label={`Valider la ${libelleSemaine(semaineIso)} — ${contrat.enfant}, ${libelleMode(mode)}`}
         >
           {enValidation ? 'Validation…' : 'Valider'}
         </button>
