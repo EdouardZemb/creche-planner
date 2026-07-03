@@ -92,7 +92,7 @@ import { lireEtatSeed, urlPlanning } from './support/stack';
 //   lireEtatSeed/urlPlanning (support/stack), cellule(), libelleFr(),
 //   attendreEnregistrement (PUT /plannings/), ouvrirAbsence (liste clavier),
 //   ouvrirAjout (.fc-daygrid-day-top + retry toPass),
-//   ouvrirPlanningCreche (forçage onglet « Crèche PSU »).
+//   ouvrirPlanningCreche (forçage onglet « Crèche »).
 
 /** Cellule de jour FullCalendar (v6) pour la date ISO donnée. */
 function cellule(page: Page, iso: string) {
@@ -181,7 +181,7 @@ async function ouvrirAjout(page: Page, iso: string) {
 }
 
 /**
- * Ouvre la page Planning sur le mois donné et force l'onglet « Crèche PSU » de
+ * Ouvre la page Planning sur le mois donné et force l'onglet « Crèche » de
  * Zoé (sans dépendre de l'ordre des contrats), puis attend la grille prête.
  */
 async function ouvrirPlanningCreche(page: Page, foyerId: string, mois: string) {
@@ -189,7 +189,7 @@ async function ouvrirPlanningCreche(page: Page, foyerId: string, mois: string) {
   await expect(
     page.getByRole('heading', { name: 'Planning mensuel' }),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'Crèche PSU' }).click();
+  await page.getByRole('tab', { name: 'Crèche' }).click();
 }
 
 test.describe("MBT — modèle d'état système : saisie planning crèche (Zoé)", () => {

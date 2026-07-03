@@ -313,7 +313,7 @@ describe('PlanningPage', () => {
 
     renderPage('foyer-1', '?enfant=Alice');
 
-    const ongletPsu = await screen.findByRole('tab', { name: 'Crèche PSU' });
+    const ongletPsu = await screen.findByRole('tab', { name: 'Crèche' });
     expect(ongletPsu).toHaveAttribute('id', 'onglet-mode-CRECHE_PSU');
     expect(ongletPsu).toHaveAttribute(
       'aria-controls',
@@ -405,9 +405,10 @@ describe('PlanningPage', () => {
 
     renderPage();
 
-    const onglet = await screen.findByRole('tab', { name: 'Crèche PSU' });
+    const onglet = await screen.findByRole('tab', { name: 'Crèche' });
     expect(onglet).toHaveAttribute('aria-selected', 'true');
-    // Plus aucun libellé ASCII non accentué.
-    expect(screen.queryByText('Creche PSU')).not.toBeInTheDocument();
+    // Plus aucun libellé ASCII non accentué, ni le sigle « PSU » (jargon parent).
+    expect(screen.queryByText('Creche')).not.toBeInTheDocument();
+    expect(screen.queryByText('Crèche PSU')).not.toBeInTheDocument();
   });
 });

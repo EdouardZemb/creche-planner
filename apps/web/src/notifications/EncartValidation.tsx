@@ -3,19 +3,13 @@ import { api } from '../api/client';
 import type { NotificationAValider } from '../types/bff';
 import { messageErreur } from '../utils/erreurs';
 import { libelleMode } from '../utils/libelles';
+import { libelleSemaine } from '../utils/dates';
 import { useNotifications } from './useNotifications';
 import { RelectureEnvoi } from './RelectureEnvoi';
 import { EditeurSemaine } from './EditeurSemaine';
 
-/** Rend `2026-W27` en libellé lisible « semaine 27 (2026) ». */
-function libelleSemaine(semaineIso: string): string {
-  const m = /^(\d{4})-W(\d{2})$/.exec(semaineIso);
-  if (!m) return semaineIso;
-  return `semaine ${Number(m[2])} (${m[1]})`;
-}
-
 /**
- * Cible « enfant, mode » d'une notification enrichie (`Zoé, Crèche PSU`), ou `null` si le
+ * Cible « enfant, mode » d'une notification enrichie (`Zoé, Crèche`), ou `null` si le
  * BFF n'a pas pu enrichir (contrat introuvable). Sert à distinguer N lignes d'une même
  * semaine, aussi bien à l'écran que dans les `aria-label` des boutons.
  */
@@ -23,7 +17,7 @@ function cibleContrat(n: NotificationAValider): string | null {
   return n.enfant && n.mode ? `${n.enfant}, ${libelleMode(n.mode)}` : null;
 }
 
-/** Libellé d'une ligne : « Zoé — Crèche PSU · semaine 27 (2026) » ou repli sans enfant. */
+/** Libellé d'une ligne : « Zoé — Crèche · semaine du 6 au 12 juillet » ou repli sans enfant. */
 function libelleLigne(n: NotificationAValider): string {
   const semaine = libelleSemaine(n.semaineIso);
   return n.enfant && n.mode
@@ -32,7 +26,7 @@ function libelleLigne(n: NotificationAValider): string {
 }
 
 /**
- * `aria-label` distinct d'un bouton (« Valider la semaine 27 (2026) — Zoé, Crèche PSU »),
+ * `aria-label` distinct d'un bouton (« Valider la semaine du 6 au 12 juillet — Zoé, Crèche »),
  * ou `undefined` si la notif n'est pas enrichie — on garde alors le libellé visible du
  * bouton comme nom accessible. Quand plusieurs lignes partagent la même semaine, le
  * suffixe enfant/mode rend chaque cible unique pour les technologies d'assistance (même

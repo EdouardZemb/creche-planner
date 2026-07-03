@@ -2,15 +2,9 @@ import { useMemo, useState } from 'react';
 import { api } from '../api/client';
 import type { ContratBesoinsSemaine, StatutNotification } from '../types/bff';
 import { useAsync } from '../hooks/useAsync';
+import { libelleSemaine } from '../utils/dates';
 import { EditeurContratSemaine } from './EditeurContratSemaine';
 import { RelectureEnvoi } from './RelectureEnvoi';
-
-/** Rend `2026-W27` en libellé lisible « semaine 27 (2026) ». */
-function libelleSemaine(semaineIso: string): string {
-  const m = /^(\d{4})-W(\d{2})$/.exec(semaineIso);
-  if (!m) return semaineIso;
-  return `semaine ${Number(m[2])} (${m[1]})`;
-}
 
 export interface EditeurSemaineProps {
   foyerId: string;

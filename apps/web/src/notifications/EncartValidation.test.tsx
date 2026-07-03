@@ -142,8 +142,9 @@ describe('EncartValidation', () => {
     expect(
       await screen.findByText(/Valider la semaine suivante/i),
     ).toBeInTheDocument();
+    // Dates réelles, jamais le numéro de semaine ISO (UX lot 2 « parler parent »).
     expect(
-      screen.getByText(/Planning de la semaine 27 \(2026\)/),
+      screen.getByText(/Planning de la semaine du 29 juin au 5 juillet/),
     ).toBeInTheDocument();
   });
 
@@ -240,20 +241,20 @@ describe('EncartValidation', () => {
     // Chaque ligne identifie sans ambiguïté l'enfant et le mode (pas deux libellés
     // identiques « Planning de la semaine 28 »).
     expect(
-      await screen.findByText(/Zoé — Crèche PSU · semaine 28 \(2026\)/),
+      await screen.findByText(/Zoé — Crèche · semaine du 6 au 12 juillet/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/Mia — Cantine · semaine 28 \(2026\)/),
+      screen.getByText(/Mia — Cantine · semaine du 6 au 12 juillet/),
     ).toBeInTheDocument();
     // Boutons « Valider » ciblés par aria-label distinct (a11y).
     expect(
       screen.getByRole('button', {
-        name: 'Valider la semaine 28 (2026) — Zoé, Crèche PSU',
+        name: 'Valider la semaine du 6 au 12 juillet — Zoé, Crèche',
       }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole('button', {
-        name: 'Valider la semaine 28 (2026) — Mia, Cantine',
+        name: 'Valider la semaine du 6 au 12 juillet — Mia, Cantine',
       }),
     ).toBeInTheDocument();
   });
@@ -270,10 +271,10 @@ describe('EncartValidation', () => {
     render(<EncartValidation foyerId="foyer-1" />);
 
     const validerZoe = await screen.findByRole('button', {
-      name: 'Valider la semaine 28 (2026) — Zoé, Crèche PSU',
+      name: 'Valider la semaine du 6 au 12 juillet — Zoé, Crèche',
     });
     const validerMia = screen.getByRole('button', {
-      name: 'Valider la semaine 28 (2026) — Mia, Cantine',
+      name: 'Valider la semaine du 6 au 12 juillet — Mia, Cantine',
     });
     fireEvent.click(validerZoe);
 
@@ -291,7 +292,7 @@ describe('EncartValidation', () => {
     });
     // Le message nomme l'enfant validé.
     expect(
-      await screen.findByText(/Zoé — semaine 28 \(2026\) validé/),
+      await screen.findByText(/Zoé — semaine du 6 au 12 juillet validé/),
     ).toBeInTheDocument();
   });
 
@@ -315,12 +316,12 @@ describe('EncartValidation', () => {
     });
     expect(
       await screen.findByRole('heading', {
-        name: /Éditer les besoins de la semaine 27/i,
+        name: /Éditer les besoins de la semaine du 29 juin au 5 juillet/i,
       }),
     ).toBeInTheDocument();
     expect(
       await screen.findByText('Crèche Les Hirondelles'),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Léa — Crèche PSU/)).toBeInTheDocument();
+    expect(screen.getByText(/Léa — Crèche/)).toBeInTheDocument();
   });
 });

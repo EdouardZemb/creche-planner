@@ -97,11 +97,11 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     mockBrouillons();
     render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
 
-    // La crèche est concernée → bloc + enfant Léa + bandeau DRY-RUN.
+    // La crèche est concernée → bloc + enfant Léa + bandeau « Mode test » (dry-run).
     expect(
       await screen.findByText(/contact-creche@example.org/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/DRY-RUN actif/)).toBeInTheDocument();
+    expect(screen.getByText(/Mode test/)).toBeInTheDocument();
     expect(screen.getByText('Léa')).toBeInTheDocument();
     // L'ABCM n'a aucun enfant concerné → pas de bloc pour lui.
     expect(
@@ -118,7 +118,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     ).toBeInTheDocument();
   });
 
-  it('demande confirmation puis envoie (dry-run) le récap de l’établissement', async () => {
+  it('demande confirmation puis envoie (mode test) le récap de l’établissement', async () => {
     mockBrouillons();
     const resultat: EnvoiEtablissementResultat = {
       foyerId: FOYER_ID,
@@ -140,7 +140,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
 
     // Confirmation explicite avant l'action sortante.
     const confirmer = await screen.findByRole('button', {
-      name: /Envoyer \(dry-run\)/,
+      name: /Envoyer \(mode test\)/,
     });
     fireEvent.click(confirmer);
 
@@ -151,7 +151,12 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
         CRECHE_ID,
       );
     });
-    expect(await screen.findByText(/mode dry-run/i)).toBeInTheDocument();
+    // Message de résultat (distinct du bandeau « Mode test » toujours affiché).
+    expect(
+      await screen.findByText(
+        /Test réussi : aucun mail n'a vraiment été envoyé/i,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('avertit d’une action irréversible quand l’envoi serait réel', async () => {
@@ -161,7 +166,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     const bouton = await screen.findByRole('button', {
       name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
     });
-    expect(screen.queryByText(/DRY-RUN actif/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Mode test/)).not.toBeInTheDocument();
     fireEvent.click(bouton);
 
     expect(
@@ -192,7 +197,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
       }),
     );
     fireEvent.click(
-      await screen.findByRole('button', { name: /Envoyer \(dry-run\)/ }),
+      await screen.findByRole('button', { name: /Envoyer \(mode test\)/ }),
     );
 
     // L'échec est une alerte (rouge), pas un statut discret.
