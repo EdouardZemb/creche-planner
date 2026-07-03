@@ -1,3 +1,21 @@
+## 0.8.1 (2026-07-03)
+
+### 🚀 Features
+
+- **inbox:** inbox in-app générique (PR6) ([#124](https://github.com/EdouardZemb/creche-planner/pull/124))
+- **desabonnement:** désabonnement one-click RFC 8058 (PR5) ([#123](https://github.com/EdouardZemb/creche-planner/pull/123))
+- **svc-notifications:** projection préférences notif + filtrage des destinataires e-mail (PR4) ([#122](https://github.com/EdouardZemb/creche-planner/pull/122))
+
+### 🩹 Fixes
+
+- **notifications:** allowlist mailer par destinataire (AN-14) + runtime Docker non-root ([#128](https://github.com/EdouardZemb/creche-planner/pull/128))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.8.0 (2026-07-01)
 
 ### 🚀 Features
