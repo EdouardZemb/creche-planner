@@ -553,8 +553,8 @@ describe('CalendrierAbcm - ALSH', () => {
 
     // Ouvre un jour réservé (lundi) ; le choix de portée est dans le dialog.
     fireEvent.click(screen.getByTestId('simulate-date-click-reserve'));
-    // Portée « tous les mois » = modification durable du contrat.
-    fireEvent.click(screen.getByLabelText(/Tous les mois/i));
+    // Portée « toutes les semaines » = modification durable du contrat.
+    fireEvent.click(screen.getByLabelText(/Toutes les semaines/i));
     fireEvent.click(screen.getByText('Confirmer'));
     // Confirme la modification durable → PUT contrat (mocké en échec 429).
     fireEvent.click(screen.getByText('Modifier le contrat'));

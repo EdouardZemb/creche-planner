@@ -99,6 +99,7 @@ export function CalendrierAbcm({
     confirmerDurable,
     annulerDurable,
     erreurDurable,
+    succesDurable,
   } = useCalendrierContrat<ContratLocal['semaineAbcm']>({
     contrat,
     mois,
@@ -346,9 +347,23 @@ export function CalendrierAbcm({
         mode === 'CANTINE'
           ? { ...t, cantine: dialogForm.cantine }
           : { ...t, periMatin: dialogForm.matin, periSoir: dialogForm.soir };
+      // Message en conséquences concrètes : ce que devient ce jour de semaine,
+      // chaque semaine (le rappel des effets communs vit dans la modale).
+      const nouvelEtat =
+        mode === 'CANTINE'
+          ? dialogForm.cantine
+            ? 'la cantine sera réservée'
+            : 'la cantine ne sera plus réservée'
+          : dialogForm.matin && dialogForm.soir
+            ? 'l’accueil périscolaire du matin et du soir sera réservé'
+            : dialogForm.matin
+              ? 'seul l’accueil périscolaire du matin sera réservé'
+              : dialogForm.soir
+                ? 'seul l’accueil périscolaire du soir sera réservé'
+                : 'l’accueil périscolaire ne sera plus réservé';
       demanderConfirmationDurable(
         nouvelle,
-        `Appliquer ce changement à tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
+        `Tous les ${jourSemaine.toLowerCase()}s, ${nouvelEtat}.`,
       );
       setDialogDate(null);
       return;
@@ -460,6 +475,7 @@ export function CalendrierAbcm({
         erreur={erreur}
         onReessayer={reessayer}
         erreurDurable={erreurDurable}
+        succesDurable={succesDurable}
       >
         {mode === 'CANTINE' && (
           <label

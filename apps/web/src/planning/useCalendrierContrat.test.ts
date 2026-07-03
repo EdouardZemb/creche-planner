@@ -95,6 +95,7 @@ describe('useCalendrierContrat', () => {
     expect(result.current.portee).toBe('mois');
     expect(result.current.confirmationDurable).toBeNull();
     expect(result.current.erreurDurable).toBeNull();
+    expect(result.current.succesDurable).toBeNull();
   });
 
   it('estDansPeriode borne sur [valideDu, valideAu]', () => {
@@ -157,10 +158,35 @@ describe('useCalendrierContrat', () => {
     });
     expect(onContratModifie).toHaveBeenCalledTimes(1);
     expect(result.current.erreurDurable).toBeNull();
+    // Confirmation VISIBLE du succès (UX lot 4) : horodatée + conséquence
+    // de la cascade (saisies du mois effacées), sinon réinitialisation muette.
+    expect(result.current.succesDurable).toMatch(
+      /^Contrat modifié à \d{2}:\d{2}\. Les saisies de ce mois ont été effacées/,
+    );
     // AQ-05 : la réinitialisation est annoncée aux lecteurs d'écran.
     expect(result.current.regionLiveProps.children).toContain(
       'Contrat modifié, saisies du mois réinitialisées',
     );
+  });
+
+  it('une nouvelle demande de confirmation périme la confirmation de succès précédente', async () => {
+    vi.spyOn(api, 'modifierContrat').mockResolvedValue({} as ContratVue);
+    const { result } = monter();
+
+    act(() => {
+      result.current.demanderConfirmationDurable('payload', 'msg');
+    });
+    act(() => {
+      result.current.confirmerDurable();
+    });
+    await waitFor(() => {
+      expect(result.current.succesDurable).not.toBeNull();
+    });
+
+    act(() => {
+      result.current.demanderConfirmationDurable('payload-2', 'msg-2');
+    });
+    expect(result.current.succesDurable).toBeNull();
   });
 
   it('échec du PUT : erreurDurable exposée, saisie locale intacte, pas de notification', async () => {

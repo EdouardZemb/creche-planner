@@ -8,15 +8,18 @@ export interface ChoixPorteeProps {
 }
 
 /**
- * Choix de la portée d'un ajustement : « ce mois uniquement » (saisie mensuelle,
- * le contrat reste la base) ou « tous les mois » (modification durable du
- * contrat). Le mois est le défaut, le cas le plus fréquent et le moins risqué.
+ * Choix de la portée d'un ajustement : « seulement cette fois » (saisie
+ * mensuelle, le contrat reste la base) ou « toutes les semaines » (modification
+ * durable du contrat). Le ponctuel est le défaut, le cas le plus fréquent et le
+ * moins risqué ; l'option durable est visuellement démarquée (ambre + rappel
+ * des conséquences) pour que l'engagement se distingue à la lecture (UX lot 4).
  */
 export function ChoixPortee({ valeur, onChange, nom }: ChoixPorteeProps) {
+  const idDescriptionDurable = `portee-${nom}-tous-description`;
   return (
     <fieldset style={{ marginTop: '0.5rem', border: 'none', padding: 0 }}>
       <legend style={{ fontSize: '0.85rem', padding: 0 }}>Appliquer</legend>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
         <label
           style={{
             display: 'flex',
@@ -34,27 +37,46 @@ export function ChoixPortee({ valeur, onChange, nom }: ChoixPorteeProps) {
             }}
             style={{ width: 'auto', padding: 0 }}
           />
-          Ce mois uniquement
+          Seulement cette fois
         </label>
-        <label
+        <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            margin: 0,
+            borderLeft: '3px solid var(--ambre)',
+            paddingLeft: '0.5rem',
           }}
         >
-          <input
-            type="radio"
-            name={`portee-${nom}`}
-            checked={valeur === 'tous'}
-            onChange={() => {
-              onChange('tous');
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              margin: 0,
             }}
-            style={{ width: 'auto', padding: 0 }}
-          />
-          Tous les mois (modifie le contrat)
-        </label>
+          >
+            <input
+              type="radio"
+              name={`portee-${nom}`}
+              checked={valeur === 'tous'}
+              onChange={() => {
+                onChange('tous');
+              }}
+              aria-describedby={idDescriptionDurable}
+              style={{ width: 'auto', padding: 0 }}
+            />
+            Toutes les semaines, durablement (modifie le contrat)
+          </label>
+          <div
+            id={idDescriptionDurable}
+            style={{
+              color: 'var(--ambre)',
+              fontSize: '0.8rem',
+              marginLeft: '1.4rem',
+            }}
+          >
+            Ce jour changera chaque semaine, et les saisies déjà faites ce
+            mois-ci seront effacées.
+          </div>
+        </div>
       </div>
     </fieldset>
   );

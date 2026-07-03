@@ -8,7 +8,7 @@ import { lireEtatSeed, urlPlanning } from './support/stack';
 // On valide ici, sur le calendrier crèche de Zoé, trois parcours :
 //   (a) AJOUT d'un jour de garde ponctuel (jour non gardé du contrat) ;
 //   (b) ABSENCE pleine journée puis ABSENCE PARTIELLE (heures d'arrivée/départ) ;
-//   (c) portée « TOUS LES MOIS » = modification DURABLE du contrat (puis revert).
+//   (c) portée « TOUTES LES SEMAINES » = modification DURABLE du contrat (puis revert).
 //
 // IMPORTANT : la BDD est seedée une fois pour toute la suite (scripts/seed-demo.mjs)
 // et la spec des coûts annuels assert des montants précis (Zoé 412,20 € + Mia
@@ -16,7 +16,7 @@ import { lireEtatSeed, urlPlanning } from './support/stack';
 // à l'état nominal pour ne PAS contaminer les autres specs :
 //   - (a) supprime le jour ajouté ;
 //   - (b) supprime l'absence ;
-//   - (c) ré-applique « tous les mois » l'opération inverse → la semaine-type du
+//   - (c) ré-applique « toutes les semaines » l'opération inverse → la semaine-type du
 //     contrat retrouve sa forme seedée (LUNDI/MERCREDI/VENDREDI). La
 //     mensualité crèche est calculée à partir du contrat (heuresAnnuelles /
 //     nbMensualites), conservées par `modifierContrat` ; le cascade-delete des
@@ -235,7 +235,7 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
     );
   });
 
-  test('(c) portée « tous les mois » modifie durablement le contrat (puis revert)', async ({
+  test('(c) portée « toutes les semaines » modifie durablement le contrat (puis revert)', async ({
     page,
   }) => {
     const { foyerId } = lireEtatSeed();
@@ -247,10 +247,11 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
       0,
     );
 
-    // 1) AJOUT DURABLE : ouvrir le mardi, choisir « Tous les mois », confirmer.
-    //    Une modale de confirmation (modification du contrat) s'ouvre ensuite.
+    // 1) AJOUT DURABLE : ouvrir le mardi, choisir « Toutes les semaines »,
+    //    confirmer. Une modale de confirmation (modification du contrat)
+    //    s'ouvre ensuite.
     let dialog = await ouvrirAjout(page, MARDI);
-    await dialog.getByRole('radio', { name: /Tous les mois/ }).check();
+    await dialog.getByRole('radio', { name: /Toutes les semaines/ }).check();
     await dialog.getByRole('button', { name: 'Confirmer' }).click();
 
     const confirmation = page.getByRole('dialog', {
@@ -272,11 +273,11 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
       'Gardé',
     );
 
-    // 2) REVERT DURABLE : retirer à nouveau le mardi « tous les mois » pour
+    // 2) REVERT DURABLE : retirer à nouveau le mardi « toutes les semaines » pour
     //    restaurer la semaine-type seedée (LUNDI/MERCREDI/VENDREDI). Le
     //    mardi étant désormais gardé, on passe par la liste clavier (absence).
     dialog = await ouvrirAbsence(page, MARDI);
-    await dialog.getByRole('radio', { name: /Tous les mois/ }).check();
+    await dialog.getByRole('radio', { name: /Toutes les semaines/ }).check();
     await dialog.getByRole('button', { name: 'Confirmer' }).click();
 
     const confirmation2 = page.getByRole('dialog', {
