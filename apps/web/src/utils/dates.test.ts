@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { formaterDateFr, formaterDateCourtFr, libelleSemaine } from './dates';
+import {
+  formaterDateFr,
+  formaterDateCourtFr,
+  formaterHeureFr,
+  libelleSemaine,
+} from './dates';
+
+describe('formaterHeureFr', () => {
+  it('formate l’heure locale en hh:mm', () => {
+    expect(formaterHeureFr(new Date(2026, 6, 3, 21, 43, 12))).toBe('21:43');
+  });
+
+  it('zéro-pad les heures et les minutes', () => {
+    expect(formaterHeureFr(new Date(2026, 6, 3, 9, 5))).toBe('09:05');
+  });
+});
 
 describe('formaterDateFr', () => {
   it('formate une date ISO en jj/mm/aaaa', () => {

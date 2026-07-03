@@ -67,12 +67,16 @@ export interface UseCalendrierContratOptions<P> {
 }
 
 export interface UseCalendrierContratResultat<P> {
-  // Écriture de planning debouncée (usePlanning) + statut affichable.
+  // Écriture de planning debouncée (usePlanning) + statut affichable. L'état
+  // complet (dont « en-cours ») alimente la barre de statut : le badge couvre
+  // aussi le trou debounce → réponse serveur (UX lot 3).
   ecrire: ReturnType<typeof usePlanning>['ecrire'];
   etat: EtatEnregistrement;
   erreur: string | null;
-  /** Statut réduit pour `StatutSauvegarde` (idle tant que rien n'aboutit). */
-  etatStatut: 'idle' | 'enregistre' | 'erreur';
+  /** Heure « 21:43 » du dernier enregistrement abouti (badge persistant). */
+  enregistreA: string | null;
+  /** Rejoue la dernière écriture demandée (reprise après « erreur »). */
+  reessayer: () => void;
 
   // Réhydratation serveur (source de vérité multi-poste).
   saisieServeur: ReturnType<typeof useSaisieServeur>['saisie'];
@@ -107,7 +111,8 @@ export function useCalendrierContrat<P>({
   construireCorpsDurable,
   reinitialiserSaisie,
 }: UseCalendrierContratOptions<P>): UseCalendrierContratResultat<P> {
-  const { etat, erreur, ecrire } = usePlanning(onEnregistre);
+  const { etat, erreur, enregistreA, ecrire, reessayer } =
+    usePlanning(onEnregistre);
   const { annoncer, regionLiveProps } = useAnnonce();
   const { saisie: saisieServeur, chargee } = useSaisieServeur(
     contrat.id,
@@ -177,13 +182,12 @@ export function useCalendrierContrat<P>({
     setConfirmationDurable(null);
   }, []);
 
-  const etatStatut = etat === 'enregistre' || etat === 'erreur' ? etat : 'idle';
-
   return {
     ecrire,
     etat,
     erreur,
-    etatStatut,
+    enregistreA,
+    reessayer,
     saisieServeur,
     chargee,
     annoncer,

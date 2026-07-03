@@ -84,6 +84,16 @@ export function formaterDateFr(iso: string): string {
   return `${jj}/${mm}/${y}`;
 }
 
+/**
+ * Heure locale « 21:43 » d'une date. Horodatage du statut de sauvegarde : la
+ * date vient de l'appelant (aucune horloge ici), comme les autres helpers.
+ */
+export function formaterHeureFr(d: Date): string {
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
 /** Date « YYYY-MM-DD » → « 15/06 » (jour/mois, sans année — affichage mobile). */
 export function formaterDateCourtFr(iso: string): string {
   const [, m, d] = partsIso(iso);

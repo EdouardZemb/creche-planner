@@ -94,7 +94,9 @@ export function EditeurContratSemaine({
   const {
     etat: etatSave,
     erreur,
+    enregistreA,
     ecrire,
+    reessayer,
   } = useEcritureSemaine(handleEnregistre);
   const { annoncer, regionLiveProps } = useAnnonce();
 
@@ -322,9 +324,6 @@ export function EditeurContratSemaine({
     }
   }, [contrat.contratId, semaineIso, onValide]);
 
-  const etatStatut =
-    etatSave === 'enregistre' || etatSave === 'erreur' ? etatSave : 'idle';
-
   return (
     <div style={{ marginBottom: '0.75rem' }}>
       <p {...regionLiveProps} className="sr-only" />
@@ -339,11 +338,22 @@ export function EditeurContratSemaine({
         <h5 style={{ margin: '0.25rem 0' }}>
           {contrat.enfant} — {libelleMode(mode)}
         </h5>
-        <StatutSauvegarde etat={etatStatut} />
-        {etatSave === 'erreur' && erreur && (
-          <span className="muted" style={{ fontSize: '0.82rem' }}>
-            {erreur}
-          </span>
+        <StatutSauvegarde etat={etatSave} enregistreA={enregistreA} />
+        {etatSave === 'erreur' && (
+          <>
+            {erreur && (
+              <span className="muted" style={{ fontSize: '0.82rem' }}>
+                {erreur}
+              </span>
+            )}
+            <button
+              type="button"
+              className="btn secondaire"
+              onClick={reessayer}
+            >
+              Réessayer
+            </button>
+          </>
         )}
       </div>
 

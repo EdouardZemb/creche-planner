@@ -147,7 +147,9 @@ export function CalendrierCreche({
   const {
     ecrire,
     erreur,
-    etatStatut,
+    etat,
+    enregistreA,
+    reessayer,
     saisieServeur,
     chargee,
     annoncer,
@@ -678,8 +680,10 @@ export function CalendrierCreche({
       {/* AQ-05 : annonce des mutations du calendrier aux lecteurs d'écran. */}
       <p {...regionLiveProps} className="sr-only" />
       <BarreStatutCalendrier
-        etatStatut={etatStatut}
+        etat={etat}
+        enregistreA={enregistreA}
         erreur={erreur}
+        onReessayer={reessayer}
         erreurDurable={erreurDurable}
         apres={
           (persistAbsences.indisponible || persistJoursSup.indisponible) && (

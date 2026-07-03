@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { messageErreur } from '../utils/erreurs';
+import { formaterHeureFr } from '../utils/dates';
 import type { EcrirePlanning } from '../types/bff';
 
 export type EtatEnregistrement = 'idle' | 'en-cours' | 'enregistre' | 'erreur';
@@ -8,33 +9,43 @@ export type EtatEnregistrement = 'idle' | 'en-cours' | 'enregistre' | 'erreur';
 export interface UsePlanningResult {
   etat: EtatEnregistrement;
   erreur: string | null;
+  /** Heure « 21:43 » du dernier enregistrement abouti (null avant le premier). */
+  enregistreA: string | null;
   ecrire: (
     contratId: string,
     mois: string,
     simule: boolean,
     corps: EcrirePlanning,
   ) => void;
+  /** Rejoue la dernière écriture demandée (reprise après « erreur »). */
+  reessayer: () => void;
 }
 
 const DEBOUNCE_MS = 800;
 
-/** Hook d'écriture de planning avec debounce 800 ms et état d'enregistrement. */
+type ArgsEcriture = [string, string, boolean, EcrirePlanning];
+
+/**
+ * Hook d'écriture de planning avec debounce 800 ms et état d'enregistrement.
+ * L'état « enregistre » (et son heure) PERSISTE jusqu'à la saisie suivante :
+ * un badge qui disparaît après 2 s laisse le parent dans le doute, surtout sur
+ * mobile où plusieurs saisies rapprochées le faisaient vaciller (UX lot 3).
+ */
 export function usePlanning(onEnregistre: () => void): UsePlanningResult {
   const [etat, setEtat] = useState<EtatEnregistrement>('idle');
   const [erreur, setErreur] = useState<string | null>(null);
+  const [enregistreA, setEnregistreA] = useState<string | null>(null);
 
   // Dernière requête en attente
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  // Retour à idle différé après « enregistré » : à annuler comme les autres,
-  // sinon il peut tirer après démontage ou écraser l'état d'une saisie suivante.
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Derniers arguments demandés : « réessayer » rejoue la même écriture.
+  const derniereEcritureRef = useRef<ArgsEcriture | null>(null);
 
   // Nettoyer au démontage
   useEffect(() => {
     return () => {
       if (timerRef.current !== null) clearTimeout(timerRef.current);
-      if (idleTimerRef.current !== null) clearTimeout(idleTimerRef.current);
       abortRef.current?.abort();
     };
   }, []);
@@ -46,9 +57,9 @@ export function usePlanning(onEnregistre: () => void): UsePlanningResult {
       simule: boolean,
       corps: EcrirePlanning,
     ) => {
-      // Annuler le debounce précédent et un éventuel retour à idle en attente
+      derniereEcritureRef.current = [contratId, mois, simule, corps];
+      // Annuler le debounce précédent
       if (timerRef.current !== null) clearTimeout(timerRef.current);
-      if (idleTimerRef.current !== null) clearTimeout(idleTimerRef.current);
       abortRef.current?.abort();
 
       setEtat('en-cours');
@@ -65,12 +76,9 @@ export function usePlanning(onEnregistre: () => void): UsePlanningResult {
           .then(() => {
             if (ctrl.signal.aborted) return;
             setEtat('enregistre');
+            setEnregistreA(formaterHeureFr(new Date()));
             setErreur(null);
             onEnregistre();
-            // Revenir à idle après 2 s
-            idleTimerRef.current = setTimeout(() => {
-              setEtat('idle');
-            }, 2000);
           })
           .catch((e: unknown) => {
             if (ctrl.signal.aborted) return;
@@ -82,5 +90,10 @@ export function usePlanning(onEnregistre: () => void): UsePlanningResult {
     [onEnregistre],
   );
 
-  return { etat, erreur, ecrire };
+  const reessayer = useCallback(() => {
+    const args = derniereEcritureRef.current;
+    if (args !== null) ecrire(...args);
+  }, [ecrire]);
+
+  return { etat, erreur, enregistreA, ecrire, reessayer };
 }
