@@ -49,6 +49,17 @@ function ariaLabel(
 }
 
 /**
+ * Retour affiché après une tentative de validation. Le type pilote la couleur
+ * (`credit` vert / `debit` rouge) et le rôle ARIA ; en cas d'erreur, `notif`
+ * retient la ligne concernée pour proposer « Réessayer » sans re-chercher.
+ */
+interface RetourValidation {
+  type: 'succes' | 'erreur';
+  texte: string;
+  notif?: NotificationAValider;
+}
+
+/**
  * Encart « Valider la semaine suivante » en tête du planning (Lot 4). Liste les
  * semaines `A_VALIDER` du foyer et propose de les valider d'un clic. Après une
  * validation, la liste se recharge (la semaine validée disparaît) et un message
@@ -62,7 +73,7 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
   // Contrat en cours de validation (clé = `contratId`, PAS la semaine) : sinon valider un
   // contrat désactiverait les boutons de TOUS les contrats de la même semaine.
   const [enCours, setEnCours] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [retour, setRetour] = useState<RetourValidation | null>(null);
   // Semaine validée AVEC modifications : on propose alors d'envoyer les récaps **agrégés
   // par établissement** (Phase 4) au foyer pour cette semaine. `null` tant qu'aucune ne
   // le requiert. On retient la semaine (le récap est désormais foyer + établissement,
@@ -71,14 +82,19 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
   // Semaine en cours d'édition (vue hebdo consolidée du foyer). `null` = repliée.
   const [semaineEditee, setSemaineEditee] = useState<string | null>(null);
 
-  // Chargement initial ou aucune semaine à valider : pas d'encart.
+  // Chargement initial ou aucune semaine à valider : pas d'encart. On reste en
+  // revanche affiché tant qu'un retour (succès/erreur) ou un envoi aux services
+  // est en cours de lecture : valider la DERNIÈRE semaine vidait l'encart d'un
+  // coup, confirmation comprise — le parent ne savait plus si ça avait marché.
   if (loading && !data) return null;
   const semaines = data ?? [];
-  if (semaines.length === 0) return null;
+  if (semaines.length === 0 && retour === null && aEnvoyer === null) {
+    return null;
+  }
 
   const valider = async (n: NotificationAValider): Promise<void> => {
     setEnCours(n.contratId);
-    setMessage(null);
+    setRetour(null);
     try {
       const resultat = await api.validerSemaine(n.contratId, n.semaineIso);
       const avecModifs = resultat.statut === 'VALIDEE_AVEC_MODIFS';
@@ -87,15 +103,21 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
       const quoi = n.enfant
         ? `${n.enfant} — ${libelleSemaine(n.semaineIso)}`
         : `Planning de la ${libelleSemaine(n.semaineIso)}`;
-      setMessage(
-        avecModifs ? `${quoi} validé (avec modifications).` : `${quoi} validé.`,
-      );
+      // Avec modifications, valider ne suffit pas : le service doit encore être
+      // prévenu. Le message nomme explicitement cette dernière étape, sinon le
+      // parent peut quitter la page en croyant (à tort) que tout est terminé.
+      setRetour({
+        type: 'succes',
+        texte: avecModifs
+          ? `${quoi} validé (avec modifications). Dernière étape : prévenir le service ci-dessous.`
+          : `${quoi} validé.`,
+      });
       // Avec modifications, on doit prévenir les services : on garde la semaine pour
       // proposer la relecture/envoi agrégé (pas d'envoi automatique — relecture obligatoire).
       setAEnvoyer(avecModifs ? n.semaineIso : null);
       setVersion((v) => v + 1);
     } catch (err) {
-      setMessage(messageErreur(err));
+      setRetour({ type: 'erreur', texte: messageErreur(err), notif: n });
     } finally {
       setEnCours(null);
     }
@@ -110,9 +132,33 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
       <h2 style={{ marginTop: 0, fontSize: 'var(--h2)' }}>
         Valider la semaine suivante
       </h2>
-      {message !== null && (
+      {retour !== null && retour.type === 'succes' && (
         <p className="credit" role="status">
-          {message}
+          {retour.texte}
+        </p>
+      )}
+      {retour !== null && retour.type === 'erreur' && (
+        <p className="debit" role="alert">
+          {retour.texte}{' '}
+          {retour.notif !== undefined && (
+            <button
+              type="button"
+              className="btn secondaire"
+              onClick={() => {
+                if (retour.notif) void valider(retour.notif);
+              }}
+            >
+              Réessayer
+            </button>
+          )}
+        </p>
+      )}
+      {/* Liste vidée après la dernière validation : on le dit explicitement au
+          lieu de faire disparaître l'encart (le parent doit voir que c'est fini,
+          pas deviner). */}
+      {semaines.length === 0 && (
+        <p className="muted" style={{ margin: 0 }}>
+          Plus rien à valider pour le moment.
         </p>
       )}
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>

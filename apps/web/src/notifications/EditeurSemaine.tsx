@@ -92,11 +92,11 @@ export function EditeurSemaine({
       </div>
 
       {error !== null && (
-        <p className="credit" role="alert">
+        <p className="debit" role="alert">
           {error}
         </p>
       )}
-      {loading && !data && <p className="credit">Chargement de la semaine…</p>}
+      {loading && !data && <p className="muted">Chargement de la semaine…</p>}
 
       {data && groupes.length === 0 && (
         <p className="credit">

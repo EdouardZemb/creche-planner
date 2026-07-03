@@ -170,6 +170,67 @@ describe('EncartValidation', () => {
     expect(
       await screen.findByText(/validé \(avec modifications\)/i),
     ).toBeInTheDocument();
+    // La bifurcation est nommée : le message annonce la dernière étape et la
+    // section de relecture/envoi apparaît (le parent ne peut pas la manquer).
+    expect(
+      screen.getByText(/Dernière étape : prévenir le service ci-dessous/i),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', {
+        name: /Dernière étape : prévenir les services/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('reste affiché avec la confirmation quand la dernière semaine est validée', async () => {
+    // Première lecture : une semaine à valider ; relecture après validation : plus rien.
+    vi.mocked(api.listerAValider)
+      .mockResolvedValueOnce(A_VALIDER)
+      .mockResolvedValue([]);
+    vi.mocked(api.validerSemaine).mockResolvedValue({
+      contratId: A_VALIDER[0]!.contratId,
+      semaineIso: '2026-W27',
+      statut: 'VALIDEE',
+      deltaModifs: null,
+    });
+
+    render(<EncartValidation foyerId="foyer-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider' }));
+
+    // L'encart ne disparaît PAS : la confirmation reste lisible et l'état final
+    // est explicite (avant : tout s'évanouissait, confirmation comprise).
+    expect(await screen.findByText(/validé\./i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Plus rien à valider pour le moment/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Valider la semaine suivante/i),
+    ).toBeInTheDocument();
+  });
+
+  it('affiche l’échec en alerte et permet de réessayer', async () => {
+    vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER);
+    vi.mocked(api.validerSemaine)
+      .mockRejectedValueOnce(new Error('réseau coupé'))
+      .mockResolvedValue({
+        contratId: A_VALIDER[0]!.contratId,
+        semaineIso: '2026-W27',
+        statut: 'VALIDEE',
+        deltaModifs: null,
+      });
+
+    render(<EncartValidation foyerId="foyer-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider' }));
+
+    // L'échec est annoncé comme une alerte (rouge), pas comme un succès.
+    const alerte = await screen.findByRole('alert');
+    expect(alerte).toHaveTextContent(/réseau coupé/i);
+    expect(alerte).toHaveClass('debit');
+
+    // « Réessayer » relance la même validation, sans re-chercher la ligne.
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+    expect(await screen.findByText(/validé\./i)).toBeInTheDocument();
+    expect(api.validerSemaine).toHaveBeenCalledTimes(2);
   });
 
   it('distingue chaque ligne par enfant + mode quand plusieurs contrats partagent la semaine', async () => {
