@@ -184,7 +184,9 @@ export function FoyerFormPage() {
         parents: parentsValides,
       });
       setFoyerId(dossier.foyer.id);
-      navigate(`/foyers/${dossier.foyer.id}/contrats`);
+      // react-router v7 : `navigate` renvoie une Promise ; navigation
+      // fire-and-forget (on n'attend pas la transition), d'où le `void`.
+      void navigate(`/foyers/${dossier.foyer.id}/contrats`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         // P5 (create-once) : le BFF refuse une 2ᵉ création. Oriente vers l'édition

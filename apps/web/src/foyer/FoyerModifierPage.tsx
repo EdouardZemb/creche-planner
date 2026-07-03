@@ -136,7 +136,9 @@ function FormulaireEdition({
         nbEnfantsACharge: parseInt(scalaires.nbEnfantsACharge, 10),
         nbParts: parseFloat(scalaires.nbParts),
       });
-      navigate(`/foyers/${foyerId}/planning`);
+      // react-router v7 : `navigate` renvoie une Promise ; navigation
+      // fire-and-forget (on n'attend pas la transition), d'où le `void`.
+      void navigate(`/foyers/${foyerId}/planning`);
     } catch (err) {
       if (err instanceof ApiError) {
         const erreurs = extraireErreurs(err.corps);
@@ -179,7 +181,7 @@ function FormulaireEdition({
             type="button"
             className="btn secondaire"
             onClick={() => {
-              navigate(`/foyers/${foyerId}/planning`);
+              void navigate(`/foyers/${foyerId}/planning`);
             }}
           >
             Annuler
