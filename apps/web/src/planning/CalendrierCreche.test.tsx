@@ -115,7 +115,7 @@ describe('CalendrierCreche', () => {
       />,
     );
 
-    expect(screen.getByText(/Complément \(min\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Temps de garde en plus/i)).toBeInTheDocument();
   });
 
   it('genere des evenements pour les jours gardes du mois', () => {

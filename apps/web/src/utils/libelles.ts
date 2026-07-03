@@ -4,7 +4,10 @@ import type { Mode } from '../types/bff';
 // Ne jamais afficher un mode brut (« CRECHE_PSU ») à l'utilisateur : passer par
 // libelleMode(mode).
 export const LIBELLES_MODE: Record<Mode, string> = {
-  CRECHE_PSU: 'Crèche PSU',
+  // « PSU » (sigle de financement CAF) est du jargon pour un parent : il ne doit
+  // pas apparaître dans les onglets/lignes. Là où le sigle doit rester (glossaire),
+  // passer par <Abbr sigle="PSU" />.
+  CRECHE_PSU: 'Crèche',
   CANTINE: 'Cantine',
   PERISCOLAIRE: 'Périscolaire',
   ALSH: 'ALSH',

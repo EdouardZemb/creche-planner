@@ -28,7 +28,7 @@ function descriptionJour(jour: DeltaJour): string {
 function libelleResultat(r: EnvoiEtablissementResultat): string {
   switch (r.statut) {
     case 'DRY_RUN':
-      return `Aperçu validé en mode dry-run : aucun mail réel n'a été envoyé à ${r.destinataire}.`;
+      return `Test réussi : aucun mail n'a vraiment été envoyé à ${r.destinataire}.`;
     case 'ENVOYE':
       return `C'est fait : le service est prévenu (mail envoyé à ${r.destinataire}).`;
     case 'ECHEC':
@@ -40,8 +40,9 @@ function libelleResultat(r: EnvoiEtablissementResultat): string {
 
 /**
  * Bloc de relecture + envoi pour **un établissement** : liste les enfants concernés et
- * leurs jours modifiés, affiche le destinataire en évidence, le bandeau DRY-RUN, puis
- * ne déclenche l'**action sortante réelle** qu'après une confirmation explicite.
+ * leurs jours modifiés, affiche le destinataire en évidence, le bandeau « Mode test »
+ * (dry-run), puis ne déclenche l'**action sortante réelle** qu'après une confirmation
+ * explicite.
  */
 function BlocEnvoiEtablissement({
   foyerId,
@@ -108,8 +109,8 @@ function BlocEnvoiEtablissement({
             margin: '0 0 0.75rem',
           }}
         >
-          <strong>DRY-RUN actif</strong> — aucun mail réel ne partira ; cet
-          envoi produit un aperçu tracé.
+          <strong>Mode test</strong> — aucun mail ne sera vraiment envoyé ; vous
+          pouvez essayer sans risque.
         </p>
       )}
 
@@ -182,11 +183,11 @@ function BlocEnvoiEtablissement({
         titre="Envoyer le récapitulatif au service ?"
         message={
           brouillon.dryRun
-            ? `Mode dry-run : aucun mail réel ne sera envoyé à ${brouillon.destinataire}. Un aperçu sera journalisé.`
-            : `Un mail réel va être envoyé à ${brouillon.destinataire}. Cette action est irréversible.`
+            ? `Mode test : aucun mail ne sera vraiment envoyé à ${brouillon.destinataire}.`
+            : `Un mail va vraiment être envoyé à ${brouillon.destinataire}. Cette action est irréversible.`
         }
         libelleConfirmer={
-          brouillon.dryRun ? 'Envoyer (dry-run)' : 'Envoyer le mail'
+          brouillon.dryRun ? 'Envoyer (mode test)' : 'Envoyer le mail'
         }
         destructif={!brouillon.dryRun}
         onConfirmer={() => {
@@ -208,7 +209,7 @@ function BlocEnvoiEtablissement({
  * agrégé de chacun par son `id`. On n'affiche un bloc relecture/envoi que pour ceux qui
  * ont **au moins un enfant** validé avec modifications. Chaque bloc déclenche un **mail
  * unique** regroupant tous les enfants concernés, après confirmation explicite ; un
- * bandeau « DRY-RUN actif » avertit quand l'envoi serait neutralisé.
+ * bandeau « Mode test » avertit quand l'envoi serait neutralisé (dry-run).
  */
 export function RelectureEnvoi({
   foyerId,

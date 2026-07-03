@@ -52,11 +52,11 @@ test('stack réelle : le calendrier crèche marque lun/mer/ven, PAS le week-end'
 
   // Le premier enfant (Zoé) et son contrat crèche valide pour mars 2026 sont
   // sélectionnés par défaut (contratValidePourMois). On force malgré tout l'onglet
-  // mode « Crèche PSU » pour ne dépendre d'aucun ordre de contrats.
+  // mode « Crèche » pour ne dépendre d'aucun ordre de contrats.
   await expect(
     page.getByRole('heading', { name: 'Planning mensuel' }),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'Crèche PSU' }).click();
+  await page.getByRole('tab', { name: 'Crèche' }).click();
 
   // La liste clavier des jours gardés ne s'affiche que s'il existe au moins un
   // jour gardé : sa présence prouve déjà que le mois est bien « crèche ».

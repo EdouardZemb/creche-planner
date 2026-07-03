@@ -159,7 +159,7 @@ describe('EditeurSemaine', () => {
       await screen.findByText('Crèche Les Hirondelles'),
     ).toBeInTheDocument();
     expect(screen.getByText('École ABCM')).toBeInTheDocument();
-    expect(screen.getByText(/Léa — Crèche PSU/)).toBeInTheDocument();
+    expect(screen.getByText(/Léa — Crèche/)).toBeInTheDocument();
     expect(screen.getByText(/Tom — Cantine/)).toBeInTheDocument();
   });
 
@@ -215,7 +215,7 @@ describe('EditeurSemaine', () => {
     const user = userEvent.setup();
     rendre();
 
-    await screen.findByText(/Léa — Crèche PSU/);
+    await screen.findByText(/Léa — Crèche/);
     // Léa (Crèche Les Hirondelles) est le premier bloc contrat → premier « Valider ».
     const validers = screen.getAllByRole('button', { name: 'Valider' });
     await user.click(validers[0]!);

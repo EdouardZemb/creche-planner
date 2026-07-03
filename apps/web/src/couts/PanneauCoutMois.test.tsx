@@ -83,10 +83,9 @@ describe('PanneauCoutMois', () => {
 
     expect(screen.getByText(/Emma/)).toBeInTheDocument();
     // EX-13 : libellé de mode accentué, jamais le code brut « CRECHE_PSU ».
-    // UT-08 : le sigle « PSU » est explicité via <abbr>, donc « Crèche » et
-    // « PSU » sont dans des nœuds distincts (matcher de nœud par nœud).
+    // UX lot 2 : le sigle « PSU » (jargon de financement) n'apparaît plus non plus.
     expect(screen.getByText(/Crèche/)).toBeInTheDocument();
-    expect(screen.getByText('PSU')).toBeInTheDocument();
+    expect(screen.queryByText('PSU')).not.toBeInTheDocument();
     expect(screen.queryByText('CRECHE_PSU')).not.toBeInTheDocument();
     expect(screen.getByText(/Mensualité crèche/)).toBeInTheDocument();
     expect(screen.getByText(/Aide CAF/)).toBeInTheDocument();
@@ -152,9 +151,21 @@ describe('PanneauCoutMois', () => {
     expect(deltaEl).toHaveStyle({ color: 'var(--vert)' });
   });
 
-  // UT-08 — sigles métier explicités (nom accessible via Abbr)
-  it('explicite le sigle « PSU » du libellé de mode (UT-08)', async () => {
-    vi.mocked(api.lireCoutMois).mockResolvedValue(coutMoisFactice);
+  // UT-08 — sigles métier explicités (nom accessible via Abbr). Le mode crèche
+  // ne porte plus de sigle (« Crèche » tout court, UX lot 2) : on vérifie le
+  // mécanisme `avecSigles` sur « ALSH », seul mode dont le libellé reste un sigle.
+  it('explicite le sigle « ALSH » du libellé de mode (UT-08)', async () => {
+    vi.mocked(api.lireCoutMois).mockResolvedValue({
+      ...coutMoisFactice,
+      prestations: [
+        {
+          enfant: 'Emma',
+          mode: 'ALSH',
+          totalCentimes: 35000,
+          lignes: [],
+        },
+      ],
+    });
 
     render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule={false} />);
 
@@ -162,9 +173,9 @@ describe('PanneauCoutMois', () => {
     // <abbr> dont le titre expose le libellé long du glossaire
     const abbr = document.querySelector('abbr[title]');
     expect(abbr).toBeTruthy();
-    expect(abbr?.textContent).toBe('PSU');
+    expect(abbr?.textContent).toBe('ALSH');
     expect(abbr?.getAttribute('title')).toMatch(
-      /Prestation de service unique/i,
+      /Accueil de loisirs sans hébergement/i,
     );
     // atteignable au clavier
     expect(abbr).toHaveAttribute('tabindex', '0');

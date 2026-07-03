@@ -106,7 +106,7 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
   it('initialise les besoins depuis le contrat : absence datée, semaine-type, jours vides', () => {
     rendre(contratCreche());
 
-    expect(screen.getByText('Léa — Crèche PSU')).toBeInTheDocument();
+    expect(screen.getByText('Léa — Crèche')).toBeInTheDocument();
     // Lundi : absence datée → résumé + bouton « Modifier ».
     expect(screen.getByText('Absent (09:00–16:30)')).toBeInTheDocument();
     expect(
@@ -176,7 +176,7 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
     expect(screen.getByLabelText(/Heure d’arrivée/)).toHaveValue('09:00');
     expect(screen.getByLabelText(/Heure de départ/)).toHaveValue('16:30');
 
-    fireEvent.change(screen.getByLabelText(/Préavis \(jours\)/), {
+    fireEvent.change(screen.getByLabelText(/Signalée combien de jours/), {
       target: { value: '2' },
     });
     await user.click(screen.getByLabelText('Certificat médical'));

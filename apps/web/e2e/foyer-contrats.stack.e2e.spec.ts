@@ -10,8 +10,8 @@ import { lireEtatSeed, urlContrats } from './support/stack';
 // GET /api/v1/contrats?foyer=<uuid>.
 //
 // Les 4 contrats seedés (scripts/seed-demo.mjs) :
-//   - Zoé  / CRECHE_PSU   → « Zoé » + « Crèche PSU »
-//   - Mia   / CRECHE_PSU   → « Mia »  + « Crèche PSU »
+//   - Zoé  / CRECHE_PSU   → « Zoé » + « Crèche »
+//   - Mia   / CRECHE_PSU   → « Mia »  + « Crèche »
 //   - Zoé  / CANTINE      → « Zoé » + « Cantine »
 //   - Zoé  / PERISCOLAIRE → « Zoé » + « Périscolaire »
 
@@ -35,7 +35,7 @@ test('stack réelle : la page Contrats liste les 4 contrats seedés', async ({
   await expect(page.getByText('Zoé', { exact: true })).toHaveCount(3);
 
   // Les libellés de mode attendus (régression : ils s'affichaient vides / absents).
-  await expect(page.getByText('Crèche PSU', { exact: true })).toHaveCount(2);
+  await expect(page.getByText('Crèche', { exact: true })).toHaveCount(2);
   await expect(page.getByText('Cantine', { exact: true })).toHaveCount(1);
   await expect(page.getByText('Périscolaire', { exact: true })).toHaveCount(1);
 

@@ -498,7 +498,7 @@ export function EditeurContratSemaine({
               {form.nature === 'absence' && (
                 <>
                   <label>
-                    Préavis (jours)
+                    Signalée combien de jours à l’avance ?
                     <input
                       type="number"
                       min={0}

@@ -1,3 +1,7 @@
+import {
+  estSemaineIso,
+  joursDeLaSemaine,
+} from '@creche-planner/shared-semaine';
 import type { JourSemaine } from '../types/bff';
 
 // Helpers calendaires purs (UTC pour éviter les décalages de fuseau).
@@ -86,4 +90,48 @@ export function formaterDateCourtFr(iso: string): string {
   const jj = String(d).padStart(2, '0');
   const mm = String(m).padStart(2, '0');
   return `${jj}/${mm}`;
+}
+
+/** Jour du mois en français (« 1er », « 6 »). */
+function jourDuMoisFr(jour: number): string {
+  return jour === 1 ? '1er' : String(jour);
+}
+
+/** Nom du mois français d'une date « YYYY-MM-DD » (« juillet »). */
+function nomMoisFr(iso: string): string {
+  const [y, m] = partsIso(iso);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('fr-FR', {
+    month: 'long',
+    timeZone: 'UTC',
+  });
+}
+
+/**
+ * Rend `2026-W28` en libellé parent « semaine du 6 au 12 juillet » : des dates
+ * réelles, jamais le numéro de semaine ISO (jargon pour un parent). Le mois de
+ * début n'apparaît que si la semaine en chevauche deux (« semaine du 29 juin au
+ * 5 juillet »), l'année que si la semaine est à cheval sur deux années
+ * (« semaine du 29 décembre 2025 au 4 janvier 2026 »). Repli sur la chaîne brute
+ * si le format n'est pas `YYYY-Www`. L'ISO reste réservé aux attributs
+ * techniques (clés React, appels API) — jamais à l'écran.
+ */
+export function libelleSemaine(semaineIso: string): string {
+  if (!estSemaineIso(semaineIso)) return semaineIso;
+  const jours = joursDeLaSemaine(semaineIso);
+  const lundi = jours[0];
+  const dimanche = jours[6];
+  if (lundi === undefined || dimanche === undefined) return semaineIso;
+  const [anneeDebut, moisDebut, jourDebut] = partsIso(lundi);
+  const [anneeFin, moisFin, jourFin] = partsIso(dimanche);
+  let debut = jourDuMoisFr(jourDebut);
+  if (anneeDebut !== anneeFin) {
+    debut = `${debut} ${nomMoisFr(lundi)} ${String(anneeDebut)}`;
+  } else if (moisDebut !== moisFin) {
+    debut = `${debut} ${nomMoisFr(lundi)}`;
+  }
+  const fin =
+    anneeDebut !== anneeFin
+      ? `${jourDuMoisFr(jourFin)} ${nomMoisFr(dimanche)} ${String(anneeFin)}`
+      : `${jourDuMoisFr(jourFin)} ${nomMoisFr(dimanche)}`;
+  return `semaine du ${debut} au ${fin}`;
 }

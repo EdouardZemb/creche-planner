@@ -703,7 +703,8 @@ export function CalendrierCreche({
           }}
         >
           <span className="muted" style={{ fontSize: '0.9rem' }}>
-            Complément (min) :
+            {/* Espace insécable avant « : » : sinon il passe seul à la ligne à 375 px. */}
+            {'Temps de garde en plus (minutes) :'}
           </span>
           <input
             type="number"
@@ -829,7 +830,7 @@ export function CalendrierCreche({
               </>
             )}
             <label>
-              Préavis (jours)
+              Signalée combien de jours à l’avance ?
               <input
                 type="number"
                 min={0}
@@ -1128,7 +1129,7 @@ export function CalendrierCreche({
           {dialogKind === 'absence' && (
             <>
               <label>
-                Préavis (jours)
+                Signalée combien de jours à l’avance ?
                 <input
                   type="number"
                   min={0}

@@ -249,7 +249,7 @@ describe('EtablissementsPage (per-foyer)', () => {
       'Crèche du Centre',
     );
     expect(screen.getByLabelText('En jours ouvrés')).toBeChecked();
-    expect(screen.getByLabelText('Crèche PSU')).toBeChecked();
+    expect(screen.getByLabelText('Crèche')).toBeChecked();
 
     fireEvent.change(screen.getByLabelText(/Nom de l’établissement/i), {
       target: { value: 'Crèche rebaptisée' },

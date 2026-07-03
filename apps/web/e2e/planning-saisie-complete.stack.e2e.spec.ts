@@ -100,7 +100,7 @@ async function ouvrirAjout(page: Page, iso: string) {
 }
 
 /**
- * Ouvre la page Planning sur le mois donné et force l'onglet « Crèche PSU » de
+ * Ouvre la page Planning sur le mois donné et force l'onglet « Crèche » de
  * Zoé (sans dépendre de l'ordre des contrats), puis attend que la grille soit
  * prête. Reproduit le parcours d'`planning-creche.stack.e2e.spec.ts`.
  */
@@ -109,7 +109,7 @@ async function ouvrirPlanningCreche(page: Page, foyerId: string, mois: string) {
   await expect(
     page.getByRole('heading', { name: 'Planning mensuel' }),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'Crèche PSU' }).click();
+  await page.getByRole('tab', { name: 'Crèche' }).click();
 }
 
 test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
