@@ -90,7 +90,8 @@ describe('useCalendrierContrat', () => {
 
   it('expose l’état initial : statut idle, portée mois, aucune confirmation ni erreur durable', () => {
     const { result } = monter();
-    expect(result.current.etatStatut).toBe('idle');
+    expect(result.current.etat).toBe('idle');
+    expect(result.current.enregistreA).toBeNull();
     expect(result.current.portee).toBe('mois');
     expect(result.current.confirmationDurable).toBeNull();
     expect(result.current.erreurDurable).toBeNull();

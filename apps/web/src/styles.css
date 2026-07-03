@@ -334,6 +334,11 @@ h3 {
   color: #fff;
 }
 
+.statut-en-cours {
+  background: var(--gris-clair);
+  color: var(--gris);
+}
+
 .statut-enregistre {
   background: #dcfce7;
   color: var(--vert);

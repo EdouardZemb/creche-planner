@@ -1,11 +1,16 @@
 import type { ReactNode } from 'react';
 import { StatutSauvegarde } from '../ui/StatutSauvegarde';
+import type { EtatEnregistrement } from './usePlanning';
 
 export interface BarreStatutCalendrierProps {
-  /** Statut réduit de l'écriture debouncée (cf. `useCalendrierContrat`). */
-  etatStatut: 'idle' | 'enregistre' | 'erreur';
+  /** État de l'écriture debouncée (cf. `useCalendrierContrat`). */
+  etat: EtatEnregistrement;
+  /** Heure « 21:43 » du dernier enregistrement abouti (badge persistant). */
+  enregistreA: string | null;
   /** Détail de l'erreur d'écriture de planning (affiché si statut « erreur »). */
   erreur: string | null;
+  /** Rejoue la dernière écriture (bouton « Réessayer » sur erreur). */
+  onReessayer: () => void;
   /** Erreur d'une modification durable du contrat (PUT), le cas échéant. */
   erreurDurable: string | null;
   /** Contenu propre au mode AVANT le statut (complément, PAI, consigne…). */
@@ -20,8 +25,10 @@ export interface BarreStatutCalendrierProps {
  * contrôles propres au mode.
  */
 export function BarreStatutCalendrier({
-  etatStatut,
+  etat,
+  enregistreA,
   erreur,
+  onReessayer,
   erreurDurable,
   children,
   apres,
@@ -37,11 +44,22 @@ export function BarreStatutCalendrier({
       }}
     >
       {children}
-      <StatutSauvegarde etat={etatStatut} />
-      {etatStatut === 'erreur' && erreur && (
-        <span className="muted" style={{ fontSize: '0.82rem' }}>
-          {erreur}
-        </span>
+      <StatutSauvegarde etat={etat} enregistreA={enregistreA} />
+      {etat === 'erreur' && (
+        <>
+          {erreur && (
+            <span className="muted" style={{ fontSize: '0.82rem' }}>
+              {erreur}
+            </span>
+          )}
+          <button
+            type="button"
+            className="btn secondaire"
+            onClick={onReessayer}
+          >
+            Réessayer
+          </button>
+        </>
       )}
       {erreurDurable && (
         <span

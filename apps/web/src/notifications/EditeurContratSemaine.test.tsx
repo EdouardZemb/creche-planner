@@ -140,6 +140,9 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
 
     // Le résumé du jour reflète la saisie sans attendre l'écriture.
     expect(screen.getByText('Jour ajouté (08:30–17:30)')).toBeInTheDocument();
+    // La modale s'est fermée mais l'écriture est debouncée : le statut couvre
+    // ce trou dès la confirmation.
+    expect(screen.getByText('Enregistrement…')).toBeInTheDocument();
 
     const { contratId, semaine, corps } = await corpsEcrit();
     expect(contratId).toBe('c-lea');
@@ -160,7 +163,10 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
     await waitFor(() => {
       expect(onEnregistre).toHaveBeenCalled();
     });
-    expect(await screen.findByText('Enregistré')).toBeInTheDocument();
+    // Le statut persiste, horodaté (plus de retour à « idle » après 2 s).
+    expect(
+      await screen.findByText(/^Enregistré à \d{2}:\d{2}$/),
+    ).toBeInTheDocument();
   });
 
   it('préremplit la modale depuis l’absence existante et enregistre ses modifications', async () => {
@@ -253,6 +259,36 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
     expect(
       screen.getByText('Service indisponible, réessayez dans un instant.'),
     ).toBeInTheDocument();
+  });
+
+  it('« Réessayer » après une erreur rejoue l’écriture et affiche « Enregistré »', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.ecrireSemaineBesoins)
+      .mockRejectedValueOnce(new ApiError(502, undefined))
+      .mockResolvedValueOnce(undefined);
+    rendre(contratCreche());
+
+    await user.click(
+      screen.getByRole('button', { name: 'Modifier le Lundi 29/06/2026' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Supprimer' }));
+
+    const reessayer = await screen.findByRole(
+      'button',
+      { name: 'Réessayer' },
+      { timeout: 2000 },
+    );
+    await user.click(reessayer);
+
+    expect(
+      await screen.findByText(/^Enregistré à \d{2}:\d{2}$/, undefined, {
+        timeout: 2000,
+      }),
+    ).toBeInTheDocument();
+    expect(api.ecrireSemaineBesoins).toHaveBeenCalledTimes(2);
+    // La reprise rejoue le même corps que l'écriture échouée.
+    const appels = vi.mocked(api.ecrireSemaineBesoins).mock.calls;
+    expect(appels[1]?.slice(0, 3)).toEqual(appels[0]?.slice(0, 3));
   });
 
   it('valide la semaine et notifie le parent du statut', async () => {
