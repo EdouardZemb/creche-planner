@@ -1,6 +1,10 @@
 # 05 — Plan de développement
 
-> Statut : **À valider** · Version 0.5 · 2026-06-03
+> ⚠️ **Document historique** (plan initial des phases 1→12). L'état réel du
+> projet et le guide de reprise vivent en **[doc 06](06-etat-davancement.md)** —
+> en cas de divergence, la doc 06 fait foi. (AQ-16, doc 27.)
+
+> Statut : **Historique** · Version 0.5 · 2026-06-03
 > Adapté à l'archi **microservices** (doc 04 v0.3 : 4 services) et au périmètre
 > **multi-modes** (crèche PSU + ABCM péri/cantine/ALSH). Lotissement par incréments
 > livrables : chaque lot finit sur quelque chose qui _tourne_ et est _testé_.

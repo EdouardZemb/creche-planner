@@ -69,7 +69,7 @@ Access et les ports ne sont pas publiés. AQ-01 n'ajoute qu'un garde-fou défens
 | ✅ **AQ-13** | P3       | 100 % de couverture ne prouve pas que les assertions mordent (pas de mutation testing)                              | Stryker sur ≥ 2 libs domaine, score ≥ 80 %, mutants survivants triés         | `libs/tarification/domain`, `libs/planification/domain`                                                   |
 | 🔶 **AQ-14** | P3       | Événements NATS documentés seulement en code ; rétention JetStream non documentée ; rebinding consumer à délai fixe | AsyncAPI par contexte + doc rétention + backoff exponentiel                  | `libs/contracts/*/`, `apps/svc-tarification/src/consumers/jetstream.consumer.ts`, `docs/exploitation/`    |
 | 🔶 **AQ-15** | P3       | CI jusqu'à ~50 min (smoke-stack + e2e-stack séquentiels, rebuilds) ; pas de healthcheck apps                        | smoke/e2e parallélisés ou mutualisés, cache buildx, healthchecks 5 apps      | `.github/workflows/ci.yml`, `docker-compose.yml`                                                          |
-| **AQ-16**    | P3       | Pas d'index de navigation docs, pas de CONTRIBUTING.md, `caddy-root.crt` à la racine, étapes onboarding implicites  | Index « par où commencer », CONTRIBUTING, cert déplacé, README complété      | `docs/README.md` (nouveau), `.github/CONTRIBUTING.md`, `README.md`                                        |
+| ✅ **AQ-16** | P3       | Pas d'index de navigation docs, pas de CONTRIBUTING.md, `caddy-root.crt` à la racine, étapes onboarding implicites  | Index « par où commencer », CONTRIBUTING, cert déplacé, README complété      | `docs/README.md` (nouveau), `.github/CONTRIBUTING.md`, `README.md`                                        |
 | **AQ-17**    | P3       | Mineurs backend : pas de timeout sur transactions Drizzle ; rate-limit mémoire non documenté mono-instance          | Timeout configuré + commentaire/doc sur la limite du rate-limit              | `apps/svc-*/src/database/`, `apps/api-gateway/src/security/rate-limit.guard.ts`                           |
 | **AQ-18**    | P3       | Pas de lazy loading des routes web (acceptable à 5 écrans, à faire si le périmètre grossit)                         | `React.lazy` + `Suspense` sur les pages lourdes, bundle initial réduit       | `apps/web/src/App.tsx`                                                                                    |
 
@@ -89,7 +89,8 @@ structurants (mesure, factorisation, tests manquants, typage) ; **P3** = robuste
 > - **AQ-14 🔶** : backoff progressif livré (natif JetStream) ; AsyncAPI et doc de
 >   rétention toujours manquants. **AQ-15 🔶** : smoke/e2e parallélisés + cache buildx
 >   GHA ; healthchecks des apps hors gateway manquants.
-> - **AQ-16** : en cours (index docs + CONTRIBUTING, session du 2026-07-02).
+> - **AQ-16 ✅** : livrée le 2026-07-02 (index `docs/README.md`, `CONTRIBUTING.md`,
+>   bandeau « historique » sur la doc 05 — déviations assumées en §3).
 >   **AQ-17, AQ-18** : ouverts.
 >
 > ⚠️ **Numéros de PR** : les PR de ce plan (#39→#48, sessions A→H) datent d'**avant la
@@ -536,6 +537,16 @@ en tête de la doc 05 (moins risqué qu'une fusion).
 en place ; `node scripts/deploy.mjs DRY_RUN=1` (ou équivalent) passe après le
 déplacement du certificat ; aucune référence cassée (`grep` final propre).
 
+> **MÀJ 2026-07-02 — ✅ livrée, avec déviations assumées.** (1) Index
+> [`docs/README.md`](README.md) (par thème + « par où commencer » + explication de
+> la numérotation 24/28/29 rangée sous `exploitation/`), lié depuis le README
+> racine. (2) `CONTRIBUTING.md` créé **à la racine** (plus visible que
+> `.github/`). (5) Doc 05 marquée « document historique, la doc 06 fait foi ».
+> **Non retenus** : (3) déplacement de `caddy-root.crt` — cosmétique, référencé
+> par `deploy.mjs` et la doc 24, risque > bénéfice ; (4) la mise à jour de fond du
+> README racine (état projet arrêté à la Phase 9, React 18, 4 services) est
+> extraite en tâche dédiée.
+
 ---
 
 ### AQ-17 — Mineurs backend (timeouts, rate-limit) · P3
@@ -601,20 +612,20 @@ l'effort doit basculer sur la **valeur utilisateur** :
 Cocher ici au fil des sessions (convention doc 25 : ✅ dans le tableau §1 +
 mention de la PR).
 
-| Session | Branche                           | Actions     | PR            | État                                                              |
-| ------- | --------------------------------- | ----------- | ------------- | ----------------------------------------------------------------- |
-| A       | `fix/audit-quickwins-backend`     | AQ-01/03/04 | #40 (privée)¹ | ✅ Fait (2026-06-11)                                              |
-| B       | `ci/pact-drift-check`             | AQ-02       | #39 (privée)¹ | ✅ Fait (2026-06-11)                                              |
-| C       | `fix/web-a11y-annonces`           | AQ-05/12    | #41 (privée)¹ | ✅ Fait (2026-06-11)                                              |
-| D       | `ci/metriques-historisees`        | AQ-06/11    | #42 (privée)¹ | ✅ Fait (2026-06-12)                                              |
-| E       | `refactor/nest-commons`           | AQ-07       | #43 (privée)¹ | ✅ Fait (2026-06-12)                                              |
-| F       | `test/services-foyer-referentiel` | AQ-08/09    | #45 (privée)¹ | ✅ Fait (2026-06-12)                                              |
-| G       | `feat/web-types-openapi`          | AQ-10       | #46 (privée)¹ | ✅ Fait (2026-06-12)                                              |
-| H       | `test/mutation-stryker`           | AQ-13       | #48 (privée)¹ | ✅ Fait (2026-06-12)                                              |
-| I       | `docs/asyncapi-nats`              | AQ-14       | —             | 🔶 Partiel (backoff livré ; AsyncAPI + rétention à faire)         |
-| J       | `ci/pipeline-parallele`           | AQ-15       | —             | 🔶 Partiel (parallélisation + cache faits ; healthchecks à faire) |
-| K       | `docs/index-et-contributing`      | AQ-16       | —             | 🔄 En cours (session 2026-07-02)                                  |
-| —       | (opportuniste)                    | AQ-17/18    | —             | Ouvert / optionnel                                                |
+| Session | Branche                           | Actions     | PR                                                             | État                                                              |
+| ------- | --------------------------------- | ----------- | -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| A       | `fix/audit-quickwins-backend`     | AQ-01/03/04 | #40 (privée)¹                                                  | ✅ Fait (2026-06-11)                                              |
+| B       | `ci/pact-drift-check`             | AQ-02       | #39 (privée)¹                                                  | ✅ Fait (2026-06-11)                                              |
+| C       | `fix/web-a11y-annonces`           | AQ-05/12    | #41 (privée)¹                                                  | ✅ Fait (2026-06-11)                                              |
+| D       | `ci/metriques-historisees`        | AQ-06/11    | #42 (privée)¹                                                  | ✅ Fait (2026-06-12)                                              |
+| E       | `refactor/nest-commons`           | AQ-07       | #43 (privée)¹                                                  | ✅ Fait (2026-06-12)                                              |
+| F       | `test/services-foyer-referentiel` | AQ-08/09    | #45 (privée)¹                                                  | ✅ Fait (2026-06-12)                                              |
+| G       | `feat/web-types-openapi`          | AQ-10       | #46 (privée)¹                                                  | ✅ Fait (2026-06-12)                                              |
+| H       | `test/mutation-stryker`           | AQ-13       | #48 (privée)¹                                                  | ✅ Fait (2026-06-12)                                              |
+| I       | `docs/asyncapi-nats`              | AQ-14       | —                                                              | 🔶 Partiel (backoff livré ; AsyncAPI + rétention à faire)         |
+| J       | `ci/pipeline-parallele`           | AQ-15       | —                                                              | 🔶 Partiel (parallélisation + cache faits ; healthchecks à faire) |
+| K       | `docs/index-et-contributing`      | AQ-16       | [#145](https://github.com/EdouardZemb/creche-planner/pull/145) | ✅ Fait (2026-07-02)                                              |
+| —       | (opportuniste)                    | AQ-17/18    | —                                                              | Ouvert / optionnel                                                |
 
 > ¹ **PR de l'ancien dépôt privé** : ces sessions ont été mergées **avant la publication
 > du dépôt** (2026-06-18). L'historique a été squashé dans l'import initial public

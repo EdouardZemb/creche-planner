@@ -20,7 +20,10 @@ Deux modes de garde couverts :
 
 ## Documentation de pilotage
 
-Toute la conception vit dans [`docs/`](docs/) et **précède** le code :
+Toute la conception vit dans [`docs/`](docs/) et **précède** le code.
+**→ [Index complet de la documentation](docs/README.md)** (par thème et par
+besoin) ; pour contribuer : [CONTRIBUTING.md](CONTRIBUTING.md) +
+[CONVENTIONS.md](CONVENTIONS.md). Les incontournables :
 
 | Doc                                                                    | Contenu                                                                                                                                                                                                                                                    |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
