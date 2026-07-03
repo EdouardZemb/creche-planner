@@ -25,70 +25,65 @@ Toute la conception vit dans [`docs/`](docs/) et **précède** le code.
 besoin) ; pour contribuer : [CONTRIBUTING.md](CONTRIBUTING.md) +
 [CONVENTIONS.md](CONVENTIONS.md). Les incontournables :
 
-| Doc                                                                    | Contenu                                                                                                                                                                                                                                                    |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [01 — Spécification fonctionnelle](docs/01-spec-fonctionnelle.md)      | Périmètre, acteurs, user stories, règles métier, critères d'acceptation                                                                                                                                                                                    |
-| [02 — Modèle de coût (PSU/CNAF)](docs/02-modele-de-cout.md)            | Formules, glossaire, invariants, jeu de cas de test chiffrés                                                                                                                                                                                               |
-| [03 — Standards de développement](docs/03-standards-developpement.md)  | Clean code, SOLID, hexagonal, conventions, tests, Git, CI                                                                                                                                                                                                  |
-| [04 — Architecture & technologies](docs/04-architecture-et-technos.md) | Comparatif techno, choix justifiés, découpage en **microservices**                                                                                                                                                                                         |
-| [05 — Plan de développement](docs/05-plan-de-developpement.md)         | Phases, jalons, lotissement, definition of done                                                                                                                                                                                                            |
-| [06 — État d'avancement & reprise](docs/06-etat-davancement.md)        | État post-Phase 7, arborescence, commandes, conventions, **interface web livrée (Phase 8)** + guide de reprise Phase 9                                                                                                                                     |
-| [ADR](docs/adr/)                                                       | [0001 : microservices](docs/adr/0001-architecture-microservices.md) · [0002 : grain services & politiques tarifaires](docs/adr/0002-grain-services-et-politiques-tarifaires.md) · [0003 : décisions de toolchain](docs/adr/0003-decisions-de-toolchain.md) |
+| Doc                                                                                        | Contenu                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [01 — Spécification fonctionnelle](docs/01-spec-fonctionnelle.md)                          | Périmètre, acteurs, user stories, règles métier, critères d'acceptation                                                                                                   |
+| [02 — Modèle de coût (PSU/CNAF)](docs/02-modele-de-cout.md)                                | Formules, glossaire, invariants, jeu de cas de test chiffrés                                                                                                              |
+| [03 — Standards de développement](docs/03-standards-developpement.md)                      | Clean code, SOLID, hexagonal, conventions, tests, Git, CI                                                                                                                 |
+| [04 — Architecture & technologies](docs/04-architecture-et-technos.md)                     | Comparatif techno, choix justifiés, découpage en **microservices**                                                                                                        |
+| [05 — Plan de développement](docs/05-plan-de-developpement.md)                             | Phases, jalons, lotissement, definition of done                                                                                                                           |
+| [06 — État d'avancement & reprise](docs/06-etat-davancement.md)                            | **Source de vérité de l'avancement** : phases livrées, features, arborescence, commandes, conventions, guide de reprise                                                   |
+| [24 — Déploiement & exploitation](docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md) | Production : portes de déploiement, topologie pull-based, runbooks (dossier [`docs/exploitation/`](docs/exploitation/))                                                   |
+| [ADR](docs/adr/)                                                                           | 0001 → 0006 : microservices · grain des services & politiques tarifaires · toolchain · décentralisation des contrats · registre de contrats · préférences de notification |
 
 ## Architecture (résumé)
 
-**Microservices** (TypeScript de bout en bout) — 4 services + gateway + web :
+**Microservices** (TypeScript de bout en bout) — 5 services + gateway + web :
 `svc-foyer`, `svc-referentiel` (catalogue tarifaire), `svc-planification`,
-`svc-tarification`. Base par service, communication REST + événements (NATS),
-API Gateway/BFF, **front React PWA (`apps/web`) qui ne parle qu'au BFF**. Hexagonal + SOLID à l'intérieur de chaque service.
+`svc-tarification`, `svc-notifications` (email + in-app). Base par service,
+communication REST + événements (NATS), API Gateway/BFF, **front React PWA
+(`apps/web`) qui ne parle qu'au BFF**. Hexagonal + SOLID à l'intérieur de chaque
+service ; contrats **décentralisés par contexte** (`libs/contracts/*`, ADR-0004/0005).
 Calcul multi-modes via stratégies `PolitiqueTarifaire`. Détails en docs 04 + ADR.
 
 ## État du projet
 
-🟢 **Phase 1 — Socle technique distribué** : _walking skeleton_ microservices qui compile,
-teste et tourne en local.
-🟢 **Phase 2 — Cœur métier tarifaire** : domaine de calcul pur (`tarification/domain`),
-stratégies PSU/ABCM + consolidation foyer, **100 % couvert** (cas réels CT-01..20).
-🟢 **Phase 3 — Service Foyer** : `svc-foyer` (domaine 100 %, outbox transactionnelle, contrat Pact).
-🟢 **Phase 4 — Service Référentiel** : `svc-referentiel`, catalogue tarifaire **versionné**
-(grilles ABCM/PSU, frais fixes, calendrier), événement `GrillePubliee`, API « grille applicable »,
-contrat Pact. Domaine `referentiel/domain` **100 % couvert**.
-🟢 **Phase 5 — Service Planification** : `svc-planification` (port 3004), planning multi-modes **réel
-et simulé**, génération des **prestations du mois** (jours non facturables du Référentiel exclus),
-outbox + événements `ContratCree`/`PlanningModifie`, API `/api/contrats` & `/api/prestations`,
-contrat Pact. Domaine `planification/domain` **100 % couvert (65 tests)**.
-🟢 **Phase 6 — Intégration Tarification** : `svc-tarification` (port 3005), **read model**
-alimenté par les événements des streams `FOYER`/`REFERENTIEL`/`PLANIFICATION`, **consommateurs
-idempotents** (durables `processed_event`, `max_deliver` + backoff), **fallback synchrone**
-(timeout/retry/circuit-breaker) si une projection est froide, calcul via `tarification/domain`,
-API `/api/couts` & `/api/couts/annuel`, contrat Pact.
-🟢 **Phase 7 — API Gateway / BFF** : `api-gateway` enrichi (port 3000), API **orientée écran**
-sous **`/api/v1`** agrégeant Foyer/Planification/Tarification via des **clients REST résilients**
-(timeout/retry/circuit-breaker), transverses **auth par token / CORS / rate-limit** (faits main, sans
-dépendance), **OpenAPI** publié (`GET /api/openapi.json`), pacts consumer étendus aux écritures, et
-**test E2E API** « créer foyer + contrats → lire le coût du mois » (bundle réel + services aval simulés).
-🟢 **Phase 8 — Interface web** : `apps/web` (React 18 + Vite **PWA**, port **4200**), front qui ne
-parle **qu'au BFF** (`/api/v1`). Saisie foyer/contrats, **calendrier mensuel** par enfant/mode
-(FullCalendar), panneau **coût du mois** + **vue annuelle** + **mode simulation** (delta €). Types BFF
-écrits à la main, état via hooks + `fetch` (zéro lib de state), auth Bearer optionnelle
-(`VITE_GATEWAY_TOKEN`). **E2E Playwright** « créer foyer + contrat → planifier → lire le coût » (BFF mocké).
-⏭️ **Phase 9 — Durcissement & exploitation** (prochaine étape). Voir [doc 05](docs/05-plan-de-developpement.md)
-et le guide de reprise [doc 06](docs/06-etat-davancement.md).
+🚀 **En production** (version `0.8.0`, 2026-07) — déployée par **trains de release**
+successifs (8 à ce jour) sur un serveur auto-hébergé, derrière Cloudflare Access
+(voir [doc 24](docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md)).
+
+Les **phases 1 → 12** du plan initial sont **réalisées** : socle distribué, cœur
+métier tarifaire pur (100 % couvert, CT-01..20), les 5 services, API Gateway/BFF
+(`/api/v1`), interface web React PWA, durcissement & exploitation, navigation/UX,
+découplage micro-services, accessibilité **WCAG AA**. S'y ajoutent les features
+livrées en continu : **notifications & validation hebdomadaire**, **parents du
+foyer** (identité Cloudflare Access + isolation par foyer), **établissements en
+entité libre**, **cycle de vie du foyer**, **tableau de bord « ma journée »**,
+**profil parent & préférences de notification** (+ désabonnement RGPD).
+
+L'état d'avancement détaillé (**source de vérité**) vit en
+[doc 06](docs/06-etat-davancement.md) ; le plan initial en
+[doc 05](docs/05-plan-de-developpement.md) (document historique).
 
 ## Monorepo (Nx + pnpm)
 
 ```
 apps/
-  web/                # [Phase 8] front React PWA (Vite, port 4200) — calendrier FullCalendar, panneau coût, vue annuelle, simulation ; ne parle qu'au BFF ; E2E Playwright
-  api-gateway/        # BFF NestJS (port 3000) — agrégation /api/v1 (foyer+planif+tarif) via clients REST résilients, auth/CORS/rate-limit, OpenAPI ; pacts consumer + E2E API
-  svc-foyer/          # service Foyer — Postgres (Drizzle), outbox + NATS, API /api/foyers
-  svc-referentiel/    # catalogue tarifaire versionné — grilles/barèmes, outbox, API /api/grilles
-  svc-planification/  # planning multi-modes réel/simulé — outbox + NATS, API /api/contrats & /api/prestations, port 3004, base 5435
-  svc-tarification/   # read model + calcul du coût — consommateurs idempotents FOYER/REFERENTIEL/PLANIFICATION, fallback REST résilient, API /api/couts & /api/couts/annuel, port 3005, base 5436
+  web/                # front React 19 + Vite 8 (PWA, port 4200) — planning, dashboard « ma journée », coût, profil, notifications in-app ; ne parle qu'au BFF ; E2E Playwright (mocké + stack réelle)
+  api-gateway/        # BFF NestJS (port 3000) — agrégation /api/v1 orientée écran via clients REST résilients, auth/CORS/rate-limit, OpenAPI ; pacts consumer + E2E API
+  svc-foyer/          # foyer, enfants, parents, préférences de notification (port 3002, base 5434) — Postgres (Drizzle), outbox + NATS, API /api/foyers
+  svc-referentiel/    # catalogue tarifaire versionné (port 3001, base 5433) — grilles/barèmes, outbox, API /api/grilles
+  svc-planification/  # planning multi-modes réel/simulé + contrats & établissements (port 3004, base 5435) — outbox + NATS, API /api/contrats & /api/prestations
+  svc-tarification/   # read model + calcul du coût (port 3005, base 5436) — consommateurs idempotents, fallback REST résilient, API /api/couts & /api/couts/annuel
+  svc-notifications/  # notifications email (SMTP) + in-app (port 3006, base 5437) — récap hebdo à valider, préférences type×canal, désabonnement RGPD, API /api/validations & /api/moi/notifications
 libs/
   shared-kernel/      # value objects purs : Money, Duree, Tranche, DomainError (100% testés)
-  contracts/          # OpenAPI/AsyncAPI + DTO Zod + événements (Foyer, Référentiel, Planification)
+  contracts/          # contrats décentralisés PAR CONTEXTE (ADR-0004) : kernel/ (enveloppe événement, OpenAPI gateway), foyer/, referentiel/, planification/ — DTO Zod + événements + AsyncAPI
+  nest-commons/       # briques NestJS partagées entre services (bootstrap, transverses)
+  resilience/         # timeout / retry / circuit-breaker réutilisables (clients REST)
   observability/      # bootstrap OpenTelemetry + options pino corrélées
+  shared/
+    semaine/          # calcul de semaine ISO partagé (TS pur)
   tarification/
     domain/           # politiques tarifaires PSU/ABCM + consolidation foyer (TS pur, 100% testé)
   foyer/
@@ -96,10 +91,11 @@ libs/
   referentiel/
     domain/           # versionnement catalogue : PeriodeValidite, sélection applicable (TS pur, 100% testé)
   planification/
-    domain/           # génération prestations du mois, planning réel/simulé (TS pur, 100% testé)
-pacts/                # contrats Pact versionnés (api-gateway → svc-foyer, → svc-referentiel, → svc-planification ; api-gateway → svc-tarification)
-docker/               # configs otel-collector, tempo, prometheus, grafana
-docker-compose.yml    # web + services + Postgres (×4) + NATS + OTel/Tempo/Prometheus/Grafana
+    domain/           # génération prestations du mois, planning réel/simulé, état jour de garde (TS pur, 100% testé)
+pacts/                # contrats Pact versionnés : api-gateway → svc-foyer / svc-referentiel / svc-planification / svc-tarification / svc-notifications
+scripts/              # deploy.mjs (seule voie de livraison), seed-demo.mjs, e2e-stack.mjs, services.json (source unique de la topologie)
+docker/               # configs otel-collector, tempo, prometheus, alertmanager, grafana, loki, promtail
+docker-compose.yml    # 7 apps + Postgres (×5) + NATS + observabilité (OTel/Tempo/Prometheus/Alertmanager/Grafana/Loki + exporters)
 ```
 
 **Frontières de modules** vérifiées au lint (`@nx/enforce-module-boundaries`) sur deux
@@ -142,7 +138,8 @@ sans mock** (`baseURL` = http://localhost:4200 servi par le conteneur web), puis
 
 > ⚠️ **Piège du port 4200** : le conteneur `web` et `pnpm nx serve web` se disputent le port 4200.
 > Ne lance **pas** `nx serve web` en même temps que la stack — la suite cible le conteneur, pas le
-> serveur Vite de dev. Ports utilisés par la pile : 3000, 4200, 5433-5436, 4222.
+> serveur Vite de dev. Ports utilisés par la pile : 3000-3006, 4200, 5433-5437, 4222
+> (+ ports d'observabilité, voir `docker-compose.override.yml`).
 
 Une fois la pile levée :
 
@@ -163,6 +160,7 @@ Une fois la pile levée :
 | http://localhost:3005/api/health                                                    | svc-tarification (readiness : Postgres + NATS)     |
 | http://localhost:3005/api/couts?foyer=<uuid>&mois=2026-10                           | Coût du mois (read model + calcul `tarification`)  |
 | http://localhost:3005/api/couts/annuel?foyer=<uuid>&annee=2026                      | Coût annuel consolidé (transition crèche → école)  |
+| http://localhost:3006/api/health                                                    | svc-notifications (readiness : Postgres + NATS)    |
 | http://localhost:3003                                                               | Grafana (trace distribuée via Tempo)               |
 
 Le `traceparent` W3C est propagé de la gateway vers le service ; les logs JSON pino des
