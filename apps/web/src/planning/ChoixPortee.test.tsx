@@ -17,13 +17,13 @@ describe('ChoixPortee', () => {
     expect(radios).toHaveLength(2);
   });
 
-  it('coche par défaut « Ce mois uniquement » selon la valeur', () => {
+  it('coche par défaut « Seulement cette fois » selon la valeur', () => {
     render(<ChoixPortee valeur="mois" onChange={vi.fn()} nom="test" />);
     expect(
-      screen.getByRole('radio', { name: /Ce mois uniquement/i }),
+      screen.getByRole('radio', { name: /Seulement cette fois/i }),
     ).toBeChecked();
     expect(
-      screen.getByRole('radio', { name: /Tous les mois/i }),
+      screen.getByRole('radio', { name: /Toutes les semaines/i }),
     ).not.toBeChecked();
   });
 
@@ -31,7 +31,7 @@ describe('ChoixPortee', () => {
     render(<ChoixPortee valeur="tous" onChange={vi.fn()} nom="test" />);
     expect(
       screen.getByRole('radio', {
-        name: /Tous les mois \(modifie le contrat\)/i,
+        name: /Toutes les semaines, durablement \(modifie le contrat\)/i,
       }),
     ).toBeChecked();
   });
@@ -39,8 +39,24 @@ describe('ChoixPortee', () => {
   it('remonte le changement de portée au clic', () => {
     const onChange = vi.fn();
     render(<ChoixPortee valeur="mois" onChange={onChange} nom="test" />);
-    fireEvent.click(screen.getByRole('radio', { name: /Tous les mois/i }));
+    fireEvent.click(
+      screen.getByRole('radio', { name: /Toutes les semaines/i }),
+    );
     expect(onChange).toHaveBeenCalledWith('tous');
+  });
+
+  it('décrit les conséquences du choix durable (aria-describedby)', () => {
+    render(<ChoixPortee valeur="mois" onChange={vi.fn()} nom="test" />);
+    const radio = screen.getByRole('radio', { name: /Toutes les semaines/i });
+    // Le radio engageant porte une description accessible qui annonce les
+    // conséquences concrètes (changement hebdomadaire + saisies effacées).
+    expect(radio).toHaveAccessibleDescription(
+      /chaque semaine.*saisies déjà faites ce mois-ci seront effacées/i,
+    );
+    // Le choix ponctuel, lui, n'a pas d'avertissement.
+    expect(
+      screen.getByRole('radio', { name: /Seulement cette fois/i }),
+    ).not.toHaveAttribute('aria-describedby');
   });
 
   it('isole les groupes via le préfixe `nom` (name unique par instance)', () => {
@@ -48,13 +64,13 @@ describe('ChoixPortee', () => {
       <ChoixPortee valeur="mois" onChange={vi.fn()} nom="creche" />,
     );
     let radio = screen.getByRole('radio', {
-      name: /Ce mois uniquement/i,
+      name: /Seulement cette fois/i,
     }) as HTMLInputElement;
     expect(radio.name).toBe('portee-creche');
 
     rerender(<ChoixPortee valeur="mois" onChange={vi.fn()} nom="abcm" />);
     radio = screen.getByRole('radio', {
-      name: /Ce mois uniquement/i,
+      name: /Seulement cette fois/i,
     }) as HTMLInputElement;
     expect(radio.name).toBe('portee-abcm');
   });

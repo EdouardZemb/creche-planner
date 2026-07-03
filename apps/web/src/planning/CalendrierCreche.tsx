@@ -162,6 +162,7 @@ export function CalendrierCreche({
     confirmerDurable,
     annulerDurable,
     erreurDurable,
+    succesDurable,
   } = useCalendrierContrat<ContratLocal['semaineType']>({
     contrat,
     mois,
@@ -484,7 +485,7 @@ export function CalendrierCreche({
         nouvelleSemaine[jourSemaine] = [plage];
         demanderConfirmationDurable(
           nouvelleSemaine,
-          `Ajouter ce jour de garde tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
+          `Tous les ${jourSemaine.toLowerCase()}s deviendront des jours de garde, de ${dialogForm.arrivee} à ${dialogForm.depart}.`,
         );
         setDialogDate(null);
         return;
@@ -508,7 +509,7 @@ export function CalendrierCreche({
       nouvelleSemaine[jourSemaine] = [];
       demanderConfirmationDurable(
         nouvelleSemaine,
-        `Retirer ce jour de garde tous les ${jourSemaine.toLowerCase()}s modifie le contrat. Les saisies mensuelles existantes seront réinitialisées.`,
+        `Les ${jourSemaine.toLowerCase()}s ne seront plus des jours de garde.`,
       );
       setDialogDate(null);
       return;
@@ -685,6 +686,7 @@ export function CalendrierCreche({
         erreur={erreur}
         onReessayer={reessayer}
         erreurDurable={erreurDurable}
+        succesDurable={succesDurable}
         apres={
           (persistAbsences.indisponible || persistJoursSup.indisponible) && (
             <span

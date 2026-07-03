@@ -6,6 +6,7 @@ import type {
   LienEtablissementSaisie,
 } from '../types/bff';
 import { messageErreur } from '../utils/erreurs';
+import { formaterHeureFr } from '../utils/dates';
 import { useAnnonce } from '../hooks/useAnnonce';
 import { usePlanning, type EtatEnregistrement } from './usePlanning';
 import { useSaisieServeur } from './useSaisieServeur';
@@ -99,6 +100,13 @@ export interface UseCalendrierContratResultat<P> {
   confirmerDurable: () => void;
   annulerDurable: () => void;
   erreurDurable: string | null;
+  /**
+   * Confirmation VISIBLE d'une modification durable aboutie (la cascade
+   * serveur réinitialise les saisies du mois en silence : sans ce message, le
+   * parent voit son calendrier changer sans explication — UX lot 4). Persiste
+   * jusqu'à la demande durable suivante, comme le badge « Enregistré à ».
+   */
+  succesDurable: string | null;
 }
 
 /** Enveloppe commune d'un calendrier mensuel adossé à un contrat. */
@@ -126,6 +134,7 @@ export function useCalendrierContrat<P>({
   // l'état local. L'opération est atomique côté service (transaction Drizzle) et
   // un 429 est rejeté par la gateway avant tout effet → le contrat reste intact.
   const [erreurDurable, setErreurDurable] = useState<string | null>(null);
+  const [succesDurable, setSuccesDurable] = useState<string | null>(null);
   const [confirmationDurable, setConfirmationDurable] =
     useState<ConfirmationDurable<P> | null>(null);
 
@@ -138,6 +147,8 @@ export function useCalendrierContrat<P>({
 
   const demanderConfirmationDurable = useCallback(
     (payload: P, message: string) => {
+      // Une nouvelle demande périme la confirmation de succès précédente.
+      setSuccesDurable(null);
       setConfirmationDurable({ payload, message });
     },
     [],
@@ -152,6 +163,11 @@ export function useCalendrierContrat<P>({
         .then(() => {
           setErreurDurable(null);
           reinitialiserSaisie();
+          // Message visible détaillé ; l'annonce lecteur d'écran (AQ-05) reste
+          // courte et passe par la région live existante (pas de double live).
+          setSuccesDurable(
+            `Contrat modifié à ${formaterHeureFr(new Date())}. Les saisies de ce mois ont été effacées : le calendrier repart du nouveau contrat.`,
+          );
           annoncer('Contrat modifié, saisies du mois réinitialisées');
           onContratModifie?.();
         })
@@ -200,5 +216,6 @@ export function useCalendrierContrat<P>({
     confirmerDurable,
     annulerDurable,
     erreurDurable,
+    succesDurable,
   };
 }

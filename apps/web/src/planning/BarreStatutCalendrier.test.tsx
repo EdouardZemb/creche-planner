@@ -53,4 +53,11 @@ describe('BarreStatutCalendrier', () => {
     rendre({ erreurDurable: 'contrat refusé' });
     expect(screen.getByRole('alert')).toHaveTextContent('contrat refusé');
   });
+
+  it('affiche la confirmation d’une modification durable aboutie (UX lot 4)', () => {
+    rendre({ succesDurable: 'Contrat modifié à 21:43. Saisies effacées.' });
+    expect(
+      screen.getByText('Contrat modifié à 21:43. Saisies effacées.'),
+    ).toBeInTheDocument();
+  });
 });

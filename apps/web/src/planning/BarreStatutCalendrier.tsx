@@ -13,6 +13,8 @@ export interface BarreStatutCalendrierProps {
   onReessayer: () => void;
   /** Erreur d'une modification durable du contrat (PUT), le cas échéant. */
   erreurDurable: string | null;
+  /** Confirmation d'une modification durable aboutie (contrat + saisies). */
+  succesDurable?: string | null;
   /** Contenu propre au mode AVANT le statut (complément, PAI, consigne…). */
   children?: ReactNode;
   /** Contenu propre au mode APRÈS les erreurs (ex. alerte persistance locale). */
@@ -30,6 +32,7 @@ export function BarreStatutCalendrier({
   erreur,
   onReessayer,
   erreurDurable,
+  succesDurable = null,
   children,
   apres,
 }: BarreStatutCalendrierProps) {
@@ -68,6 +71,13 @@ export function BarreStatutCalendrier({
           style={{ fontSize: '0.82rem', color: 'var(--erreur, #b00020)' }}
         >
           {erreurDurable}
+        </span>
+      )}
+      {/* Pas de région live ici : l'annonce lecteur d'écran passe déjà par la
+          région AQ-05 du calendrier (sinon double annonce). */}
+      {succesDurable && (
+        <span style={{ fontSize: '0.82rem', color: 'var(--vert)' }}>
+          {succesDurable}
         </span>
       )}
       {apres}

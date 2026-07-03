@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import type { ReactNode } from 'react';
 import { Modale } from './Modale';
 
 export interface ModaleConfirmationProps {
@@ -16,6 +17,8 @@ export interface ModaleConfirmationProps {
    * focus initial, qui reste toujours sur « Annuler » (choix de sûreté).
    */
   destructif?: boolean;
+  /** Contenu complémentaire rendu entre le message et les boutons. */
+  children?: ReactNode;
 }
 
 /**
@@ -36,6 +39,7 @@ export function ModaleConfirmation({
   onConfirmer,
   onAnnuler,
   destructif = false,
+  children,
 }: ModaleConfirmationProps) {
   const refAnnuler = useRef<HTMLButtonElement>(null);
 
@@ -46,6 +50,7 @@ export function ModaleConfirmation({
   return (
     <Modale titre={titre} onClose={onAnnuler} refFocusInitial={refAnnuler}>
       <p>{message}</p>
+      {children}
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
         <button
           type="button"

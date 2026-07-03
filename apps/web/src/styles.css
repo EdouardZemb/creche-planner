@@ -136,6 +136,16 @@ button {
   background: var(--bleu-clair);
 }
 
+/* Action destructive (ModaleConfirmation `destructif`) : le bouton primaire
+   passe en rouge pour distinguer visuellement l'engagement du clic. */
+.btn.danger {
+  background: var(--rouge);
+}
+
+.btn.danger:hover {
+  background: #991b1b;
+}
+
 label {
   display: block;
   margin: 0.4rem 0 0.15rem;
