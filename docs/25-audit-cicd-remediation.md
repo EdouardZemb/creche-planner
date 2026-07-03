@@ -54,6 +54,24 @@ puis jetées, prod reconstruite sur le serveur → rupture de parité d'artefact
 Priorités : **P1** = quick win sécurité/correctness (< 1 j cumulé) ; **P2** = chantier
 structurant (CD + chaîne d'appro + DORA) ; **P3** = toolchain & polissage.
 
+> **Revue de statut (2026-07-02)** — les **16/16 actions sont livrées**, re-vérifiées
+> action par action dans le code et la CI : `ci.yml` (secret-scan gitleaks, `sast-semgrep`,
+> Trivy + cosign, cache Nx, timeouts et épinglage SHA sur tous les jobs — `grep 'uses:.*@v[0-9]'`
+> vide), `release.yml`, `dora.yml`, `codeql.yml` (réactivé à la publication du dépôt, PUB-D),
+> `.nvmrc` figé `24.16.0`, `packageManager: pnpm@10.34.2`, `.github/CODEOWNERS`, `SECURITY.md`,
+> `.trivyignore`, `scripts/deploy.mjs` (GitHub Deployments → DORA).
+>
+> ⚠️ **Numéros de PR du journal (§5)** : les PR antérieures au **2026-06-18** (#20, #22,
+> #23…) appartiennent à l'**ancien dépôt privé**. À la publication, tout l'historique a été
+> squashé dans l'import initial `4f36e3e` : ces numéros ne correspondent à **aucune PR du
+> dépôt public actuel** (les #20/#22/#40 publics portent sur d'autres sujets). Les traiter
+> comme références historiques — ne pas les résoudre sur GitHub.
+>
+> **Le CD a continué d'évoluer après la clôture de ce plan** : rollback automatique,
+> staging + pollers sortants (staging `:main` et prod sur Releases signées), secrets
+> chiffrés sops+age, re-scan CVE quotidien des images en ligne (`image-scan.yml`). Ce
+> suivi vit dans la [doc 28](exploitation/28-roadmap-ameliorations-cicd.md).
+
 ---
 
 ## 2. Roadmap d'exécution (par session)
@@ -655,3 +673,11 @@ this.amorcer()`). Le `stateHandler` (select-puis-insert) levait `relation
   (357 fichiers), et la fixture `code-string-concat` introduite volontairement → **exit 1**. Un
   faux positif se traite **ligne à ligne** par `// nosemgrep: <rule-id>` justifié, jamais par
   ignore global ; montée de version des règles = bump du `ref`.
+
+- **2026-07-02 — Revue de statut (audit gouvernance documentaire)** : re-vérification des
+  16 actions dans le code et la CI — **aucune régression, 16/16 toujours en place** (encart
+  §1). Deux clarifications : (a) les numéros de PR de ce journal antérieurs au 2026-06-18
+  sont ceux de l'**ancien dépôt privé** (historique squashé dans l'import initial public
+  `4f36e3e`) et ne doivent pas être résolus sur GitHub ; (b) les évolutions CD postérieures
+  au plan (rollback auto, staging, pollers, sops+age, re-scan CVE) sont suivies en
+  [doc 28](exploitation/28-roadmap-ameliorations-cicd.md), pas ici.
