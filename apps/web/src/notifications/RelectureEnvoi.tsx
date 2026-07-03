@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type {
   BrouillonEtablissement,
@@ -30,7 +30,7 @@ function libelleResultat(r: EnvoiEtablissementResultat): string {
     case 'DRY_RUN':
       return `Aperçu validé en mode dry-run : aucun mail réel n'a été envoyé à ${r.destinataire}.`;
     case 'ENVOYE':
-      return `Mail envoyé au service (${r.destinataire}).`;
+      return `C'est fait : le service est prévenu (mail envoyé à ${r.destinataire}).`;
     case 'ECHEC':
       return `Échec de l'envoi : ${r.erreur ?? 'erreur inconnue'}.`;
     default:
@@ -54,7 +54,10 @@ function BlocEnvoiEtablissement({
 }) {
   const [confirmer, setConfirmer] = useState(false);
   const [enCours, setEnCours] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{
+    type: 'succes' | 'erreur';
+    texte: string;
+  } | null>(null);
   const [envoye, setEnvoye] = useState(false);
 
   const envoyer = async (): Promise<void> => {
@@ -67,10 +70,16 @@ function BlocEnvoiEtablissement({
         semaineIso,
         brouillon.etablissementId,
       );
-      setMessage(libelleResultat(resultat));
-      setEnvoye(true);
+      const echec = resultat.statut === 'ECHEC';
+      setMessage({
+        type: echec ? 'erreur' : 'succes',
+        texte: libelleResultat(resultat),
+      });
+      // Un statut ECHEC laissait le bouton verrouillé sur « Envoyé » alors que
+      // rien n'était parti : on ne fige l'état qu'après un envoi réellement abouti.
+      setEnvoye(!echec);
     } catch (err) {
-      setMessage(messageErreur(err));
+      setMessage({ type: 'erreur', texte: messageErreur(err) });
     } finally {
       setEnCours(false);
     }
@@ -142,8 +151,11 @@ function BlocEnvoiEtablissement({
       </details>
 
       {message !== null && (
-        <p className="credit" role="status">
-          {message}
+        <p
+          className={message.type === 'succes' ? 'credit' : 'debit'}
+          role={message.type === 'succes' ? 'status' : 'alert'}
+        >
+          {message.texte}
         </p>
       )}
 
@@ -159,8 +171,10 @@ function BlocEnvoiEtablissement({
         {enCours
           ? 'Envoi…'
           : envoye
-            ? 'Envoyé'
-            : `Envoyer à ${brouillon.etablissementLibelle}`}
+            ? 'Envoyé ✓'
+            : message?.type === 'erreur'
+              ? `Réessayer l'envoi`
+              : `Envoyer à ${brouillon.etablissementLibelle}`}
       </button>
 
       <ModaleConfirmation
@@ -233,23 +247,40 @@ export function RelectureEnvoi({
   // On ne propose l'envoi que pour les établissements ayant au moins un enfant concerné.
   const concernes = (data ?? []).filter((b) => b.enfants.length > 0);
 
+  // La section apparaît APRÈS que le parent a tapé « Valider » : sans coup de
+  // pouce, elle peut rester hors écran sur mobile et l'étape d'envoi passe
+  // inaperçue (le service ne serait jamais prévenu). Le focus programmatique
+  // amène à la fois le scroll et la lecture d'écran sur la section.
+  const refSection = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    refSection.current?.focus();
+  }, []);
+
   return (
     <section
+      ref={refSection}
+      tabIndex={-1}
       className="carte"
-      aria-label="Relecture et envoi des mails aux services"
-      style={{ borderLeft: '4px solid var(--bleu)', marginTop: '1rem' }}
+      aria-label="Dernière étape : prévenir les services"
+      style={{ borderLeft: '4px solid var(--ambre)', marginTop: '1rem' }}
     >
-      <h3 style={{ marginTop: 0 }}>Envoyer les récapitulatifs aux services</h3>
+      <h3 style={{ marginTop: 0 }}>Dernière étape : prévenir les services</h3>
+      {concernes.length > 0 && (
+        <p style={{ marginTop: 0 }}>
+          Votre semaine est validée, mais le service n’a pas encore reçu vos
+          changements. Relisez le récapitulatif puis envoyez-le.
+        </p>
+      )}
 
       {error !== null && (
-        <p className="credit" role="alert">
+        <p className="debit" role="alert">
           {error}
         </p>
       )}
-      {loading && !data && <p className="credit">Chargement des brouillons…</p>}
+      {loading && !data && <p className="muted">Chargement des brouillons…</p>}
 
       {data && concernes.length === 0 && (
-        <p className="credit">
+        <p className="muted">
           Aucune modification à transmettre à un service pour cette semaine.
         </p>
       )}

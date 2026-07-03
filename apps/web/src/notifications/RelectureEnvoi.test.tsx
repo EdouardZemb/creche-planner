@@ -195,6 +195,25 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
       await screen.findByRole('button', { name: /Envoyer \(dry-run\)/ }),
     );
 
-    expect(await screen.findByText(/SMTP 535/)).toBeInTheDocument();
+    // L'échec est une alerte (rouge), pas un statut discret.
+    const alerte = await screen.findByRole('alert');
+    expect(alerte).toHaveTextContent(/SMTP 535/);
+    expect(alerte).toHaveClass('debit');
+    // Le bouton ne se fige pas sur « Envoyé » : il propose de réessayer.
+    const bouton = screen.getByRole('button', {
+      name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
+    });
+    expect(bouton).not.toBeDisabled();
+    expect(bouton).toHaveTextContent(/Réessayer l'envoi/);
+  });
+
+  it('prend le focus à l’apparition pour guider vers la dernière étape', async () => {
+    mockBrouillons();
+    render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
+
+    const section = await screen.findByRole('region', {
+      name: /Dernière étape : prévenir les services/i,
+    });
+    expect(section).toHaveFocus();
   });
 });

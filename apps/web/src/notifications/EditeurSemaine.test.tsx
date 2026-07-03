@@ -229,7 +229,7 @@ describe('EditeurSemaine', () => {
     // Le récap **agrégé par établissement** apparaît (RelectureEnvoi), avec un bloc
     // d'envoi pour la crèche (seul établissement concerné ici).
     expect(
-      await screen.findByText(/Envoyer les récapitulatifs aux services/i),
+      await screen.findByText(/Dernière étape : prévenir les services/i),
     ).toBeInTheDocument();
     expect(
       await screen.findByRole('button', {
