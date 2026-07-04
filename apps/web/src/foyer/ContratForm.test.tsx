@@ -142,8 +142,8 @@ describe('ContratForm', () => {
     expect(screen.getByText(/Inscriptions hebdomadaires/i)).toBeInTheDocument();
   });
 
-  // UT-10 (bug) : la colonne « Inscrit ALSH » écrit dans le champ ALSH, pas cantine.
-  it('coche la colonne ALSH → écrit dans le champ alsh (pas cantine)', async () => {
+  // UT-10 : cocher un jour ALSH écrit la configuration récurrente (pas cantine).
+  it('coche un jour ALSH → écrit la récurrence alsh (pas cantine)', async () => {
     mockedApi.creerContrat.mockResolvedValueOnce({
       ...contratVueFactice,
       mode: 'ALSH',
@@ -166,11 +166,49 @@ describe('ContratForm', () => {
     });
 
     const saisie = (mockedApi.creerContrat.mock.calls[0] as unknown[])[0] as {
-      semaineAbcm: Record<string, { cantine?: boolean; alsh?: boolean }>;
+      semaineAbcm: Record<
+        string,
+        { cantine?: boolean; alsh?: { type: string; repas?: boolean } }
+      >;
     };
-    expect(saisie.semaineAbcm['LUNDI']?.alsh).toBe(true);
+    // Défaut à la coche : journée complète, sans repas (le parent opte pour le repas).
+    expect(saisie.semaineAbcm['LUNDI']?.alsh).toEqual({ type: 'COMPLETE' });
     // Non-régression : la cantine n'est pas corrompue par la saisie ALSH.
     expect(saisie.semaineAbcm['LUNDI']?.cantine).toBeUndefined();
+  });
+
+  it('formule demi-journée + repas → écrit la configuration ALSH complète', async () => {
+    mockedApi.creerContrat.mockResolvedValueOnce({
+      ...contratVueFactice,
+      mode: 'ALSH',
+    });
+    rendu();
+
+    fireEvent.change(screen.getByLabelText(/Mode/i), {
+      target: { value: 'ALSH' },
+    });
+    fireEvent.change(screen.getByLabelText(/Valide du/i), {
+      target: { value: '2026-09-01' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: /ALSH Mercredi/i }));
+    fireEvent.change(screen.getByLabelText(/Formule Mercredi/i), {
+      target: { value: 'DEMI' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: /Repas Mercredi/i }));
+    choisirEtablissement();
+    fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.creerContrat).toHaveBeenCalledTimes(1);
+    });
+
+    const saisie = (mockedApi.creerContrat.mock.calls[0] as unknown[])[0] as {
+      semaineAbcm: Record<string, { alsh?: { type: string; repas?: boolean } }>;
+    };
+    expect(saisie.semaineAbcm['MERCREDI']?.alsh).toEqual({
+      type: 'DEMI',
+      repas: true,
+    });
   });
 
   // UT-10 : non-régression de la saisie cantine (mode CANTINE).

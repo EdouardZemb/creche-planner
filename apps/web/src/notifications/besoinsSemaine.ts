@@ -4,9 +4,12 @@ import type {
   EcrireSemaineBesoins,
   ExceptionAbcm,
   JourAlsh,
+  JourAlshHebdo,
   JourSupplementaire,
   PlageHoraire,
+  SemaineAbcm,
 } from '../types/bff';
+import { jourSemaineDeIso } from '../utils/dates';
 
 // Logique pure de l'éditeur hebdomadaire (`EditeurContratSemaine`) : aplatir les
 // besoins datés du contrat en état d'édition par catégorie, et reconstruire le
@@ -101,4 +104,39 @@ export function versCorps(etat: BesoinsEtat): EcrireSemaineBesoins {
     ...(etat.exceptions.length > 0 ? { exceptions: etat.exceptions } : {}),
     ...(joursAlsh.length > 0 ? { joursAlsh } : {}),
   };
+}
+
+/**
+ * Jour ALSH **effectif** pour une date `YYYY-MM-DD` d'un contrat mode ALSH,
+ * miroir de `dashboard/jourFoyer.ts` → `ligneAbcm` (branche ALSH) : un jour
+ * explicite daté prime ; sinon la récurrence hebdomadaire (`semaineAbcm[jour].alsh`)
+ * ajustée par l'exception datée (`alsh:false` retire, `alsh:true` (ré)active, la
+ * config par défaut étant celle de la semaine-type ou `{ type: 'COMPLETE' }`).
+ * `null` si le jour n'est finalement pas réservé.
+ */
+export function alshEffectif(
+  date: string,
+  explicite: JourAlshHebdo | undefined,
+  exception: ExceptionAbcm | undefined,
+  semaineAbcm: SemaineAbcm | undefined,
+): JourAlshHebdo | null {
+  if (explicite) {
+    return explicite;
+  }
+  const base = semaineAbcm?.[jourSemaineDeIso(date)]?.alsh;
+  if (exception?.alsh !== undefined) {
+    if (!exception.alsh) {
+      return null;
+    }
+    return base ?? { type: 'COMPLETE' };
+  }
+  return base ?? null;
+}
+
+/** Libellé lisible d'un jour ALSH effectif (`Journée`, `Journée + repas`, `Demi-journée`). */
+export function libelleAlsh(jour: JourAlshHebdo): string {
+  if (jour.type === 'DEMI') {
+    return 'Demi-journée';
+  }
+  return jour.repas ? 'Journée + repas' : 'Journée';
 }

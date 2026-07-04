@@ -95,6 +95,18 @@ const contratAlsh: ContratLocal = {
   semaineAbcm: {},
 };
 
+// ALSH avec récurrence hebdomadaire le JEUDI (2026-07-02 est un jeudi, ciblé par
+// le bouton `simulate-date-click` du mock FullCalendar).
+const contratAlshRecurrent: ContratLocal = {
+  id: 'contrat-alsh-rec-1',
+  foyerId: 'foyer-1',
+  enfant: 'enfant-1',
+  mode: 'ALSH',
+  valideDu: '2026-07-01',
+  valideAu: '2026-07-31',
+  semaineAbcm: { JEUDI: { alsh: { type: 'COMPLETE', repas: true } } },
+};
+
 const contratPeriscolaire: ContratLocal = {
   id: 'contrat-peri-1',
   foyerId: 'foyer-1',
@@ -563,6 +575,176 @@ describe('CalendrierAbcm - ALSH', () => {
     const alerte = await screen.findByText(/Erreur 429/i);
     expect(alerte).toBeInTheDocument();
     expect(api.modifierContrat).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('CalendrierAbcm - ALSH récurrent (semaine type)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.lirePlanning).mockResolvedValue({ saisie: null });
+  });
+
+  it('affiche les jours ALSH récurrents du mois (sans saisie explicite)', () => {
+    render(
+      <CalendrierAbcm
+        contrat={contratAlshRecurrent}
+        mois="2026-07"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+    // Juillet 2026 compte plusieurs jeudis → au moins un événement récurrent.
+    const count = parseInt(
+      screen.getByTestId('event-count').textContent ?? '0',
+      10,
+    );
+    expect(count).toBeGreaterThan(0);
+    // La liste clavier nomme le jeudi récurrent « Modifier » (réservé).
+    expect(
+      screen.getByRole('button', {
+        name: /Modifier la journée ALSH du 02\/07\/2026/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('clic sur un jour récurrent → modale préremplie depuis la récurrence', () => {
+    render(
+      <CalendrierAbcm
+        contrat={contratAlshRecurrent}
+        mois="2026-07"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('simulate-date-click'));
+    expect(
+      screen.getByText(/Journée ALSH du 02\/07\/2026/i),
+    ).toBeInTheDocument();
+    // Repas coché (récurrence = journée + repas), et « Supprimer » disponible.
+    expect(screen.getByLabelText(/Repas inclus/i)).toBeChecked();
+    expect(screen.getByText('Supprimer')).toBeInTheDocument();
+  });
+
+  it('retire un jour récurrent via une exception (alsh:false)', async () => {
+    vi.mocked(api.ecrirePlanning).mockResolvedValue(undefined);
+
+    render(
+      <CalendrierAbcm
+        contrat={contratAlshRecurrent}
+        mois="2026-07"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('simulate-date-click'));
+    fireEvent.click(screen.getByText('Supprimer'));
+
+    await waitFor(
+      () => {
+        expect(api.ecrirePlanning).toHaveBeenCalledWith(
+          'contrat-alsh-rec-1',
+          '2026-07',
+          false,
+          expect.objectContaining({
+            exceptions: expect.arrayContaining([
+              expect.objectContaining({ date: '2026-07-02', alsh: false }),
+            ]),
+          }),
+          expect.any(Object),
+        );
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it('re-réserve un jour retiré (exception levée) via joursAlsh explicite', async () => {
+    vi.mocked(api.ecrirePlanning).mockResolvedValue(undefined);
+    // Le serveur renvoie une exception `alsh:false` pré-existante sur le jeudi.
+    vi.mocked(api.lirePlanning).mockResolvedValue({
+      saisie: { exceptions: [{ date: '2026-07-02', alsh: false }] },
+    });
+
+    render(
+      <CalendrierAbcm
+        contrat={contratAlshRecurrent}
+        mois="2026-07"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    // Le jour retiré s'ouvre en « Saisir » ; confirmer pose un jour explicite et
+    // lève l'exception `alsh:false`.
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', {
+          name: /Saisir une journée ALSH le 02\/07\/2026/i,
+        }),
+      ).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('simulate-date-click'));
+    fireEvent.click(screen.getByText('Confirmer'));
+
+    await waitFor(
+      () => {
+        expect(api.ecrirePlanning).toHaveBeenCalledWith(
+          'contrat-alsh-rec-1',
+          '2026-07',
+          false,
+          expect.objectContaining({
+            joursAlsh: expect.arrayContaining([
+              expect.objectContaining({ date: '2026-07-02' }),
+            ]),
+          }),
+          expect.any(Object),
+        );
+      },
+      { timeout: 2000 },
+    );
+    // L'exception `alsh:false` n'est plus envoyée (levée par le jour explicite).
+    const dernierCorps = vi
+      .mocked(api.ecrirePlanning)
+      .mock.calls.at(-1)?.[3] as { exceptions?: unknown[] } | undefined;
+    expect(dernierCorps?.exceptions ?? []).toEqual([]);
+  });
+
+  it('portée durable : ajoute la récurrence alsh au contrat (PUT)', async () => {
+    // Le PUT ne fait que résoudre : le corps envoyé est ce qui est vérifié ici.
+    vi.mocked(api.modifierContrat).mockResolvedValue(
+      {} as Awaited<ReturnType<typeof api.modifierContrat>>,
+    );
+
+    render(
+      <CalendrierAbcm
+        contrat={contratAlsh}
+        mois="2026-07"
+        simule={false}
+        onEnregistre={vi.fn()}
+        onContratModifie={vi.fn()}
+      />,
+    );
+
+    // Jour vide (jeudi 02/07) : on choisit la portée durable puis on confirme.
+    fireEvent.click(screen.getByTestId('simulate-date-click'));
+    fireEvent.click(screen.getByLabelText(/Toutes les semaines/i));
+    fireEvent.click(screen.getByText('Confirmer'));
+    fireEvent.click(screen.getByText('Modifier le contrat'));
+
+    await waitFor(() => {
+      expect(api.modifierContrat).toHaveBeenCalledWith(
+        'contrat-alsh-1',
+        expect.objectContaining({
+          mode: 'ALSH',
+          semaineAbcm: expect.objectContaining({
+            JEUDI: expect.objectContaining({
+              alsh: expect.objectContaining({ type: 'COMPLETE' }),
+            }),
+          }),
+        }),
+      );
+    });
   });
 });
 
