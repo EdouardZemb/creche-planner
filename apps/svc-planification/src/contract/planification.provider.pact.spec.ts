@@ -30,6 +30,18 @@ const ETAT_FOYER_AVEC_CONTRATS =
 const ETAT_PLANNING_SAISI =
   'un contrat crèche avec une saisie de planning de mars 2026 existe';
 
+/**
+ * États de purge des établissements créés « à la volée » par les interactions de
+ * création/modification (alignés consumer) : `nouvelEtablissement` insère toujours
+ * (unicité (foyer, nom)) — sans purge, rejouer la vérification sur une base
+ * persistante (local) casse en doublon. En CI (base fraîche), purge = no-op.
+ */
+const ETAT_SANS_ETAB_CANTINE =
+  'aucun établissement « Crèche Pact CANTINE » n existe';
+const ETAT_SANS_ETAB_ALSH = 'aucun établissement « Centre Pact ALSH » n existe';
+const ETAT_SANS_ETAB_MODIF =
+  'aucun établissement « Crèche Pact Modif » n existe';
+
 /** Identifiant figé du contrat (aligné avec le pact consumer). */
 const CONTRAT_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -110,6 +122,27 @@ async function seedEtablissement(db: Sql): Promise<void> {
   `;
 }
 
+/**
+ * Purge un établissement créé « à la volée » par une interaction précédente
+ * (et les contrats/plannings qui s'y rattachent), pour rendre la vérification
+ * rejouable sur une base persistante.
+ */
+async function purgerEtablissementParNom(db: Sql, nom: string): Promise<void> {
+  await db`
+    delete from planning_mois where contrat_id in (
+      select c.id from contrat c
+      join etablissement e on c.etablissement_id = e.id
+      where e.nom = ${nom}
+    )
+  `;
+  await db`
+    delete from contrat where etablissement_id in (
+      select id from etablissement where nom = ${nom}
+    )
+  `;
+  await db`delete from etablissement where nom = ${nom}`;
+}
+
 describe('Pact provider · svc-planification honore le contrat api-gateway', () => {
   let provider: ChildProcess | undefined;
   let sql: Sql | undefined;
@@ -159,6 +192,15 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
       pactUrls: [PACT_FILE],
       logLevel: 'warn',
       stateHandlers: {
+        [ETAT_SANS_ETAB_CANTINE]: async (): Promise<void> => {
+          await purgerEtablissementParNom(db, 'Crèche Pact CANTINE');
+        },
+        [ETAT_SANS_ETAB_ALSH]: async (): Promise<void> => {
+          await purgerEtablissementParNom(db, 'Centre Pact ALSH');
+        },
+        [ETAT_SANS_ETAB_MODIF]: async (): Promise<void> => {
+          await purgerEtablissementParNom(db, 'Crèche Pact Modif');
+        },
         [ETAT_CONTRAT_CRECHE]: async (): Promise<void> => {
           // Contrat crèche PSU de Mia (doc 02 §7) : 763 h / 7 mensualités.
           await db`delete from planning_mois where contrat_id = ${CONTRAT_ID}`;

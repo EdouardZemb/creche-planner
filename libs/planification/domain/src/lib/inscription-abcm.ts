@@ -7,6 +7,22 @@ import type {
   PrestationsMoisPeriscolaire,
 } from './prestations-mois.types.js';
 
+/** Type de présence ALSH d'un jour (doc 02 §4.3). */
+export type TypeAlsh = 'COMPLETE' | 'DEMI';
+
+/**
+ * Inscription ALSH **récurrente** d'un jour de semaine (mercredi typiquement) :
+ * formule (journée/demi) et repas, car la grille tarifaire distingue les trois
+ * compteurs. Les vacances restent saisies par dates explicites (`JourAlsh`),
+ * prioritaires sur la récurrence pour une même date.
+ */
+export interface JourAlshHebdo {
+  /** Journée complète ou demi-journée. */
+  readonly type: TypeAlsh;
+  /** Repas réservé ce jour-là. */
+  readonly repas?: boolean;
+}
+
 /** Inscriptions ABCM d'un jour d'école (doc 02 §4.1/§4.2). */
 export interface InscriptionsJour {
   /** Jour de cantine réservé (déjeuner). */
@@ -15,13 +31,12 @@ export interface InscriptionsJour {
   readonly periMatin?: boolean;
   /** Séance périscolaire du soir réservée. */
   readonly periSoir?: boolean;
+  /** Inscription ALSH récurrente ce jour de semaine. */
+  readonly alsh?: JourAlshHebdo;
 }
 
 /** Semaine type ABCM : jour d'école → inscriptions péri/cantine. */
 export type SemaineTypeAbcm = Partial<Record<JourSemaine, InscriptionsJour>>;
-
-/** Type de présence ALSH d'un jour (doc 02 §4.3). */
-export type TypeAlsh = 'COMPLETE' | 'DEMI';
 
 /** Un jour ALSH réservé (mercredi/vacances), saisi par date (doc 02 §4.3). */
 export interface JourAlsh {
@@ -65,6 +80,12 @@ export interface ExceptionJour {
   readonly periMatin?: boolean;
   /** Périscolaire du soir ce jour-là (override). */
   readonly periSoir?: boolean;
+  /**
+   * ALSH ce jour-là (override de la récurrence hebdomadaire) : `false` retire
+   * un jour prévu, `true` en ajoute un (formule du jour de semaine, à défaut
+   * journée complète sans repas). Sans effet sur les `JourAlsh` explicites.
+   */
+  readonly alsh?: boolean;
 }
 
 /** Base commune des saisies mensuelles ABCM. */
@@ -86,16 +107,21 @@ export interface SaisieGenerationCantine extends SaisieMoisAbcm {
 /** Saisie périscolaire du mois. */
 export type SaisieGenerationPeriscolaire = SaisieMoisAbcm;
 
-/** Saisie ALSH du mois (jours saisis explicitement, car vacances variables). */
+/**
+ * Saisie ALSH du mois : jours saisis explicitement (vacances variables), en
+ * complément de l'éventuelle inscription hebdomadaire de la semaine type
+ * (mercredis récurrents), ajustable par les `exceptions` datées.
+ */
 export interface SaisieGenerationAlsh extends SaisieMoisAbcm {
   readonly joursAlsh: readonly JourAlsh[];
 }
 
 /**
  * Inscription ABCM (doc 02 §4) : semaine type des jours d'école (cantine, péri
- * matin/soir) + génération des quantités du mois en excluant les jours non
- * facturables (INV-04). Règle « réservé = facturé » (doc 02 §4.4 bis). L'ALSH
- * (mercredi/vacances) est saisi par dates explicites. Domaine pur, immuable.
+ * matin/soir, ALSH récurrent) + génération des quantités du mois en excluant
+ * les jours non facturables (INV-04). Règle « réservé = facturé » (doc 02
+ * §4.4 bis). L'ALSH ponctuel (vacances) est saisi par dates explicites,
+ * prioritaires sur la récurrence hebdomadaire. Domaine pur, immuable.
  */
 export class InscriptionAbcm {
   private constructor(private readonly config: ConfigInscriptionAbcm) {}
@@ -133,10 +159,19 @@ export class InscriptionAbcm {
     const cantine = exc.cantine ?? base.cantine;
     const periMatin = exc.periMatin ?? base.periMatin;
     const periSoir = exc.periSoir ?? base.periSoir;
+    // ALSH : booléen d'override → configuration effective (retrait, ajout avec
+    // la formule du jour de semaine ou journée complète par défaut, héritage).
+    const alsh =
+      exc.alsh === undefined
+        ? base.alsh
+        : exc.alsh
+          ? (base.alsh ?? { type: 'COMPLETE' as const })
+          : undefined;
     return {
       ...(cantine !== undefined ? { cantine } : {}),
       ...(periMatin !== undefined ? { periMatin } : {}),
       ...(periSoir !== undefined ? { periSoir } : {}),
+      ...(alsh !== undefined ? { alsh } : {}),
     };
   }
 
@@ -201,13 +236,31 @@ export class InscriptionAbcm {
     return { mode: 'PERISCOLAIRE', nbMatins, nbSoirs };
   }
 
-  /** Génère les prestations ALSH du mois (CT-12). */
+  /**
+   * Génère les prestations ALSH du mois (CT-12) : jours réservés par date
+   * (vacances) + jours issus de l'inscription hebdomadaire (mercredis), les
+   * dates explicites primant sur la récurrence (leur formule/repas gagne, pas
+   * de double comptage). Les exceptions datées (`alsh`) n'ajustent que la
+   * récurrence.
+   */
   genererPrestationsAlsh(saisie: SaisieGenerationAlsh): PrestationsMoisAlsh {
     const prefixeMois = `${saisie.mois}-`;
     const nonFacturables = new Set(saisie.joursNonFacturables ?? []);
+    const exceptions = this.indexerExceptions(saisie.exceptions);
     let nbJourneesCompletes = 0;
     let nbDemiJournees = 0;
     let nbRepas = 0;
+    const compter = (type: TypeAlsh, repas: boolean | undefined): void => {
+      if (type === 'COMPLETE') {
+        nbJourneesCompletes += 1;
+      } else {
+        nbDemiJournees += 1;
+      }
+      if (repas === true) {
+        nbRepas += 1;
+      }
+    };
+    const datesExplicites = new Set<string>();
     for (const jour of saisie.joursAlsh) {
       if (
         !jour.date.startsWith(prefixeMois) ||
@@ -216,13 +269,16 @@ export class InscriptionAbcm {
       ) {
         continue;
       }
-      if (jour.type === 'COMPLETE') {
-        nbJourneesCompletes += 1;
-      } else {
-        nbDemiJournees += 1;
+      datesExplicites.add(jour.date);
+      compter(jour.type, jour.repas);
+    }
+    for (const iso of this.joursFacturables(saisie)) {
+      if (datesExplicites.has(iso)) {
+        continue;
       }
-      if (jour.repas === true) {
-        nbRepas += 1;
+      const alsh = this.inscriptionsEffectives(iso, exceptions).alsh;
+      if (alsh !== undefined) {
+        compter(alsh.type, alsh.repas);
       }
     }
     return { mode: 'ALSH', nbJourneesCompletes, nbDemiJournees, nbRepas };

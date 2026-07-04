@@ -199,6 +199,36 @@ describe('creerContratSchema (ABCM)', () => {
     });
     expect(resultat.success).toBe(false);
   });
+
+  it('accepte ET conserve une inscription ALSH hebdomadaire (formule + repas)', () => {
+    // Régression : avant la modélisation, `alsh` était une clé inconnue que Zod
+    // éliminait silencieusement (saisie parent perdue sans erreur).
+    const semaine = semaineCompleteAbcm();
+    semaine['MERCREDI'] = { alsh: { type: 'COMPLETE', repas: true } };
+    const resultat = creerContratSchema.safeParse({
+      ...baseAbcm,
+      mode: 'ALSH',
+      semaineAbcm: semaine,
+    });
+    expect(resultat.success).toBe(true);
+    if (resultat.success && resultat.data.mode === 'ALSH') {
+      expect(resultat.data.semaineAbcm.MERCREDI).toEqual({
+        alsh: { type: 'COMPLETE', repas: true },
+      });
+    }
+  });
+
+  it('rejette une inscription ALSH hebdomadaire de formule inconnue', () => {
+    const semaine = semaineCompleteAbcm();
+    semaine['MERCREDI'] = { alsh: { type: 'SOIREE' } };
+    expect(
+      creerContratSchema.safeParse({
+        ...baseAbcm,
+        mode: 'ALSH',
+        semaineAbcm: semaine,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('creerContratSchema (lien établissement, P2)', () => {
@@ -428,6 +458,19 @@ describe('ecrirePlanningSchema', () => {
         ],
       }).success,
     ).toBe(true);
+  });
+
+  it('accepte ET conserve une exception ALSH (retrait d un jour récurrent)', () => {
+    const resultat = ecrirePlanningSchema.safeParse({
+      exceptions: [{ date: '2026-10-14', alsh: false }],
+    });
+    expect(resultat.success).toBe(true);
+    if (resultat.success) {
+      expect(resultat.data.exceptions?.[0]).toEqual({
+        date: '2026-10-14',
+        alsh: false,
+      });
+    }
   });
 
   it('accepte des jours ALSH (type COMPLETE/DEMI)', () => {

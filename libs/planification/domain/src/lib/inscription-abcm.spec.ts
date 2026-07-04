@@ -199,6 +199,104 @@ describe('InscriptionAbcm — ALSH (CT-12)', () => {
   });
 });
 
+/** Inscription ALSH récurrente : tous les mercredis, journée complète + repas. */
+function inscriptionMercredis(): InscriptionAbcm {
+  return InscriptionAbcm.creer({
+    semaine: {
+      MERCREDI: { alsh: { type: 'COMPLETE', repas: true } },
+    },
+  });
+}
+
+describe('InscriptionAbcm — ALSH hebdomadaire (semaine type)', () => {
+  it('génère un jour ALSH par mercredi du mois (récurrence seule)', () => {
+    const presta = inscriptionMercredis().genererPrestationsAlsh({
+      mois: '2026-09',
+      joursAlsh: [],
+    });
+    // Sept. 2026 : mercredis 2, 9, 16, 23, 30 = 5 journées complètes + repas.
+    expect(presta.nbJourneesCompletes).toBe(5);
+    expect(presta.nbDemiJournees).toBe(0);
+    expect(presta.nbRepas).toBe(5);
+  });
+
+  it('un jour explicite prime sur la récurrence pour la même date (pas de double comptage)', () => {
+    const presta = inscriptionMercredis().genererPrestationsAlsh({
+      mois: '2026-09',
+      // Le mercredi 16 est réservé explicitement en demi-journée sans repas :
+      // sa formule remplace celle de la récurrence, il ne compte qu'une fois.
+      joursAlsh: [{ date: '2026-09-16', type: 'DEMI' }],
+    });
+    expect(presta.nbJourneesCompletes).toBe(4);
+    expect(presta.nbDemiJournees).toBe(1);
+    expect(presta.nbRepas).toBe(4);
+  });
+
+  it('cumule récurrence et jours explicites de dates différentes (vacances)', () => {
+    const presta = inscriptionMercredis().genererPrestationsAlsh({
+      mois: '2026-09',
+      joursAlsh: [{ date: '2026-09-03', type: 'COMPLETE', repas: true }], // un jeudi
+    });
+    expect(presta.nbJourneesCompletes).toBe(6);
+    expect(presta.nbRepas).toBe(6);
+  });
+
+  it('exception alsh=false : retire un mercredi de la récurrence', () => {
+    const presta = inscriptionMercredis().genererPrestationsAlsh({
+      mois: '2026-09',
+      joursAlsh: [],
+      exceptions: [{ date: '2026-09-09', alsh: false }],
+    });
+    expect(presta.nbJourneesCompletes).toBe(4);
+    expect(presta.nbRepas).toBe(4);
+  });
+
+  it('exception alsh=true : ajoute un jour hors récurrence (journée complète par défaut)', () => {
+    const presta = inscriptionMercredis().genererPrestationsAlsh({
+      mois: '2026-09',
+      joursAlsh: [],
+      exceptions: [{ date: '2026-09-03', alsh: true }], // un jeudi
+    });
+    expect(presta.nbJourneesCompletes).toBe(6);
+    // Le jour ajouté hérite du défaut (pas de repas), pas de la config du mercredi.
+    expect(presta.nbRepas).toBe(5);
+  });
+
+  it('exclut un mercredi non facturable de la récurrence (INV-04)', () => {
+    const presta = inscriptionMercredis().genererPrestationsAlsh({
+      mois: '2026-09',
+      joursAlsh: [],
+      joursNonFacturables: ['2026-09-30'],
+    });
+    expect(presta.nbJourneesCompletes).toBe(4);
+  });
+
+  it('ne génère la récurrence que dans la période de validité', () => {
+    const inscription = InscriptionAbcm.creer({
+      semaine: { MERCREDI: { alsh: { type: 'DEMI' } } },
+      valideDu: '2026-09-15',
+    });
+    const presta = inscription.genererPrestationsAlsh({
+      mois: '2026-09',
+      joursAlsh: [],
+    });
+    // Mercredis ≥ 15/09 : 16, 23, 30.
+    expect(presta.nbDemiJournees).toBe(3);
+    expect(presta.nbRepas).toBe(0);
+  });
+
+  it('sans inscription hebdomadaire : comportement par dates inchangé', () => {
+    const presta = InscriptionAbcm.creer({
+      semaine: { MERCREDI: { cantine: true } }, // cantine ≠ alsh : sans effet ALSH
+    }).genererPrestationsAlsh({
+      mois: '2026-09',
+      joursAlsh: [{ date: '2026-09-02', type: 'COMPLETE' }],
+    });
+    expect(presta.nbJourneesCompletes).toBe(1);
+    expect(presta.nbDemiJournees).toBe(0);
+  });
+});
+
 /** Inscription Zoé valide à partir de la rentrée (01/09/2026, doc 02 §8). */
 function inscriptionZoéRentree(): InscriptionAbcm {
   return InscriptionAbcm.creer({

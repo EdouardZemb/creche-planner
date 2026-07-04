@@ -26,6 +26,17 @@ const ETAT_FOYER_AVEC_CONTRATS =
 const ETAT_PLANNING_SAISI =
   'un contrat crèche avec une saisie de planning de mars 2026 existe';
 
+/**
+ * États de nettoyage des créations « à la volée » : `nouvelEtablissement` insère
+ * toujours (contrainte unique (foyer, nom) côté provider) — sans purge préalable,
+ * rejouer la vérification sur une base persistante (local) casse en doublon.
+ */
+const ETAT_SANS_ETAB_CANTINE =
+  'aucun établissement « Crèche Pact CANTINE » n existe';
+const ETAT_SANS_ETAB_ALSH = 'aucun établissement « Centre Pact ALSH » n existe';
+const ETAT_SANS_ETAB_MODIF =
+  'aucun établissement « Crèche Pact Modif » n existe';
+
 /** Identifiant figé du contrat (seedé par le stateHandler provider). */
 const CONTRAT_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -199,8 +210,8 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
   });
 
   it('crée un contrat cantine (ABCM) et reçoit sa projection', async () => {
-    // Aucune précondition base : le service insère le contrat tel quel (foyerId stocké).
     provider
+      .given(ETAT_SANS_ETAB_CANTINE)
       .uponReceiving('une création de contrat cantine ABCM')
       .withRequest({
         method: 'POST',
@@ -251,6 +262,61 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
     });
   });
 
+  it('crée un contrat ALSH avec inscription hebdomadaire (mercredis récurrents)', async () => {
+    // Verrouille l'acceptation provider de `semaineAbcm[jour].alsh` (formule +
+    // repas) : avant cette modélisation, la clé était silencieusement éliminée
+    // par la validation Zod (saisie parent perdue sans erreur).
+    const semaineAbcmAlshMercredi: Record<string, unknown> = Object.fromEntries(
+      JOURS_SEMAINE.map((j) => [
+        j,
+        j === 'MERCREDI' ? { alsh: { type: 'COMPLETE', repas: true } } : {},
+      ]),
+    );
+    const corpsCreation = {
+      mode: 'ALSH',
+      foyerId: FOYER_ID,
+      enfant: 'Zoé',
+      valideDu: '2026-09-01',
+      valideAu: null,
+      semaineAbcm: semaineAbcmAlshMercredi,
+      nouvelEtablissement: { nom: 'Centre Pact ALSH' },
+    };
+    provider
+      .given(ETAT_SANS_ETAB_ALSH)
+      .uponReceiving(
+        'une création de contrat ALSH avec récurrence hebdomadaire',
+      )
+      .withRequest({
+        method: 'POST',
+        path: '/api/contrats',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: corpsCreation,
+      })
+      .willRespondWith({
+        status: 201,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          id: uuid(CONTRAT_ABCM_ID),
+          foyerId: uuid(FOYER_ID),
+          enfant: 'Zoé',
+          mode: 'ALSH',
+          valideDu: '2026-09-01',
+          valideAu: null,
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(`${mockServer.url}/api/contrats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(corpsCreation),
+      });
+      expect(reponse.status).toBe(201);
+      const corps = (await reponse.json()) as { id: string; mode: string };
+      expect(corps.mode).toBe('ALSH');
+    });
+  });
+
   it('lit le cœur d’un contrat par id (GET /api/contrats/:id → foyerId)', async () => {
     // Résolution contrat → foyer du guard d'appartenance (PR7). Réutilise l'état
     // « un contrat de garde modifiable existe » (contrat CONTRAT_ID, foyer figé).
@@ -288,6 +354,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
   it('modifie un contrat existant (PUT) et reçoit sa projection', async () => {
     provider
       .given(ETAT_CONTRAT_EXISTE)
+      .given(ETAT_SANS_ETAB_MODIF)
       .uponReceiving('une modification de contrat crèche')
       .withRequest({
         method: 'PUT',

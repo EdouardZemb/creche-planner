@@ -34,11 +34,21 @@ const semaineTypeSchema = z.record(
   z.array(plageHoraireSchema),
 );
 
+/** Type de présence ALSH (journée complète ou demi-journée). */
+const typeAlshSchema = z.enum(['COMPLETE', 'DEMI']);
+
+/** Inscription ALSH récurrente d'un jour de semaine (formule + repas). */
+const jourAlshHebdoSchema = z.object({
+  type: typeAlshSchema,
+  repas: z.boolean().optional(),
+});
+
 /** Inscriptions ABCM d'un jour d'école. */
 const inscriptionsJourSchema = z.object({
   cantine: z.boolean().optional(),
   periMatin: z.boolean().optional(),
   periSoir: z.boolean().optional(),
+  alsh: jourAlshHebdoSchema.optional(),
 });
 
 /** Semaine type ABCM : jour d'école → inscriptions. */
@@ -153,12 +163,14 @@ const exceptionAbcmSchema = z.object({
   cantine: z.boolean().optional(),
   periMatin: z.boolean().optional(),
   periSoir: z.boolean().optional(),
+  // ALSH : retire (false) ou ajoute (true) un jour de la récurrence hebdomadaire.
+  alsh: z.boolean().optional(),
 });
 
 /** Un jour ALSH réservé. */
 const jourAlshSchema = z.object({
   date: z.iso.date('date ISO YYYY-MM-DD attendue'),
-  type: z.enum(['COMPLETE', 'DEMI']),
+  type: typeAlshSchema,
   repas: z.boolean().optional(),
 });
 

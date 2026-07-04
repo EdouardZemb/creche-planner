@@ -69,6 +69,13 @@ const semaineAbcmSchema = z.record(
     cantine: z.boolean().optional(),
     periMatin: z.boolean().optional(),
     periSoir: z.boolean().optional(),
+    // Inscription ALSH récurrente du jour (formule + repas), cf. svc-planification.
+    alsh: z
+      .object({
+        type: z.enum(['COMPLETE', 'DEMI']),
+        repas: z.boolean().optional(),
+      })
+      .optional(),
   }),
 );
 
