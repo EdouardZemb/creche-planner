@@ -135,16 +135,23 @@ describe('DashboardJourPage', () => {
     vi.mocked(api.listerAValider).mockResolvedValue([]);
   });
 
-  it('affiche le chargement initialement', () => {
+  it('affiche une carte squelette au chargement, annoncée aux lecteurs d’écran (lot 3 UX)', () => {
     vi.mocked(api.lireSemaineBesoins).mockReturnValue(
       new Promise(() => undefined),
     );
 
     renderPage();
 
-    expect(
-      screen.getByText(/Chargement de votre journée/i),
-    ).toBeInTheDocument();
+    // Le texte de chargement reste servi aux lecteurs d'écran (sr-only)…
+    const annonce = screen.getByText(/Chargement de votre journée/i);
+    expect(annonce).toHaveClass('sr-only');
+    expect(annonce.closest('.carte')).not.toBeNull();
+    // … à côté d'une silhouette de liste de gardes, purement décorative
+    // (aria-hidden) : la structure de l'écran est là dès le premier rendu,
+    // pas de « pop ».
+    const silhouette = screen.getByRole('list', { hidden: true });
+    expect(silhouette).toHaveAttribute('aria-hidden', 'true');
+    expect(silhouette.querySelectorAll('.jour-rangee')).toHaveLength(2);
     expect(
       screen.getByRole('heading', { level: 1, name: /Aujourd/i }),
     ).toBeInTheDocument();
@@ -247,14 +254,19 @@ describe('DashboardJourPage', () => {
     ).toHaveAttribute('href', `/foyers/${FOYER_ID}/planning`);
   });
 
-  it('erreur : message + bouton « Réessayer »', async () => {
+  it('erreur : libellé générique en mots de parent + bouton « Réessayer » (lot 3 UX)', async () => {
     vi.mocked(api.lireSemaineBesoins).mockRejectedValue(new Error('panne'));
 
     renderPage();
 
+    // Le message technique remonté par l'API (« panne ») n'est jamais montré :
+    // le parent lit un libellé générique rassurant et actionnable.
     await waitFor(() => {
-      expect(screen.getByText('panne')).toBeInTheDocument();
+      expect(
+        screen.getByText(/Impossible de charger votre journée/),
+      ).toBeInTheDocument();
     });
+    expect(screen.queryByText('panne')).not.toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /Réessayer/i }),
     ).toBeInTheDocument();
@@ -278,6 +290,23 @@ describe('DashboardJourPage', () => {
       'href',
       `/foyers/${FOYER_ID}/couts`,
     );
+  });
+
+  it('bandeau « coût du mois » : rendu APRÈS la journée et « Demain » (lot 3 UX)', async () => {
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineAvecGarde);
+
+    renderPage();
+
+    const detail = await screen.findByRole('link', { name: /Détail/i });
+    const demain = await screen.findByRole('heading', {
+      level: 2,
+      name: 'Demain',
+    });
+    // Le bandeau (qui apparaît après coup, une fois le coût chargé) vit en bas
+    // de page : son arrivée tardive ne décale plus les gardes au-dessus.
+    expect(
+      demain.compareDocumentPosition(detail) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('carte « semaine à valider » : semaine en dates réelles + lien vers le planning', async () => {

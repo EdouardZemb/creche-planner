@@ -767,6 +767,53 @@ h3 {
   margin: 0 0 var(--esp-2);
 }
 
+/* Message d'erreur d'une carte (au-dessus du bouton « Réessayer »). */
+.texte-erreur {
+  color: var(--rouge);
+  margin: 0 0 var(--esp-2);
+}
+
+/* Squelette de chargement (lot 3 UX) : blocs bleu très clair qui pulsent
+   doucement pour dire « ça arrive » — la carte réserve la place de la liste
+   des gardes, l'écran ne « pope » plus d'un coup. */
+.squelette-bloc {
+  background: var(--bleu-clair);
+  border-radius: 4px;
+  animation: squelette-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes squelette-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Animation coupée pour qui demande des interfaces stables (a11y). */
+@media (prefers-reduced-motion: reduce) {
+  .squelette-bloc {
+    animation: none;
+  }
+}
+
+/* Deux lignes de texte factices (enfant, puis état/horaire), de largeurs
+   inégales comme le vrai contenu d'une rangée. */
+.squelette-texte {
+  display: block;
+  height: 0.8rem;
+  width: 70%;
+  margin: 0.2rem 0;
+}
+
+.squelette-texte-courte {
+  width: 45%;
+}
+
+/* Emplacement du bouton « Modifier » : même hauteur cible que .btn (44px). */
+.squelette-action {
+  height: 2.75rem;
+  border-radius: 6px;
+}
+
 /* ---- Accessibilité : focus visible clavier ------------------------------- */
 :focus-visible {
   outline: 3px solid var(--bleu);
