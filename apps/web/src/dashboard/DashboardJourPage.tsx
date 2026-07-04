@@ -274,6 +274,26 @@ function SectionDemain({
   );
 }
 
+/**
+ * Rangée factice de l'état de chargement (lot 3 UX) : même grille que
+ * `RangeeJour` (`.jour-rangee` — pastille, deux lignes de texte, action) pour
+ * que la carte squelette ait la silhouette du contenu qu'elle annonce.
+ * Purement décorative : le parent (`aria-hidden`) la masque aux lecteurs
+ * d'écran, qui reçoivent le texte de chargement à la place.
+ */
+function RangeeSquelette() {
+  return (
+    <li className="jour-rangee">
+      <span className="jour-pastille squelette-bloc" />
+      <span>
+        <span className="squelette-bloc squelette-texte" />
+        <span className="squelette-bloc squelette-texte squelette-texte-courte" />
+      </span>
+      <span className="squelette-bloc squelette-action" />
+    </li>
+  );
+}
+
 /** Première date (ordre chronologique) où la vue a au moins une ligne de garde. */
 function premiereDateAvecGarde(
   vue: SemaineBesoins,
@@ -389,19 +409,28 @@ export function DashboardJourPage() {
           parent quand elle existe ; le reste de la journée vient après. */}
       <CarteAValider foyerId={id} />
 
-      {/* P3c : coût réel du mois courant, indépendant des gardes du jour →
-          toujours rendu (hors états loading/erreur de la journée). */}
-      <BandeauCoutMois foyerId={id} mois={mois} />
-
+      {/* Lot 3 UX : squelette reprenant la silhouette d'une liste de gardes —
+          l'écran garde sa structure pendant le chargement au lieu de « poper »
+          d'un coup. L'annonce texte reste servie aux lecteurs d'écran. */}
       {loading && !data && (
-        <div className="carte muted" aria-live="polite">
-          Chargement de votre journée…
+        <div className="carte" aria-live="polite">
+          <p className="sr-only">Chargement de votre journée…</p>
+          <ul className="jours-liste" aria-hidden="true">
+            <RangeeSquelette />
+            <RangeeSquelette />
+          </ul>
         </div>
       )}
 
       {!loading && error && !data && (
         <div className="carte" role="alert">
-          <p style={{ color: 'var(--rouge)', margin: '0 0 0.5rem' }}>{error}</p>
+          {/* Lot 3 UX : libellé générique rassurant plutôt que le message
+              remonté par la couche API, dont le repli peut être technique —
+              un parent n'a que faire d'un « HTTP 502 ». */}
+          <p className="texte-erreur">
+            Impossible de charger votre journée. Vérifiez votre connexion et
+            réessayez.
+          </p>
           <button type="button" className="btn secondaire" onClick={reload}>
             Réessayer
           </button>
@@ -444,6 +473,12 @@ export function DashboardJourPage() {
           vueAujourdhui={data}
         />
       )}
+
+      {/* P3c, déplacé en bas de page (lot 3 UX) : l'argent passe APRÈS les
+          enfants, et comme le bandeau rend null pendant son chargement, son
+          apparition tardive ne décale plus les gardes que le parent s'apprête
+          à toucher. Toujours rendu (indépendant des états de la journée). */}
+      <BandeauCoutMois foyerId={id} mois={mois} />
     </div>
   );
 }
