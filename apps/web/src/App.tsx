@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -140,6 +140,21 @@ function Entete() {
   // crée sans limite, et le mode hérité reste permissif (`moi.admin` vrai).
   const peutCreerFoyer = moi.admin || moi.foyers.length === 0;
   const premierFoyer = moi.foyers[0];
+  // Panneau « Plus » (mobile) : disclosure des pages de gestion, refermé au clic
+  // de chaque lien (pas d'effet sur pathname — le clic est la cause directe).
+  const { pathname } = useLocation();
+  const [plusOuvert, setPlusOuvert] = useState(false);
+  const idPanneauPlus = useId();
+  const fermerPlus = () => {
+    setPlusOuvert(false);
+  };
+  // Sur mobile, l'onglet « Plus » s'allume quand la page courante est l'une des
+  // destinations rangées dans son panneau (au même titre qu'un NavLink actif).
+  const plusActif =
+    id !== null &&
+    ['contrats', 'etablissements', 'modifier'].some(
+      (segment) => pathname === `/foyers/${id}/${segment}`,
+    );
   return (
     <header className="app-header">
       <a href="#contenu" className="skip-link">
@@ -151,50 +166,132 @@ function Entete() {
       <nav aria-label="Navigation principale">
         {id && (
           <>
-            {/* Tableau de bord « ma journée » : visible dès qu'un foyer est
-                actif, pour tous les parents (NON conditionné `moi.admin`). */}
-            <NavLink to={`/foyers/${id}/dashboard`}>Aujourd’hui</NavLink>
-            <NavLink to={`/foyers/${id}/contrats`}>Contrats</NavLink>
-            <NavLink to={`/foyers/${id}/planning`}>
-              Planning
-              <PastilleAValider foyerId={id} />
-            </NavLink>
-            <NavLink to={`/foyers/${id}/couts`}>Coûts annuels</NavLink>
-            <NavLink to={`/foyers/${id}/etablissements`}>
-              Établissements
-            </NavLink>
-            {/* Édition du foyer par son **propriétaire** (parent) : visible dès
-                qu'un foyer est actif, NON conditionnée à `moi.admin` (le BFF
-                borne l'écriture via `@FoyerScope`). */}
-            <NavLink to={`/foyers/${id}/modifier`}>Modifier le foyer</NavLink>
+            {/* Destinations QUOTIDIENNES d'un parent : sur mobile, barre
+                d'onglets fixe en bas de l'écran (zone du pouce) ; dès la
+                tablette, `display: contents` les restitue à l'en-tête. */}
+            <div className="nav-onglets">
+              {/* Tableau de bord « ma journée » : visible dès qu'un foyer est
+                  actif, pour tous les parents (NON conditionné `moi.admin`). */}
+              <NavLink to={`/foyers/${id}/dashboard`} onClick={fermerPlus}>
+                <span className="nav-onglet-icone" aria-hidden="true">
+                  🏠
+                </span>
+                <span>Aujourd’hui</span>
+              </NavLink>
+              <NavLink to={`/foyers/${id}/planning`} onClick={fermerPlus}>
+                <span className="nav-onglet-icone" aria-hidden="true">
+                  📅
+                </span>
+                <span>Planning</span>
+                <PastilleAValider foyerId={id} />
+              </NavLink>
+              {/* Libellé court sur l'onglet mobile, long dans l'en-tête desktop ;
+                  le nom accessible reste « Coûts annuels » (aria-label ⊇ libellé
+                  visible, WCAG 2.5.3). */}
+              <NavLink
+                to={`/foyers/${id}/couts`}
+                aria-label="Coûts annuels"
+                onClick={fermerPlus}
+              >
+                <span className="nav-onglet-icone" aria-hidden="true">
+                  💶
+                </span>
+                <span className="nav-libelle-court">Coûts</span>
+                <span className="nav-libelle-long">Coûts annuels</span>
+              </NavLink>
+              <button
+                type="button"
+                className={
+                  plusActif ? 'nav-plus-bouton actif' : 'nav-plus-bouton'
+                }
+                aria-expanded={plusOuvert}
+                aria-controls={idPanneauPlus}
+                onClick={() => {
+                  setPlusOuvert((o) => !o);
+                }}
+              >
+                <span className="nav-onglet-icone" aria-hidden="true">
+                  ⋯
+                </span>
+                <span>Plus</span>
+              </button>
+            </div>
+            {/* Pages de GESTION (moins fréquentes) : panneau du bouton « Plus »
+                sur mobile, liens d'en-tête ordinaires dès la tablette. */}
+            <div
+              id={idPanneauPlus}
+              className={
+                plusOuvert ? 'nav-plus-panneau ouvert' : 'nav-plus-panneau'
+              }
+            >
+              <NavLink to={`/foyers/${id}/contrats`} onClick={fermerPlus}>
+                Contrats
+              </NavLink>
+              <NavLink to={`/foyers/${id}/etablissements`} onClick={fermerPlus}>
+                Établissements
+              </NavLink>
+              {/* Édition du foyer par son **propriétaire** (parent) : visible dès
+                  qu'un foyer est actif, NON conditionnée à `moi.admin` (le BFF
+                  borne l'écriture via `@FoyerScope`). */}
+              <NavLink to={`/foyers/${id}/modifier`} onClick={fermerPlus}>
+                Modifier le foyer
+              </NavLink>
+              {/* Mode borné, familles multi-foyers : accès au sélecteur. */}
+              {moi.foyers.length > 1 && (
+                <NavLink to="/mes-foyers" onClick={fermerPlus}>
+                  Mes foyers
+                </NavLink>
+              )}
+              {/* « Mon profil » (A1) : édition de sa ligne parent + préférences de
+                  notification. Visible dès qu'une identité est établie (le BFF résout
+                  « moi » depuis l'e-mail vérifié) ; masqué en mode hérité sans identité. */}
+              {moi.email !== null && (
+                <NavLink to="/mon-profil" onClick={fermerPlus}>
+                  Mon profil
+                </NavLink>
+              )}
+              {/* P5 : création self-service de la 1ʳᵉ fois. Masquée pour un non-admin
+                  qui a déjà un foyer (create-once → on oriente vers l'édition) ;
+                  l'admin garde l'accès (provisioning) et le mode hérité (admin
+                  permissif) reste inchangé. */}
+              {peutCreerFoyer && (
+                <NavLink to="/foyers/new" onClick={fermerPlus}>
+                  Nouveau foyer
+                </NavLink>
+              )}
+            </div>
           </>
         )}
-        {/* Mode borné, familles multi-foyers : accès au sélecteur. */}
-        {moi.foyers.length > 1 && (
-          <NavLink to="/mes-foyers">Mes foyers</NavLink>
+        {!id && (
+          <>
+            {/* Hors contexte foyer, peu de liens : ils restent dans l'en-tête
+                (pas de barre d'onglets sans destinations quotidiennes). */}
+            {moi.foyers.length > 1 && (
+              <NavLink to="/mes-foyers">Mes foyers</NavLink>
+            )}
+            {moi.email !== null && (
+              <NavLink to="/mon-profil">Mon profil</NavLink>
+            )}
+            {/* P5 : hors d'un contexte foyer (le bloc `id` ci-dessus porte déjà
+                « Modifier le foyer »), raccourci vers l'édition de SON foyer dès
+                qu'au moins un foyer est rattaché. */}
+            {premierFoyer && (
+              <NavLink to={`/foyers/${premierFoyer}/modifier`}>
+                Modifier mon foyer
+              </NavLink>
+            )}
+            {peutCreerFoyer && (
+              <NavLink to="/foyers/new">Nouveau foyer</NavLink>
+            )}
+          </>
         )}
-        {/* « Mon profil » (A1) : édition de sa ligne parent + préférences de
-            notification. Visible dès qu'une identité est établie (le BFF résout
-            « moi » depuis l'e-mail vérifié) ; masqué en mode hérité sans identité. */}
-        {moi.email !== null && <NavLink to="/mon-profil">Mon profil</NavLink>}
-        {/* Cloche in-app (PR6) : journal des notifications reçues + compteur de
-            non-lus. Visible dès qu'une identité est établie (le BFF résout le parent
-            depuis l'e-mail vérifié) ; masquée en mode hérité sans identité. */}
-        {moi.email !== null && <ClocheNotifications />}
-        {/* P5 : hors d'un contexte foyer (le bloc `id` ci-dessus porte déjà
-            « Modifier le foyer »), raccourci vers l'édition de SON foyer dès
-            qu'au moins un foyer est rattaché. */}
-        {!id && premierFoyer && (
-          <NavLink to={`/foyers/${premierFoyer}/modifier`}>
-            Modifier mon foyer
-          </NavLink>
-        )}
-        {/* P5 : création self-service de la 1ʳᵉ fois. Masquée pour un non-admin
-            qui a déjà un foyer (create-once → on oriente vers l'édition) ;
-            l'admin garde l'accès (provisioning) et le mode hérité (admin
-            permissif) reste inchangé. */}
-        {peutCreerFoyer && <NavLink to="/foyers/new">Nouveau foyer</NavLink>}
       </nav>
+      {/* Cloche in-app (PR6) : journal des notifications reçues + compteur de
+          non-lus. Hors de la <nav> (c'est un bouton, pas un lien de navigation)
+          et calée à droite de l'en-tête — sur mobile elle reste EN HAUT, à côté
+          de la marque. Visible dès qu'une identité est établie (le BFF résout le
+          parent depuis l'e-mail vérifié) ; masquée en mode hérité sans identité. */}
+      {moi.email !== null && <ClocheNotifications />}
     </header>
   );
 }
