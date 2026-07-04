@@ -56,6 +56,19 @@ export function jourSemaineDeIso(iso: string): JourSemaine {
   return JOURS_SEMAINE[idx] ?? 'LUNDI';
 }
 
+/**
+ * Lendemain d'une date « YYYY-MM-DD ». Arithmétique en UTC : `Date.UTC` absorbe
+ * les débordements (fin de mois, fin d'année, années bissextiles) sans que le
+ * fuseau local de la machine ne décale le résultat.
+ */
+export function jourSuivant(iso: string): string {
+  const [y, m, d] = partsIso(iso);
+  const lendemain = new Date(Date.UTC(y, m - 1, d + 1));
+  const mm = String(lendemain.getUTCMonth() + 1).padStart(2, '0');
+  const jj = String(lendemain.getUTCDate()).padStart(2, '0');
+  return `${String(lendemain.getUTCFullYear())}-${mm}-${jj}`;
+}
+
 /** Toutes les dates « YYYY-MM-DD » d'un mois « YYYY-MM ». */
 export function joursDuMois(mois: string): string[] {
   const [y, m] = mois.split('-').map(Number);

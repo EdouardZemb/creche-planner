@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { jourCourantParis } from '@creche-planner/shared-semaine';
 import { DashboardJourPage } from './DashboardJourPage';
 import type {
@@ -147,17 +147,19 @@ describe('DashboardJourPage', () => {
 
     renderPage();
 
-    await screen.findByText('Léa');
+    // La semaine-type couvre 7 j : Léa apparaît aussi dans la section « Demain »
+    // (lot 2 UX) → sélecteurs pluriels + nom accessible EXACT pour le lien du jour.
+    await screen.findAllByText('Léa');
     expect(
-      screen.getByText('Crèche du parc', { exact: false }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Gardé/)).toBeInTheDocument();
+      screen.getAllByText('Crèche du parc', { exact: false }).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Gardé/).length).toBeGreaterThan(0);
 
     // P3a : « Modifier » ouvre le planning directement sur l'onglet enfant + le
     // sous-onglet mode de cette garde, au mois du jour affiché (params lus par
     // PlanningPage), au lieu du planning générique.
     const lien = screen.getByRole('link', {
-      name: /Modifier la garde de Léa/i,
+      name: 'Modifier la garde de Léa',
     });
     const url = new URL(lien.getAttribute('href')!, 'http://x');
     expect(url.pathname).toBe(`/foyers/${FOYER_ID}/planning`);
@@ -175,7 +177,9 @@ describe('DashboardJourPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText(/Aucune garde prévue/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Aucune garde prévue aujourd/i),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole('link', { name: /Voir le planning/i }),
     ).toHaveAttribute('href', `/foyers/${FOYER_ID}/planning`);
@@ -265,7 +269,7 @@ describe('DashboardJourPage', () => {
 
     renderPage();
 
-    await screen.findByText(/Aucune garde prévue/i);
+    await screen.findByText(/Aucune garde prévue aujourd/i);
     expect(
       screen.queryByRole('link', { name: /Vérifier et valider/i }),
     ).not.toBeInTheDocument();
@@ -279,7 +283,9 @@ describe('DashboardJourPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText(/Aucune garde prévue/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Aucune garde prévue aujourd/i),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: /Vérifier et valider/i }),
     ).not.toBeInTheDocument();
@@ -292,9 +298,148 @@ describe('DashboardJourPage', () => {
     renderPage();
 
     // La journée reste lisible ; le bandeau ne rend rien (pas de lien « Détail »).
-    expect(await screen.findByText(/Aucune garde prévue/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Aucune garde prévue aujourd/i),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole('link', { name: /Détail/i }),
     ).not.toBeInTheDocument();
+  });
+
+  // Section « Demain » (lot 2 UX) : horloge factice pour fixer le calendrier
+  // (même semaine / semaine suivante / fin de mois), `shouldAdvanceTime` pour
+  // que les `waitFor` de testing-library continuent d'avancer.
+  describe('section « Demain »', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function figerLe(dateIso: string) {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      // Midi UTC : la même date calendaire à Paris, été comme hiver.
+      vi.setSystemTime(new Date(`${dateIso}T12:00:00Z`));
+    }
+
+    it('demain dans la même semaine : réutilise le fetch du jour, deep-link au mois de DEMAIN', async () => {
+      // Vendredi 31 juillet : demain (samedi 1er août) est dans la même
+      // semaine ISO mais dans le mois SUIVANT — le cas piège du paramètre mois.
+      figerLe('2026-07-31');
+      vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineAvecGarde);
+
+      renderPage();
+
+      expect(
+        await screen.findByRole('heading', { level: 2, name: 'Demain' }),
+      ).toBeInTheDocument();
+      // Sous-titre parent : jour nommé + date réelle.
+      expect(screen.getByText(/Samedi 01\/08\/2026/)).toBeInTheDocument();
+      // Semaine-type 7 j : Léa gardée aujourd'hui ET demain.
+      expect(await screen.findAllByText('Léa')).toHaveLength(2);
+      // Même semaine ISO → UN seul appel réseau, pas de fetch secondaire.
+      expect(api.lireSemaineBesoins).toHaveBeenCalledTimes(1);
+      // Le lien de demain porte le mois de demain (août)…
+      const lienDemain = screen.getByRole('link', {
+        name: 'Modifier la garde de Léa demain',
+      });
+      const urlDemain = new URL(lienDemain.getAttribute('href')!, 'http://x');
+      expect(urlDemain.searchParams.get('mois')).toBe('2026-08');
+      // … celui d'aujourd'hui reste sur juillet.
+      const lienJour = screen.getByRole('link', {
+        name: 'Modifier la garde de Léa',
+      });
+      const urlJour = new URL(lienJour.getAttribute('href')!, 'http://x');
+      expect(urlJour.searchParams.get('mois')).toBe('2026-07');
+    });
+
+    it('demain en semaine ISO suivante (dimanche) : second fetch sur la semaine de demain', async () => {
+      // Dimanche 5 juillet (fin de 2026-W27) : demain est le lundi de 2026-W28.
+      figerLe('2026-07-05');
+      const semaineSuivante: SemaineBesoins = {
+        ...semaineAvecGarde,
+        semaineIso: '2026-W28',
+        contrats: [
+          { ...semaineAvecGarde.contrats[0]!, contratId: 'c2', enfant: 'Tom' },
+        ],
+      };
+      vi.mocked(api.lireSemaineBesoins).mockImplementation((_id, semaine) =>
+        Promise.resolve(
+          semaine === '2026-W28' ? semaineSuivante : semaineAvecGarde,
+        ),
+      );
+
+      renderPage();
+
+      // Aujourd'hui (W27) : Léa ; demain (W28) : Tom, servi par le 2e fetch.
+      expect(await screen.findByText('Léa')).toBeInTheDocument();
+      expect(await screen.findByText('Tom')).toBeInTheDocument();
+      expect(api.lireSemaineBesoins).toHaveBeenCalledWith(
+        FOYER_ID,
+        '2026-W27',
+        expect.anything(),
+      );
+      expect(api.lireSemaineBesoins).toHaveBeenCalledWith(
+        FOYER_ID,
+        '2026-W28',
+        expect.anything(),
+      );
+    });
+
+    it('aucune garde demain : une seule ligne sobre, pas de carte', async () => {
+      // Mercredi 1er juillet, contrat gardé le mercredi uniquement.
+      figerLe('2026-07-01');
+      const mercrediSeul: SemaineBesoins = {
+        ...semaineAvecGarde,
+        contrats: [
+          {
+            ...semaineAvecGarde.contrats[0]!,
+            semaineType: {
+              LUNDI: [],
+              MARDI: [],
+              MERCREDI: [PLAGE],
+              JEUDI: [],
+              VENDREDI: [],
+              SAMEDI: [],
+              DIMANCHE: [],
+            },
+          },
+        ],
+      };
+      vi.mocked(api.lireSemaineBesoins).mockResolvedValue(mercrediSeul);
+
+      renderPage();
+
+      expect(await screen.findByText('Léa')).toBeInTheDocument();
+      const vide = await screen.findByText('Aucune garde prévue demain.');
+      // Ligne sobre (muted), pas la carte lourde de l'état vide du jour.
+      expect(vide.closest('.carte')).toBeNull();
+      expect(vide).toHaveClass('muted');
+    });
+
+    it('échec du fetch de demain (semaine suivante) : la journée reste intacte, la section se tait', async () => {
+      figerLe('2026-07-05'); // dimanche → le fetch de demain vise 2026-W28
+      vi.mocked(api.lireSemaineBesoins).mockImplementation((_id, semaine) =>
+        semaine === '2026-W28'
+          ? Promise.reject(new Error('semaine suivante indispo'))
+          : Promise.resolve(semaineAvecGarde),
+      );
+
+      renderPage();
+
+      expect(await screen.findByText('Léa')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(api.lireSemaineBesoins).toHaveBeenCalledWith(
+          FOYER_ID,
+          '2026-W28',
+          expect.anything(),
+        );
+      });
+      // Silence total : ni faux « aucune garde », ni erreur qui masque le jour.
+      expect(
+        screen.queryByRole('heading', { level: 2, name: 'Demain' }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/Aucune garde prévue demain/),
+      ).not.toBeInTheDocument();
+    });
   });
 });
