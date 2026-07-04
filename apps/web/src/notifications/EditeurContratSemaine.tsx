@@ -27,7 +27,13 @@ import {
   formaterPlage,
 } from '../planning/heures';
 import { useEcritureSemaine } from './useEcritureSemaine';
-import { initBesoins, versCorps, type BesoinsEtat } from './besoinsSemaine';
+import {
+  alshEffectif,
+  initBesoins,
+  libelleAlsh,
+  versCorps,
+  type BesoinsEtat,
+} from './besoinsSemaine';
 
 // Édition des besoins **datés** d'un contrat sur la seule semaine notifiée.
 // Contrairement aux calendriers mensuels, la vue hebdomadaire ne connaît pas la
@@ -154,10 +160,17 @@ export function EditeurContratSemaine({
           f.depart = versHhmm(sup.finHeures, sup.finMinutes);
         }
       } else if (mode === 'ALSH') {
-        const j = alshParDate.get(date);
+        // Préremplit depuis l'état EFFECTIF (explicite > exception > récurrence),
+        // pour que « Modifier » reparte de ce qui est réservé ce jour-là.
+        const j = alshEffectif(
+          date,
+          alshParDate.get(date),
+          exceptionParDate.get(date),
+          contrat.semaineAbcm,
+        );
         if (j) {
           f.type = j.type;
-          f.repas = j.repas;
+          f.repas = j.repas ?? false;
         }
       } else {
         const e = exceptionParDate.get(date);
@@ -170,7 +183,14 @@ export function EditeurContratSemaine({
       setForm(f);
       setDialogDate(date);
     },
-    [mode, absenceParDate, jourSupParDate, alshParDate, exceptionParDate],
+    [
+      mode,
+      absenceParDate,
+      jourSupParDate,
+      alshParDate,
+      exceptionParDate,
+      contrat.semaineAbcm,
+    ],
   );
 
   const fermer = useCallback(() => {
@@ -202,9 +222,12 @@ export function EditeurContratSemaine({
         `${form.nature === 'absence' ? 'Absence' : 'Jour ajouté'} enregistré le ${formaterDateFr(date)}`,
       );
     } else if (mode === 'ALSH') {
+      // Confirmer pose un jour EXPLICITE (il prime sur la récurrence) et lève une
+      // éventuelle exception `alsh:false` de ce jour, devenue sans objet.
       const joursAlsh = besoins.joursAlsh.filter((j) => j.date !== date);
       joursAlsh.push({ date, type: form.type, repas: form.repas });
-      enregistrer({ ...besoins, joursAlsh });
+      const exceptions = besoins.exceptions.filter((e) => e.date !== date);
+      enregistrer({ ...besoins, joursAlsh, exceptions });
       annoncer(`Journée ALSH enregistrée le ${formaterDateFr(date)}`);
     } else {
       const reste = besoins.exceptions.filter((e) => e.date !== date);
@@ -228,10 +251,14 @@ export function EditeurContratSemaine({
         joursSup: besoins.joursSup.filter((j) => j.date !== date),
       });
     } else if (mode === 'ALSH') {
-      enregistrer({
-        ...besoins,
-        joursAlsh: besoins.joursAlsh.filter((j) => j.date !== date),
-      });
+      // Retire le jour effectif : on lève le jour explicite, puis — si la
+      // récurrence hebdomadaire réserverait encore ce jour — on pose une exception
+      // `alsh:false` pour la neutraliser ; sinon on nettoie l'exception résiduelle.
+      const joursAlsh = besoins.joursAlsh.filter((j) => j.date !== date);
+      const reste = besoins.exceptions.filter((e) => e.date !== date);
+      const recurrent = contrat.semaineAbcm?.[jourSemaineDeIso(date)]?.alsh;
+      const exceptions = recurrent ? [...reste, { date, alsh: false }] : reste;
+      enregistrer({ ...besoins, joursAlsh, exceptions });
     } else {
       enregistrer({
         ...besoins,
@@ -240,17 +267,35 @@ export function EditeurContratSemaine({
     }
     setDialogDate(null);
     annoncer(`Saisie retirée le ${formaterDateFr(date)}`);
-  }, [dialogDate, mode, besoins, enregistrer, annoncer]);
+  }, [dialogDate, mode, besoins, enregistrer, annoncer, contrat.semaineAbcm]);
 
   const aSaisie = useCallback(
     (date: string): boolean => {
       if (mode === 'CRECHE_PSU') {
         return absenceParDate.has(date) || jourSupParDate.has(date);
       }
-      if (mode === 'ALSH') return alshParDate.has(date);
+      if (mode === 'ALSH') {
+        // « Modifier » dès qu'un jour est réservé effectivement (explicite ou
+        // récurrence active) → la modale propose alors « Supprimer ».
+        return (
+          alshEffectif(
+            date,
+            alshParDate.get(date),
+            exceptionParDate.get(date),
+            contrat.semaineAbcm,
+          ) !== null
+        );
+      }
       return exceptionParDate.has(date);
     },
-    [mode, absenceParDate, jourSupParDate, alshParDate, exceptionParDate],
+    [
+      mode,
+      absenceParDate,
+      jourSupParDate,
+      alshParDate,
+      exceptionParDate,
+      contrat.semaineAbcm,
+    ],
   );
 
   // Affiche l'horaire EFFECTIF du jour, sans ouvrir la saisie : une exception datée
@@ -271,10 +316,13 @@ export function EditeurContratSemaine({
         return '—';
       }
       if (mode === 'ALSH') {
-        const j = alshParDate.get(date);
-        if (!j) return '—';
-        if (j.type === 'DEMI') return 'Demi-journée';
-        return j.repas ? 'Journée + repas' : 'Journée';
+        const j = alshEffectif(
+          date,
+          alshParDate.get(date),
+          exceptionParDate.get(date),
+          contrat.semaineAbcm,
+        );
+        return j ? libelleAlsh(j) : '—';
       }
       const e = exceptionParDate.get(date);
       const base = contrat.semaineAbcm?.[jour];

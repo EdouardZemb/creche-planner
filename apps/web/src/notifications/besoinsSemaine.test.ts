@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { initBesoins, versCorps, type BesoinsEtat } from './besoinsSemaine';
+import {
+  alshEffectif,
+  initBesoins,
+  libelleAlsh,
+  versCorps,
+  type BesoinsEtat,
+} from './besoinsSemaine';
 import type { ContratBesoinsSemaine } from '../types/bff';
 
 // Contrat minimal : seuls `besoins` importe pour l'aplatissement.
@@ -181,5 +187,71 @@ describe('versCorps', () => {
       { date: '2026-07-01', type: 'DEMI' },
       { date: '2026-07-02', type: 'COMPLETE', repas: true },
     ]);
+  });
+});
+
+describe('alshEffectif', () => {
+  // 2026-07-01 = mercredi (récurrence testée sur MERCREDI).
+  const MERCREDI = '2026-07-01';
+
+  it('un jour explicite prime sur récurrence et exception', () => {
+    expect(
+      alshEffectif(
+        MERCREDI,
+        { type: 'DEMI' },
+        { date: MERCREDI, alsh: false },
+        { MERCREDI: { alsh: { type: 'COMPLETE', repas: true } } },
+      ),
+    ).toEqual({ type: 'DEMI' });
+  });
+
+  it('à défaut d’explicite, retombe sur la récurrence hebdomadaire', () => {
+    expect(
+      alshEffectif(MERCREDI, undefined, undefined, {
+        MERCREDI: { alsh: { type: 'COMPLETE', repas: true } },
+      }),
+    ).toEqual({ type: 'COMPLETE', repas: true });
+  });
+
+  it('une exception `alsh:false` retire le jour récurrent', () => {
+    expect(
+      alshEffectif(
+        MERCREDI,
+        undefined,
+        { date: MERCREDI, alsh: false },
+        { MERCREDI: { alsh: { type: 'COMPLETE' } } },
+      ),
+    ).toBeNull();
+  });
+
+  it('une exception `alsh:true` (ré)active avec la config récurrente si présente', () => {
+    expect(
+      alshEffectif(
+        MERCREDI,
+        undefined,
+        { date: MERCREDI, alsh: true },
+        { MERCREDI: { alsh: { type: 'DEMI' } } },
+      ),
+    ).toEqual({ type: 'DEMI' });
+  });
+
+  it('une exception `alsh:true` sans récurrence pose une journée complète par défaut', () => {
+    expect(
+      alshEffectif(MERCREDI, undefined, { date: MERCREDI, alsh: true }, {}),
+    ).toEqual({ type: 'COMPLETE' });
+  });
+
+  it('rend `null` pour un jour ni explicite ni récurrent ni exception', () => {
+    expect(alshEffectif(MERCREDI, undefined, undefined, {})).toBeNull();
+  });
+});
+
+describe('libelleAlsh', () => {
+  it('formate les trois états de journée', () => {
+    expect(libelleAlsh({ type: 'DEMI' })).toBe('Demi-journée');
+    expect(libelleAlsh({ type: 'COMPLETE' })).toBe('Journée');
+    expect(libelleAlsh({ type: 'COMPLETE', repas: true })).toBe(
+      'Journée + repas',
+    );
   });
 });

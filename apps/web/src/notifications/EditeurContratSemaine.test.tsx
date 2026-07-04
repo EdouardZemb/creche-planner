@@ -441,4 +441,89 @@ describe('EditeurContratSemaine (modes ABCM et ALSH)', () => {
     ]);
     expect(screen.getByText('Demi-journée')).toBeInTheDocument();
   });
+
+  // ALSH récurrent : semaine-type sur MERCREDI (2026-07-01 dans la semaine).
+  function contratAlshRecurrent(): ContratBesoinsSemaine {
+    return {
+      contratId: 'c-noa',
+      enfant: 'Noa',
+      mode: 'ALSH',
+      etablissementId: null,
+      semaineAbcm: { MERCREDI: { alsh: { type: 'COMPLETE', repas: true } } },
+      besoins: {},
+    };
+  }
+
+  it('ALSH : la récurrence hebdomadaire est affichée sur son jour de semaine', () => {
+    rendre(contratAlshRecurrent());
+    // Mercredi 01/07 réservé par récurrence → « Journée + repas » + « Modifier ».
+    expect(screen.getByText('Journée + repas')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Modifier le Mercredi 01/07/2026' }),
+    ).toBeInTheDocument();
+    // Les autres jours ne portent pas la récurrence → « — » + « Saisir ».
+    expect(
+      screen.getByRole('button', { name: 'Saisir le Lundi 29/06/2026' }),
+    ).toBeInTheDocument();
+  });
+
+  it('ALSH : retirer un jour récurrent écrit une exception `alsh:false`', async () => {
+    const user = userEvent.setup();
+    rendre(contratAlshRecurrent());
+
+    await user.click(
+      screen.getByRole('button', { name: 'Modifier le Mercredi 01/07/2026' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Supprimer' }));
+
+    const { corps } = await corpsEcrit();
+    expect(corps.exceptions).toEqual([{ date: '2026-07-01', alsh: false }]);
+    expect(corps.joursAlsh).toBeUndefined();
+    // Le jour retombe sur « — » et le bouton redevient « Saisir ».
+    expect(
+      screen.getByRole('button', { name: 'Saisir le Mercredi 01/07/2026' }),
+    ).toBeInTheDocument();
+  });
+
+  it('ALSH : un jour explicite prime sur la récurrence du même jour', () => {
+    rendre({
+      contratId: 'c-noa',
+      enfant: 'Noa',
+      mode: 'ALSH',
+      etablissementId: null,
+      semaineAbcm: { MERCREDI: { alsh: { type: 'COMPLETE', repas: true } } },
+      besoins: {
+        '2026-07-01': {
+          joursSupplementaires: [],
+          absences: [],
+          exceptions: [],
+          joursAlsh: [{ date: '2026-07-01', type: 'DEMI' }],
+        },
+      },
+    });
+    // L'explicite (demi-journée) l'emporte sur la récurrence (journée + repas).
+    expect(screen.getByText('Demi-journée')).toBeInTheDocument();
+    expect(screen.queryByText('Journée + repas')).not.toBeInTheDocument();
+  });
+
+  it('ALSH : un jour déjà retiré par exception s’affiche « — »', () => {
+    rendre({
+      contratId: 'c-noa',
+      enfant: 'Noa',
+      mode: 'ALSH',
+      etablissementId: null,
+      semaineAbcm: { MERCREDI: { alsh: { type: 'COMPLETE' } } },
+      besoins: {
+        '2026-07-01': {
+          joursSupplementaires: [],
+          absences: [],
+          exceptions: [{ date: '2026-07-01', alsh: false }],
+          joursAlsh: [],
+        },
+      },
+    });
+    expect(
+      screen.getByRole('button', { name: 'Saisir le Mercredi 01/07/2026' }),
+    ).toBeInTheDocument();
+  });
 });

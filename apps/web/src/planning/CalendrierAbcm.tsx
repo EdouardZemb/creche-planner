@@ -10,6 +10,7 @@ import type {
   InscriptionsJour,
 } from '../types/bff';
 import { joursDuMois, jourSemaineDeIso, formaterDateFr } from '../utils/dates';
+import { alshEffectif } from '../notifications/besoinsSemaine';
 import { couleurDuMode } from '../utils/couleurs';
 import { Modale } from '../ui/Modale';
 import { LegendePlanning } from './LegendePlanning';
@@ -147,7 +148,12 @@ export function CalendrierAbcm({
     soir: boolean;
   }>({ cantine: false, matin: false, soir: false });
 
-  const semaineAbcm = contrat.semaineAbcm ?? {};
+  // Mémorisé : la valeur par défaut `{}` créerait sinon une nouvelle référence à
+  // chaque rendu et invaliderait les hooks qui en dépendent.
+  const semaineAbcm = useMemo(
+    () => contrat.semaineAbcm ?? {},
+    [contrat.semaineAbcm],
+  );
 
   const inscriptionsTemplate = useCallback(
     (iso: string): InscriptionsJour => semaineAbcm[jourSemaineDeIso(iso)] ?? {},
@@ -171,6 +177,29 @@ export function CalendrierAbcm({
       };
     },
     [inscriptionsTemplate, exceptionDe],
+  );
+
+  // Jour explicite (state ALSH) d'une date, converti à la forme récurrente.
+  const alshExplicite = useCallback(
+    (iso: string) => {
+      const j = joursAlsh.find((x) => x.date === iso);
+      return j ? { type: j.type, repas: j.repas } : undefined;
+    },
+    [joursAlsh],
+  );
+
+  // Jour ALSH EFFECTIF d'une date (explicite > exception > récurrence), `null`
+  // si non réservé — même sémantique que `dashboard/jourFoyer.ts`.
+  const alshEffectifDe = useCallback(
+    (iso: string) =>
+      alshEffectif(iso, alshExplicite(iso), exceptionDe(iso), semaineAbcm),
+    [alshExplicite, exceptionDe, semaineAbcm],
+  );
+
+  // Récurrence hebdomadaire brute de ce jour de semaine (sans exception ni explicite).
+  const alshRecurrent = useCallback(
+    (iso: string) => inscriptionsTemplate(iso).alsh,
+    [inscriptionsTemplate],
   );
 
   // Jours d'école du mois (dans la période) — base des ajustements cantine/péri.
@@ -202,21 +231,46 @@ export function CalendrierAbcm({
     return ajoutes - retires;
   }, [mode, joursPeriode, inscriptionsTemplate, effectif]);
 
+  // Écart net ALSH vs contrat (jours réservés ajoutés − jours récurrents retirés).
+  const ecartJoursAlsh = useMemo(() => {
+    if (mode !== 'ALSH') return 0;
+    let ajoutes = 0;
+    let retires = 0;
+    for (const iso of joursDuMois(mois)) {
+      if (!estDansPeriode(iso)) continue;
+      const recurrent = alshRecurrent(iso) !== undefined;
+      const effActif = alshEffectifDe(iso) !== null;
+      if (effActif && !recurrent) ajoutes += 1;
+      if (!effActif && recurrent) retires += 1;
+    }
+    return ajoutes - retires;
+  }, [mode, mois, estDansPeriode, alshRecurrent, alshEffectifDe]);
+
   const events = useMemo<EventInput[]>(() => {
     if (mode === 'ALSH') {
-      return joursAlsh.map((j) => ({
-        id: j.date,
-        start: j.date,
-        allDay: true,
-        backgroundColor: couleur,
-        borderColor: couleur,
-        title:
-          j.type === 'COMPLETE'
-            ? j.repas
-              ? 'Journée + repas'
-              : 'Journée'
-            : 'Demi-journée',
-      }));
+      const evts: EventInput[] = [];
+      for (const iso of joursDuMois(mois)) {
+        if (!estDansPeriode(iso)) continue;
+        const eff = alshEffectifDe(iso);
+        const recurrent = alshRecurrent(iso);
+        const explicite = alshExplicite(iso);
+        if (eff) {
+          // Réservé effectivement : ajout ponctuel hors récurrence → vert,
+          // sinon couleur du mode (récurrence, éventuellement ajustée explicitement).
+          const ajoute = !recurrent && explicite !== undefined;
+          const titre =
+            eff.type === 'COMPLETE'
+              ? eff.repas
+                ? 'Journée + repas'
+                : 'Journée'
+              : 'Demi-journée';
+          evts.push(evt(iso, ajoute ? couleurAjout : couleur, titre));
+        } else if (recurrent) {
+          // Jour récurrent retiré ponctuellement (exception `alsh:false`) → rouge.
+          evts.push(evt(iso, couleurRet, 'Retiré'));
+        }
+      }
+      return evts;
     }
 
     const evts: EventInput[] = [];
@@ -250,8 +304,12 @@ export function CalendrierAbcm({
     return evts;
   }, [
     mode,
-    joursAlsh,
+    mois,
     joursPeriode,
+    estDansPeriode,
+    alshEffectifDe,
+    alshRecurrent,
+    alshExplicite,
     inscriptionsTemplate,
     effectif,
     couleur,
@@ -285,8 +343,11 @@ export function CalendrierAbcm({
           type: j.type,
           ...(j.repas ? { repas: j.repas } : {}),
         }));
+        // Les exceptions ALSH (`alsh:false`/`true`) portent les retraits/ajouts
+        // ponctuels de la récurrence hebdomadaire → elles doivent partir aussi.
         ecrire(contrat.id, mois, simule, {
           ...(joursApi.length > 0 ? { joursAlsh: joursApi } : {}),
+          ...(nvExceptions.length > 0 ? { exceptions: nvExceptions } : {}),
         });
       }
     },
@@ -406,20 +467,23 @@ export function CalendrierAbcm({
     annoncer(`Ajustement retiré le ${formaterDateFr(dialogDate)}`);
   }, [dialogDate, exceptions, joursAlsh, pai, envoyer, annoncer]);
 
-  // --- ALSH (inchangé) -------------------------------------------------------
+  // --- ALSH -----------------------------------------------------------------
 
   const ouvrirSaisieAlsh = useCallback(
     (iso: string) => {
-      if (mode !== 'ALSH' || !iso.startsWith(mois)) return;
-      const existing = joursAlsh.find((j) => j.date === iso);
+      if (mode !== 'ALSH' || !iso.startsWith(mois) || !estDansPeriode(iso))
+        return;
+      // Prérempli depuis l'état EFFECTIF (explicite > exception > récurrence).
+      const eff = alshEffectifDe(iso);
+      setPortee('mois');
       setPopoverForm(
-        existing
-          ? { type: existing.type, repas: existing.repas }
+        eff
+          ? { type: eff.type, repas: eff.repas ?? false }
           : { type: 'COMPLETE', repas: false },
       );
       setPopoverDate(iso);
     },
-    [mode, mois, joursAlsh],
+    [mode, mois, estDansPeriode, alshEffectifDe, setPortee],
   );
 
   const handleDateClick = useCallback(
@@ -433,26 +497,85 @@ export function CalendrierAbcm({
   const confirmerAlsh = useCallback(() => {
     if (popoverDate === null) return;
     const date = popoverDate;
-    const existait = joursAlsh.some((j) => j.date === date);
+    const jourSemaine = jourSemaineDeIso(date);
+
+    // Portée durable : la formule devient la récurrence hebdomadaire du contrat.
+    if (portee === 'tous') {
+      const t = inscriptionsTemplate(date);
+      const nouvelle = { ...semaineAbcm };
+      nouvelle[jourSemaine] = {
+        ...t,
+        alsh: {
+          type: popoverForm.type,
+          ...(popoverForm.repas ? { repas: true } : {}),
+        },
+      };
+      const detail =
+        popoverForm.type === 'DEMI'
+          ? 'une demi-journée sera réservée'
+          : popoverForm.repas
+            ? 'une journée avec repas sera réservée'
+            : 'une journée sera réservée';
+      demanderConfirmationDurable(
+        nouvelle,
+        `Tous les ${jourSemaine.toLowerCase()}s, ${detail}.`,
+      );
+      setPopoverDate(null);
+      return;
+    }
+
+    // Ponctuel : un jour explicite prime et lève une éventuelle exception `alsh:false`.
+    const existait = alshEffectifDe(date) !== null;
     const nouveaux = joursAlsh.filter((j) => j.date !== date);
     nouveaux.push({ date, type: popoverForm.type, repas: popoverForm.repas });
+    const nvExceptions = exceptions.filter((e) => e.date !== date);
     setJoursAlsh(nouveaux);
+    setExceptions(nvExceptions);
     setPopoverDate(null);
-    envoyer(nouveaux, pai, exceptions);
+    envoyer(nouveaux, pai, nvExceptions);
     annoncer(
       `Journée ALSH ${existait ? 'modifiée' : 'ajoutée'} le ${formaterDateFr(date)}`,
     );
-  }, [popoverDate, popoverForm, joursAlsh, pai, exceptions, envoyer, annoncer]);
+  }, [
+    popoverDate,
+    popoverForm,
+    portee,
+    semaineAbcm,
+    inscriptionsTemplate,
+    demanderConfirmationDurable,
+    alshEffectifDe,
+    joursAlsh,
+    exceptions,
+    pai,
+    envoyer,
+    annoncer,
+  ]);
 
   const supprimerAlsh = useCallback(() => {
     if (popoverDate === null) return;
     const date = popoverDate;
+    // Retire le jour effectif : lève le jour explicite, puis neutralise la
+    // récurrence hebdomadaire par une exception `alsh:false` si elle réserverait
+    // encore ce jour ; sinon nettoie l'exception résiduelle.
     const nouveaux = joursAlsh.filter((j) => j.date !== date);
+    const reste = exceptions.filter((e) => e.date !== date);
+    const nvExceptions = alshRecurrent(date)
+      ? [...reste, { date, alsh: false }]
+      : reste;
     setJoursAlsh(nouveaux);
+    setExceptions(nvExceptions);
     setPopoverDate(null);
-    envoyer(nouveaux, pai, exceptions);
+    envoyer(nouveaux, pai, nvExceptions);
     annoncer(`Journée ALSH retirée le ${formaterDateFr(date)}`);
-  }, [popoverDate, joursAlsh, pai, exceptions, envoyer, annoncer]);
+  }, [
+    popoverDate,
+    joursAlsh,
+    exceptions,
+    alshRecurrent,
+    pai,
+    envoyer,
+    annoncer,
+  ]);
 
   const handlePaiChange = useCallback(
     (val: boolean) => {
@@ -501,8 +624,8 @@ export function CalendrierAbcm({
 
         {mode === 'ALSH' && (
           <span className="muted" style={{ fontSize: '0.82rem' }}>
-            Cliquer sur un jour pour ajouter/modifier une journée ALSH, ou
-            utiliser la liste ci-dessous au clavier.
+            Cliquer sur un jour pour ajouter, modifier ou retirer une journée
+            ALSH, ou utiliser la liste ci-dessous au clavier.
           </span>
         )}
       </BarreStatutCalendrier>
@@ -528,6 +651,14 @@ export function CalendrierAbcm({
         </>
       )}
 
+      {mode === 'ALSH' && (
+        <LegendePlanning
+          couleurGarde={couleur}
+          libelleGarde="ALSH (contrat)"
+          ecartJours={ecartJoursAlsh}
+        />
+      )}
+
       <CalendrierMois
         mois={mois}
         events={events}
@@ -540,7 +671,7 @@ export function CalendrierAbcm({
           <legend>Saisir une journée ALSH (accessible au clavier)</legend>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {joursDuMoisListe.map((jour) => {
-              const existant = joursAlsh.find((j) => j.date === jour);
+              const eff = alshEffectifDe(jour);
               const libelleJour = formaterDateFr(jour);
               return (
                 <li
@@ -554,9 +685,9 @@ export function CalendrierAbcm({
                 >
                   <span style={{ minWidth: '8rem' }}>{libelleJour}</span>
                   <span className="muted" style={{ fontSize: '0.82rem' }}>
-                    {existant
-                      ? existant.type === 'COMPLETE'
-                        ? existant.repas
+                    {eff
+                      ? eff.type === 'COMPLETE'
+                        ? eff.repas
                           ? 'Journée + repas'
                           : 'Journée'
                         : 'Demi-journée'
@@ -569,12 +700,12 @@ export function CalendrierAbcm({
                       ouvrirSaisieAlsh(jour);
                     }}
                     aria-label={
-                      existant
+                      eff
                         ? `Modifier la journée ALSH du ${libelleJour}`
                         : `Saisir une journée ALSH le ${libelleJour}`
                     }
                   >
-                    {existant ? 'Modifier' : 'Saisir'}
+                    {eff ? 'Modifier' : 'Saisir'}
                   </button>
                 </li>
               );
@@ -772,11 +903,13 @@ export function CalendrierAbcm({
             Repas inclus
           </label>
 
+          <ChoixPortee valeur={portee} onChange={setPortee} nom="alsh" />
+
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
             <button type="button" className="btn" onClick={confirmerAlsh}>
               Confirmer
             </button>
-            {joursAlsh.some((j) => j.date === popoverDate) && (
+            {portee === 'mois' && alshEffectifDe(popoverDate) !== null && (
               <button
                 type="button"
                 className="btn secondaire"
