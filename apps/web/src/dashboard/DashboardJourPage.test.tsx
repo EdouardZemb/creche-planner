@@ -102,6 +102,14 @@ const coutMois = {
   lignes: [],
 } as CoutMoisVue;
 
+// Horloge factice pour fixer le calendrier (jour de la semaine, changement de
+// semaine ISO), `shouldAdvanceTime` pour que les `waitFor` continuent d'avancer.
+function figerLe(dateIso: string) {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  // Midi UTC : la même date calendaire à Paris, été comme hiver.
+  vi.setSystemTime(new Date(`${dateIso}T12:00:00Z`));
+}
+
 function renderPage(foyerId = FOYER_ID) {
   return render(
     <MemoryRouter initialEntries={[`/foyers/${foyerId}/dashboard`]}>
@@ -170,6 +178,60 @@ describe('DashboardJourPage', () => {
     );
     // Le titre d'onglet reflète la page (EX-05).
     expect(document.title).toMatch(/Aujourd/);
+  });
+
+  it('parle parent : « Horaires modifiés » (jamais « Ajusté ») et « Centre de loisirs (ALSH) » (lot 4 UX)', async () => {
+    const aujourdhui = jourCourantParis(new Date());
+    const jourSansSaisie = {
+      joursSupplementaires: [],
+      absences: [],
+      exceptions: [],
+      joursAlsh: [],
+    };
+    const vue: SemaineBesoins = {
+      ...semaineAvecGarde,
+      contrats: [
+        {
+          ...semaineAvecGarde.contrats[0]!,
+          // Absence INTÉRIEURE à la plage 08:30–17:00 → jeton « ajuste ».
+          besoins: {
+            [aujourdhui]: {
+              ...jourSansSaisie,
+              absences: [
+                {
+                  debutHeures: 10,
+                  debutMinutes: 0,
+                  finHeures: 14,
+                  finMinutes: 0,
+                  preavisJours: 0,
+                  certificatMaladie: false,
+                },
+              ],
+            },
+          },
+        },
+        {
+          contratId: 'c-alsh',
+          enfant: 'Tom',
+          mode: 'ALSH',
+          etablissementId: null,
+          besoins: {
+            [aujourdhui]: {
+              ...jourSansSaisie,
+              joursAlsh: [{ date: aujourdhui, type: 'COMPLETE' }],
+            },
+          },
+        },
+      ],
+    };
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(vue);
+
+    renderPage();
+
+    // Le jargon du planning est traduit pour le parent, localement à l'écran.
+    expect(await screen.findByText(/Horaires modifiés/)).toBeInTheDocument();
+    expect(screen.queryByText(/Ajusté/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Centre de loisirs \(ALSH\)/)).toBeInTheDocument();
   });
 
   it('état vide : « Aucune garde prévue » + lien vers le planning', async () => {
@@ -314,12 +376,6 @@ describe('DashboardJourPage', () => {
       vi.useRealTimers();
     });
 
-    function figerLe(dateIso: string) {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
-      // Midi UTC : la même date calendaire à Paris, été comme hiver.
-      vi.setSystemTime(new Date(`${dateIso}T12:00:00Z`));
-    }
-
     it('demain dans la même semaine : réutilise le fetch du jour, deep-link au mois de DEMAIN', async () => {
       // Vendredi 31 juillet : demain (samedi 1er août) est dans la même
       // semaine ISO mais dans le mois SUIVANT — le cas piège du paramètre mois.
@@ -440,6 +496,103 @@ describe('DashboardJourPage', () => {
       expect(
         screen.queryByText(/Aucune garde prévue demain/),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  // « Prochaine garde » de l'état vide (lot 4 UX) : quand rien aujourd'hui,
+  // dire au parent quand ça reprend — semaine chargée d'abord, puis semaine
+  // ISO suivante via un fetch silencieux, silence au-delà.
+  describe('« Prochaine garde » (état vide)', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    // Contrat crèche gardé uniquement les jours fournis (les autres vides).
+    const gardeLe = (jours: Partial<SemaineTypeCreche>): SemaineBesoins => ({
+      ...semaineAvecGarde,
+      contrats: [
+        {
+          ...semaineAvecGarde.contrats[0]!,
+          semaineType: {
+            LUNDI: [],
+            MARDI: [],
+            MERCREDI: [],
+            JEUDI: [],
+            VENDREDI: [],
+            SAMEDI: [],
+            DIMANCHE: [],
+            ...jours,
+          },
+        },
+      ],
+    });
+
+    it('trouvée dans la semaine courante : date en mots de parent, aucun fetch secondaire', async () => {
+      // Mardi 30 juin (2026-W27), garde le vendredi 3 juillet : même semaine.
+      figerLe('2026-06-30');
+      vi.mocked(api.lireSemaineBesoins).mockResolvedValue(
+        gardeLe({ VENDREDI: [PLAGE] }),
+      );
+
+      renderPage();
+
+      expect(
+        await screen.findByText(/Aucune garde prévue aujourd/),
+      ).toBeInTheDocument();
+      expect(await screen.findByText('vendredi 3 juillet')).toBeInTheDocument();
+      expect(screen.getByText(/Prochaine garde/)).toBeInTheDocument();
+      // Tout est déduit de la semaine déjà chargée : UN seul appel réseau
+      // (« Demain » — mercredi, même semaine — n'en fait pas non plus).
+      expect(api.lireSemaineBesoins).toHaveBeenCalledTimes(1);
+    });
+
+    it('week-end : cherchée dans la semaine ISO suivante via un fetch silencieux', async () => {
+      // Samedi 4 juillet (2026-W27), garde le lundi → lundi 6 juillet (W28).
+      figerLe('2026-07-04');
+      const vueCourante = gardeLe({ LUNDI: [PLAGE] });
+      const vueSuivante: SemaineBesoins = {
+        ...gardeLe({ LUNDI: [PLAGE] }),
+        semaineIso: '2026-W28',
+      };
+      vi.mocked(api.lireSemaineBesoins).mockImplementation((_id, semaine) =>
+        Promise.resolve(semaine === '2026-W28' ? vueSuivante : vueCourante),
+      );
+
+      renderPage();
+
+      expect(
+        await screen.findByText(/Aucune garde prévue aujourd/),
+      ).toBeInTheDocument();
+      expect(await screen.findByText('lundi 6 juillet')).toBeInTheDocument();
+      expect(api.lireSemaineBesoins).toHaveBeenCalledWith(
+        FOYER_ID,
+        '2026-W28',
+        expect.anything(),
+      );
+    });
+
+    it('rien sous ~2 semaines : état vide inchangé, pas de fausse promesse', async () => {
+      figerLe('2026-07-04');
+      // Aucune garde nulle part (semaine-type vide, courante comme suivante).
+      vi.mocked(api.lireSemaineBesoins).mockResolvedValue(gardeLe({}));
+
+      renderPage();
+
+      expect(
+        await screen.findByText(/Aucune garde prévue aujourd/),
+      ).toBeInTheDocument();
+      // La semaine suivante a bien été sondée… sans rien donner → silence.
+      await waitFor(() => {
+        expect(api.lireSemaineBesoins).toHaveBeenCalledWith(
+          FOYER_ID,
+          '2026-W28',
+          expect.anything(),
+        );
+      });
+      expect(screen.queryByText(/Prochaine garde/)).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: /Voir le planning/i }),
+      ).toBeInTheDocument();
     });
   });
 });
