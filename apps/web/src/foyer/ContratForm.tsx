@@ -21,6 +21,7 @@ import {
 } from '../utils/erreurs';
 import { LIBELLES_MODE, estMode } from '../utils/libelles';
 import { Abbr } from '../ui/Abbr';
+import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 
 const MODES_SELECTIONNABLES: Mode[] = [
   'CRECHE_PSU',
@@ -186,71 +187,77 @@ function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
   }
 
   return (
-    <table
-      style={{ borderCollapse: 'collapse', width: '100%', fontSize: '0.9rem' }}
-    >
-      <thead>
-        <tr>
-          <th scope="col" style={{ textAlign: 'left', paddingRight: '1rem' }}>
-            Jour
-          </th>
-          {montrerCantine && <th scope="col">Cantine</th>}
-          {montrerPeriMatin && <th scope="col">Péri matin</th>}
-          {montrerPeriSoir && <th scope="col">Péri soir</th>}
-        </tr>
-      </thead>
-      <tbody>
-        {JOURS_SEMAINE_OUVRES.map((jour) => {
-          const insc = inscriptionJour(jour);
-          return (
-            <tr key={jour}>
-              <th
-                scope="row"
-                style={{ textAlign: 'left', paddingRight: '1rem' }}
-              >
-                {LIBELLES_JOURS[jour]}
-              </th>
-              {montrerCantine && (
-                <td style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={insc.cantine === true}
-                    onChange={(e) => {
-                      mettreAJour(jour, 'cantine', e.target.checked);
-                    }}
-                    aria-label={`Cantine ${LIBELLES_JOURS[jour]}`}
-                  />
-                </td>
-              )}
-              {montrerPeriMatin && (
-                <td style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={insc.periMatin === true}
-                    onChange={(e) => {
-                      mettreAJour(jour, 'periMatin', e.target.checked);
-                    }}
-                    aria-label={`Périscolaire matin ${LIBELLES_JOURS[jour]}`}
-                  />
-                </td>
-              )}
-              {montrerPeriSoir && (
-                <td style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={insc.periSoir === true}
-                    onChange={(e) => {
-                      mettreAJour(jour, 'periSoir', e.target.checked);
-                    }}
-                    aria-label={`Périscolaire soir ${LIBELLES_JOURS[jour]}`}
-                  />
-                </td>
-              )}
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div className="table-defilante">
+      <table
+        style={{
+          borderCollapse: 'collapse',
+          width: '100%',
+          fontSize: '0.9rem',
+        }}
+      >
+        <thead>
+          <tr>
+            <th scope="col" style={{ textAlign: 'left', paddingRight: '1rem' }}>
+              Jour
+            </th>
+            {montrerCantine && <th scope="col">Cantine</th>}
+            {montrerPeriMatin && <th scope="col">Péri matin</th>}
+            {montrerPeriSoir && <th scope="col">Péri soir</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {JOURS_SEMAINE_OUVRES.map((jour) => {
+            const insc = inscriptionJour(jour);
+            return (
+              <tr key={jour}>
+                <th
+                  scope="row"
+                  style={{ textAlign: 'left', paddingRight: '1rem' }}
+                >
+                  {LIBELLES_JOURS[jour]}
+                </th>
+                {montrerCantine && (
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={insc.cantine === true}
+                      onChange={(e) => {
+                        mettreAJour(jour, 'cantine', e.target.checked);
+                      }}
+                      aria-label={`Cantine ${LIBELLES_JOURS[jour]}`}
+                    />
+                  </td>
+                )}
+                {montrerPeriMatin && (
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={insc.periMatin === true}
+                      onChange={(e) => {
+                        mettreAJour(jour, 'periMatin', e.target.checked);
+                      }}
+                      aria-label={`Périscolaire matin ${LIBELLES_JOURS[jour]}`}
+                    />
+                  </td>
+                )}
+                {montrerPeriSoir && (
+                  <td style={{ textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={insc.periSoir === true}
+                      onChange={(e) => {
+                        mettreAJour(jour, 'periSoir', e.target.checked);
+                      }}
+                      aria-label={`Périscolaire soir ${LIBELLES_JOURS[jour]}`}
+                    />
+                  </td>
+                )}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -483,6 +490,10 @@ export function ContratForm({
   const [chargement, setChargement] = useState(false);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
+  // Garde d'abandon : vrai dès la première saisie (onChange délégué au <form>),
+  // pour ne confirmer l'annulation que s'il y a réellement quelque chose à perdre.
+  const [saisieModifiee, setSaisieModifiee] = useState(false);
+  const [confirmerAbandon, setConfirmerAbandon] = useState(false);
 
   function erreurPour(champ: string): string | undefined {
     return erreursChamps.find((e) => e.champ === champ)?.message;
@@ -522,6 +533,20 @@ export function ContratForm({
     const enfantSelectionne = enfants.find((e) => e.id === enfantId);
     if (!enfantSelectionne) {
       setErreurGlobale('Veuillez sélectionner un enfant.');
+      setChargement(false);
+      return;
+    }
+
+    // Cohérence des dates côté client (retour immédiat ; le serveur revalide) :
+    // une fin antérieure au début serait une période vide silencieuse.
+    if (valideAu.trim() !== '' && valideAu < valideDu) {
+      setErreursChamps([
+        {
+          champ: 'valideAu',
+          message: 'La date de fin doit être après la date de début.',
+        },
+      ]);
+      setErreurGlobale('Vérifiez les dates de validité du contrat.');
       setChargement(false);
       return;
     }
@@ -632,7 +657,13 @@ export function ContratForm({
   }
 
   return (
-    <form onSubmit={(ev) => void soumettre(ev)}>
+    <form
+      onSubmit={(ev) => void soumettre(ev)}
+      onChange={() => {
+        // Délégué : toute saisie (input/select/checkbox) marque le brouillon.
+        setSaisieModifiee(true);
+      }}
+    >
       {erreurGlobale && (
         <p className="debit" role="alert">
           {erreurGlobale}
@@ -972,11 +1003,36 @@ export function ContratForm({
               : 'Créer le contrat'}
         </button>
         {onAnnuler && (
-          <button type="button" className="btn secondaire" onClick={onAnnuler}>
+          <button
+            type="button"
+            className="btn secondaire"
+            onClick={() => {
+              // Rien saisi → fermeture directe ; sinon confirmation (la saisie
+              // n'est pas enregistrée et serait perdue sans retour possible).
+              if (saisieModifiee) {
+                setConfirmerAbandon(true);
+              } else {
+                onAnnuler();
+              }
+            }}
+          >
             Annuler
           </button>
         )}
       </div>
+      <ModaleConfirmation
+        ouvert={confirmerAbandon}
+        titre="Abandonner la saisie"
+        message="Vos modifications ne sont pas enregistrées et seront perdues."
+        libelleConfirmer="Abandonner"
+        onConfirmer={() => {
+          setConfirmerAbandon(false);
+          onAnnuler?.();
+        }}
+        onAnnuler={() => {
+          setConfirmerAbandon(false);
+        }}
+      />
     </form>
   );
 }
