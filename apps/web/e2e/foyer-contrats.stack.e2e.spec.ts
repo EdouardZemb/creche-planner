@@ -25,8 +25,10 @@ test('stack réelle : la page Contrats liste les 4 contrats seedés', async ({
 
   // Fin du chargement : le titre de la page est rendu, puis l'indicateur
   // « Chargement des contrats… » disparaît (liste lue depuis l'API).
+  // Lot 2 « page contrats pro » : le h1 est devenu « Contrats » (exact, pour ne
+  // pas matcher le h2 « Vos contrats » de la liste).
   await expect(
-    page.getByRole('heading', { name: 'Contrats du foyer' }),
+    page.getByRole('heading', { name: 'Contrats', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('Chargement des contrats…')).toHaveCount(0);
 

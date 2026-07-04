@@ -245,8 +245,9 @@ test.describe("Audit d'accessibilité automatisé (axe-core, WCAG 2.1 AA)", () =
 
   test('page contrats — 0 violation AA', async ({ page }) => {
     await page.goto(`/foyers/${FOYER_ID}/contrats`);
+    // Lot 2 « page contrats pro » : h1 « Contrats » (exact ≠ h2 « Vos contrats »).
     await expect(
-      page.getByRole('heading', { name: /Contrats du foyer/i }),
+      page.getByRole('heading', { name: 'Contrats', exact: true }),
     ).toBeVisible();
     const r = await auditer(page, 'contrats');
     expect(r.violations).toEqual([]);
@@ -317,8 +318,9 @@ test.describe("Audit d'accessibilité automatisé (axe-core, WCAG 2.1 AA)", () =
     // région live aria-live="polite". On vérifie le comportement réel plutôt que
     // de seulement l'inspecter statiquement.
     await page.goto(`/foyers/${FOYER_ID}/contrats`);
+    // Lot 2 « page contrats pro » : h1 « Contrats » (exact ≠ h2 « Vos contrats »).
     await expect(
-      page.getByRole('heading', { name: /Contrats du foyer/i }),
+      page.getByRole('heading', { name: 'Contrats', exact: true }),
     ).toBeVisible();
 
     // Région live d'annonce de route présente et polie (CA2). Ciblée par son
