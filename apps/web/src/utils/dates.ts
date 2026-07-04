@@ -130,6 +130,17 @@ function nomMoisFr(iso: string): string {
 }
 
 /**
+ * Date « YYYY-MM-DD » → « lundi 6 juillet » : jour nommé + date réelle, les
+ * mots d'un parent (pendant de `libelleSemaine` pour un jour isolé). Sans
+ * année : réservé aux horizons courts (ex. « Prochaine garde » à ~2 semaines).
+ */
+export function libelleDate(iso: string): string {
+  const [, , jour] = partsIso(iso);
+  const nomJour = LIBELLES_JOURS[jourSemaineDeIso(iso)].toLowerCase();
+  return `${nomJour} ${jourDuMoisFr(jour)} ${nomMoisFr(iso)}`;
+}
+
+/**
  * Rend `2026-W28` en libellé parent « semaine du 6 au 12 juillet » : des dates
  * réelles, jamais le numéro de semaine ISO (jargon pour un parent). Le mois de
  * début n'apparaît que si la semaine en chevauche deux (« semaine du 29 juin au

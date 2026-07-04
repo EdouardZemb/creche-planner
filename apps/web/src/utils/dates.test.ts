@@ -4,6 +4,7 @@ import {
   formaterDateCourtFr,
   formaterHeureFr,
   jourSuivant,
+  libelleDate,
   libelleSemaine,
 } from './dates';
 
@@ -53,6 +54,16 @@ describe('formaterDateCourtFr', () => {
 
   it('zéro-pad le jour et le mois', () => {
     expect(formaterDateCourtFr('2026-01-05')).toBe('05/01');
+  });
+});
+
+describe('libelleDate', () => {
+  it('rend une date en mots de parent : jour nommé + date réelle, sans année', () => {
+    expect(libelleDate('2026-07-06')).toBe('lundi 6 juillet');
+  });
+
+  it('dit « 1er » pour le premier jour du mois', () => {
+    expect(libelleDate('2026-08-01')).toBe('samedi 1er août');
   });
 });
 

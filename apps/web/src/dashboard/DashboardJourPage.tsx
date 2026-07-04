@@ -15,6 +15,7 @@ import {
   formaterDateFr,
   formaterMoisFr,
   jourSuivant,
+  libelleDate,
   libelleSemaine,
   LIBELLES_JOURS,
   jourSemaineDeIso,
@@ -26,17 +27,22 @@ import { useNotifications } from '../notifications/useNotifications';
 import { api } from '../api/client';
 import { lignesDuJour, type EtatJour, type LigneJour } from './jourFoyer';
 
-/** Libellé lisible d'un état du jour (la couche pure renvoie un jeton stable). */
+/**
+ * Libellé lisible d'un état du jour (la couche pure renvoie un jeton stable).
+ * Mots de PARENT, volontairement locaux à cet écran (le planning garde les
+ * siens) : « Ajusté » (jargon) devient « Horaires modifiés », « ALSH » est
+ * explicité en cohérence avec le glossaire (`utils/glossaire.ts`).
+ */
 const LIBELLES_ETAT: Readonly<Record<EtatJour, string>> = {
   garde: 'Gardé',
   absent: 'Absent',
   'depart-avance': 'Départ avancé',
   'arrivee-retardee': 'Arrivée retardée',
-  ajuste: 'Ajusté',
+  ajuste: 'Horaires modifiés',
   'jour-ajoute': 'Jour ajouté',
   cantine: 'Cantine',
   peri: 'Périscolaire',
-  alsh: 'ALSH',
+  alsh: 'Centre de loisirs (ALSH)',
 };
 
 /**
@@ -90,13 +96,9 @@ function RangeeJour({
     <li className="jour-rangee">
       <span
         aria-hidden="true"
-        style={{
-          width: '0.8rem',
-          height: '0.8rem',
-          borderRadius: '0.2rem',
-          backgroundColor: couleurEtat(ligne),
-          display: 'inline-block',
-        }}
+        className="jour-pastille"
+        // Seule la couleur (fonction de l'état/du mode) reste dynamique.
+        style={{ backgroundColor: couleurEtat(ligne) }}
       />
       <span>
         <strong>{ligne.enfant}</strong> — {libelleMode(ligne.mode)}
@@ -146,7 +148,7 @@ function CarteAValider({ foyerId }: { foyerId: string }) {
       // visuel pour une même tâche, d'un écran à l'autre.
       style={{ borderLeft: '4px solid var(--bleu)' }}
     >
-      <h2 style={{ marginTop: 0, fontSize: 'var(--h2)' }}>
+      <h2 className="titre-carte">
         {semaines.length > 1 ? 'Semaines à valider' : 'Semaine à valider'}
       </h2>
       {semaines.length === 1 ? (
@@ -188,21 +190,12 @@ function BandeauCoutMois({ foyerId, mois }: { foyerId: string; mois: string }) {
     return null;
   }
   return (
-    <div
-      className="carte"
-      style={{
-        display: 'flex',
-        alignItems: 'baseline',
-        justifyContent: 'space-between',
-        gap: '0.75rem',
-        flexWrap: 'wrap',
-      }}
-    >
+    <div className="carte bandeau-cout">
       <span>
         Coût de <strong>{formaterMoisFr(mois)}</strong>
       </span>
-      <span style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}>
-        <strong style={{ fontSize: '1.1rem' }}>
+      <span className="bandeau-cout-total">
+        <strong className="bandeau-cout-montant">
           {centimesEnEuros(data.totalCentimes)}
         </strong>
         <Link to={`/foyers/${foyerId}/couts`} className="btn secondaire">
@@ -255,8 +248,8 @@ function SectionDemain({
   const jour = jourSemaineDeIso(demain);
   return (
     <section aria-label="Demain">
-      <h2 style={{ marginBottom: '0.25rem', fontSize: 'var(--h2)' }}>Demain</h2>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <h2 className="titre-avec-date">Demain</h2>
+      <p className="muted sous-titre-date">
         {LIBELLES_JOURS[jour]} {formaterDateFr(demain)}
       </p>
       {lignes.length > 0 ? (
@@ -278,6 +271,77 @@ function SectionDemain({
         <p className="muted">Aucune garde prévue demain.</p>
       )}
     </section>
+  );
+}
+
+/** Première date (ordre chronologique) où la vue a au moins une ligne de garde. */
+function premiereDateAvecGarde(
+  vue: SemaineBesoins,
+  dates: readonly string[],
+): string | undefined {
+  return dates.find((d) => lignesDuJour(vue, d).length > 0);
+}
+
+/**
+ * « Prochaine garde » de l'état vide (lot 4 UX) : quand rien n'est prévu
+ * aujourd'hui (week-end typiquement), dire au parent QUAND ça reprend plutôt
+ * que le laisser sur un simple constat. Scanne les jours suivants dans la vue
+ * déjà chargée (semaine courante), puis la semaine ISO suivante via un fetch
+ * silencieux en chargement comme en erreur (pattern `BandeauCoutMois`) — pas
+ * au-delà (~2 semaines) : sans garde trouvée, on se tait et l'état vide garde
+ * son lien vers le planning.
+ */
+function ProchaineGarde({
+  foyerId,
+  aujourdhui,
+  vue,
+}: {
+  foyerId: string;
+  aujourdhui: string;
+  vue: SemaineBesoins;
+}) {
+  const semaine = semaineIsoDeDate(aujourdhui);
+  // Les 13 lendemains, groupés par semaine ISO. Seules la semaine courante et
+  // la suivante sont scannées (les jours qui débordent sur N+2 sont ignorés).
+  const parSemaine = new Map<string, string[]>();
+  let date = aujourdhui;
+  for (let i = 0; i < 13; i += 1) {
+    date = jourSuivant(date);
+    const s = semaineIsoDeDate(date);
+    parSemaine.set(s, [...(parSemaine.get(s) ?? []), date]);
+  }
+  const trouveeCourante = premiereDateAvecGarde(
+    vue,
+    parSemaine.get(semaine) ?? [],
+  );
+  // 13 jours consécutifs franchissent toujours un lundi : la clé existe.
+  const semaineSuivante =
+    [...parSemaine.keys()].find((s) => s !== semaine) ?? '';
+
+  // Fetch secondaire UNIQUEMENT si la semaine courante n'a rien donné.
+  const chercherSuivante = trouveeCourante === undefined;
+  const { data: vueSuivante } = useAsync<SemaineBesoins | null>(
+    (signal) =>
+      chercherSuivante
+        ? api.lireSemaineBesoins(foyerId, semaineSuivante, { signal })
+        : Promise.resolve(null),
+    [foyerId, semaineSuivante, chercherSuivante],
+  );
+  const prochaine =
+    trouveeCourante ??
+    (vueSuivante
+      ? premiereDateAvecGarde(
+          vueSuivante,
+          parSemaine.get(semaineSuivante) ?? [],
+        )
+      : undefined);
+  if (prochaine === undefined) {
+    return null;
+  }
+  return (
+    <p className="etat-vide-texte">
+      Prochaine garde : <strong>{libelleDate(prochaine)}</strong>
+    </p>
   );
 }
 
@@ -316,8 +380,8 @@ export function DashboardJourPage() {
 
   return (
     <div>
-      <h1 style={{ marginBottom: '0.25rem' }}>Aujourd’hui</h1>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <h1 className="titre-avec-date">Aujourd’hui</h1>
+      <p className="muted sous-titre-date">
         {LIBELLES_JOURS[jour]} {formaterDateFr(aujourdhui)}
       </p>
 
@@ -359,9 +423,9 @@ export function DashboardJourPage() {
 
       {data && lignes.length === 0 && (
         <div className="carte muted">
-          <p style={{ margin: '0 0 0.5rem' }}>
-            Aucune garde prévue aujourd’hui.
-          </p>
+          <p className="etat-vide-texte">Aucune garde prévue aujourd’hui.</p>
+          {/* Lot 4 UX : dire quand ça reprend plutôt qu'un cul-de-sac. */}
+          <ProchaineGarde foyerId={id} aujourdhui={aujourdhui} vue={data} />
           <Link to={`/foyers/${id}/planning`} className="btn secondaire">
             Voir le planning
           </Link>

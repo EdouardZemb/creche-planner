@@ -717,6 +717,56 @@ h3 {
   }
 }
 
+/* ---- Tableau de bord « Aujourd'hui » ------------------------------------- */
+/* Pastille d'état d'une garde (RangeeJour) : petit carré arrondi ; seule la
+   couleur (fonction de l'état/du mode) reste portée en inline par le composant. */
+.jour-pastille {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 0.2rem;
+}
+
+/* Titre (h1 de page ou h2 de section) collé à sa ligne de date : la paire
+   « Aujourd'hui / Vendredi 04/07/2026 » forme un seul bloc visuel. */
+.titre-avec-date {
+  margin-bottom: var(--esp-1);
+}
+
+.sous-titre-date {
+  margin-top: 0;
+}
+
+/* Premier titre d'une carte : le padding de la carte suffit au-dessus. */
+.titre-carte {
+  margin-top: 0;
+}
+
+/* Bandeau « coût du mois » : libellé à gauche, montant + action à droite,
+   alignés sur la ligne de base ; repasse en pile quand la place manque. */
+.bandeau-cout {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--esp-3);
+  flex-wrap: wrap;
+}
+
+.bandeau-cout-total {
+  display: flex;
+  align-items: baseline;
+  gap: var(--esp-3);
+}
+
+.bandeau-cout-montant {
+  font-size: 1.1rem;
+}
+
+/* État vide du jour : texte(s) au-dessus du lien vers le planning. */
+.etat-vide-texte {
+  margin: 0 0 var(--esp-2);
+}
+
 /* ---- Accessibilité : focus visible clavier ------------------------------- */
 :focus-visible {
   outline: 3px solid var(--bleu);
