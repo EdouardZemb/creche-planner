@@ -103,6 +103,27 @@ describe('ContratsPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('sans contrat : état vide guidant dont le bouton ouvre le formulaire', async () => {
+    mockedApi.listerContrats.mockResolvedValue([]);
+    rendu();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Aucun contrat pour l’instant'),
+      ).toBeInTheDocument();
+    });
+    // Un seul CTA (celui de l'état vide) — pas de bouton en doublon plus bas.
+    const boutons = screen.getAllByRole('button', {
+      name: /\+ Nouveau contrat/i,
+    });
+    expect(boutons).toHaveLength(1);
+
+    fireEvent.click(boutons[0] as HTMLElement);
+    expect(
+      screen.getByRole('heading', { name: 'Nouveau contrat' }),
+    ).toBeInTheDocument();
+  });
+
   it('ouvre le formulaire pré-rempli en cliquant sur Modifier', async () => {
     rendu();
     await waitFor(() => {
@@ -184,7 +205,7 @@ describe('ContratsPage', () => {
     });
     await waitFor(() => {
       expect(
-        screen.getByText('Aucun contrat pour ce foyer.'),
+        screen.getByText('Aucun contrat pour l’instant'),
       ).toBeInTheDocument();
     });
   });

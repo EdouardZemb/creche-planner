@@ -84,6 +84,67 @@ describe('ContratForm', () => {
     vi.clearAllMocks();
   });
 
+  it('rejette côté client une date de fin antérieure au début', async () => {
+    rendu();
+
+    fireEvent.change(screen.getByLabelText(/Valide du/i), {
+      target: { value: '2026-09-01' },
+    });
+    fireEvent.change(screen.getByLabelText(/Valide au/i), {
+      target: { value: '2026-08-01' },
+    });
+    choisirEtablissement();
+    fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
+
+    expect(
+      await screen.findByText(
+        /La date de fin doit être après la date de début/i,
+      ),
+    ).toBeInTheDocument();
+    expect(mockedApi.creerContrat).not.toHaveBeenCalled();
+  });
+
+  it('Annuler sans saisie ferme directement le formulaire', () => {
+    const onAnnuler = vi.fn();
+    render(
+      <ContratForm
+        foyerId="f1"
+        enfants={enfantsTest}
+        etablissements={etablissementsTest}
+        onCree={vi.fn()}
+        onAnnuler={onAnnuler}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(onAnnuler).toHaveBeenCalledTimes(1);
+  });
+
+  it('Annuler après saisie demande confirmation avant d’abandonner', () => {
+    const onAnnuler = vi.fn();
+    render(
+      <ContratForm
+        foyerId="f1"
+        enfants={enfantsTest}
+        etablissements={etablissementsTest}
+        onCree={vi.fn()}
+        onAnnuler={onAnnuler}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Valide du/i), {
+      target: { value: '2026-09-01' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+
+    // Pas de fermeture directe : la confirmation s'interpose.
+    expect(onAnnuler).not.toHaveBeenCalled();
+    expect(screen.getByText('Abandonner la saisie')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abandonner' }));
+    expect(onAnnuler).toHaveBeenCalledTimes(1);
+  });
+
   it('affiche les champs de base', () => {
     rendu();
 

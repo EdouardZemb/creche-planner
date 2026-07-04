@@ -289,6 +289,19 @@ button {
   background: #991b1b;
 }
 
+/* Variante destructive DISCRÈTE (listes) : garde l'affordance rouge sans que
+   chaque carte crie au danger — le rouge plein reste réservé à l'engagement
+   final (modale de confirmation). */
+.btn.danger.contour {
+  background: white;
+  color: var(--rouge);
+  border: 1px solid var(--rouge);
+}
+
+.btn.danger.contour:hover {
+  background: #fef2f2;
+}
+
 label {
   display: block;
   margin: 0.4rem 0 0.15rem;
@@ -329,6 +342,59 @@ fieldset {
   padding: 0.75rem; /* mobile ; élargi en tablette (cf. min-width: 768px) */
   margin-bottom: 1rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Conteneur générique de table défilable : la table garde sa largeur naturelle
+   et défile DANS son conteneur (jamais de scroll horizontal de page). */
+.table-defilante {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---- Carte contrat (mobile-first) ----------------------------------------- */
+/* Base mobile : infos (enfant, mode, période) sur leurs lignes, puis les deux
+   actions empilées pleine largeur — côte à côte sous ~480px elles seraient trop
+   étroites pour être visées au pouce (même règle que .encart-actions). Dès
+   480px : infos à gauche, actions côte à côte à droite. */
+.carte-contrat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+}
+
+.carte-contrat-infos {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.carte-contrat-periode {
+  font-size: 0.85rem;
+}
+
+.carte-contrat-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.carte-contrat-actions .btn {
+  width: 100%;
+}
+
+@media (min-width: 480px) {
+  .carte-contrat-actions {
+    flex-direction: row;
+    width: auto;
+  }
+
+  .carte-contrat-actions .btn {
+    width: auto;
+  }
 }
 
 .debit {

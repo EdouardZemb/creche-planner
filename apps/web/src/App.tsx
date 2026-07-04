@@ -457,6 +457,9 @@ function Coquille() {
           <Route path="/desabonnement" element={<DesabonnementPage />} />
           <Route path="/foyers/new" element={<FoyerFormPage />} />
           <Route path="/foyers/:foyerId" element={<GardeFoyer />}>
+            {/* /foyers/:id nu rendait une page blanche (aucune route index) :
+                on renvoie vers le tableau de bord, porte d'entrée du foyer. */}
+            <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<DashboardJourPage />} />
             <Route path="contrats" element={<ContratsPage />} />
             <Route path="planning" element={<PlanningPage />} />

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useFoyer } from '../hooks/useFoyer';
 import { useContrats } from './useContrats';
 import { useEtablissements } from '../etablissements/useEtablissements';
@@ -9,6 +9,7 @@ import { messageErreur } from '../utils/erreurs';
 import { libelleMode } from '../utils/libelles';
 import { useTitrePage } from '../hooks/useTitrePage';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
+import { EtatVide } from '../ui/EtatVide';
 import type { ContratLocal } from '../types/bff';
 
 function formaterDate(iso: string): string {
@@ -31,34 +32,21 @@ function LigneContrat({
   suppressionEnCours,
 }: LigneContratProps) {
   return (
-    <div
-      className="carte"
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: '0.75rem',
-      }}
-    >
-      <div>
-        <strong>{contrat.enfant}</strong>
-        <span className="muted" style={{ marginLeft: '0.5rem' }}>
-          {libelleMode(contrat.mode)}
+    <div className="carte carte-contrat">
+      <div className="carte-contrat-infos">
+        <div>
+          <strong>{contrat.enfant}</strong>
+          <span className="muted" style={{ marginLeft: '0.5rem' }}>
+            {libelleMode(contrat.mode)}
+          </span>
+        </div>
+        <span className="muted carte-contrat-periode">
+          {contrat.valideAu
+            ? `du ${formaterDate(contrat.valideDu)} au ${formaterDate(contrat.valideAu)}`
+            : `depuis le ${formaterDate(contrat.valideDu)} — sans date de fin`}
         </span>
       </div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-        }}
-      >
-        <span className="muted" style={{ fontSize: '0.85rem' }}>
-          du {formaterDate(contrat.valideDu)}
-          {contrat.valideAu
-            ? ` au ${formaterDate(contrat.valideAu)}`
-            : ' (ouvert)'}
-        </span>
+      <div className="carte-contrat-actions">
         <button
           type="button"
           className="btn secondaire"
@@ -69,7 +57,7 @@ function LigneContrat({
         </button>
         <button
           type="button"
-          className="btn secondaire"
+          className="btn danger contour"
           onClick={onSupprimer}
           disabled={suppressionEnCours}
           aria-label={`Supprimer le contrat de ${contrat.enfant}`}
@@ -170,24 +158,9 @@ export function ContratsPage() {
 
   return (
     <div>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1rem',
-        }}
-      >
-        <h1 style={{ margin: 0 }}>Contrats du foyer</h1>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <Link to={`/foyers/${id}/planning`} className="btn secondaire">
-            Planning
-          </Link>
-          <Link to={`/foyers/${id}/couts`} className="btn secondaire">
-            Coûts annuels
-          </Link>
-        </div>
-      </div>
+      {/* Les liens Planning/Coûts dupliquaient la navigation globale (barre
+          d'onglets mobile + en-tête desktop) : l'en-tête ne garde que le titre. */}
+      <h1 style={{ marginTop: 0, marginBottom: '1rem' }}>Contrats</h1>
 
       {loading && <p className="muted">Chargement du foyer…</p>}
       {error && (
@@ -201,7 +174,7 @@ export function ContratsPage() {
           <strong>Foyer</strong>{' '}
           <span className="muted">
             {data.enfants.length} enfant{data.enfants.length !== 1 ? 's' : ''} —{' '}
-            tranche {data.foyer.tranche}
+            tranche de revenus {data.foyer.tranche}
           </span>
         </div>
       )}
@@ -217,7 +190,6 @@ export function ContratsPage() {
       </div>
 
       <section>
-        <h2 style={{ marginTop: 0 }}>Contrats créés</h2>
         {chargementContrats ? (
           <p className="muted">Chargement des contrats…</p>
         ) : erreurContrats ? (
@@ -225,34 +197,50 @@ export function ContratsPage() {
             Impossible de charger les contrats : {erreurContrats}
           </p>
         ) : contrats.length === 0 ? (
-          <p className="muted">Aucun contrat pour ce foyer.</p>
-        ) : (
-          contrats.map((c) => (
-            <LigneContrat
-              key={c.id}
-              contrat={c}
-              onModifier={() => {
-                ouvrirEdition(c);
-              }}
-              onSupprimer={() => {
-                demanderSuppression(c);
-              }}
-              suppressionEnCours={suppressionId === c.id}
+          formulaireOuvert ? null : (
+            <EtatVide
+              titre="Aucun contrat pour l’instant"
+              description="Le contrat décrit la garde de votre enfant (crèche, cantine, périscolaire ou centre de loisirs) : c’est lui qui alimente le planning et le calcul des coûts."
+              actions={[
+                { libelle: '+ Nouveau contrat', onClick: ouvrirCreation },
+              ]}
             />
-          ))
+          )
+        ) : (
+          <>
+            <h2 style={{ marginTop: 0 }}>Vos contrats</h2>
+            {contrats.map((c) => (
+              <LigneContrat
+                key={c.id}
+                contrat={c}
+                onModifier={() => {
+                  ouvrirEdition(c);
+                }}
+                onSupprimer={() => {
+                  demanderSuppression(c);
+                }}
+                suppressionEnCours={suppressionId === c.id}
+              />
+            ))}
+          </>
         )}
       </section>
 
       <section style={{ marginTop: '1.5rem' }}>
         {!formulaireOuvert ? (
-          <button
-            type="button"
-            className="btn"
-            onClick={ouvrirCreation}
-            disabled={!data}
-          >
-            + Nouveau contrat
-          </button>
+          // L'état vide porte déjà le CTA : pas de second bouton en doublon.
+          contrats.length === 0 &&
+          !chargementContrats &&
+          !erreurContrats ? null : (
+            <button
+              type="button"
+              className="btn"
+              onClick={ouvrirCreation}
+              disabled={!data}
+            >
+              + Nouveau contrat
+            </button>
+          )
         ) : (
           <div className="carte">
             <h2 style={{ marginTop: 0 }}>
