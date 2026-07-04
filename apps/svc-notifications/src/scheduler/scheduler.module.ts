@@ -36,6 +36,7 @@ import { OPTIONS_SCHEDULER } from './scheduler.options.js';
         const config = loadConfig();
         return {
           heureDeclenchement: config.schedulerHeure,
+          forcerFenetre: config.schedulerForcer,
           emailParent: config.email.parent,
           appUrl: config.appUrl,
           publicApiUrl: config.publicApiUrl,

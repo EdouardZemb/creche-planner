@@ -115,6 +115,12 @@ services:
   svc-notifications:
     ports:
       - '3006:3006'
+    environment:
+      # Pile LOCALE / E2E uniquement : le scheduler hebdomadaire ignore la fenêtre
+      # « mardi ≥ heure » et fige la notification à valider dès le boot — sans quoi
+      # le parcours e2e « édition de la semaine → validation » n'est exerçable que
+      # si la pile a démarré un mardi. Le MailerService reste en dry-run (défaut).
+      NOTIF_SCHEDULER_FORCER: '1'
 
   api-gateway:
     ports:
