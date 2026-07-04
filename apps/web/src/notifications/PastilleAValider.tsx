@@ -8,7 +8,10 @@ import { useNotifications } from './useNotifications';
  */
 export function PastilleAValider({ foyerId }: { foyerId: string }) {
   const { data } = useNotifications(foyerId);
-  const nombre = data?.length ?? 0;
+  // Le compte annonce des SEMAINES : plusieurs contrats notifiés sur une même
+  // semaine (un par enfant) ne comptent que pour une — sinon la pastille dirait
+  // « 2 semaines à valider » là où la carte du tableau de bord n'en montre qu'une.
+  const nombre = new Set((data ?? []).map((n) => n.semaineIso)).size;
   if (nombre === 0) return null;
   return (
     <span

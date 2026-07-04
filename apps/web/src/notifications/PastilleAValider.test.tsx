@@ -34,6 +34,22 @@ describe('PastilleAValider', () => {
     expect(pastille).toHaveTextContent('2');
   });
 
+  it('compte des semaines, pas des contrats : 2 notifications d’une même semaine = 1', async () => {
+    // Deux enfants notifiés sur la MÊME semaine : la pastille dit « 1 semaine »,
+    // en cohérence avec la carte « Semaine à valider » du tableau de bord.
+    vi.mocked(api.listerAValider).mockResolvedValue([
+      semaine('2026-W28'),
+      {
+        ...semaine('2026-W28'),
+        contratId: '66666666-0000-4000-8000-000000000000',
+      },
+    ]);
+    render(<PastilleAValider foyerId="foyer-1" />);
+
+    const pastille = await screen.findByLabelText('1 semaine à valider');
+    expect(pastille).toHaveTextContent('1');
+  });
+
   it('ne rend rien quand il n’y a rien à valider', async () => {
     vi.mocked(api.listerAValider).mockResolvedValue([]);
     const { container } = render(<PastilleAValider foyerId="foyer-1" />);
