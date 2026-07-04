@@ -5,6 +5,7 @@ import { jourCourantParis } from '@creche-planner/shared-semaine';
 import { DashboardJourPage } from './DashboardJourPage';
 import type {
   CoutMoisVue,
+  NotificationAValider,
   PlageHoraire,
   SemaineBesoins,
   SemaineTypeCreche,
@@ -14,6 +15,7 @@ vi.mock('../api/client', () => ({
   api: {
     lireSemaineBesoins: vi.fn(),
     lireCoutMois: vi.fn(),
+    listerAValider: vi.fn(),
   },
   // `messageErreur` (utils/erreurs) teste `e instanceof ApiError` : le mock doit
   // exposer la classe, sinon le chemin d'erreur lève « No ApiError export ».
@@ -76,6 +78,20 @@ const semaineVide: SemaineBesoins = {
   contrats: [],
 };
 
+// Semaine notifiée en attente de validation (carte « semaine à valider », lot 1 UX).
+const aValider = (
+  semaineIso: string,
+  contratId = 'c1',
+): NotificationAValider => ({
+  contratId,
+  foyerId: FOYER_ID,
+  semaineIso,
+  statut: 'A_VALIDER',
+  notifieeLe: '2026-06-30T06:00:00Z',
+  enfant: 'Léa',
+  mode: 'CRECHE_PSU',
+});
+
 // Coût mensuel réel servi au bandeau « coût du mois » (P3c).
 const coutMois = {
   foyerId: FOYER_ID,
@@ -106,6 +122,9 @@ describe('DashboardJourPage', () => {
     // coût valide pour qu'il ne pollue pas les autres cas (il s'efface seul si
     // l'appel échoue / charge).
     vi.mocked(api.lireCoutMois).mockResolvedValue(coutMois);
+    // Rien à valider par défaut : la carte « semaine à valider » reste muette
+    // dans les cas qui ne la concernent pas.
+    vi.mocked(api.listerAValider).mockResolvedValue([]);
   });
 
   it('affiche le chargement initialement', () => {
@@ -193,6 +212,77 @@ describe('DashboardJourPage', () => {
       'href',
       `/foyers/${FOYER_ID}/couts`,
     );
+  });
+
+  it('carte « semaine à valider » : semaine en dates réelles + lien vers le planning', async () => {
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineVide);
+    vi.mocked(api.listerAValider).mockResolvedValue([aValider('2026-W28')]);
+
+    renderPage();
+
+    // Libellé parent (dates réelles, jamais le numéro ISO) : 2026-W28 = 6→12 juillet.
+    expect(
+      await screen.findByText(
+        /La semaine du 6 au 12 juillet attend votre validation/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: /Semaine à valider/i }),
+    ).toBeInTheDocument();
+    // La validation elle-même vit sur le planning (EncartValidation) : la carte y renvoie.
+    expect(
+      screen.getByRole('link', { name: /Vérifier et valider/i }),
+    ).toHaveAttribute('href', `/foyers/${FOYER_ID}/planning`);
+  });
+
+  it('carte « semaine à valider » : dédoublonne par semaine et passe au pluriel', async () => {
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineVide);
+    // 3 notifications (2 contrats sur W28 + 1 sur W29) → 2 semaines distinctes.
+    vi.mocked(api.listerAValider).mockResolvedValue([
+      aValider('2026-W28', 'c1'),
+      aValider('2026-W28', 'c2'),
+      aValider('2026-W29', 'c1'),
+    ]);
+
+    renderPage();
+
+    expect(
+      await screen.findByRole('heading', {
+        level: 2,
+        name: /Semaines à valider/i,
+      }),
+    ).toBeInTheDocument();
+    const items = screen.getAllByRole('listitem');
+    // Une ligne par SEMAINE (pas par contrat) : le détail par enfant vit sur le planning.
+    expect(items.map((el) => el.textContent)).toEqual([
+      'semaine du 6 au 12 juillet',
+      'semaine du 13 au 19 juillet',
+    ]);
+  });
+
+  it('carte « semaine à valider » : absente quand il n’y a rien à valider', async () => {
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineVide);
+
+    renderPage();
+
+    await screen.findByText(/Aucune garde prévue/i);
+    expect(
+      screen.queryByRole('link', { name: /Vérifier et valider/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('carte « semaine à valider » : silencieuse si la liste échoue (journée préservée)', async () => {
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineVide);
+    vi.mocked(api.listerAValider).mockRejectedValue(
+      new Error('notifs indispo'),
+    );
+
+    renderPage();
+
+    expect(await screen.findByText(/Aucune garde prévue/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /Vérifier et valider/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('bandeau « coût du mois » : silencieux si le coût échoue (journée préservée)', async () => {

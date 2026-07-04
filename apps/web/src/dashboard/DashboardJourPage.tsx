@@ -14,12 +14,14 @@ import { libelleMode } from '../utils/libelles';
 import {
   formaterDateFr,
   formaterMoisFr,
+  libelleSemaine,
   LIBELLES_JOURS,
   jourSemaineDeIso,
 } from '../utils/dates';
 import { centimesEnEuros } from '../utils/money';
 import { useAsync } from '../hooks/useAsync';
 import { useTitrePage } from '../hooks/useTitrePage';
+import { useNotifications } from '../notifications/useNotifications';
 import { api } from '../api/client';
 import { lignesDuJour, type EtatJour, type LigneJour } from './jourFoyer';
 
@@ -111,6 +113,56 @@ function RangeeJour({
 }
 
 /**
+ * Carte « semaine à valider » (UX dashboard, lot 1) : rend le geste hebdomadaire
+ * critique — valider le planning notifié le mardi — visible sur la porte d'entrée
+ * de l'app, jusqu'ici signalé par la seule pastille du menu. Panneau indicateur
+ * uniquement : la validation elle-même reste dans l'`EncartValidation` du
+ * planning, vers lequel la carte renvoie. Plusieurs contrats peuvent partager une
+ * même semaine notifiée → on dédoublonne par semaine (le détail par enfant vit
+ * sur le planning). Silencieuse tant qu'il n'y a rien à valider (chargement,
+ * erreur, liste vide) : c'est un rappel, jamais un obstacle à la journée.
+ */
+function CarteAValider({ foyerId }: { foyerId: string }) {
+  const { data } = useNotifications(foyerId);
+  const semaines = [...new Set((data ?? []).map((n) => n.semaineIso))].sort();
+  if (semaines.length === 0) {
+    return null;
+  }
+  return (
+    <section
+      className="carte"
+      aria-label="Planning à valider"
+      // Même accent que l'encart de validation du planning : un seul langage
+      // visuel pour une même tâche, d'un écran à l'autre.
+      style={{ borderLeft: '4px solid var(--bleu)' }}
+    >
+      <h2 style={{ marginTop: 0, fontSize: 'var(--h2)' }}>
+        {semaines.length > 1 ? 'Semaines à valider' : 'Semaine à valider'}
+      </h2>
+      {semaines.length === 1 ? (
+        <p style={{ margin: '0 0 0.75rem' }}>
+          La {libelleSemaine(semaines[0] ?? '')} attend votre validation.
+        </p>
+      ) : (
+        <>
+          <p style={{ margin: '0 0 0.25rem' }}>
+            Ces semaines attendent votre validation :
+          </p>
+          <ul style={{ margin: '0 0 0.75rem', paddingLeft: '1.25rem' }}>
+            {semaines.map((s) => (
+              <li key={s}>{libelleSemaine(s)}</li>
+            ))}
+          </ul>
+        </>
+      )}
+      <Link to={`/foyers/${foyerId}/planning`} className="btn">
+        Vérifier et valider
+      </Link>
+    </section>
+  );
+}
+
+/**
  * Bandeau « coût du mois » (P3c) : le coût RÉEL (`simule=false`) du mois courant,
  * en lecture seule, avec un lien vers le détail des coûts. Secondaire et
  * non-bloquant — s'efface silencieusement tant qu'il charge ou s'il échoue, pour
@@ -185,6 +237,10 @@ export function DashboardJourPage() {
       <p className="muted" style={{ marginTop: 0 }}>
         {LIBELLES_JOURS[jour]} {formaterDateFr(aujourdhui)}
       </p>
+
+      {/* Lot 1 UX : la semaine à valider d'abord — c'est LE geste attendu du
+          parent quand elle existe ; le reste de la journée vient après. */}
+      <CarteAValider foyerId={id} />
 
       {/* P3c : coût réel du mois courant, indépendant des gardes du jour →
           toujours rendu (hors états loading/erreur de la journée). */}
