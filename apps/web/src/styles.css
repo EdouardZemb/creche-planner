@@ -91,6 +91,147 @@ a {
   font-weight: 700;
 }
 
+/* La cloche de notifications se cale à droite de l'en-tête (sur mobile : en
+   face de la marque, à portée de pouce droit). */
+.app-header .cloche {
+  margin-left: auto;
+}
+
+/* ---- Navigation foyer : onglets bas (mobile) + en-tête (desktop) ---------- */
+/* En contexte foyer, la nav se scinde : les 3 destinations quotidiennes
+   (Aujourd'hui / Planning / Coûts) + « Plus » forment une barre d'onglets FIXE
+   en bas de l'écran (zone du pouce), et les pages de gestion vivent dans le
+   panneau ouvert par « Plus ». Dès la tablette (≥ 768px), `display: contents`
+   dissout ces conteneurs : tous les liens redeviennent des liens d'en-tête. */
+@media (max-width: 767.98px) {
+  .nav-onglets {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40; /* sous la modale (z-index 50) */
+    display: flex;
+    background: white;
+    border-top: 1px solid var(--bordure);
+    /* iPhone : ne pas coller les onglets sous la barre home. */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .nav-onglets a,
+  .nav-plus-bouton {
+    position: relative;
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    min-width: 0;
+    /* Cible tactile > 44px. */
+    min-height: 3.25rem;
+    padding: 0.3rem 0.15rem;
+    background: none;
+    border: none;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--gris);
+    text-decoration: none;
+  }
+
+  .nav-onglet-icone {
+    font-size: 1.05rem;
+    line-height: 1;
+  }
+
+  .nav-onglets a.active,
+  .nav-plus-bouton.actif {
+    color: var(--bleu);
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  /* La pastille « à valider » se pose sur le coin de l'icône Planning (elle
+     n'allonge pas le libellé de l'onglet). */
+  .nav-onglets .pastille {
+    position: absolute;
+    top: 0.2rem;
+    left: 50%;
+    margin-left: 0.3rem;
+  }
+
+  /* Onglet « Coûts » : libellé court ; le long est réservé au desktop. */
+  .nav-libelle-long {
+    display: none;
+  }
+
+  .nav-plus-panneau {
+    display: none;
+  }
+
+  /* Panneau « Plus » ouvert : feuille ancrée juste au-dessus de la barre. */
+  .nav-plus-panneau.ouvert {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: calc(3.25rem + env(safe-area-inset-bottom));
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border-top: 1px solid var(--bordure);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.18);
+    padding: var(--esp-2) var(--esp-4);
+  }
+
+  .nav-plus-panneau a {
+    display: flex;
+    align-items: center;
+    /* Cible tactile ~44px. */
+    min-height: 2.75rem;
+    color: #111827;
+    font-weight: 500;
+  }
+
+  .nav-plus-panneau a + a {
+    border-top: 1px solid var(--bordure);
+  }
+
+  .nav-plus-panneau a.active {
+    color: var(--bleu);
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  /* Le contenu ne défile pas sous la barre fixe (marge de fin de page).
+     `main#contenu` : prime sur le `padding` shorthand de la règle de base
+     `main`, déclarée PLUS BAS dans ce fichier. */
+  main#contenu {
+    padding-bottom: calc(4.25rem + env(safe-area-inset-bottom));
+  }
+
+  /* Les défilements programmatiques (scrollIntoView, focus, ancres) laissent
+     la cible AU-DESSUS de la barre fixe, pas derrière. */
+  html {
+    scroll-padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (min-width: 768px) {
+  /* Les conteneurs mobiles disparaissent : leurs liens redeviennent des
+     enfants directs (flex) de la nav d'en-tête. */
+  .nav-onglets,
+  .nav-plus-panneau {
+    display: contents;
+  }
+
+  .nav-plus-bouton,
+  .nav-onglet-icone,
+  .nav-libelle-court {
+    display: none;
+  }
+}
+
 main {
   max-width: 1200px;
   margin: 0 auto;

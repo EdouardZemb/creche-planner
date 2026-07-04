@@ -311,6 +311,71 @@ describe('App — coquille de navigation', () => {
     expect(main).toHaveAttribute('tabindex', '-1');
   });
 
+  it('Nav mobile : « Plus » regroupe les pages de gestion en disclosure (aria-expanded/aria-controls)', async () => {
+    const user = userEvent.setup();
+    rendre(`/foyers/${FOYER_ID}/planning`);
+    await screen.findByText('PAGE_PLANNING');
+
+    const bouton = screen.getByRole('button', { name: 'Plus' });
+    expect(bouton).toHaveAttribute('aria-expanded', 'false');
+    const idPanneau = bouton.getAttribute('aria-controls')!;
+    const panneau = document.getElementById(idPanneau)!;
+    expect(panneau).not.toBeNull();
+    // Les pages de gestion vivent dans le panneau…
+    expect(
+      within(panneau).getByRole('link', { name: 'Contrats' }),
+    ).toBeInTheDocument();
+    expect(
+      within(panneau).getByRole('link', { name: 'Établissements' }),
+    ).toBeInTheDocument();
+    expect(
+      within(panneau).getByRole('link', { name: 'Modifier le foyer' }),
+    ).toBeInTheDocument();
+    // … pas les destinations quotidiennes (elles forment la barre d'onglets).
+    expect(
+      within(panneau).queryByRole('link', { name: 'Planning' }),
+    ).not.toBeInTheDocument();
+    expect(panneau).not.toHaveClass('ouvert');
+
+    await user.click(bouton);
+    expect(bouton).toHaveAttribute('aria-expanded', 'true');
+    expect(panneau).toHaveClass('ouvert');
+
+    // Naviguer depuis le panneau le referme (mobile : il masquerait la page).
+    await user.click(within(panneau).getByRole('link', { name: 'Contrats' }));
+    await screen.findByText('PAGE_CONTRATS');
+    expect(bouton).toHaveAttribute('aria-expanded', 'false');
+    expect(panneau).not.toHaveClass('ouvert');
+  });
+
+  it('Nav : « Coûts annuels » garde son nom accessible malgré le libellé court d’onglet', async () => {
+    rendre(`/foyers/${FOYER_ID}/planning`);
+    await screen.findByText('PAGE_PLANNING');
+
+    expect(screen.getByRole('link', { name: 'Coûts annuels' })).toHaveAttribute(
+      'href',
+      `/foyers/${FOYER_ID}/couts`,
+    );
+  });
+
+  it('La cloche de notifications vit dans l’en-tête, HORS de la navigation principale', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [FOYER_ID],
+    });
+    rendre(`/foyers/${FOYER_ID}/planning`);
+    await screen.findByText('PAGE_PLANNING');
+
+    const cloche = await screen.findByRole('button', {
+      name: 'Notifications',
+    });
+    const nav = screen.getByRole('navigation', {
+      name: 'Navigation principale',
+    });
+    expect(nav).not.toContainElement(cloche);
+  });
+
   it('EX-02 : le header dérive ses liens du foyerId de la route (pas de localStorage)', async () => {
     // localStorage pointe vers un autre foyer : il ne doit PAS piloter le header.
     localStorage.setItem('creche:foyerId', 'autre-foyer');
