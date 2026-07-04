@@ -9,6 +9,7 @@ describe('loadConfig (svc-notifications)', () => {
     'PLANIFICATION_URL',
     'NOTIF_APP_URL',
     'NOTIF_SCHEDULER_HEURE',
+    'NOTIF_SCHEDULER_FORCER',
     'SMTP_HOST',
     'SMTP_PORT',
     'SMTP_USER',
@@ -39,6 +40,8 @@ describe('loadConfig (svc-notifications)', () => {
     expect(config.planificationUrl).toBe('http://localhost:3004');
     expect(config.appUrl).toBe('http://localhost:4200');
     expect(config.schedulerHeure).toBe(8);
+    // Garde-fou : l'affordance de test du scheduler est INACTIVE par défaut.
+    expect(config.schedulerForcer).toBe(false);
     expect(config.email.host).toBe('smtp.gmail.com');
     expect(config.email.port).toBe(587);
     expect(config.email.parent).toBe('edouard.zemb@gmail.com');
@@ -54,6 +57,7 @@ describe('loadConfig (svc-notifications)', () => {
     process.env['PLANIFICATION_URL'] = 'http://svc-planification:3004';
     process.env['NOTIF_APP_URL'] = 'https://creche.testlens.dev';
     process.env['NOTIF_SCHEDULER_HEURE'] = '9';
+    process.env['NOTIF_SCHEDULER_FORCER'] = '1';
 
     const config = loadConfig();
 
@@ -63,6 +67,7 @@ describe('loadConfig (svc-notifications)', () => {
     expect(config.planificationUrl).toBe('http://svc-planification:3004');
     expect(config.appUrl).toBe('https://creche.testlens.dev');
     expect(config.schedulerHeure).toBe(9);
+    expect(config.schedulerForcer).toBe(true);
   });
 
   it('lit la configuration e-mail et n’active l’envoi réel que sur DRY_RUN=false explicite', () => {

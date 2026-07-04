@@ -53,6 +53,7 @@ function horloge(iso: string): Clock {
 
 const OPTIONS: OptionsScheduler = {
   heureDeclenchement: 8,
+  forcerFenetre: false,
   emailParent: 'parent@test',
   appUrl: 'https://app.test',
   publicApiUrl: 'https://api.test',
@@ -155,11 +156,16 @@ function doubles(
   };
 }
 
-function scheduler(iso: string, contrats: ContratRow[], d: Doubles) {
+function scheduler(
+  iso: string,
+  contrats: ContratRow[],
+  d: Doubles,
+  options: OptionsScheduler = OPTIONS,
+) {
   return new SchedulerHebdo(
     horloge(iso),
     fakeBase(contrats),
-    OPTIONS,
+    options,
     d.validation,
     d.etablissements,
     d.destinataires,
@@ -315,6 +321,31 @@ describe('SchedulerHebdo.declencher', () => {
 
     expect(d.notifier).not.toHaveBeenCalled();
     expect(d.envoyer).not.toHaveBeenCalled();
+  });
+
+  it('forcerFenetre (test uniquement) : déclenche même un lundi', async () => {
+    await scheduler(LUNDI_8H01, [contratRow()], d, {
+      ...OPTIONS,
+      forcerFenetre: true,
+    }).declencher();
+
+    expect(d.notifier).toHaveBeenCalledTimes(1);
+  });
+
+  it('forcerFenetre : tick immédiat au bootstrap (sans attendre l’intervalle)', async () => {
+    const s = scheduler(LUNDI_8H01, [contratRow()], d, {
+      ...OPTIONS,
+      forcerFenetre: true,
+    });
+    s.onApplicationBootstrap();
+    try {
+      // Le tick de boot est asynchrone (fire-and-forget) : on attend son effet.
+      await vi.waitFor(() => {
+        expect(d.notifier).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      s.onApplicationShutdown();
+    }
   });
 
   it('second tick le même mardi : notifie (no-op base) mais n’envoie aucun mail', async () => {

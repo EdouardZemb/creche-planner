@@ -61,6 +61,8 @@ export interface ServiceConfig {
   readonly unsubscribeMailto: string;
   /** Heure de déclenchement du scheduler du mardi, exprimée en `Europe/Paris` (0-23). */
   readonly schedulerHeure: number;
+  /** Test uniquement (`NOTIF_SCHEDULER_FORCER=1`) : ignore la fenêtre du mardi. */
+  readonly schedulerForcer: boolean;
   readonly email: EmailConfig;
 }
 
@@ -88,6 +90,8 @@ export function loadConfig(): ServiceConfig {
       process.env['NOTIF_PUBLIC_API_URL'] ?? 'http://localhost:3000',
     unsubscribeMailto: process.env['NOTIF_UNSUBSCRIBE_MAILTO'] ?? '',
     schedulerHeure: Number(process.env['NOTIF_SCHEDULER_HEURE'] ?? 8),
+    // Test uniquement (e2e stack) : ignore la fenêtre « mardi ≥ heure ».
+    schedulerForcer: process.env['NOTIF_SCHEDULER_FORCER'] === '1',
     email: {
       host: process.env['SMTP_HOST'] ?? 'smtp.gmail.com',
       port: Number(process.env['SMTP_PORT'] ?? 587),

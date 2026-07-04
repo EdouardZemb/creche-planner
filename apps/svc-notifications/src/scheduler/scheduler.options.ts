@@ -9,6 +9,14 @@ export const OPTIONS_SCHEDULER = Symbol('OPTIONS_SCHEDULER');
 export interface OptionsScheduler {
   /** Heure de déclenchement le mardi, exprimée en `Europe/Paris` (0-23). */
   readonly heureDeclenchement: number;
+  /**
+   * **Environnements de test uniquement** (`NOTIF_SCHEDULER_FORCER=1`) : ignore la
+   * fenêtre « mardi ≥ heure » et déclenche dès le boot puis à chaque tick. Rend le
+   * parcours notification → validation exerçable de façon déterministe par les e2e
+   * stack (sinon la ligne `notification_hebdo` n'existe que si la pile a démarré un
+   * mardi). Jamais posé en prod : le jour métier reste le mardi.
+   */
+  readonly forcerFenetre: boolean;
   /** Adresse du parent destinataire du mail récapitulatif. */
   readonly emailParent: string;
   /** URL publique du front, base du lien « valider » et du lien de désabonnement. */

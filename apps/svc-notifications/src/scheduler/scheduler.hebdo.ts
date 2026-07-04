@@ -81,6 +81,14 @@ export class SchedulerHebdo
 
   onApplicationBootstrap(): void {
     this.timer = setInterval(() => void this.declencher(), INTERVALLE_MS);
+    if (this.options.forcerFenetre) {
+      // Affordance de TEST (e2e stack) : fenêtre mardi ignorée, tick immédiat
+      // pour que la notification à valider existe dès le boot de la pile.
+      this.logger.warn(
+        'NOTIF_SCHEDULER_FORCER actif — fenêtre du mardi ignorée (réservé aux environnements de test)',
+      );
+      void this.declencher();
+    }
   }
 
   /**
@@ -144,6 +152,9 @@ export class SchedulerHebdo
 
   /** Vrai si l'instant tombe un mardi à/au-delà de l'heure de déclenchement (Paris). */
   private estFenetreDeclenchement(maintenant: Date): boolean {
+    if (this.options.forcerFenetre) {
+      return true;
+    }
     const parties = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Europe/Paris',
       weekday: 'short',
