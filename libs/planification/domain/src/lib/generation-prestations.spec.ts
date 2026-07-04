@@ -397,6 +397,23 @@ describe('genererPrestationMois (ALSH)', () => {
     expect(presta.nbRepas).toBe(1);
   });
 
+  it('inscription hebdomadaire : génère les mercredis, ajustables par exception', () => {
+    const presta = genererPrestationMois(
+      contratAbcm('ALSH', {
+        MERCREDI: { alsh: { type: 'COMPLETE', repas: true } },
+      }),
+      MOIS,
+      {
+        // Oct. 2026 : mercredis 7, 14, 21, 28 ; le 14 est retiré ponctuellement.
+        exceptions: [{ date: '2026-10-14', alsh: false }],
+      },
+      [],
+    ) as PrestationsMoisAlsh;
+
+    expect(presta.nbJourneesCompletes).toBe(3);
+    expect(presta.nbRepas).toBe(3);
+  });
+
   it('saisie vide → aucune quantité', () => {
     const presta = genererPrestationMois(
       contratAbcm('ALSH', {}),

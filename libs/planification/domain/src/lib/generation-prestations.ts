@@ -56,6 +56,7 @@ export interface ExceptionJourJson {
   readonly cantine?: boolean | undefined;
   readonly periMatin?: boolean | undefined;
   readonly periSoir?: boolean | undefined;
+  readonly alsh?: boolean | undefined;
 }
 
 /** Un jour ALSH réservé. */
@@ -145,22 +146,18 @@ export function genererPrestationMois(
           ? Duree.depuisMinutes(saisie.complementMinutes)
           : Duree.zero(),
       joursSupplementaires: (saisie.joursSupplementaires ?? [])
-        .map(
-          (j): JourSupplementaireCreche => ({
-            date: j.date,
-            duree: dureeDePlage(j),
-          }),
-        )
+        .map((j): JourSupplementaireCreche => ({
+          date: j.date,
+          duree: dureeDePlage(j),
+        }))
         // Plage incohérente (fin ≤ début) → durée nulle, ignorée (sans complément).
         .filter((j) => !j.duree.estZero()),
-      absences: (saisie.absences ?? []).map(
-        (a): AbsenceCreche => ({
-          ...(a.date !== undefined ? { date: a.date } : {}),
-          duree: dureeDePlage(a),
-          preavisJours: a.preavisJours,
-          certificatMaladie: a.certificatMaladie,
-        }),
-      ),
+      absences: (saisie.absences ?? []).map((a): AbsenceCreche => ({
+        ...(a.date !== undefined ? { date: a.date } : {}),
+        duree: dureeDePlage(a),
+        preavisJours: a.preavisJours,
+        certificatMaladie: a.certificatMaladie,
+      })),
       joursNonFacturables,
     };
     return contratCreche.genererPrestationsMois(saisieCreche);
@@ -171,14 +168,13 @@ export function genererPrestationMois(
     valideDu: contrat.valideDu,
     ...(contrat.valideAu !== null ? { valideAu: contrat.valideAu } : {}),
   });
-  const exceptions = (saisie.exceptions ?? []).map(
-    (e): ExceptionJour => ({
-      date: e.date,
-      ...(e.cantine !== undefined ? { cantine: e.cantine } : {}),
-      ...(e.periMatin !== undefined ? { periMatin: e.periMatin } : {}),
-      ...(e.periSoir !== undefined ? { periSoir: e.periSoir } : {}),
-    }),
-  );
+  const exceptions = (saisie.exceptions ?? []).map((e): ExceptionJour => ({
+    date: e.date,
+    ...(e.cantine !== undefined ? { cantine: e.cantine } : {}),
+    ...(e.periMatin !== undefined ? { periMatin: e.periMatin } : {}),
+    ...(e.periSoir !== undefined ? { periSoir: e.periSoir } : {}),
+    ...(e.alsh !== undefined ? { alsh: e.alsh } : {}),
+  }));
   if (contrat.mode === 'CANTINE') {
     const saisieCantine: SaisieGenerationCantine = {
       mois,
@@ -198,13 +194,12 @@ export function genererPrestationMois(
   }
   const saisieAlsh: SaisieGenerationAlsh = {
     mois,
-    joursAlsh: (saisie.joursAlsh ?? []).map(
-      (j): JourAlsh => ({
-        date: j.date,
-        type: j.type,
-        ...(j.repas !== undefined ? { repas: j.repas } : {}),
-      }),
-    ),
+    joursAlsh: (saisie.joursAlsh ?? []).map((j): JourAlsh => ({
+      date: j.date,
+      type: j.type,
+      ...(j.repas !== undefined ? { repas: j.repas } : {}),
+    })),
+    exceptions,
     joursNonFacturables,
   };
   return inscription.genererPrestationsAlsh(saisieAlsh);
