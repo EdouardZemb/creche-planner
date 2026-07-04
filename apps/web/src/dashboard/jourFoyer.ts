@@ -134,7 +134,18 @@ function ligneAbcm(
   const jourBesoins = contrat.besoins[dateIso];
 
   if (contrat.mode === 'ALSH') {
-    const j = jourBesoins?.joursAlsh[0];
+    // Un jour réservé par date (vacances) prime ; sinon la récurrence
+    // hebdomadaire de la semaine-type, ajustable par exception datée (`alsh`).
+    const explicite = jourBesoins?.joursAlsh[0];
+    const exc = jourBesoins?.exceptions[0];
+    const base = contrat.semaineAbcm?.[jour]?.alsh;
+    const recurrent =
+      exc?.alsh !== undefined
+        ? exc.alsh
+          ? (base ?? { type: 'COMPLETE' as const })
+          : undefined
+        : base;
+    const j = explicite ?? recurrent;
     if (!j) {
       return null;
     }

@@ -9,6 +9,7 @@ import type {
   SemaineTypeCreche,
   SemaineAbcm,
   InscriptionsJour,
+  JourAlshHebdo,
   EtablissementFoyerVue,
   LienEtablissementSaisie,
 } from '../types/bff';
@@ -49,28 +50,9 @@ const JOURS_SEMAINE_OUVRES: JourSemaine[] = [
   'VENDREDI',
 ];
 
-// ---- UT-10 : binding de la colonne « Inscrit ALSH » --------------------------
-//
-// ÉCART AMONT DOCUMENTÉ (spec 11 UT-10 / CA3) : le DTO `InscriptionsJour`
-// (`types/bff.ts`, miroir de `libs/planification/domain` → `InscriptionsJour`)
-// ne décrit QUE `cantine | periMatin | periSoir`. Il n'existe AUCUN champ ALSH
-// hebdomadaire dans le contrat de données : côté domaine, l'ALSH (mercredis /
-// vacances) se saisit **par dates explicites** (`JourAlsh[]`, cf.
-// `EcrirePlanning.joursAlsh`), pas via une case de semaine type.
-//
-// Le bug d'origine faisait écrire la colonne « Inscrit ALSH » dans `insc.cantine`
-// (collision silencieuse avec la cantine). Correction front, SANS toucher au
-// contrat d'API (hors périmètre) : on écrit dans une clé locale dédiée `alsh`,
-// distincte de `cantine`. Cette clé n'est pas (encore) modélisée par le DTO ; le
-// passthrough `additionalProperties: true` de la gateway la tolère, et
-// svc-planification l'ignore tant que l'ALSH hebdomadaire n'est pas spécifié en
-// amont. L'essentiel pour ce lot : la saisie ALSH ne corrompt plus `cantine`.
-interface InscriptionsJourEtendue extends InscriptionsJour {
-  /** Présence ALSH hebdomadaire — champ FRONT (non modélisé par le DTO, cf. note ci-dessus). */
-  alsh?: boolean;
-}
-
-type ChampInscription = keyof InscriptionsJourEtendue;
+// Champs booléens de la table cantine/périscolaire (l'ALSH hebdomadaire a son
+// éditeur dédié, `AlshHebdoEditor`, car il porte une formule + repas).
+type ChampInscription = 'cantine' | 'periMatin' | 'periSoir';
 
 // ---- Éditeur de plage horaire (CRECHE_PSU) -----------------------------------
 
@@ -164,10 +146,10 @@ function PlageEditor({
   );
 }
 
-// ---- Éditeur semaine ABCM (CANTINE/PERISCOLAIRE/ALSH) -----------------------
+// ---- Éditeur semaine ABCM (CANTINE/PERISCOLAIRE) -----------------------------
 
 interface AbcmEditorProps {
-  mode: 'CANTINE' | 'PERISCOLAIRE' | 'ALSH';
+  mode: 'CANTINE' | 'PERISCOLAIRE';
   semaineAbcm: SemaineAbcm;
   onChange: (s: SemaineAbcm) => void;
 }
@@ -177,7 +159,7 @@ function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
   const montrerPeriMatin = mode === 'PERISCOLAIRE';
   const montrerPeriSoir = mode === 'PERISCOLAIRE';
 
-  function inscriptionJour(jour: JourSemaine): InscriptionsJourEtendue {
+  function inscriptionJour(jour: JourSemaine): InscriptionsJour {
     return semaineAbcm[jour] ?? {};
   }
 
@@ -187,7 +169,7 @@ function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
     val: boolean,
   ) {
     const actuel = inscriptionJour(jour);
-    const suivant: InscriptionsJourEtendue = { ...actuel };
+    const suivant: InscriptionsJour = { ...actuel };
     if (val) {
       suivant[champ] = true;
     } else {
@@ -215,11 +197,6 @@ function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
           {montrerCantine && <th scope="col">Cantine</th>}
           {montrerPeriMatin && <th scope="col">Péri matin</th>}
           {montrerPeriSoir && <th scope="col">Péri soir</th>}
-          {mode === 'ALSH' && (
-            <th scope="col">
-              Inscrit <Abbr sigle="ALSH" />
-            </th>
-          )}
         </tr>
       </thead>
       <tbody>
@@ -269,23 +246,117 @@ function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
                   />
                 </td>
               )}
-              {mode === 'ALSH' && (
-                <td style={{ textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={insc.alsh === true}
-                    onChange={(e) => {
-                      mettreAJour(jour, 'alsh', e.target.checked);
-                    }}
-                    aria-label={`ALSH ${LIBELLES_JOURS[jour]}`}
-                  />
-                </td>
-              )}
             </tr>
           );
         })}
       </tbody>
     </table>
+  );
+}
+
+// ---- Éditeur ALSH hebdomadaire (jours récurrents : formule + repas) ----------
+
+interface AlshHebdoEditorProps {
+  semaineAbcm: SemaineAbcm;
+  onChange: (s: SemaineAbcm) => void;
+}
+
+/**
+ * Inscription ALSH **récurrente** par jour de semaine : cocher un jour déclare
+ * l'enfant présent chaque semaine ce jour-là (formule journée/demi + repas),
+ * miroir de `InscriptionsJour.alsh` côté domaine. Les jours de vacances se
+ * réservent par date depuis le planning (`joursAlsh`), en complément.
+ */
+function AlshHebdoEditor({ semaineAbcm, onChange }: AlshHebdoEditorProps) {
+  function mettreAJour(jour: JourSemaine, alsh: JourAlshHebdo | undefined) {
+    const nouvelleAbcm: SemaineAbcm = { ...semaineAbcm };
+    if (alsh === undefined) {
+      delete nouvelleAbcm[jour];
+    } else {
+      nouvelleAbcm[jour] = { alsh };
+    }
+    onChange(nouvelleAbcm);
+  }
+
+  return (
+    <>
+      {JOURS_SEMAINE_OUVRES.map((jour) => {
+        const config = semaineAbcm[jour]?.alsh;
+        return (
+          <div
+            key={jour}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              marginBottom: '0.4rem',
+            }}
+          >
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                margin: 0,
+                minWidth: 90,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={config !== undefined}
+                onChange={(e) => {
+                  mettreAJour(
+                    jour,
+                    e.target.checked ? { type: 'COMPLETE' } : undefined,
+                  );
+                }}
+                aria-label={`ALSH ${LIBELLES_JOURS[jour]}`}
+              />
+              {LIBELLES_JOURS[jour]}
+            </label>
+            {config && (
+              <>
+                <select
+                  value={config.type}
+                  onChange={(e) => {
+                    mettreAJour(jour, {
+                      ...config,
+                      type: e.target.value === 'DEMI' ? 'DEMI' : 'COMPLETE',
+                    });
+                  }}
+                  aria-label={`Formule ${LIBELLES_JOURS[jour]}`}
+                >
+                  <option value="COMPLETE">Journée complète</option>
+                  <option value="DEMI">Demi-journée</option>
+                </select>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    margin: 0,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={config.repas === true}
+                    onChange={(e) => {
+                      mettreAJour(jour, {
+                        type: config.type,
+                        ...(e.target.checked ? { repas: true } : {}),
+                      });
+                    }}
+                    aria-label={`Repas ${LIBELLES_JOURS[jour]}`}
+                  />
+                  Repas
+                </label>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -868,11 +939,25 @@ export function ContratForm({
           <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
             Inscriptions hebdomadaires
           </legend>
-          <AbcmEditor
-            mode={mode}
-            semaineAbcm={semaineAbcm}
-            onChange={setSemaineAbcm}
-          />
+          {mode === 'ALSH' ? (
+            <>
+              <p className="muted" style={{ margin: '0 0 0.5rem' }}>
+                Cochez les jours d’accueil de loisirs (
+                <Abbr sigle="ALSH" />) réguliers, chaque semaine. Les jours de
+                vacances se réservent par date, depuis le planning.
+              </p>
+              <AlshHebdoEditor
+                semaineAbcm={semaineAbcm}
+                onChange={setSemaineAbcm}
+              />
+            </>
+          ) : (
+            <AbcmEditor
+              mode={mode}
+              semaineAbcm={semaineAbcm}
+              onChange={setSemaineAbcm}
+            />
+          )}
         </fieldset>
       )}
 

@@ -311,6 +311,52 @@ describe('lignesDuJour — ALSH', () => {
   it('aucune réservation ce jour → filtré', () => {
     expect(lignesDuJour(vue(contratAbcm('ALSH')), MARDI)).toEqual([]);
   });
+
+  it('récurrence hebdomadaire : jour de semaine-type inscrit → présent', () => {
+    const c = contratAbcm('ALSH', {
+      semaineAbcm: { MARDI: { alsh: { type: 'COMPLETE', repas: true } } },
+    });
+    expect(lignesDuJour(vue(c), MARDI)[0]).toMatchObject({
+      etat: 'alsh',
+      horaire: 'Journée + repas',
+    });
+  });
+
+  it('récurrence : exception alsh=false retire le jour', () => {
+    const c = contratAbcm('ALSH', {
+      semaineAbcm: { MARDI: { alsh: { type: 'COMPLETE' } } },
+      besoins: {
+        [MARDI]: besoinsJour({
+          exceptions: [{ date: MARDI, alsh: false }],
+        }),
+      },
+    });
+    expect(lignesDuJour(vue(c), MARDI)).toEqual([]);
+  });
+
+  it('exception alsh=true sans récurrence → journée complète par défaut', () => {
+    const c = contratAbcm('ALSH', {
+      besoins: {
+        [MARDI]: besoinsJour({
+          exceptions: [{ date: MARDI, alsh: true }],
+        }),
+      },
+    });
+    expect(lignesDuJour(vue(c), MARDI)[0]).toMatchObject({
+      etat: 'alsh',
+      horaire: 'Journée',
+    });
+  });
+
+  it('un jour réservé par date prime sur la récurrence (formule explicite)', () => {
+    const c = contratAbcm('ALSH', {
+      semaineAbcm: { MARDI: { alsh: { type: 'COMPLETE', repas: true } } },
+      besoins: {
+        [MARDI]: besoinsJour({ joursAlsh: [jourAlsh({ type: 'DEMI' })] }),
+      },
+    });
+    expect(lignesDuJour(vue(c), MARDI)[0]?.horaire).toBe('Demi-journée');
+  });
 });
 
 describe('lignesDuJour — établissement & agrégation', () => {

@@ -176,13 +176,7 @@ export type Mode = CorpsRequeteJson<'/api/v1/contrats', 'post'>['mode'];
 // front. `JourSemaine` est de même une convention de svc-planification.
 
 export type JourSemaine =
-  | 'LUNDI'
-  | 'MARDI'
-  | 'MERCREDI'
-  | 'JEUDI'
-  | 'VENDREDI'
-  | 'SAMEDI'
-  | 'DIMANCHE';
+  'LUNDI' | 'MARDI' | 'MERCREDI' | 'JEUDI' | 'VENDREDI' | 'SAMEDI' | 'DIMANCHE';
 
 // Contrats (union discriminée par mode — passthrough intégral du BFF).
 export interface PlageHoraire {
@@ -194,10 +188,21 @@ export interface PlageHoraire {
 
 export type SemaineTypeCreche = Partial<Record<JourSemaine, PlageHoraire[]>>;
 
+/**
+ * Inscription ALSH **récurrente** d'un jour de semaine (mercredi typiquement) :
+ * formule + repas, miroir de `libs/planification/domain` → `JourAlshHebdo`.
+ */
+export interface JourAlshHebdo {
+  type: 'COMPLETE' | 'DEMI';
+  repas?: boolean;
+}
+
 export interface InscriptionsJour {
   cantine?: boolean;
   periMatin?: boolean;
   periSoir?: boolean;
+  /** Inscription ALSH récurrente ce jour de semaine. */
+  alsh?: JourAlshHebdo;
 }
 
 export type SemaineAbcm = Partial<Record<JourSemaine, InscriptionsJour>>;
@@ -258,6 +263,8 @@ export interface ExceptionAbcm {
   cantine?: boolean;
   periMatin?: boolean;
   periSoir?: boolean;
+  /** ALSH ce jour-là : `false` retire un jour récurrent, `true` en ajoute un. */
+  alsh?: boolean;
 }
 
 export interface JourAlsh {
@@ -301,9 +308,7 @@ export interface LirePlanningReponse {
 
 /** Statut de la validation d'une semaine. */
 export type StatutNotification =
-  | 'A_VALIDER'
-  | 'VALIDEE'
-  | 'VALIDEE_AVEC_MODIFS';
+  'A_VALIDER' | 'VALIDEE' | 'VALIDEE_AVEC_MODIFS';
 
 /**
  * Une semaine à valider (indicateur in-app). Enrichie par le BFF (jointure avec les
