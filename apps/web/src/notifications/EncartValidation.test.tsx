@@ -121,18 +121,31 @@ describe('EncartValidation', () => {
     vi.mocked(api.lireSemaineBesoins).mockResolvedValue(SEMAINE_BESOINS);
   });
 
-  it('ne rend rien quand il n’y a aucune semaine à valider', async () => {
+  it('affiche un placeholder pendant la vérification puis rien s’il n’y a rien à valider', async () => {
     vi.mocked(api.listerAValider).mockResolvedValue([]);
     const { container } = render(<EncartValidation foyerId="foyer-1" />);
+
+    // Pendant le chargement : l'encart est visible avec un placeholder explicite
+    // (avant : invisible → impossible de distinguer « rien à valider » de « pas
+    // encore vérifié », et l'encart faisait sauter la page en apparaissant).
+    expect(
+      screen.getByText(/Vérification des semaines à valider/i),
+    ).toBeInTheDocument();
+    expect(container.querySelector('section')).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
+
+    // Liste (vide) chargée : cas nominal, l'encart disparaît complètement.
     await waitFor(() => {
-      expect(api.listerAValider).toHaveBeenCalledWith('foyer-1', {
-        signal: expect.anything(),
-      });
+      expect(container.querySelector('section')).toBeNull();
+    });
+    expect(api.listerAValider).toHaveBeenCalledWith('foyer-1', {
+      signal: expect.anything(),
     });
     expect(
       screen.queryByText(/Valider la semaine suivante/i),
     ).not.toBeInTheDocument();
-    expect(container.querySelector('section')).toBeNull();
   });
 
   it('liste les semaines à valider avec un libellé lisible', async () => {

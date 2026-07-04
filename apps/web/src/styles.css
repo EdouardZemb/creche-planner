@@ -3,7 +3,9 @@
   --bleu-clair: #eff6ff;
   --vert: #15803d;
   --rouge: #b91c1c;
-  --gris: #6b7280;
+  /* Texte secondaire : doit tenir WCAG AA (4.5:1) aussi sur --gris-clair
+     (badges, statuts) — #6b7280 n'y faisait que 4.4:1. */
+  --gris: #4b5563;
   --gris-clair: #f3f4f6;
   --bordure: #e5e7eb;
   --violet: #7c3aed; /* périscolaire */
@@ -434,6 +436,43 @@ h3 {
   flex-wrap: wrap;
   gap: var(--esp-3);
   justify-content: center;
+}
+
+/* ---- Encart « Valider la semaine suivante » (mobile-first) ---------------- */
+/* Base mobile : le libellé occupe sa ligne et les actions « Éditer la
+   semaine » / « Valider » s'empilent pleine largeur — deux boutons côte à
+   côte sous ~480px sont trop étroits pour être visés au pouce sans risque
+   de mauvais tap. Ils repassent côte à côte, largeur naturelle, dès 480px. */
+.encart-ligne {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--esp-2);
+  padding: 0.4rem 0;
+}
+
+.encart-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-2);
+  width: 100%;
+}
+
+.encart-actions .btn {
+  width: 100%;
+}
+
+@media (min-width: 480px) {
+  .encart-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: auto;
+  }
+
+  .encart-actions .btn {
+    width: auto;
+  }
 }
 
 /* ---- Layout planning (mobile-first) -------------------------------------- */

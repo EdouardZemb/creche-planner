@@ -24,6 +24,10 @@ vi.mock('../api/client', () => ({
 import { api, ApiError } from '../api/client';
 
 const SEMAINE = '2026-W27';
+// Nom accessible du bouton « Valider » : aria-label suffixé enfant/mode, car
+// l'éditeur hebdo empile un bloc (et donc un bouton) par contrat de la semaine.
+const BOUTON_VALIDER =
+  'Valider la semaine du 29 juin au 5 juillet — Léa, Crèche';
 const JOURS = [
   '2026-06-29',
   '2026-06-30',
@@ -303,7 +307,7 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
     vi.mocked(api.validerSemaine).mockResolvedValue(resultat);
     rendre(contratCreche(), { onValide });
 
-    await user.click(screen.getByRole('button', { name: 'Valider' }));
+    await user.click(screen.getByRole('button', { name: BOUTON_VALIDER }));
 
     await waitFor(() => {
       expect(api.validerSemaine).toHaveBeenCalledWith('c-lea', SEMAINE);
@@ -323,7 +327,7 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
     });
     rendre(contratCreche(), { onValide });
 
-    await user.click(screen.getByRole('button', { name: 'Valider' }));
+    await user.click(screen.getByRole('button', { name: BOUTON_VALIDER }));
 
     expect(
       await screen.findByText('Semaine validée (avec modifications).'),
@@ -338,7 +342,7 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
     );
     rendre(contratCreche());
 
-    await user.click(screen.getByRole('button', { name: 'Valider' }));
+    await user.click(screen.getByRole('button', { name: BOUTON_VALIDER }));
 
     expect(
       await screen.findByText(
@@ -346,7 +350,7 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
       ),
     ).toBeInTheDocument();
     // L'éditeur reste utilisable pour re-tenter.
-    expect(screen.getByRole('button', { name: 'Valider' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: BOUTON_VALIDER })).toBeEnabled();
   });
 });
 

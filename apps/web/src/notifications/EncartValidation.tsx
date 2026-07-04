@@ -76,13 +76,22 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
   // Semaine en cours d'édition (vue hebdo consolidée du foyer). `null` = repliée.
   const [semaineEditee, setSemaineEditee] = useState<string | null>(null);
 
-  // Chargement initial ou aucune semaine à valider : pas d'encart. On reste en
-  // revanche affiché tant qu'un retour (succès/erreur) ou un envoi aux services
-  // est en cours de lecture : valider la DERNIÈRE semaine vidait l'encart d'un
-  // coup, confirmation comprise — le parent ne savait plus si ça avait marché.
-  if (loading && !data) return null;
+  // Chargement initial : l'encart s'affiche avec un placeholder plutôt que
+  // rien — invisible, on ne savait pas s'il n'y avait rien à valider ou si la
+  // vérification était en cours, et l'encart « sautait » à l'écran en
+  // apparaissant une fois chargé. Aucune semaine à valider : pas d'encart. On
+  // reste en revanche affiché tant qu'un retour (succès/erreur) ou un envoi
+  // aux services est en cours de lecture : valider la DERNIÈRE semaine vidait
+  // l'encart d'un coup, confirmation comprise — le parent ne savait plus si ça
+  // avait marché.
+  const enChargement = loading && data === null;
   const semaines = data ?? [];
-  if (semaines.length === 0 && retour === null && aEnvoyer === null) {
+  if (
+    !enChargement &&
+    semaines.length === 0 &&
+    retour === null &&
+    aEnvoyer === null
+  ) {
     return null;
   }
 
@@ -121,11 +130,18 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
     <section
       className="carte"
       aria-label="Semaines de planning à valider"
+      aria-busy={enChargement}
       style={{ borderLeft: '4px solid var(--bleu)', marginBottom: '1rem' }}
     >
       <h2 style={{ marginTop: 0, fontSize: 'var(--h2)' }}>
         Valider la semaine suivante
       </h2>
+      {enChargement && (
+        <p className="muted spinner" style={{ margin: 0 }}>
+          <span className="spinner-roue" aria-hidden="true" />
+          Vérification des semaines à valider…
+        </p>
+      )}
       {retour !== null && retour.type === 'succes' && (
         <p className="credit" role="status">
           {retour.texte}
@@ -150,26 +166,17 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
       {/* Liste vidée après la dernière validation : on le dit explicitement au
           lieu de faire disparaître l'encart (le parent doit voir que c'est fini,
           pas deviner). */}
-      {semaines.length === 0 && (
+      {!enChargement && semaines.length === 0 && (
         <p className="muted" style={{ margin: 0 }}>
           Plus rien à valider pour le moment.
         </p>
       )}
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {semaines.map((n) => (
-          <li
-            key={`${n.contratId}-${n.semaineIso}`}
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '0.5rem',
-              padding: '0.4rem 0',
-            }}
-          >
+          <li key={`${n.contratId}-${n.semaineIso}`} className="encart-ligne">
             <span>{libelleLigne(n)}</span>
-            <span style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {/* Boutons empilés pleine largeur sous ~480px (cf. .encart-actions). */}
+            <span className="encart-actions">
               <button
                 type="button"
                 className="btn secondaire"
