@@ -14,6 +14,7 @@ import { libelleMode } from '../utils/libelles';
 import {
   formaterDateFr,
   formaterMoisFr,
+  jourSuivant,
   libelleSemaine,
   LIBELLES_JOURS,
   jourSemaineDeIso,
@@ -63,10 +64,17 @@ function RangeeJour({
   ligne,
   foyerId,
   mois,
+  contexte,
 }: {
   ligne: LigneJour;
   foyerId: string;
   mois: string;
+  /**
+   * Complément d'aria-label (« demain ») : la page affiche désormais deux
+   * sections de lignes (aujourd'hui / demain) — sans lui, deux liens « Modifier
+   * la garde de Léa » seraient indistinguables au lecteur d'écran.
+   */
+  contexte?: string;
 }) {
   const etat = LIBELLES_ETAT[ligne.etat];
   // Deep-link (P3a) : « Modifier » ouvre le planning directement sur l'onglet
@@ -104,7 +112,9 @@ function RangeeJour({
       <Link
         to={cible}
         className="btn secondaire"
-        aria-label={`Modifier la garde de ${ligne.enfant}`}
+        aria-label={`Modifier la garde de ${ligne.enfant}${
+          contexte === undefined ? '' : ` ${contexte}`
+        }`}
       >
         Modifier
       </Link>
@@ -204,6 +214,74 @@ function BandeauCoutMois({ foyerId, mois }: { foyerId: string; mois: string }) {
 }
 
 /**
+ * Section « Demain » (UX dashboard, lot 2) : les gardes du lendemain, toujours
+ * visibles et compactes sous la journée — l'ouverture du soir (« qu'est-ce qui
+ * est prévu demain ? ») est le cas d'usage principal du parent. Réutilise
+ * `RangeeJour` et `lignesDuJour` avec la date de demain.
+ *
+ * Demain peut tomber dans la semaine ISO suivante (dimanche → lundi) : dans ce
+ * cas seulement, un second `lireSemaineBesoins` — silencieux en chargement et
+ * en erreur (pattern du `BandeauCoutMois`), pour ne jamais bloquer ni faire
+ * échouer l'affichage d'aujourd'hui.
+ */
+function SectionDemain({
+  foyerId,
+  demain,
+  semaineDemain,
+  memeSemaine,
+  vueAujourdhui,
+}: {
+  foyerId: string;
+  demain: string;
+  semaineDemain: string;
+  /** `true` si demain est dans la même semaine ISO qu'aujourd'hui (pas de 2e fetch). */
+  memeSemaine: boolean;
+  vueAujourdhui: SemaineBesoins;
+}) {
+  const { data: vueSuivante } = useAsync<SemaineBesoins | null>(
+    (signal) =>
+      memeSemaine
+        ? Promise.resolve(null)
+        : api.lireSemaineBesoins(foyerId, semaineDemain, { signal }),
+    [foyerId, semaineDemain, memeSemaine],
+  );
+  const vue = memeSemaine ? vueAujourdhui : vueSuivante;
+  if (vue === null) {
+    // Fetch secondaire en cours ou en échec : on se tait plutôt que d'afficher
+    // un faux « aucune garde » — la journée au-dessus reste intacte.
+    return null;
+  }
+  const lignes = lignesDuJour(vue, demain);
+  const jour = jourSemaineDeIso(demain);
+  return (
+    <section aria-label="Demain">
+      <h2 style={{ marginBottom: '0.25rem', fontSize: 'var(--h2)' }}>Demain</h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        {LIBELLES_JOURS[jour]} {formaterDateFr(demain)}
+      </p>
+      {lignes.length > 0 ? (
+        <ul className="jours-liste">
+          {lignes.map((ligne) => (
+            <RangeeJour
+              key={ligne.contratId}
+              ligne={ligne}
+              foyerId={foyerId}
+              // Le deep-link « Modifier » atterrit sur le mois de DEMAIN (qui
+              // peut différer d'aujourd'hui en fin de mois).
+              mois={demain.slice(0, 7)}
+              contexte="demain"
+            />
+          ))}
+        </ul>
+      ) : (
+        // Volontairement sobre (pas de carte) : c'est une info secondaire.
+        <p className="muted">Aucune garde prévue demain.</p>
+      )}
+    </section>
+  );
+}
+
+/**
  * Tableau de bord « ma journée » : les gardes prévues **aujourd'hui** (fuseau
  * Europe/Paris) pour le foyer, dérivées de la vue hebdomadaire consolidée
  * (`lireSemaineBesoins`) par la logique pure `lignesDuJour`. Per-foyer (route
@@ -219,6 +297,11 @@ export function DashboardJourPage() {
   // semaine ISO qui la contient — clés stables pour `useAsync` sur la journée.
   const aujourdhui = jourCourantParis(new Date());
   const semaine = semaineIsoDeDate(aujourdhui);
+  // Demain (lot 2 UX) : dérivé du même « aujourd'hui » Paris ; sa semaine ISO
+  // peut être la suivante (dimanche → lundi), auquel cas `SectionDemain` fera
+  // son propre fetch.
+  const demain = jourSuivant(aujourdhui);
+  const semaineDemain = semaineIsoDeDate(demain);
   // Mois (`YYYY-MM`) du jour affiché : porté tel quel au planning par le
   // deep-link « Modifier » (P3a), pour atterrir sur le bon mois calendaire.
   const mois = aujourdhui.slice(0, 7);
@@ -283,6 +366,19 @@ export function DashboardJourPage() {
             Voir le planning
           </Link>
         </div>
+      )}
+
+      {/* Lot 2 UX : « Demain » toujours visible sous la journée — attend que
+          la journée soit chargée (elle porte la vue réutilisée en semaine
+          courante), mais ne dépend pas de son contenu. */}
+      {data && (
+        <SectionDemain
+          foyerId={id}
+          demain={demain}
+          semaineDemain={semaineDemain}
+          memeSemaine={semaineDemain === semaine}
+          vueAujourdhui={data}
+        />
       )}
     </div>
   );

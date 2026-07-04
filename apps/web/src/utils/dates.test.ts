@@ -3,8 +3,28 @@ import {
   formaterDateFr,
   formaterDateCourtFr,
   formaterHeureFr,
+  jourSuivant,
   libelleSemaine,
 } from './dates';
+
+describe('jourSuivant', () => {
+  it('avance d’un jour au sein du mois', () => {
+    expect(jourSuivant('2026-07-04')).toBe('2026-07-05');
+  });
+
+  it('franchit la fin de mois', () => {
+    expect(jourSuivant('2026-07-31')).toBe('2026-08-01');
+  });
+
+  it('franchit la fin d’année', () => {
+    expect(jourSuivant('2026-12-31')).toBe('2027-01-01');
+  });
+
+  it('respecte le 29 février des années bissextiles', () => {
+    expect(jourSuivant('2028-02-28')).toBe('2028-02-29');
+    expect(jourSuivant('2027-02-28')).toBe('2027-03-01');
+  });
+});
 
 describe('formaterHeureFr', () => {
   it('formate l’heure locale en hh:mm', () => {
