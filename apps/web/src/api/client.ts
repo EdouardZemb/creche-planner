@@ -119,13 +119,103 @@ export interface RequeteOptions {
   signal?: AbortSignal;
 }
 
+// --- Résilience réseau (GET + écritures idempotentes) ---------------------
+//
+// Sur une 4G capricieuse, un premier hoquet réseau (fetch → TypeError) ou une
+// 502/503/504 passagère de la gateway ne doit pas se solder par une erreur
+// visible avec « réessayer » manuel : l'appel est rejouable sans double effet
+// (GET, upsert des besoins, validation idempotente par clé unique). On borne à
+// 2 nouvelles tentatives avec un backoff court, et on plafonne chaque requête
+// par un délai d'expiration pour ne pas rester bloqué indéfiniment. On ne
+// rejoue JAMAIS une réponse applicative (4xx) ni une session Access expirée
+// (AuthExpiredError) : réessayer n'y changerait rien.
+
+/** Délai d'expiration par requête (AbortSignal.timeout). */
+const DELAI_EXPIRATION_MS = 10_000;
+/** Backoffs successifs entre tentatives ; sa longueur borne le nombre de rejeux. */
+const BACKOFFS_MS: readonly number[] = [500, 1500];
+
+/** 502/503/504 : indisponibilité transitoire de la gateway/amont, rejouable. */
+function estStatutRejouable(status: number): boolean {
+  return status === 502 || status === 503 || status === 504;
+}
+
+/**
+ * Attente `ms` annulable : rejette immédiatement si le signal est (ou devient)
+ * abandonné, pour ne pas rejouer une requête que l'appelant a déjà annulée
+ * (démontage du composant, saisie suivante) ou que le timeout a coupée.
+ */
+function attendre(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const rejeterAbandon = (): void => {
+      reject(new DOMException('Requête annulée', 'AbortError'));
+    };
+    if (signal.aborted) {
+      rejeterAbandon();
+      return;
+    }
+    const timer = setTimeout(() => {
+      resolve();
+    }, ms);
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        rejeterAbandon();
+      },
+      { once: true },
+    );
+  });
+}
+
+/**
+ * Variante résiliente de `requete` réservée aux appels idempotents : plafonne la
+ * durée (AbortSignal.timeout, combiné au signal de l'appelant) et rejoue les
+ * échecs transitoires (TypeError réseau, 502/503/504) avec un backoff borné.
+ * Le corps et les en-têtes sont rejoués à l'identique. `estRedirectionAuth`
+ * reste géré par `requete` : AuthExpiredError remonte sans rejeu.
+ */
+function requeteIdempotente(
+  url: string,
+  init: RequestInit,
+  opts: RequeteOptions,
+): Promise<Response> {
+  const expiration = AbortSignal.timeout(DELAI_EXPIRATION_MS);
+  const signal =
+    opts.signal !== undefined
+      ? AbortSignal.any([opts.signal, expiration])
+      : expiration;
+  const initAvecSignal: RequestInit = { ...init, signal };
+
+  const rejouer = (backoffs: readonly number[]): Promise<Response> => {
+    const [delai, ...reste] = backoffs;
+    return attendre(delai ?? 0, signal).then(() => tenter(reste));
+  };
+
+  const tenter = (backoffs: readonly number[]): Promise<Response> =>
+    requete(url, initAvecSignal).then(
+      (res) =>
+        backoffs.length > 0 && estStatutRejouable(res.status)
+          ? rejouer(backoffs)
+          : res,
+      (e: unknown) => {
+        if (backoffs.length > 0 && e instanceof TypeError)
+          return rejouer(backoffs);
+        throw e;
+      },
+    );
+
+  return tenter(BACKOFFS_MS);
+}
+
 export const api = {
   /** Identité courante (Cloudflare Access B1) + droits : admin, foyers autorisés. */
   moi(opts: RequeteOptions = {}): Promise<MoiVue> {
-    return requete(`${BASE}/v1/moi`, {
-      headers: entetes(false),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    }).then((r) => lire<MoiVue>(r));
+    return requeteIdempotente(
+      `${BASE}/v1/moi`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<MoiVue>(r));
   },
 
   /**
@@ -135,10 +225,11 @@ export const api = {
    * **404** si aucune ligne parent ne correspond.
    */
   monProfil(opts: RequeteOptions = {}): Promise<MonProfilVue> {
-    return requete(`${BASE}/v1/moi/profil`, {
-      headers: entetes(false),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    }).then((r) => lire<MonProfilVue>(r));
+    return requeteIdempotente(
+      `${BASE}/v1/moi/profil`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<MonProfilVue>(r));
   },
 
   /**
@@ -184,10 +275,11 @@ export const api = {
    * alors le compteur).
    */
   listerNotifications(opts: RequeteOptions = {}): Promise<InboxVue> {
-    return requete(`${BASE}/v1/moi/notifications`, {
-      headers: entetes(false),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    }).then((r) => lire<InboxVue>(r));
+    return requeteIdempotente(
+      `${BASE}/v1/moi/notifications`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<InboxVue>(r));
   },
 
   /**
@@ -222,17 +314,19 @@ export const api = {
   },
 
   listerFoyers(opts: RequeteOptions = {}): Promise<FoyerVue[]> {
-    return requete(`${BASE}/v1/foyers`, {
-      headers: entetes(false),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    }).then((r) => lire<FoyerVue[]>(r));
+    return requeteIdempotente(
+      `${BASE}/v1/foyers`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<FoyerVue[]>(r));
   },
 
   lireFoyer(id: string, opts: RequeteOptions = {}): Promise<DossierFoyerVue> {
-    return requete(`${BASE}/v1/foyers/${encodeURIComponent(id)}`, {
-      headers: entetes(false),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    }).then((r) => lire<DossierFoyerVue>(r));
+    return requeteIdempotente(
+      `${BASE}/v1/foyers/${encodeURIComponent(id)}`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<DossierFoyerVue>(r));
   },
 
   /** Édite les scalaires d'un foyer — `PUT /v1/foyers/:id` (parent du foyer ; renvoie la vue). */
@@ -352,10 +446,11 @@ export const api = {
     foyerId: string,
     opts: RequeteOptions = {},
   ): Promise<ContratLocal[]> {
-    return requete(`${BASE}/v1/contrats?foyer=${encodeURIComponent(foyerId)}`, {
-      headers: entetes(false),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    }).then((r) => lire<ContratLocal[]>(r));
+    return requeteIdempotente(
+      `${BASE}/v1/contrats?foyer=${encodeURIComponent(foyerId)}`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<ContratLocal[]>(r));
   },
 
   creerContrat(
@@ -399,14 +494,16 @@ export const api = {
     opts: RequeteOptions = {},
   ): Promise<void> {
     const q = simule ? '?simule=true' : '';
-    return requete(
+    // Upsert (remplacement du planning du mois) → rejeu sûr : requête idempotente
+    // (même traitement que l'édition hebdomadaire, cf. ecrireSemaineBesoins).
+    return requeteIdempotente(
       `${BASE}/v1/contrats/${encodeURIComponent(contratId)}/plannings/${encodeURIComponent(mois)}${q}`,
       {
         method: 'PUT',
         headers: entetes(true),
         body: JSON.stringify(corps),
-        ...(opts.signal ? { signal: opts.signal } : {}),
       },
+      opts,
     ).then((r) => lire<void>(r));
   },
 
@@ -418,14 +515,15 @@ export const api = {
     opts: RequeteOptions = {},
   ): Promise<void> {
     const q = simule ? '?simule=true' : '';
-    return requete(
+    // Upsert (fusion read-modify-write côté serveur) → rejeu sûr : requête idempotente.
+    return requeteIdempotente(
       `${BASE}/v1/contrats/${encodeURIComponent(contratId)}/plannings/semaine/${encodeURIComponent(semaineIso)}${q}`,
       {
         method: 'PUT',
         headers: entetes(true),
         body: JSON.stringify(besoins),
-        ...(opts.signal ? { signal: opts.signal } : {}),
       },
+      opts,
     ).then((r) => lire<void>(r));
   },
 
@@ -436,12 +534,10 @@ export const api = {
     opts: RequeteOptions = {},
   ): Promise<LirePlanningReponse> {
     const q = simule ? '?simule=true' : '';
-    return requete(
+    return requeteIdempotente(
       `${BASE}/v1/contrats/${encodeURIComponent(contratId)}/plannings/${encodeURIComponent(mois)}${q}`,
-      {
-        headers: entetes(false),
-        ...(opts.signal ? { signal: opts.signal } : {}),
-      },
+      { headers: entetes(false) },
+      opts,
     ).then((r) => lire<LirePlanningReponse>(r));
   },
 
@@ -453,10 +549,11 @@ export const api = {
   ): Promise<CoutMoisVue> {
     const params = new URLSearchParams({ foyer: foyerId, mois });
     if (simule) params.set('simule', 'true');
-    return requete(`${BASE}/v1/couts?${params.toString()}`, {
-      headers: entetes(false),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    }).then((r) => lire<CoutMoisVue>(r));
+    return requeteIdempotente(
+      `${BASE}/v1/couts?${params.toString()}`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<CoutMoisVue>(r));
   },
 
   lireCoutAnnuel(
@@ -470,10 +567,11 @@ export const api = {
       annee: String(annee),
     });
     if (simule) params.set('simule', 'true');
-    return requete(`${BASE}/v1/couts/annuel?${params.toString()}`, {
-      headers: entetes(false),
-      ...(opts.signal ? { signal: opts.signal } : {}),
-    }).then((r) => lire<CoutAnnuelVue>(r));
+    return requeteIdempotente(
+      `${BASE}/v1/couts/annuel?${params.toString()}`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<CoutAnnuelVue>(r));
   },
 
   /** Établissements (entité libre) d'un foyer — `GET /v1/foyers/:foyerId/etablissements`. */
@@ -481,12 +579,10 @@ export const api = {
     foyerId: string,
     opts: RequeteOptions = {},
   ): Promise<EtablissementFoyerVue[]> {
-    return requete(
+    return requeteIdempotente(
       `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements`,
-      {
-        headers: entetes(false),
-        ...(opts.signal ? { signal: opts.signal } : {}),
-      },
+      { headers: entetes(false) },
+      opts,
     ).then((r) => lire<EtablissementFoyerVue[]>(r));
   },
 
@@ -548,12 +644,10 @@ export const api = {
     foyerId: string,
     opts: RequeteOptions = {},
   ): Promise<NotificationAValider[]> {
-    return requete(
+    return requeteIdempotente(
       `${BASE}/v1/notifications/a-valider?foyer=${encodeURIComponent(foyerId)}`,
-      {
-        headers: entetes(false),
-        ...(opts.signal ? { signal: opts.signal } : {}),
-      },
+      { headers: entetes(false) },
+      opts,
     ).then((r) => lire<NotificationAValider[]>(r));
   },
 
@@ -562,12 +656,10 @@ export const api = {
     semaineIso: string,
     opts: RequeteOptions = {},
   ): Promise<SemaineBesoins> {
-    return requete(
+    return requeteIdempotente(
       `${BASE}/v1/notifications/semaine/${encodeURIComponent(foyerId)}/${encodeURIComponent(semaineIso)}/besoins`,
-      {
-        headers: entetes(false),
-        ...(opts.signal ? { signal: opts.signal } : {}),
-      },
+      { headers: entetes(false) },
+      opts,
     ).then((r) => lire<SemaineBesoins>(r));
   },
 
@@ -576,13 +668,14 @@ export const api = {
     semaineIso: string,
     opts: RequeteOptions = {},
   ): Promise<ValidationResultat> {
-    return requete(
+    // Idempotente par clé unique (svc-notifications) → rejeu sûr d'un POST.
+    return requeteIdempotente(
       `${BASE}/v1/notifications/validations/${encodeURIComponent(contratId)}/${encodeURIComponent(semaineIso)}`,
       {
         method: 'POST',
         headers: entetes(false),
-        ...(opts.signal ? { signal: opts.signal } : {}),
       },
+      opts,
     ).then((r) => lire<ValidationResultat>(r));
   },
 
@@ -592,12 +685,10 @@ export const api = {
     etablissementId: string,
     opts: RequeteOptions = {},
   ): Promise<BrouillonEtablissement> {
-    return requete(
+    return requeteIdempotente(
       `${BASE}/v1/notifications/semaine/${encodeURIComponent(foyerId)}/${encodeURIComponent(semaineIso)}/etablissements/${encodeURIComponent(etablissementId)}/brouillon`,
-      {
-        headers: entetes(false),
-        ...(opts.signal ? { signal: opts.signal } : {}),
-      },
+      { headers: entetes(false) },
+      opts,
     ).then((r) => lire<BrouillonEtablissement>(r));
   },
 
