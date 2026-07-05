@@ -391,11 +391,13 @@ async function garantirEtablissements(foyerId, noms) {
 
 /**
  * Table `prénom → id` des enfants du foyer : chaque contrat porte le lien
- * `enfantId` (référence svc-foyer) en plus du prénom dénormalisé.
+ * `enfantId` (référence svc-foyer) en plus du prénom dénormalisé. Lus via le
+ * dossier foyer (`GET /foyers/:id` → `{ foyer, enfants, parents }`) — la
+ * gateway n'expose pas de `GET /foyers/:id/enfants` dédié.
  */
 async function enfantsParPrenom(foyerId) {
-  const enfants = (await http('GET', `/foyers/${foyerId}/enfants`)) ?? [];
-  return Object.fromEntries(enfants.map((e) => [e.prenom, e.id]));
+  const { enfants } = await http('GET', `/foyers/${foyerId}`);
+  return Object.fromEntries((enfants ?? []).map((e) => [e.prenom, e.id]));
 }
 
 /** Garantit un contrat (POST si nouveau, PUT si déjà connu). */
