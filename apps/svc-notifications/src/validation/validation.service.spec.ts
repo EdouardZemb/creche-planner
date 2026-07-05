@@ -1,16 +1,23 @@
 import { NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { Column, getTableColumns, Param, type Table } from 'drizzle-orm';
+import {
+  SEMAINE_VALIDEE_TYPE,
+  semaineValideePayloadSchema,
+} from '@creche-planner/contracts-notifications';
 import { ValidationService } from './validation.service.js';
 import type { PlanificationClient } from '../fallback/planification.client.js';
 import type { Database } from '../database/database.types.js';
-import { notificationHebdo } from '../database/schema.js';
+import { notificationHebdo, outbox } from '../database/schema.js';
 
 /**
  * Tests du service de validation hebdo **sans Postgres** : base factice à état qui
  * honore le sous-ensemble utilisé — `insert().values().onConflictDoNothing(target[]).returning()`
- * (idempotence + signal exactly-once du scheduler), `select().from().where(and(eq…))`,
- * `update().set().where(and(eq…))`. Les prédicats `and(eq(col,val))` sont évalués en
+ * (idempotence + signal exactly-once du scheduler), `insert(outbox).values()` (émission
+ * `SemaineValidee`), `select().from().where(and(eq…))`,
+ * `update().set().where(and(eq…)).returning()` (transition compare-and-set) et
+ * `transaction(cb)` (le callback reçoit la base elle-même — l'atomicité n'est pas
+ * simulée, seul le flot l'est). Les prédicats `and(eq(col,val))` sont évalués en
  * lisant récursivement les `queryChunks` drizzle (colonne + paramètre lié). Le client
  * de relecture du planning est mocké (vitest) pour piloter le diff.
  */
@@ -69,35 +76,46 @@ const DEFAUTS: Ligne = {
   updatedAt: new Date('2026-06-23T06:00:00.000Z'),
 };
 
-function fakeBase(): { db: Database; lignes: Ligne[] } {
+function fakeBase(): { db: Database; lignes: Ligne[]; evenements: Ligne[] } {
   const lignes: Ligne[] = [];
+  /** Lignes insérées dans l'outbox (événements `SemaineValidee` émis). */
+  const evenements: Ligne[] = [];
   const filtrer = (condition: unknown): Ligne[] => {
     const paires = pairesEq(condition, notificationHebdo);
     return lignes.filter((l) => paires.every((p) => l[p.cle] === p.valeur));
   };
   const db = {
-    insert: () => ({
-      values: (valeurs: Ligne) => ({
-        onConflictDoNothing: (opts: { target: Column | Column[] }) => {
-          const cibles = Array.isArray(opts.target)
-            ? opts.target
-            : [opts.target];
-          const cle = (l: Ligne) =>
-            cibles.map((c) => l[cleDe(notificationHebdo, c)]).join('|');
-          const clef = cle(valeurs);
-          const existe = lignes.some((l) => cle(l) === clef);
-          if (!existe) {
-            lignes.push({ ...DEFAUTS, ...valeurs });
+    insert: (table: Table) =>
+      table === (outbox as unknown as Table)
+        ? {
+            // `insert(outbox).values(...)` est attendu (awaité) directement.
+            values: (valeurs: Ligne) => {
+              evenements.push(valeurs);
+              return Promise.resolve();
+            },
           }
-          // `returning()` ne renvoie la ligne que si elle vient d'être insérée
-          // (vide en cas de conflit) — c'est le signal exactly-once du scheduler.
-          return {
-            returning: () =>
-              Promise.resolve(existe ? [] : [{ id: valeurs['id'] }]),
-          };
-        },
-      }),
-    }),
+        : {
+            values: (valeurs: Ligne) => ({
+              onConflictDoNothing: (opts: { target: Column | Column[] }) => {
+                const cibles = Array.isArray(opts.target)
+                  ? opts.target
+                  : [opts.target];
+                const cle = (l: Ligne) =>
+                  cibles.map((c) => l[cleDe(notificationHebdo, c)]).join('|');
+                const clef = cle(valeurs);
+                const existe = lignes.some((l) => cle(l) === clef);
+                if (!existe) {
+                  lignes.push({ ...DEFAUTS, ...valeurs });
+                }
+                // `returning()` ne renvoie la ligne que si elle vient d'être insérée
+                // (vide en cas de conflit) — c'est le signal exactly-once du scheduler.
+                return {
+                  returning: () =>
+                    Promise.resolve(existe ? [] : [{ id: valeurs['id'] }]),
+                };
+              },
+            }),
+          },
     select: () => ({
       from: () => ({
         where: (condition: unknown) => Promise.resolve(filtrer(condition)),
@@ -105,16 +123,22 @@ function fakeBase(): { db: Database; lignes: Ligne[] } {
     }),
     update: () => ({
       set: (valeurs: Ligne) => ({
-        where: (condition: unknown) => {
-          for (const l of filtrer(condition)) {
-            Object.assign(l, valeurs);
-          }
-          return Promise.resolve();
-        },
+        where: (condition: unknown) => ({
+          // `returning()` renvoie les lignes effectivement touchées — vide si le
+          // garde `statut = 'A_VALIDER'` du compare-and-set n'a rien apparié.
+          returning: () => {
+            const touchees = filtrer(condition);
+            for (const l of touchees) {
+              Object.assign(l, valeurs);
+            }
+            return Promise.resolve(touchees.map((l) => ({ id: l['id'] })));
+          },
+        }),
       }),
     }),
+    transaction: (cb: (tx: unknown) => Promise<unknown>) => cb(db),
   } as unknown as Database;
-  return { db, lignes };
+  return { db, lignes, evenements };
 }
 
 const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
@@ -356,5 +380,96 @@ describe('ValidationService.valider', () => {
 
     expect(res.statut).toBe('VALIDEE');
     expect(res.deltaModifs).toBeNull();
+  });
+});
+
+describe('ValidationService.valider — événement SemaineValidee (outbox)', () => {
+  function seed(lignes: Ligne[], snapshot: unknown): void {
+    lignes.push({
+      ...DEFAUTS,
+      id: 'n1',
+      contratId: CONTRAT_ID,
+      foyerId: FOYER_ID,
+      semaineIso: SEMAINE,
+      type: 'VALIDATION_HEBDO',
+      statut: 'A_VALIDER',
+      snapshot,
+    });
+  }
+
+  it('émet notifications.SemaineValidee.v1 à la transition (VALIDEE, sans delta)', async () => {
+    const { db, lignes, evenements } = fakeBase();
+    seed(lignes, {});
+    const { client } = fakeClient({});
+    const service = new ValidationService(db, client);
+
+    await service.valider(CONTRAT_ID, SEMAINE);
+
+    expect(evenements).toHaveLength(1);
+    expect(evenements[0]).toMatchObject({ type: SEMAINE_VALIDEE_TYPE });
+    expect(evenements[0]?.['payload']).toEqual({
+      contratId: CONTRAT_ID,
+      semaineIso: SEMAINE,
+      statut: 'VALIDEE',
+    });
+    // L'insert outbox porte bien un id (dédup NATS) et un traceId (corrélation).
+    expect(evenements[0]?.['id']).toEqual(expect.any(String));
+    expect(evenements[0]?.['traceId']).toEqual(expect.any(String));
+  });
+
+  it('VALIDEE_AVEC_MODIFS transporte le deltaModifs, conforme au contrat', async () => {
+    const { db, lignes, evenements } = fakeBase();
+    seed(lignes, {}); // snapshot vide au moment de la notif
+    const { client } = fakeClient({
+      '2026-07': { joursSupplementaires: [{ date: '2026-07-01' }] },
+    });
+    const service = new ValidationService(db, client);
+
+    await service.valider(CONTRAT_ID, SEMAINE);
+
+    expect(evenements).toHaveLength(1);
+    const payload = semaineValideePayloadSchema.parse(
+      evenements[0]?.['payload'],
+    );
+    expect(payload.statut).toBe('VALIDEE_AVEC_MODIFS');
+    expect(payload.deltaModifs?.jours.map((j) => j.date)).toEqual([
+      '2026-07-01',
+    ]);
+  });
+
+  it('revalidation idempotente : aucun second événement émis', async () => {
+    const { db, lignes, evenements } = fakeBase();
+    seed(lignes, {});
+    const { client } = fakeClient({});
+    const service = new ValidationService(db, client);
+
+    await service.valider(CONTRAT_ID, SEMAINE);
+    await service.valider(CONTRAT_ID, SEMAINE);
+
+    expect(evenements).toHaveLength(1);
+  });
+
+  it('course perdue (validation concurrente pendant la relecture) : état figé, aucun événement', async () => {
+    const { db, lignes, evenements } = fakeBase();
+    seed(lignes, {});
+    // Pendant la relecture du planning (entre la lecture de la ligne et l'update
+    // compare-and-set), un appel concurrent valide la semaine : le garde
+    // `statut = 'A_VALIDER'` rend l'update vide → pas de second événement.
+    const lirePlanning = vi.fn(() => {
+      Object.assign(lignes[0] ?? {}, {
+        statut: 'VALIDEE',
+        valideeLe: new Date(),
+        deltaModifs: null,
+      });
+      return Promise.resolve(null);
+    });
+    const client = { lirePlanning } as unknown as PlanificationClient;
+    const service = new ValidationService(db, client);
+
+    const res = await service.valider(CONTRAT_ID, SEMAINE);
+
+    expect(res.statut).toBe('VALIDEE');
+    expect(res.deltaModifs).toBeNull();
+    expect(evenements).toHaveLength(0);
   });
 });

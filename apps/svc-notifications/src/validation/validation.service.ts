@@ -1,10 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
-import { DRIZZLE } from '@creche-planner/nest-commons';
+import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
+import {
+  SEMAINE_VALIDEE_TYPE,
+  type SemaineValideePayload,
+  type StatutSemaineValidee,
+} from '@creche-planner/contracts-notifications';
 import type { Database } from '../database/database.types.js';
 import {
   notificationHebdo,
+  outbox,
   STATUTS_NOTIFICATION,
   TYPE_VALIDATION_HEBDO,
   type NotificationHebdoRow,
@@ -118,6 +124,12 @@ export class ValidationService {
    * validée, renvoie l'état figé sans recalcul. `404` si la semaine n'a jamais été
    * notifiée. Si la relecture est indisponible (planification injoignable), le
    * snapshot fait foi → aucune modif détectée plutôt qu'un faux positif.
+   *
+   * La transition émet `notifications.SemaineValidee.v1` dans la **même
+   * transaction** que la mise à jour du statut (outbox, publié par l'`OutboxRelay`).
+   * Le garde `statut = 'A_VALIDER'` dans le `WHERE` fait de la transition un
+   * compare-and-set : une validation concurrente qui a déjà gagné rend l'update
+   * vide → aucun second événement, l'état figé est relu et renvoyé.
    */
   async valider(
     contratId: string,
@@ -145,26 +157,62 @@ export class ValidationService {
 
     const delta = await this.calculer(contratId, semaineIso, ligne.snapshot);
     const modifie = aDesModifs(delta);
-    const statut: StatutNotification = modifie
+    const statut: StatutSemaineValidee = modifie
       ? 'VALIDEE_AVEC_MODIFS'
       : 'VALIDEE';
     const deltaModifs = modifie ? delta : null;
 
-    await this.db
-      .update(notificationHebdo)
-      .set({
+    const transitionne = await this.db.transaction(async (tx) => {
+      const maj = await tx
+        .update(notificationHebdo)
+        .set({
+          statut,
+          valideeLe: new Date(),
+          deltaModifs,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(notificationHebdo.contratId, contratId),
+            eq(notificationHebdo.semaineIso, semaineIso),
+            eq(notificationHebdo.type, TYPE_VALIDATION_HEBDO),
+            eq(notificationHebdo.statut, 'A_VALIDER'),
+          ),
+        )
+        .returning({ id: notificationHebdo.id });
+      if (maj.length === 0) {
+        return false;
+      }
+      const payload: SemaineValideePayload = {
+        contratId,
+        semaineIso,
         statut,
-        valideeLe: new Date(),
-        deltaModifs,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(notificationHebdo.contratId, contratId),
-          eq(notificationHebdo.semaineIso, semaineIso),
-          eq(notificationHebdo.type, TYPE_VALIDATION_HEBDO),
-        ),
-      );
+        ...(deltaModifs ? { deltaModifs } : {}),
+      };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: SEMAINE_VALIDEE_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+      return true;
+    });
+
+    if (!transitionne) {
+      // Course perdue : un appel concurrent a validé entre la lecture et l'update.
+      const fige = await this.ligne(contratId, semaineIso);
+      if (!fige) {
+        throw new Error(
+          `semaine ${semaineIso} du contrat ${contratId} disparue pendant la validation`,
+        );
+      }
+      return {
+        contratId,
+        semaineIso,
+        statut: this.statut(fige.statut),
+        deltaModifs: fige.deltaModifs ?? null,
+      };
+    }
 
     return { contratId, semaineIso, statut, deltaModifs };
   }
