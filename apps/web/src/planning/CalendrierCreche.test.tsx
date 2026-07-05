@@ -4,6 +4,7 @@ import {
   fireEvent,
   waitFor,
   within,
+  act,
 } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CalendrierCreche } from './CalendrierCreche';
@@ -425,6 +426,105 @@ describe('CalendrierCreche', () => {
       const ligne = screen.getByText('02/06/2026').closest('li');
       expect(ligne?.textContent).toContain('Absent');
     });
+  });
+
+  // Anti-clobber (race « saisie puis reload ») : une édition faite PENDANT le GET
+  // de réhydratation ne doit pas être écrasée quand ce GET (plus ancien) revient.
+  it('ne réécrase pas une édition locale faite pendant le chargement du GET', async () => {
+    // GET volontairement lent : on contrôle sa résolution pour éditer AVANT.
+    let resoudre!: (v: Awaited<ReturnType<typeof api.lirePlanning>>) => void;
+    const enAttente = new Promise<Awaited<ReturnType<typeof api.lirePlanning>>>(
+      (r) => {
+        resoudre = r;
+      },
+    );
+    vi.mocked(api.lirePlanning).mockReturnValue(enAttente);
+    vi.mocked(api.ecrirePlanning).mockResolvedValue(undefined);
+
+    render(
+      <CalendrierCreche
+        contrat={contratCreche}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    // Édition locale pendant le chargement : absence pleine journée le 02/06 → « Absent ».
+    fireEvent.click(screen.getByTestId('simulate-date-click'));
+    fireEvent.click(screen.getByText('Confirmer'));
+    expect(screen.getByText('02/06/2026').closest('li')?.textContent).toContain(
+      'Absent',
+    );
+
+    // Le GET (antérieur à l'édition) se résout avec une saisie DIFFÉRENTE
+    // (ajustement intérieur 9–11 → « Ajusté ») : sans garde, il ressusciterait
+    // l'ancien état serveur par-dessus l'absence saisie.
+    await act(async () => {
+      resoudre({
+        saisie: {
+          absences: [
+            {
+              date: '2026-06-02',
+              debutHeures: 9,
+              debutMinutes: 0,
+              finHeures: 11,
+              finMinutes: 0,
+              preavisJours: 0,
+              certificatMaladie: false,
+            },
+          ],
+        },
+      });
+    });
+
+    // L'édition locale prime : la ligne reste « Absent », le serveur périmé est ignoré.
+    const ligne = screen.getByText('02/06/2026').closest('li');
+    expect(ligne?.textContent).toContain('Absent');
+    expect(ligne?.textContent).not.toContain('Ajusté');
+  });
+
+  // Contre-épreuve : sans édition locale, un GET lent reste bien la source de
+  // vérité (la garde anti-clobber ne doit pas supprimer la réhydratation légitime).
+  it('réhydrate depuis un GET lent quand aucune édition locale n a eu lieu', async () => {
+    let resoudre!: (v: Awaited<ReturnType<typeof api.lirePlanning>>) => void;
+    const enAttente = new Promise<Awaited<ReturnType<typeof api.lirePlanning>>>(
+      (r) => {
+        resoudre = r;
+      },
+    );
+    vi.mocked(api.lirePlanning).mockReturnValue(enAttente);
+
+    render(
+      <CalendrierCreche
+        contrat={contratCreche}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    // Aucune édition : à la résolution, l'ajustement serveur 9–11 doit s'afficher.
+    await act(async () => {
+      resoudre({
+        saisie: {
+          absences: [
+            {
+              date: '2026-06-02',
+              debutHeures: 9,
+              debutMinutes: 0,
+              finHeures: 11,
+              finMinutes: 0,
+              preavisJours: 0,
+              certificatMaladie: false,
+            },
+          ],
+        },
+      });
+    });
+
+    const ligne = screen.getByText('02/06/2026').closest('li');
+    expect(ligne?.textContent).toContain('Ajusté');
   });
 
   // P3 : le sélecteur de type décrit la PRÉSENCE de l'enfant ; le code dérive

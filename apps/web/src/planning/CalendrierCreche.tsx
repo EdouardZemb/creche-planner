@@ -152,6 +152,8 @@ export function CalendrierCreche({
     reessayer,
     saisieServeur,
     chargee,
+    marquerSaisieLocale,
+    saisieServeurObsolete,
     annoncer,
     regionLiveProps,
     estDansPeriode,
@@ -186,6 +188,10 @@ export function CalendrierCreche({
   // serveur ne renvoie rien, on conserve le brouillon local (saisie en cours).
   useEffect(() => {
     if (!chargee || saisieServeur === null) return;
+    // Anti-clobber : si le parent a édité PENDANT le chargement, ce GET (plus
+    // ancien que l'édition) est périmé — on le laisse tomber pour ne pas faire
+    // « réapparaître » l'ancien état serveur par-dessus la saisie récente.
+    if (saisieServeurObsolete()) return;
     const abs: EtatAbsence[] = (saisieServeur.absences ?? [])
       .filter(
         (a): a is AbsenceCreche & { date: string } => a.date !== undefined,
@@ -216,6 +222,7 @@ export function CalendrierCreche({
   }, [
     chargee,
     saisieServeur,
+    saisieServeurObsolete,
     contrat.id,
     mois,
     persistAbsences.ecrire,
@@ -378,6 +385,9 @@ export function CalendrierCreche({
       nvJoursSup: EtatJourSup[],
       nvComplementMinutes: number | undefined,
     ) => {
+      // Toute édition locale passe par ici : on marque la divergence pour qu'un
+      // GET de réhydratation encore en vol ne vienne pas l'écraser à son retour.
+      marquerSaisieLocale();
       const absencesApi: AbsenceCreche[] = nvAbsences.map((a) => ({
         date: a.date,
         debutHeures: a.debutHeures,
@@ -404,7 +414,7 @@ export function CalendrierCreche({
         ...(absencesApi.length > 0 ? { absences: absencesApi } : {}),
       });
     },
-    [ecrire, contrat.id, mois, simule],
+    [ecrire, contrat.id, mois, simule, marquerSaisieLocale],
   );
 
   // Ouvre la modale adaptée au jour cliqué (absence si gardé, ajout sinon).

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type {
   ContratLocal,
@@ -87,6 +87,18 @@ export interface UseCalendrierContratResultat<P> {
   // Réhydratation serveur (source de vérité multi-poste).
   saisieServeur: ReturnType<typeof useSaisieServeur>['saisie'];
   chargee: boolean;
+  /**
+   * À appeler à CHAQUE mutation locale (édition parent du planning). Incrémente
+   * un compteur monotone : la réhydratation suivante compare ce compteur à sa
+   * valeur au lancement du GET pour ne pas écraser une édition récente.
+   */
+  marquerSaisieLocale: () => void;
+  /**
+   * Vrai si la saisie serveur actuellement reçue est ANTÉRIEURE à une mutation
+   * locale (le parent a édité pendant le chargement) : la réhydratation doit
+   * alors être ignorée pour ne pas ressusciter l'état serveur périmé.
+   */
+  saisieServeurObsolete: () => boolean;
 
   // AQ-05 : annonces des mutations aux lecteurs d'écran.
   annoncer: (texte: string) => void;
@@ -127,10 +139,25 @@ export function useCalendrierContrat<P>({
   const { etat, erreur, enregistreA, ecrire, reessayer } =
     usePlanning(onEnregistre);
   const { annoncer, regionLiveProps } = useAnnonce();
-  const { saisie: saisieServeur, chargee } = useSaisieServeur(
-    contrat.id,
-    mois,
-    simule,
+
+  // Compteur monotone des mutations locales (édition parent). `useSaisieServeur`
+  // en fige la valeur au lancement de chaque GET ; si le compteur a progressé
+  // depuis, la réponse est périmée et la réhydratation doit être ignorée.
+  const seqMutationRef = useRef(0);
+  const lireSeqLocale = useCallback(() => seqMutationRef.current, []);
+  const marquerSaisieLocale = useCallback(() => {
+    seqMutationRef.current += 1;
+  }, []);
+
+  const {
+    saisie: saisieServeur,
+    chargee,
+    seqAuChargement,
+  } = useSaisieServeur(contrat.id, mois, simule, lireSeqLocale);
+
+  const saisieServeurObsolete = useCallback(
+    () => seqMutationRef.current > seqAuChargement,
+    [seqAuChargement],
   );
 
   const [portee, setPortee] = useState<Portee>('mois');
@@ -211,6 +238,8 @@ export function useCalendrierContrat<P>({
     reessayer,
     saisieServeur,
     chargee,
+    marquerSaisieLocale,
+    saisieServeurObsolete,
     annoncer,
     regionLiveProps,
     estDansPeriode,

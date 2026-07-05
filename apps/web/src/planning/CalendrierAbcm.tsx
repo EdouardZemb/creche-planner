@@ -90,6 +90,8 @@ export function CalendrierAbcm({
     reessayer,
     saisieServeur,
     chargee,
+    marquerSaisieLocale,
+    saisieServeurObsolete,
     annoncer,
     regionLiveProps,
     estDansPeriode,
@@ -122,6 +124,9 @@ export function CalendrierAbcm({
   // ou saisie en cours) plutôt que de l'effacer.
   useEffect(() => {
     if (!chargee || saisieServeur === null) return;
+    // Anti-clobber : une édition locale survenue PENDANT le chargement rend ce
+    // GET périmé — on l'ignore pour ne pas écraser la saisie récente du parent.
+    if (saisieServeurObsolete()) return;
     setPai(saisieServeur.pai);
     setExceptions(saisieServeur.exceptions ?? []);
     setJoursAlsh(
@@ -131,7 +136,7 @@ export function CalendrierAbcm({
         repas: j.repas ?? false,
       })),
     );
-  }, [chargee, saisieServeur]);
+  }, [chargee, saisieServeur, saisieServeurObsolete]);
 
   // Modale ALSH.
   const [popoverDate, setPopoverDate] = useState<string | null>(null);
@@ -328,6 +333,9 @@ export function CalendrierAbcm({
       nvPai: boolean | undefined,
       nvExceptions: ExceptionAbcm[],
     ) => {
+      // Toute édition locale passe par ici : on marque la divergence pour qu'un
+      // GET de réhydratation encore en vol ne vienne pas l'écraser à son retour.
+      marquerSaisieLocale();
       if (mode === 'CANTINE') {
         ecrire(contrat.id, mois, simule, {
           ...(nvPai !== undefined ? { pai: nvPai } : {}),
@@ -351,7 +359,7 @@ export function CalendrierAbcm({
         });
       }
     },
-    [ecrire, contrat.id, mois, simule, mode],
+    [ecrire, contrat.id, mois, simule, mode, marquerSaisieLocale],
   );
 
   // --- Ajustement cantine / périscolaire ------------------------------------

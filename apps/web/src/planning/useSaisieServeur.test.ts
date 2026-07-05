@@ -62,7 +62,32 @@ describe('useSaisieServeur', () => {
     const { result } = renderHook(() =>
       useSaisieServeur('c1', '2026-03', false),
     );
-    expect(result.current).toEqual({ saisie: null, chargee: false });
+    expect(result.current).toEqual({
+      saisie: null,
+      chargee: false,
+      seqAuChargement: 0,
+    });
+  });
+
+  it('fige le compteur local (lireSeqLocale) au lancement du GET et le remonte dans seqAuChargement', async () => {
+    // Le lecteur renvoie 7 au moment du montage : c'est la valeur qui doit être
+    // capturée, indépendamment de ce que le compteur deviendra ensuite. Le
+    // lecteur a une IDENTITÉ STABLE (comme le `useCallback` de l'appelant réel),
+    // sinon l'effet se redéclencherait à chaque rendu.
+    spy.mockResolvedValue({ saisie: SAISIE_RICHE });
+    const compteur = { valeur: 7 };
+    const lireSeqLocale = () => compteur.valeur;
+    const { result } = renderHook(() =>
+      useSaisieServeur('c1', '2026-03', false, lireSeqLocale),
+    );
+
+    // Le compteur bouge APRÈS le lancement du GET : l'instantané ne change pas.
+    compteur.valeur = 99;
+
+    await waitFor(() => {
+      expect(result.current.chargee).toBe(true);
+    });
+    expect(result.current.seqAuChargement).toBe(7);
   });
 
   it('appelle lirePlanning avec (contratId, mois, simule) et un signal', () => {
