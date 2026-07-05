@@ -1,5 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
-import { lireEtatSeed, urlPlanning } from './support/stack';
+import {
+  lireEtatSeed,
+  urlPlanning,
+  attendreEnregistrementPlanning as attendreEnregistrement,
+  rechargerEtRelirePlanning,
+} from './support/stack';
 
 // Parcours « saisie de planning crèche (CRECHE_PSU) » sur stack réelle (Lot C).
 //
@@ -37,15 +42,6 @@ function cellule(page: Page, iso: string) {
 function libelleFr(iso: string): string {
   const [a, m, j] = iso.split('-');
   return `${j}/${m}/${a}`;
-}
-
-/** Exécute `action` puis attend l'enregistrement serveur du planning (PUT, debounce 800 ms). */
-async function attendreEnregistrement(page: Page, action: () => Promise<void>) {
-  const reponse = page.waitForResponse(
-    (r) => /\/plannings\//.test(r.url()) && r.request().method() === 'PUT',
-  );
-  await action();
-  await reponse;
 }
 
 /** Exécute `action` puis attend la modification durable du contrat (PUT /contrats/:id). */
@@ -144,7 +140,7 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
     await expect(page.getByText(/\+1\s+jour/)).toBeVisible();
 
     // PERSISTANCE : après rechargement, l'ajout est restitué depuis le serveur.
-    await page.reload();
+    await rechargerEtRelirePlanning(page);
     await expect(cellule(page, MARDI)).toBeVisible();
     await expect(cellule(page, MARDI).locator('.fc-event-title')).toHaveText(
       'Ajouté',
@@ -187,7 +183,7 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
     await expect(page.getByText(/-1\s+jour/)).toBeVisible();
 
     // PERSISTANCE : après rechargement, l'absence est restituée depuis le serveur.
-    await page.reload();
+    await rechargerEtRelirePlanning(page);
     await expect(cellule(page, LUNDI).locator('.fc-event-title')).toHaveText(
       'Absent',
     );
@@ -215,7 +211,7 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
     // personnalisée » est resélectionné (la plage ne couvre pas toute la garde).
     // On attend que la réhydratation serveur ait marqué le jour « Ajusté » avant
     // d'ouvrir la modale (sinon `ouvrirSaisie` lit un état encore vide).
-    await page.reload();
+    await rechargerEtRelirePlanning(page);
     await expect(cellule(page, LUNDI).locator('.fc-event-title')).toHaveText(
       'Ajusté',
     );
@@ -268,7 +264,7 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
     );
 
     // PERSISTANCE : après rechargement, le mardi gardé est restitué (contrat durci).
-    await page.reload();
+    await rechargerEtRelirePlanning(page);
     await expect(cellule(page, MARDI).locator('.fc-event-title')).toHaveText(
       'Gardé',
     );
@@ -294,7 +290,7 @@ test.describe('stack réelle : saisie de planning crèche (Zoé)', () => {
     await expect(cellule(page, MARDI).locator('.fc-event-title')).toHaveCount(
       0,
     );
-    await page.reload();
+    await rechargerEtRelirePlanning(page);
     await expect(cellule(page, MARDI).locator('.fc-event-title')).toHaveCount(
       0,
     );

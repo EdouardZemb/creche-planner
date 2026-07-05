@@ -4,7 +4,11 @@ import {
   type Page,
   type APIRequestContext,
 } from '@playwright/test';
-import { lireEtatSeed, urlPlanning } from './support/stack';
+import {
+  lireEtatSeed,
+  urlPlanning,
+  attendreEnregistrementPlanning as attendreEnregistrement,
+} from './support/stack';
 
 // =============================================================================
 // MBT — modèle d'état SYSTÈME de la saisie de planning crèche (niveau E2E stack
@@ -103,15 +107,6 @@ function cellule(page: Page, iso: string) {
 function libelleFr(iso: string): string {
   const [a, m, j] = iso.split('-');
   return `${j}/${m}/${a}`;
-}
-
-/** Exécute `action` puis attend l'enregistrement serveur du planning (PUT, debounce 800 ms). */
-async function attendreEnregistrement(page: Page, action: () => Promise<void>) {
-  const reponse = page.waitForResponse(
-    (r) => /\/plannings\//.test(r.url()) && r.request().method() === 'PUT',
-  );
-  await action();
-  await reponse;
 }
 
 /**
