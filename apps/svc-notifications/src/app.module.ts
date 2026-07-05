@@ -8,8 +8,10 @@ import {
   EmailModule,
   HealthModule,
   NatsModule,
+  OutboxModule,
   type OptionsMailer,
 } from '@creche-planner/nest-commons';
+import { NOTIFICATIONS_EVENT_SOURCE } from '@creche-planner/contracts-notifications';
 import { loadConfig } from './config.js';
 import * as schema from './database/schema.js';
 import { ConsumersModule } from './consumers/consumers.module.js';
@@ -52,6 +54,13 @@ function optionsMailer(): OptionsMailer {
       stream: 'NOTIFICATIONS',
       sujet: 'notifications.>',
       url: () => loadConfig().natsUrl,
+    }),
+    // Relais de l'outbox (jusqu'ici latente) : publie `notifications.SemaineValidee.v1`
+    // inséré par `ValidationService.valider` dans la même transaction que la
+    // transition de statut.
+    OutboxModule.forRoot({
+      source: NOTIFICATIONS_EVENT_SOURCE,
+      table: schema.outbox,
     }),
     EmailModule.forRoot(optionsMailer()),
     HealthModule,

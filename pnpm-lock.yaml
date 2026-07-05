@@ -368,6 +368,9 @@ importers:
       '@creche-planner/contracts-foyer':
         specifier: workspace:*
         version: link:../../libs/contracts/foyer
+      '@creche-planner/contracts-notifications':
+        specifier: workspace:*
+        version: link:../../libs/contracts/notifications
       '@creche-planner/contracts-planification':
         specifier: workspace:*
         version: link:../../libs/contracts/planification
@@ -805,6 +808,18 @@ importers:
 
   libs/contracts/kernel:
     dependencies:
+      tslib:
+        specifier: ^2.3.0
+        version: 2.8.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
+  libs/contracts/notifications:
+    dependencies:
+      '@creche-planner/contracts-kernel':
+        specifier: workspace:*
+        version: link:../kernel
       tslib:
         specifier: ^2.3.0
         version: 2.8.1

@@ -399,15 +399,15 @@ export const processedEvent = pgTable('processed_event', {
     .defaultNow(),
 });
 
-// --- Outbox (infra latente — pas d'émission au Lot 0) -----------------------
+// --- Outbox -----------------------------------------------------------------
 
 /**
- * Outbox transactionnelle (doc 06 §8.4) — **infra latente** conservée du template.
- * Notifications est d'abord un consommateur ; la définition de table est posée dès le
- * scaffold (pas de churn de migration) en prévision d'un futur événement émis (ex.
- * `notifications.MailEnvoye.v1`), qui serait inséré **dans la même transaction** que
- * la mise à jour de l'état, puis publié (stream `NOTIFICATIONS`, dédup
- * `Nats-Msg-Id` = `id`).
+ * Outbox transactionnelle (doc 06 §8.4). Posée latente dès le scaffold (Lot 0),
+ * elle est désormais **active** : `notifications.SemaineValidee.v1`
+ * (`@creche-planner/contracts-notifications`) y est inséré par
+ * `ValidationService.valider` **dans la même transaction** que la transition de
+ * statut de `notification_hebdo`, puis publié par l'`OutboxRelay` (stream
+ * `NOTIFICATIONS`, dédup `Nats-Msg-Id` = `id`).
  */
 export const outbox = pgTable('outbox', {
   id: uuid('id').primaryKey(),
