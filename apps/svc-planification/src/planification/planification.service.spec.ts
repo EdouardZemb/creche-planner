@@ -391,6 +391,70 @@ describe('PlanificationService.ecrirePlanning', () => {
   });
 });
 
+/**
+ * Faux `db` transactionnel pour `ecrireSemaine`, instrumenté pour vérifier
+ * l'**atomicité de bout en bout** : la garde contrat, les lectures de planning et
+ * les upserts+outbox de TOUS les mois recouverts doivent se produire dans une
+ * **unique** `db.transaction` (une semaine à cheval = 2 mois, jamais 2
+ * transactions). Le 1ᵉʳ `select` sert la garde 404 (`contratPresent`), les suivants
+ * sont les lectures par mois (aucune saisie → `null`, la fusion pure est testée à
+ * part). On distingue l'upsert planning (porte `saisie` + `.onConflictDoUpdate`) de
+ * l'insert outbox (porte `type`). `echecSurMois` simule un crash EN COURS de
+ * transaction (l'upsert de CE mois rejette) → sur une vraie base, le rollback annule
+ * les DEUX mois ensemble : jamais de semaine à moitié écrite.
+ */
+function fakeDbSemaine(options: {
+  contratPresent: boolean;
+  echecSurMois?: string;
+}): {
+  db: Database;
+  transaction: ReturnType<typeof vi.fn>;
+  planningUpserts: Record<string, unknown>[];
+  outboxEvents: Record<string, unknown>[];
+} {
+  const planningUpserts: Record<string, unknown>[] = [];
+  const outboxEvents: Record<string, unknown>[] = [];
+  let selectCall = 0;
+  const tx = {
+    select: () => ({
+      from: () => ({
+        where: () => {
+          selectCall += 1;
+          // 1ᵉʳ select = garde contrat ; les suivants = lectures planning (vides).
+          if (selectCall === 1) {
+            return Promise.resolve(
+              options.contratPresent ? [ligneCreche()] : [],
+            );
+          }
+          return Promise.resolve([]);
+        },
+      }),
+    }),
+    insert: () => ({
+      values: (v: Record<string, unknown>) => {
+        // Upsert planning (porte `saisie` + `.onConflictDoUpdate`) vs outbox (`type`).
+        if ('saisie' in v) {
+          planningUpserts.push(v);
+          const echoue = v['mois'] === options.echecSurMois;
+          return Object.assign(Promise.resolve(), {
+            onConflictDoUpdate: () =>
+              echoue
+                ? Promise.reject(new Error('crash upsert 2e mois'))
+                : Promise.resolve(),
+          });
+        }
+        outboxEvents.push(v);
+        return Promise.resolve();
+      },
+    }),
+  };
+  const transaction = vi.fn(async (cb: (t: unknown) => Promise<void>) => {
+    await cb(tx);
+  });
+  const db = { transaction } as unknown as Database;
+  return { db, transaction, planningUpserts, outboxEvents };
+}
+
 describe('PlanificationService.ecrireSemaine', () => {
   /** Besoins datés d'une semaine : un jour supplémentaire crèche. */
   function jourSup(date: string): EcrirePlanningDto {
@@ -401,13 +465,23 @@ describe('PlanificationService.ecrireSemaine', () => {
     };
   }
 
-  it('mono-mois : un seul read→merge→write (réutilise ecrirePlanning)', async () => {
-    const service = new PlanificationService({} as Database, referentielVide);
-    // Mois courant vide ; on espionne lecture/écriture (la fusion pure est testée à part).
-    const lire = vi.spyOn(service, 'lirePlanning').mockResolvedValue(null);
-    const ecrire = vi
-      .spyOn(service, 'ecrirePlanning')
-      .mockResolvedValue(undefined);
+  /** Indexe les upserts capturés par mois → saisie fusionnée. */
+  function saisiesParMois(
+    upserts: Record<string, unknown>[],
+  ): Map<string, EcrirePlanningDto> {
+    return new Map(
+      upserts.map((u): [string, EcrirePlanningDto] => [
+        u['mois'] as string,
+        u['saisie'] as EcrirePlanningDto,
+      ]),
+    );
+  }
+
+  it('mono-mois : un seul read→merge→write dans une transaction', async () => {
+    const { db, transaction, planningUpserts, outboxEvents } = fakeDbSemaine({
+      contratPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
 
     await service.ecrireSemaine(
       CONTRAT_ID,
@@ -416,21 +490,30 @@ describe('PlanificationService.ecrireSemaine', () => {
       jourSup('2026-03-12'),
     );
 
-    expect(lire).toHaveBeenCalledTimes(1);
-    expect(lire).toHaveBeenCalledWith(CONTRAT_ID, '2026-03', false);
-    expect(ecrire).toHaveBeenCalledTimes(1);
-    const appel = ecrire.mock.calls[0];
-    expect(appel?.[1]).toBe('2026-03');
-    expect(appel?.[2]).toBe(false);
-    expect(appel?.[3]?.joursSupplementaires?.[0]?.date).toBe('2026-03-12');
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(planningUpserts).toHaveLength(1);
+    expect(planningUpserts[0]).toMatchObject({
+      contratId: CONTRAT_ID,
+      mois: '2026-03',
+      simule: false,
+    });
+    expect(
+      saisiesParMois(planningUpserts).get('2026-03')?.joursSupplementaires?.[0]
+        ?.date,
+    ).toBe('2026-03-12');
+    // Un seul événement PlanningModifie pour le mois édité.
+    expect(outboxEvents).toHaveLength(1);
+    expect(outboxEvents[0]).toMatchObject({
+      type: PLANNING_MODIFIE_TYPE,
+      payload: { contratId: CONTRAT_ID, mois: '2026-03', simule: false },
+    });
   });
 
-  it('à cheval 2 mois : un read→merge→write par mois, jours routés vers LEUR mois', async () => {
-    const service = new PlanificationService({} as Database, referentielVide);
-    vi.spyOn(service, 'lirePlanning').mockResolvedValue(null);
-    const ecrire = vi
-      .spyOn(service, 'ecrirePlanning')
-      .mockResolvedValue(undefined);
+  it('à cheval 2 mois : UNE seule transaction, jours routés vers LEUR mois, un event par mois', async () => {
+    const { db, transaction, planningUpserts, outboxEvents } = fakeDbSemaine({
+      contratPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
 
     // 2026-W14 = 30,31 mars | 01→05 avril. Besoins sur les deux mois.
     const besoins: EcrirePlanningDto = {
@@ -441,32 +524,80 @@ describe('PlanificationService.ecrireSemaine', () => {
     };
     await service.ecrireSemaine(CONTRAT_ID, '2026-W14', false, besoins);
 
-    expect(ecrire).toHaveBeenCalledTimes(2);
-    const parMois = new Map(
-      ecrire.mock.calls.map((c): [string, EcrirePlanningDto] => [c[1], c[3]]),
-    );
-    // Mars ne reçoit que le 31 ; avril que le 02.
+    // Les DEUX mois sont écrits dans une SEULE transaction (atomicité à cheval).
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(planningUpserts).toHaveLength(2);
+    const parMois = saisiesParMois(planningUpserts);
+    // Mars ne reçoit que le 31 ; avril que le 02 (fusion routée par mois).
     expect(
       (parMois.get('2026-03')?.joursSupplementaires ?? []).map((j) => j.date),
     ).toEqual(['2026-03-31']);
     expect(
       (parMois.get('2026-04')?.joursSupplementaires ?? []).map((j) => j.date),
     ).toEqual(['2026-04-02']);
+    // Un événement PlanningModifie par mois modifié (consommateurs keyed par mois).
+    expect(outboxEvents).toHaveLength(2);
+    expect(outboxEvents.every((e) => e['type'] === PLANNING_MODIFIE_TYPE)).toBe(
+      true,
+    );
+    expect(
+      outboxEvents
+        .map((e) => (e['payload'] as { mois: string }).mois)
+        .sort((a, b) => a.localeCompare(b)),
+    ).toEqual(['2026-03', '2026-04']);
   });
 
-  it('propage le 404 du contrat (via lirePlanning) sans rien écrire', async () => {
-    const service = new PlanificationService({} as Database, referentielVide);
-    vi.spyOn(service, 'lirePlanning').mockRejectedValue(
-      new NotFoundException('contrat introuvable'),
-    );
-    const ecrire = vi
-      .spyOn(service, 'ecrirePlanning')
-      .mockResolvedValue(undefined);
+  it('INVARIANT : un crash sur le 2ᵉ mois se propage (rollback) → une seule transaction, aucun event du 2ᵉ mois', async () => {
+    // 2026-W14 à cheval mars/avril ; l'upsert d'avril (2ᵉ mois) échoue EN COURS
+    // de transaction. Sur une vraie base, le rollback annule AUSSI mars : jamais
+    // de semaine à moitié écrite ni de snapshot de notification divergent.
+    const { db, transaction, planningUpserts, outboxEvents } = fakeDbSemaine({
+      contratPresent: true,
+      echecSurMois: '2026-04',
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const besoins: EcrirePlanningDto = {
+      joursSupplementaires: [
+        ...(jourSup('2026-03-31').joursSupplementaires ?? []),
+        ...(jourSup('2026-04-02').joursSupplementaires ?? []),
+      ],
+    };
+    await expect(
+      service.ecrireSemaine(CONTRAT_ID, '2026-W14', false, besoins),
+    ).rejects.toThrow('crash upsert 2e mois');
+
+    // Les deux mois partagent l'UNIQUE transaction (≠ ancien code : 1 tx/mois) :
+    // l'échec du 2ᵉ mois rollback le 1ᵉʳ. On observe que le 2ᵉ mois n'a jamais
+    // émis son event (l'upsert a jeté avant l'insert outbox), et que mars — bien
+    // qu'inséré — sera annulé par le rollback puisque tout est dans la même tx.
+    expect(transaction).toHaveBeenCalledTimes(1);
+    // Les deux upserts ont été TENTÉS dans la même transaction (mars OK, avril a jeté).
+    expect(planningUpserts.map((u) => u['mois'])).toEqual([
+      '2026-03',
+      '2026-04',
+    ]);
+    // Seul mars a atteint son outbox ; avril a échoué avant → aucun event avril.
+    expect(outboxEvents).toHaveLength(1);
+    expect(outboxEvents[0]).toMatchObject({
+      payload: { mois: '2026-03' },
+    });
+  });
+
+  it('propage le 404 du contrat (garde unique) sans écrire aucun mois', async () => {
+    const { db, transaction, planningUpserts, outboxEvents } = fakeDbSemaine({
+      contratPresent: false,
+    });
+    const service = new PlanificationService(db, referentielVide);
 
     await expect(
       service.ecrireSemaine(CONTRAT_ID, '2026-W11', false, {}),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(ecrire).not.toHaveBeenCalled();
+    // La garde 404 est DANS la transaction : elle s'ouvre puis rollback, sans
+    // aucune écriture (ni upsert planning ni outbox).
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(planningUpserts).toHaveLength(0);
+    expect(outboxEvents).toHaveLength(0);
   });
 });
 

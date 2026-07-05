@@ -587,35 +587,86 @@ export class PlanificationService {
       if (!lignes[0]) {
         throw new NotFoundException(`contrat introuvable : ${contratId}`);
       }
-      await tx
-        .insert(planningMois)
-        .values({ contratId, mois, simule, saisie: dto, updatedAt: new Date() })
-        .onConflictDoUpdate({
-          target: [
-            planningMois.contratId,
-            planningMois.mois,
-            planningMois.simule,
-          ],
-          set: { saisie: dto, updatedAt: new Date() },
-        });
-      const payload: PlanningModifiePayload = { contratId, mois, simule };
-      await tx.insert(outbox).values({
-        id: randomUUID(),
-        type: PLANNING_MODIFIE_TYPE,
-        payload,
-        traceId: traceIdCourant(),
-      });
+      await this.upsertPlanningMois(tx, contratId, mois, simule, dto);
     });
   }
 
   /**
+   * Cœur de l'écriture d'un planning mensuel **dans une transaction `tx` déjà
+   * ouverte** (la garde 404 du contrat est à la charge de l'appelant) : upsert
+   * idempotent du mois (`onConflictDoUpdate`) + émission de `PlanningModifie` via
+   * l'outbox **dans la même transaction**. Partagé par `ecrirePlanning` (un mois)
+   * et `ecrireSemaine` (les N mois d'une semaine, tous dans une seule transaction)
+   * pour garantir l'atomicité mois-par-mois **et** semaine-à-cheval.
+   */
+  private async upsertPlanningMois(
+    tx: Tx,
+    contratId: string,
+    mois: string,
+    simule: boolean,
+    dto: EcrirePlanningDto,
+  ): Promise<void> {
+    await tx
+      .insert(planningMois)
+      .values({ contratId, mois, simule, saisie: dto, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: [
+          planningMois.contratId,
+          planningMois.mois,
+          planningMois.simule,
+        ],
+        set: { saisie: dto, updatedAt: new Date() },
+      });
+    const payload: PlanningModifiePayload = { contratId, mois, simule };
+    await tx.insert(outbox).values({
+      id: randomUUID(),
+      type: PLANNING_MODIFIE_TYPE,
+      payload,
+      traceId: traceIdCourant(),
+    });
+  }
+
+  /**
+   * Lit la saisie enregistrée d'un mois **dans la transaction `tx`** (réelle ou
+   * simulée), sans garde d'existence du contrat (l'appelant l'a déjà vérifiée).
+   * Renvoie `null` si aucune saisie n'existe pour ce couple (contrat, mois,
+   * simulé). Variante transactionnelle de `lirePlanning` : `ecrireSemaine` doit
+   * relire chaque mois dans la MÊME transaction que ses upserts (lecture cohérente
+   * + atomicité de bout en bout).
+   */
+  private async lireSaisieMois(
+    tx: Tx,
+    contratId: string,
+    mois: string,
+    simule: boolean,
+  ): Promise<EcrirePlanningDto | null> {
+    const plannings = await tx
+      .select()
+      .from(planningMois)
+      .where(
+        and(
+          eq(planningMois.contratId, contratId),
+          eq(planningMois.mois, mois),
+          eq(planningMois.simule, simule),
+        ),
+      );
+    return (plannings[0]?.saisie as EcrirePlanningDto | undefined) ?? null;
+  }
+
+  /**
    * Enregistre une **édition limitée à une semaine** sans écraser le reste du
-   * mois. Le planning est stocké par mois et `ecrirePlanning` remplace tout le
-   * mois : on relit donc chaque mois recouvert par la semaine, on **fusionne** la
-   * part de la semaine appartenant à CE mois (préserve les autres jours, les
-   * scalaires mensuels et l'autre mois), puis on ré-upsert (réutilise le chemin
-   * `ecrirePlanning` → émet `PlanningModifie`). Une semaine à cheval sur deux mois
-   * ⇒ deux upserts + deux events (atomique par mois). 404 si le contrat n'existe pas.
+   * mois. Le planning est stocké par mois et l'upsert remplace tout le mois : on
+   * relit donc chaque mois recouvert par la semaine, on **fusionne** la part de la
+   * semaine appartenant à CE mois (préserve les autres jours, les scalaires
+   * mensuels et l'autre mois), puis on ré-upsert (émet `PlanningModifie` par mois).
+   *
+   * **Atomicité bout-en-bout** : les N mois recouverts (1, ou **2** pour une
+   * semaine à cheval) sont relus ET ré-upsertés dans **UNE seule transaction**
+   * (`db.transaction`). Un crash entre les deux mois ne peut donc pas laisser la
+   * semaine à moitié écrite (les deux upserts + les deux events sont annulés
+   * ensemble par le rollback) — ce qui évite aussi tout snapshot de notification
+   * divergent. On conserve **un événement `PlanningModifie` par mois modifié** (les
+   * consommateurs aval sont keyed par mois). 404 si le contrat n'existe pas.
    */
   async ecrireSemaine(
     contratId: string,
@@ -624,13 +675,24 @@ export class PlanificationService {
     besoins: BesoinsSemaine,
   ): Promise<void> {
     const jours = joursDeLaSemaine(semaineIso);
-    for (const mois of moisDeLaSemaine(semaineIso)) {
-      const joursDuMois = jours.filter((jour) => jour.slice(0, 7) === mois);
-      // `lirePlanning` garde aussi l'existence du contrat (404 sinon).
-      const courant = await this.lirePlanning(contratId, mois, simule);
-      const fusion = fusionnerSemaineDansMois(courant, joursDuMois, besoins);
-      await this.ecrirePlanning(contratId, mois, simule, fusion);
-    }
+    const moisCouverts = moisDeLaSemaine(semaineIso);
+    await this.db.transaction(async (tx) => {
+      // Garde 404 une seule fois pour toute la semaine (au lieu d'un contrôle par
+      // mois) : l'existence du contrat vaut pour tous les mois recouverts.
+      const lignes = await tx
+        .select()
+        .from(contrat)
+        .where(eq(contrat.id, contratId));
+      if (!lignes[0]) {
+        throw new NotFoundException(`contrat introuvable : ${contratId}`);
+      }
+      for (const mois of moisCouverts) {
+        const joursDuMois = jours.filter((jour) => jour.slice(0, 7) === mois);
+        const courant = await this.lireSaisieMois(tx, contratId, mois, simule);
+        const fusion = fusionnerSemaineDansMois(courant, joursDuMois, besoins);
+        await this.upsertPlanningMois(tx, contratId, mois, simule, fusion);
+      }
+    });
   }
 
   /**
