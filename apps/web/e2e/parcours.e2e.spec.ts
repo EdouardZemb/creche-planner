@@ -113,8 +113,13 @@ test('parcours : créer foyer → contrat cantine → planning → coût du mois
   await page.locator('#contrat-nouvel-etab-nom').fill('École ABCM');
   await page.getByRole('button', { name: /Créer le contrat/i }).click();
 
-  // Le contrat apparaît dans la liste.
-  await expect(page.getByText('Cantine')).toBeVisible();
+  // Le contrat apparaît dans la liste. On cible la carte du contrat
+  // (`.carte-contrat`, présente uniquement dans la liste) : un `getByText('Cantine')`
+  // nu est ambigu tant que le formulaire de création (option « Cantine ») reste
+  // monté, ce qui provoquait une violation du mode strict Playwright.
+  await expect(
+    page.locator('.carte-contrat').filter({ hasText: 'Cantine' }),
+  ).toBeVisible();
 
   // 3. Ouverture du planning.
   await page
