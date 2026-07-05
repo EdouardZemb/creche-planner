@@ -37,8 +37,10 @@ export function PlanningPage() {
   const { data: dossier, loading, error } = useFoyer(id);
   const { contrats, recharger: rechargerContrats } = useContrats(id);
 
-  // Onglet enfant actif. Les contrats référencent l'enfant par son PRÉNOM
-  // (CreerContrat.enfant) ; l'identité d'onglet est donc le prénom.
+  // Onglet enfant actif, identifié par le PRÉNOM (lisible dans l'URL `?enfant=`).
+  // Le contrat référence l'enfant par `enfantId` mais porte le prénom en
+  // dénormalisation d'affichage, rafraîchie au renommage (projection NATS) :
+  // le filtre par prénom ci-dessous reste donc cohérent avec le dossier foyer.
   const enfants = dossier?.enfants ?? [];
   const enfantSelectionne = enfantParam ?? enfants[0]?.prenom ?? null;
 

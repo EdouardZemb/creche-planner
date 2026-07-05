@@ -23,6 +23,7 @@ import type { Portee } from './ChoixPortee';
 export interface SocleContratDurable extends LienEtablissementSaisie {
   foyerId: string;
   enfant: string;
+  enfantId: string;
   valideDu: string;
   valideAu: string | null;
 }
@@ -31,6 +32,9 @@ export interface SocleContratDurable extends LienEtablissementSaisie {
  * Champs RECONDUITS du contrat courant lors d'un remplacement complet (PUT).
  * Le lien établissement est OBLIGATOIRE depuis P5 (`etablissement_id` NOT
  * NULL) → on reconduit celui du contrat, sinon le service rejette en 400.
+ * Le lien enfant (`enfantId`) est reconduit de même ; un contrat historique
+ * pas encore back-fillé (`null`) reconduit '' → 400 explicite du service
+ * (fenêtre transitoire, résolue par `scripts/backfill-enfants.mjs`).
  */
 export function socleContratDurable(
   contrat: ContratLocal,
@@ -38,6 +42,7 @@ export function socleContratDurable(
   return {
     foyerId: contrat.foyerId,
     enfant: contrat.enfant,
+    enfantId: contrat.enfantId ?? '',
     valideDu: contrat.valideDu,
     valideAu: contrat.valideAu,
     ...(contrat.etablissementId

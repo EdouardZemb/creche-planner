@@ -11,6 +11,7 @@ const CONTRAT: ContratLocal = {
   id: 'contrat-1',
   foyerId: 'foyer-1',
   enfant: 'enfant-1',
+  enfantId: 'enfant-id-1',
   mode: 'CRECHE_PSU',
   valideDu: '2026-01-01',
   valideAu: '2026-12-31',
@@ -23,6 +24,7 @@ const CORPS: CreerContrat = {
   mode: 'CRECHE_PSU',
   foyerId: 'foyer-1',
   enfant: 'enfant-1',
+  enfantId: 'enfant-id-1',
   valideDu: '2026-01-01',
   valideAu: '2026-12-31',
   heuresAnnuellesContractualisees: 0,
@@ -31,10 +33,11 @@ const CORPS: CreerContrat = {
 };
 
 describe('socleContratDurable', () => {
-  it('reconduit identité, période et lien établissement du contrat', () => {
+  it('reconduit identité, période et liens (établissement, enfant) du contrat', () => {
     expect(socleContratDurable(CONTRAT)).toEqual({
       foyerId: 'foyer-1',
       enfant: 'enfant-1',
+      enfantId: 'enfant-id-1',
       valideDu: '2026-01-01',
       valideAu: '2026-12-31',
       etablissementId: 'etab-1',
@@ -47,9 +50,16 @@ describe('socleContratDurable', () => {
     expect(socleContratDurable(sansLien)).toEqual({
       foyerId: 'foyer-1',
       enfant: 'enfant-1',
+      enfantId: 'enfant-id-1',
       valideDu: '2026-01-01',
       valideAu: '2026-12-31',
     });
+  });
+
+  it('reconduit "" quand le contrat historique ne porte pas encore d’enfantId (back-fill en attente)', () => {
+    expect(socleContratDurable({ ...CONTRAT, enfantId: null }).enfantId).toBe(
+      '',
+    );
   });
 });
 

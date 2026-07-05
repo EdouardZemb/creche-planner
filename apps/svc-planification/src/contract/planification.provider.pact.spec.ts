@@ -58,6 +58,13 @@ const FOYER_SEED = '22222222-2222-2222-2222-222222222222';
  */
 const ETAB_SEED_ID = '99999999-9999-9999-9999-999999999999';
 
+/**
+ * Enfant figé rattaché aux contrats seedés (aligné avec le pact consumer).
+ * UUID RFC (v4) : la valeur repasse dans les corps de requête côté consumer, où
+ * `z.string().uuid()` (Zod 4) exige version 1-8 ET variant 8-b.
+ */
+const ENFANT_SEED_ID = '77777777-7777-4777-8777-777777777777';
+
 // nx lance vitest avec cwd = racine du projet (apps/svc-planification) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
 const BUNDLE = resolve(RACINE, 'apps/svc-planification/dist/main.js');
@@ -208,10 +215,10 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
           await seedEtablissement(db);
           await db`
             insert into contrat (
-              id, foyer_id, etablissement_id, enfant, mode, valide_du, valide_au,
+              id, foyer_id, etablissement_id, enfant, enfant_id, mode, valide_du, valide_au,
               heures_annuelles_contractualisees, nb_mensualites, semaine_type
             ) values (
-              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', ${ETAB_SEED_ID}, 'Mia',
+              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', ${ETAB_SEED_ID}, 'Mia', ${ENFANT_SEED_ID},
               'CRECHE_PSU', '2026-01-01', '2026-07-31',
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )
@@ -228,10 +235,10 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
           await seedEtablissement(db);
           await db`
             insert into contrat (
-              id, foyer_id, etablissement_id, enfant, mode, valide_du, valide_au,
+              id, foyer_id, etablissement_id, enfant, enfant_id, mode, valide_du, valide_au,
               heures_annuelles_contractualisees, nb_mensualites, semaine_type
             ) values (
-              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', ${ETAB_SEED_ID}, 'Mia',
+              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', ${ETAB_SEED_ID}, 'Mia', ${ENFANT_SEED_ID},
               'CRECHE_PSU', '2026-01-01', '2026-07-31',
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )
@@ -245,10 +252,10 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
           await seedEtablissement(db);
           await db`
             insert into contrat (
-              id, foyer_id, etablissement_id, enfant, mode, valide_du, valide_au,
+              id, foyer_id, etablissement_id, enfant, enfant_id, mode, valide_du, valide_au,
               heures_annuelles_contractualisees, nb_mensualites, semaine_type
             ) values (
-              ${CONTRAT_ID}, ${FOYER_LISTE_ID}, ${ETAB_SEED_ID}, 'Mia',
+              ${CONTRAT_ID}, ${FOYER_LISTE_ID}, ${ETAB_SEED_ID}, 'Mia', ${ENFANT_SEED_ID},
               'CRECHE_PSU', '2026-01-01', '2026-07-31',
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )
@@ -263,10 +270,10 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
           await seedEtablissement(db);
           await db`
             insert into contrat (
-              id, foyer_id, etablissement_id, enfant, mode, valide_du, valide_au,
+              id, foyer_id, etablissement_id, enfant, enfant_id, mode, valide_du, valide_au,
               heures_annuelles_contractualisees, nb_mensualites, semaine_type
             ) values (
-              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', ${ETAB_SEED_ID}, 'Mia',
+              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', ${ETAB_SEED_ID}, 'Mia', ${ENFANT_SEED_ID},
               'CRECHE_PSU', '2026-01-01', '2026-07-31',
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )

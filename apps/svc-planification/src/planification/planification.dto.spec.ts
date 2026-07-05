@@ -4,6 +4,7 @@ import {
   creerContratSchema,
   ecrirePlanningSchema,
   modifierContratSchema,
+  rattacherEnfantSchema,
   rattacherEtablissementSchema,
   ISO_MOIS,
   ZodValidationPipe,
@@ -19,6 +20,9 @@ const FOYER_ID = '22222222-2222-4222-8222-222222222222';
 // Établissement de référence : depuis P5 un contrat DOIT être rattaché (NOT NULL),
 // donc les payloads « valides » de base en portent un.
 const ETAB_ID = '99999999-9999-4999-8999-999999999999';
+// Enfant de référence : le contrat porte le lien `enfantId` (agrégat svc-foyer)
+// en plus du prénom dénormalisé.
+const ENFANT_ID = '77777777-7777-4777-8777-777777777777';
 
 const JOURS = [
   'LUNDI',
@@ -61,6 +65,7 @@ describe('creerContratSchema (crèche PSU)', () => {
     mode: 'CRECHE_PSU' as const,
     foyerId: FOYER_ID,
     enfant: 'Mia',
+    enfantId: ENFANT_ID,
     valideDu: '2026-01-01',
     valideAu: '2026-12-31',
     heuresAnnuellesContractualisees: 885.5,
@@ -71,6 +76,19 @@ describe('creerContratSchema (crèche PSU)', () => {
 
   it('accepte un contrat crèche valide', () => {
     expect(creerContratSchema.safeParse(basePsu).success).toBe(true);
+  });
+
+  it('rejette un contrat sans enfantId (lien de référence requis)', () => {
+    const sansEnfantId: Record<string, unknown> = { ...basePsu };
+    delete sansEnfantId['enfantId'];
+    expect(creerContratSchema.safeParse(sansEnfantId).success).toBe(false);
+  });
+
+  it('rejette un enfantId non-UUID', () => {
+    expect(
+      creerContratSchema.safeParse({ ...basePsu, enfantId: 'pas-un-uuid' })
+        .success,
+    ).toBe(false);
   });
 
   it('accepte valideAu null (période ouverte)', () => {
@@ -162,6 +180,7 @@ describe('creerContratSchema (ABCM)', () => {
     mode: 'CANTINE' as const,
     foyerId: FOYER_ID,
     enfant: 'Zoé',
+    enfantId: ENFANT_ID,
     valideDu: '2026-09-01',
     valideAu: null,
     semaineAbcm: semaineCompleteAbcm(),
@@ -193,6 +212,7 @@ describe('creerContratSchema (ABCM)', () => {
       mode: 'CANTINE',
       foyerId: FOYER_ID,
       enfant: 'Zoé',
+      enfantId: ENFANT_ID,
       valideDu: '2026-09-01',
       valideAu: null,
       semaineType: { LUNDI: [] },
@@ -236,6 +256,7 @@ describe('creerContratSchema (lien établissement, P2)', () => {
     mode: 'CRECHE_PSU' as const,
     foyerId: FOYER_ID,
     enfant: 'Mia',
+    enfantId: ENFANT_ID,
     valideDu: '2026-01-01',
     valideAu: '2026-12-31',
     heuresAnnuellesContractualisees: 885.5,
@@ -299,6 +320,7 @@ describe('creerContratSchema (lien établissement, P2)', () => {
         mode: 'CANTINE',
         foyerId: FOYER_ID,
         enfant: 'Zoé',
+        enfantId: ENFANT_ID,
         valideDu: '2026-09-01',
         valideAu: null,
         semaineAbcm: semaineCompleteAbcm(),
@@ -315,6 +337,7 @@ describe('modifierContratSchema', () => {
         mode: 'CRECHE_PSU',
         foyerId: FOYER_ID,
         enfant: 'Mia',
+        enfantId: ENFANT_ID,
         valideDu: '2026-01-01',
         valideAu: '2026-12-31',
         heuresAnnuellesContractualisees: 885.5,
@@ -342,6 +365,24 @@ describe('rattacherEtablissementSchema (back-fill P5)', () => {
     expect(
       rattacherEtablissementSchema.safeParse({ etablissementId: 'x' }).success,
     ).toBe(false);
+  });
+});
+
+describe('rattacherEnfantSchema (back-fill enfant_id)', () => {
+  it('accepte un enfantId UUID', () => {
+    expect(
+      rattacherEnfantSchema.safeParse({ enfantId: ENFANT_ID }).success,
+    ).toBe(true);
+  });
+
+  it('rejette un enfantId absent', () => {
+    expect(rattacherEnfantSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('rejette un enfantId non-UUID', () => {
+    expect(rattacherEnfantSchema.safeParse({ enfantId: 'x' }).success).toBe(
+      false,
+    );
   });
 });
 

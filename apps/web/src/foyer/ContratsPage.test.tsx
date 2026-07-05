@@ -62,6 +62,7 @@ const contratFactice: ContratLocal = {
   id: 'c1',
   foyerId: FOYER_ID,
   enfant: 'Mia',
+  enfantId: 'e1',
   mode: 'CRECHE_PSU',
   valideDu: '2026-01-01',
   valideAu: null,

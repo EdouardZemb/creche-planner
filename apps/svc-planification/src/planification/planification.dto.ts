@@ -73,6 +73,7 @@ const creerContratCrecheSchema = z.object({
   mode: z.literal('CRECHE_PSU'),
   foyerId: z.string().uuid(),
   enfant: z.string().min(1),
+  enfantId: z.string().uuid(),
   valideDu: z.iso.date('date ISO YYYY-MM-DD attendue'),
   valideAu: z.iso.date('date ISO YYYY-MM-DD attendue').nullable(),
   heuresAnnuellesContractualisees: z.number().nonnegative(),
@@ -86,6 +87,7 @@ const creerContratAbcmSchema = z.object({
   mode: z.enum(['CANTINE', 'PERISCOLAIRE', 'ALSH']),
   foyerId: z.string().uuid(),
   enfant: z.string().min(1),
+  enfantId: z.string().uuid(),
   valideDu: z.iso.date('date ISO YYYY-MM-DD attendue'),
   valideAu: z.iso.date('date ISO YYYY-MM-DD attendue').nullable(),
   semaineAbcm: semaineAbcmSchema,
@@ -136,6 +138,18 @@ export const rattacherEtablissementSchema = z.object({
 export type RattacherEtablissementDto = z.infer<
   typeof rattacherEtablissementSchema
 >;
+
+/**
+ * Rattachement **chirurgical** d'un contrat existant à son enfant (`svc-foyer`),
+ * pour le **back-fill** des contrats historiques (rapprochement par prénom au sein
+ * du foyer, `scripts/backfill-enfants.mjs`) : ne porte QUE l'`enfantId`, ne touche
+ * ni le prénom dénormalisé ni le reste du contrat, et **n'invalide pas** les
+ * plannings saisis — même philosophie que `rattacherEtablissementSchema` (P5).
+ */
+export const rattacherEnfantSchema = z.object({
+  enfantId: z.string().uuid(),
+});
+export type RattacherEnfantDto = z.infer<typeof rattacherEnfantSchema>;
 
 /**
  * Absence crèche du mois (candidate à déduction PSU). La fenêtre d'absence est

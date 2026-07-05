@@ -241,7 +241,7 @@ function moisRange(debut, fin) {
   const [da, dm] = debut.split('-').map(Number);
   const [fa, fm] = fin.split('-').map(Number);
   const out = [];
-  for (let a = da, m = dm; a < fa || (a === fa && m <= fm); ) {
+  for (let a = da, m = dm; a < fa || (a === fa && m <= fm);) {
     out.push(`${a}-${String(m).padStart(2, '0')}`);
     if (++m > 12) {
       m = 1;
@@ -389,9 +389,32 @@ async function garantirEtablissements(foyerId, noms) {
   return parNom;
 }
 
+/**
+ * Table `prénom → id` des enfants du foyer : chaque contrat porte le lien
+ * `enfantId` (référence svc-foyer) en plus du prénom dénormalisé. Lus via le
+ * dossier foyer (`GET /foyers/:id` → `{ foyer, enfants, parents }`) — la
+ * gateway n'expose pas de `GET /foyers/:id/enfants` dédié.
+ */
+async function enfantsParPrenom(foyerId) {
+  const { enfants } = await http('GET', `/foyers/${foyerId}`);
+  return Object.fromEntries((enfants ?? []).map((e) => [e.prenom, e.id]));
+}
+
 /** Garantit un contrat (POST si nouveau, PUT si déjà connu). */
-async function garantirContrat(etat, foyerId, cle, def, etablissementId) {
-  const corps = { ...normaliserContrat(def), foyerId, etablissementId };
+async function garantirContrat(
+  etat,
+  foyerId,
+  cle,
+  def,
+  etablissementId,
+  enfantId,
+) {
+  const corps = {
+    ...normaliserContrat(def),
+    foyerId,
+    etablissementId,
+    enfantId,
+  };
   const idConnu = etat.contrats[cle];
   if (idConnu) {
     try {
@@ -536,14 +559,24 @@ async function main() {
   ];
   const etablissements = await garantirEtablissements(foyerId, noms);
 
+  // Enfants du foyer (prénom → id) : lien `enfantId` requis à la création.
+  const enfants = await enfantsParPrenom(foyerId);
+
   for (const [cle, def] of Object.entries(contrats)) {
     const nom = ETABLISSEMENTS[cle] ?? ETABLISSEMENT_DEFAUT;
+    const enfantId = enfants[def.enfant];
+    if (!enfantId) {
+      throw new Error(
+        `contrat ${cle} : aucun enfant « ${def.enfant} » dans le foyer ${foyerId}`,
+      );
+    }
     const contratId = await garantirContrat(
       etat,
       foyerId,
       cle,
       def,
       etablissements[nom],
+      enfantId,
     );
     await sauverEtat(etat);
     await ecrirePlannings(contratId, cle);

@@ -456,6 +456,9 @@ importers:
 
   apps/svc-planification:
     dependencies:
+      '@creche-planner/contracts-foyer':
+        specifier: workspace:*
+        version: link:../../libs/contracts/foyer
       '@creche-planner/contracts-planification':
         specifier: workspace:*
         version: link:../../libs/contracts/planification

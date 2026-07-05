@@ -34,6 +34,9 @@ const MOIS = '2026-10'; // octobre 2026 : 05 = lundi, 06 = mardi, 15 = jeudi.
 // est TOUJOURS rattaché ; `AUTRE_ETAB_ID` sert aux scénarios de re-pointage.
 const ETAB_ID = '99999999-9999-4999-8999-999999999999';
 const AUTRE_ETAB_ID = '88888888-8888-4888-8888-888888888888';
+// Enfant de référence (agrégat svc-foyer) ; `AUTRE_ENFANT_ID` sert au re-pointage.
+const ENFANT_ID = '77777777-7777-4777-8777-777777777777';
+const AUTRE_ENFANT_ID = '66666666-6666-4666-8666-666666666666';
 
 /** Ligne contrat crèche PSU : semaine type avec une plage le lundi (8h30→17h00). */
 function ligneCreche(overrides: Partial<ContratRow> = {}): ContratRow {
@@ -41,6 +44,7 @@ function ligneCreche(overrides: Partial<ContratRow> = {}): ContratRow {
     id: CONTRAT_ID,
     foyerId: FOYER_ID,
     enfant: 'Mia',
+    enfantId: ENFANT_ID,
     mode: 'CRECHE_PSU',
     etablissementId: ETAB_ID,
     valideDu: '2026-01-01',
@@ -68,6 +72,7 @@ function ligneAbcm(
     id: CONTRAT_ID,
     foyerId: FOYER_ID,
     enfant: 'Zoé',
+    enfantId: ENFANT_ID,
     mode,
     etablissementId: ETAB_ID,
     valideDu: '2026-01-01',
@@ -474,6 +479,7 @@ describe('PlanificationService.creerContrat', () => {
       mode: 'CRECHE_PSU',
       foyerId: FOYER_ID,
       enfant: 'Mia',
+      enfantId: ENFANT_ID,
       valideDu: '2026-01-01',
       valideAu: '2026-12-31',
       heuresAnnuellesContractualisees: 885.5,
@@ -500,7 +506,11 @@ describe('PlanificationService.creerContrat', () => {
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         type: CONTRAT_CREE_TYPE,
-        payload: expect.objectContaining({ foyerId: FOYER_ID, enfant: 'Mia' }),
+        payload: expect.objectContaining({
+          foyerId: FOYER_ID,
+          enfant: 'Mia',
+          enfantId: ENFANT_ID,
+        }),
       }),
     );
   });
@@ -511,6 +521,7 @@ const DTO_CRECHE_BASE = {
   mode: 'CRECHE_PSU' as const,
   foyerId: FOYER_ID,
   enfant: 'Mia',
+  enfantId: ENFANT_ID,
   valideDu: '2026-01-01',
   valideAu: '2026-12-31',
   heuresAnnuellesContractualisees: 885.5,
@@ -684,6 +695,7 @@ const DTO_MODIF_VALIDE: ModifierContratDto = {
   mode: 'CRECHE_PSU',
   foyerId: FOYER_ID,
   enfant: 'Mia',
+  enfantId: ENFANT_ID,
   // Établissement obligatoire (P5) ; le faux `tx` valide son existence/foyer.
   etablissementId: ETAB_ID,
   valideDu: '2026-01-01',
@@ -886,6 +898,83 @@ describe('PlanificationService.rattacherEtablissement (back-fill P5)', () => {
 
     await expect(
       service.rattacherEtablissement(CONTRAT_ID, ETAB_ID),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+});
+
+describe('PlanificationService.rattacherEnfant (back-fill enfant_id)', () => {
+  it('rattache un contrat orphelin : update du seul enfant_id + outbox ContratModifie, AUCUNE suppression de planning', async () => {
+    const { db, updateSet, deleteWhere, insertValues } = fakeDbRattacher({
+      contratLigne: ligneCreche({ enfantId: null }),
+      etabPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.rattacherEnfant(CONTRAT_ID, ENFANT_ID);
+
+    expect(vue).toMatchObject({
+      id: CONTRAT_ID,
+      foyerId: FOYER_ID,
+      enfantId: ENFANT_ID,
+    });
+    // Met à jour le lien sans cascade : pas de delete des plannings (non destructif).
+    expect(updateSet).toHaveBeenCalledTimes(1);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ enfantId: ENFANT_ID }),
+    );
+    expect(deleteWhere).not.toHaveBeenCalled();
+    // L'événement ContratModifie porte le lien (prénom dénormalisé inchangé).
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: CONTRAT_MODIFIE_TYPE,
+        payload: expect.objectContaining({
+          contratId: CONTRAT_ID,
+          enfant: 'Mia',
+          enfantId: ENFANT_ID,
+        }),
+      }),
+    );
+  });
+
+  it('re-pointe un contrat déjà rattaché vers un autre enfant (correction manuelle)', async () => {
+    const { db, updateSet, insertValues } = fakeDbRattacher({
+      contratLigne: ligneCreche({ enfantId: AUTRE_ENFANT_ID }),
+      etabPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.rattacherEnfant(CONTRAT_ID, ENFANT_ID);
+
+    expect(vue).toMatchObject({ enfantId: ENFANT_ID });
+    expect(updateSet).toHaveBeenCalledTimes(1);
+    expect(insertValues).toHaveBeenCalledTimes(1);
+  });
+
+  it('idempotent : contrat déjà rattaché à cet enfant → no-op (aucune écriture, aucun événement)', async () => {
+    const { db, updateSet, insertValues } = fakeDbRattacher({
+      contratLigne: ligneCreche({ enfantId: ENFANT_ID }),
+      etabPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.rattacherEnfant(CONTRAT_ID, ENFANT_ID);
+
+    expect(vue).toMatchObject({ id: CONTRAT_ID, enfantId: ENFANT_ID });
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('404 si le contrat est introuvable : rien n’est écrit', async () => {
+    const { db, updateSet, insertValues } = fakeDbRattacher({
+      contratLigne: null,
+      etabPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    await expect(
+      service.rattacherEnfant(CONTRAT_ID, ENFANT_ID),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(updateSet).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();

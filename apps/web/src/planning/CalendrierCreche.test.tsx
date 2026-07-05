@@ -74,6 +74,7 @@ const contratCreche: ContratLocal = {
   id: 'contrat-creche-1',
   foyerId: 'foyer-1',
   enfant: 'enfant-1',
+  enfantId: 'enfant-id-1',
   mode: 'CRECHE_PSU',
   valideDu: '2026-01-01',
   valideAu: null,

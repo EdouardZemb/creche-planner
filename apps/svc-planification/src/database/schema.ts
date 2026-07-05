@@ -32,8 +32,21 @@ import type {
 export const contrat = pgTable('contrat', {
   id: uuid('id').primaryKey().defaultRandom(),
   foyerId: uuid('foyer_id').notNull(),
-  /** Prénom de l'enfant concerné (ex. "Mia"/"Zoé"). */
+  /**
+   * Prénom de l'enfant concerné (ex. "Mia"/"Zoé"). **Dénormalisation d'affichage** :
+   * la référence est `enfant_id` ; ce prénom est rafraîchi par la projection du
+   * `foyer.EnfantModifie.v1` (cf. `consumers/projection.service.ts`) pour que le
+   * renommage d'un enfant côté `svc-foyer` se propage aux contrats.
+   */
   enfant: varchar('enfant', { length: 200 }).notNull(),
+  /**
+   * Identifiant de l'enfant (agrégat **svc-foyer**) — lien de référence du contrat.
+   * Pas de FK (référence inter-services, comme `foyer_id`). **NULLABLE** le temps du
+   * back-fill des contrats historiques (rapprochement par prénom au sein du foyer,
+   * `scripts/backfill-enfants.mjs`) ; promotion NOT NULL différée, comme
+   * `etablissement_id` (migration 0004).
+   */
+  enfantId: uuid('enfant_id'),
   /** Mode de garde : CRECHE_PSU | CANTINE | PERISCOLAIRE | ALSH. */
   mode: varchar('mode', { length: 32 }).notNull(),
   /**
@@ -160,6 +173,26 @@ export const etablissement = pgTable(
 );
 
 /**
+ * Journal des événements déjà consommés (clé = `id` d'enveloppe `IntegrationEvent`).
+ * Le consommateur du stream `FOYER` (rafraîchissement de la dénormalisation
+ * `contrat.enfant`) vérifie/insère cette ligne **dans la transaction** qui met à
+ * jour les contrats : rejouer un événement (livraison at-least-once JetStream) est
+ * alors un **no-op** — en particulier, pas de double ré-émission `ContratModifie`.
+ * `stream`/`type` sont conservés pour le diagnostic.
+ */
+export const processedEvent = pgTable('processed_event', {
+  /** Identifiant d'enveloppe de l'événement (clé d'idempotence). */
+  id: uuid('id').primaryKey(),
+  /** Stream JetStream d'origine (FOYER). */
+  stream: varchar('stream', { length: 32 }).notNull(),
+  /** Type métier versionné de l'événement (ex. `foyer.EnfantModifie.v1`). */
+  type: varchar('type', { length: 200 }).notNull(),
+  processedAt: timestamp('processed_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
  * Outbox transactionnelle (doc 06 §8.4). L'événement est inséré **dans la même
  * transaction** que le changement d'état ; un relais le publie ensuite sur NATS
  * et renseigne `published_at`. `id` = identifiant d'enveloppe = **clé d'idempotence**.
@@ -178,4 +211,5 @@ export const outbox = pgTable('outbox', {
 export type ContratRow = typeof contrat.$inferSelect;
 export type PlanningMoisRow = typeof planningMois.$inferSelect;
 export type EtablissementRow = typeof etablissement.$inferSelect;
+export type ProcessedEventRow = typeof processedEvent.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;

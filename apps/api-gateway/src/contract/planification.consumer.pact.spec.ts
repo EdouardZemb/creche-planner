@@ -67,6 +67,12 @@ const { integer, uuid } = MatchersV3;
 const FOYER_ID = '33333333-3333-4333-8333-333333333333';
 /** Identifiant figé du contrat ABCM créé (renvoyé par le provider). */
 const CONTRAT_ABCM_ID = '44444444-4444-4444-4444-444444444444';
+/**
+ * Enfant figé des contrats seedés provider (aligné `ENFANT_SEED_ID` du
+ * stateHandler). UUID RFC (v4) : le champ traverse `z.string().uuid()` (Zod 4,
+ * strict version/variant) dans les corps de création/modification.
+ */
+const ENFANT_ID = '77777777-7777-4777-8777-777777777777';
 
 const provider = new PactV3({
   consumer: 'api-gateway',
@@ -173,6 +179,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           id: uuid(CONTRAT_ID),
           foyerId: uuid(FOYER_LISTE_ID),
           enfant: MatchersV3.string('Mia'),
+          enfantId: uuid(ENFANT_ID),
           mode: MatchersV3.string('CRECHE_PSU'),
           valideDu: MatchersV3.string('2026-01-01'),
           valideAu: MatchersV3.string('2026-07-31'),
@@ -221,6 +228,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           mode: 'CANTINE',
           foyerId: FOYER_ID,
           enfant: 'Zoé',
+          enfantId: ENFANT_ID,
           valideDu: '2026-09-01',
           valideAu: null,
           semaineAbcm: semaineAbcmCantineLundi,
@@ -235,6 +243,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           id: uuid(CONTRAT_ABCM_ID),
           foyerId: uuid(FOYER_ID),
           enfant: 'Zoé',
+          enfantId: uuid(ENFANT_ID),
           // Valeur exacte : le contrat fige le mode CANTINE.
           mode: 'CANTINE',
           valideDu: '2026-09-01',
@@ -250,6 +259,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           mode: 'CANTINE',
           foyerId: FOYER_ID,
           enfant: 'Zoé',
+          enfantId: ENFANT_ID,
           valideDu: '2026-09-01',
           valideAu: null,
           semaineAbcm: semaineAbcmCantineLundi,
@@ -276,6 +286,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
       mode: 'ALSH',
       foyerId: FOYER_ID,
       enfant: 'Zoé',
+      enfantId: ENFANT_ID,
       valideDu: '2026-09-01',
       valideAu: null,
       semaineAbcm: semaineAbcmAlshMercredi,
@@ -299,6 +310,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           id: uuid(CONTRAT_ABCM_ID),
           foyerId: uuid(FOYER_ID),
           enfant: 'Zoé',
+          enfantId: uuid(ENFANT_ID),
           mode: 'ALSH',
           valideDu: '2026-09-01',
           valideAu: null,
@@ -334,6 +346,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           id: uuid(CONTRAT_ID),
           foyerId: uuid(FOYER_CONTRAT_ID),
           enfant: MatchersV3.string('Mia'),
+          enfantId: uuid(ENFANT_ID),
           mode: MatchersV3.string('CRECHE_PSU'),
           valideDu: MatchersV3.string('2026-01-01'),
           valideAu: MatchersV3.string('2026-07-31'),
@@ -364,6 +377,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           mode: 'CRECHE_PSU',
           foyerId: FOYER_MODIF_ID,
           enfant: 'Mia',
+          enfantId: ENFANT_ID,
           valideDu: '2026-01-01',
           valideAu: '2026-12-31',
           heuresAnnuellesContractualisees: 763,
@@ -380,6 +394,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           id: uuid(CONTRAT_ID),
           foyerId: uuid(FOYER_MODIF_ID),
           enfant: 'Mia',
+          enfantId: uuid(ENFANT_ID),
           mode: 'CRECHE_PSU',
           valideDu: '2026-01-01',
           valideAu: '2026-12-31',
@@ -396,6 +411,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
             mode: 'CRECHE_PSU',
             foyerId: FOYER_MODIF_ID,
             enfant: 'Mia',
+            enfantId: ENFANT_ID,
             valideDu: '2026-01-01',
             valideAu: '2026-12-31',
             heuresAnnuellesContractualisees: 763,

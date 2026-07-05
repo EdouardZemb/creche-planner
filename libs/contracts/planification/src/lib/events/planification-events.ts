@@ -33,6 +33,14 @@ export const contratCreePayloadSchema = z.object({
   foyerId: z.string().uuid(),
   /** Prénom de l'enfant concerné par le contrat (ex. "Mia"/"Zoé"). */
   enfant: z.string().min(1),
+  /**
+   * Identifiant de l'enfant (agrégat `svc-foyer`) rattaché au contrat, ou `null`
+   * pour un contrat historique pas encore rapproché (colonne `contrat.enfant_id`
+   * NULLABLE jusqu'au back-fill). Champ **additif et OPTIONNEL** dans la v1 (même
+   * évolution non rupteur que `etablissementId` en P2) : les consommateurs qui
+   * l'ignorent (`svc-tarification`, `svc-notifications`) ne sont pas cassés.
+   */
+  enfantId: z.string().uuid().nullish(),
   /** Mode de garde du contrat. */
   mode: z.enum(MODES_CONTRAT),
   /** Début de validité, ISO `YYYY-MM-DD`. */
@@ -92,6 +100,8 @@ export const contratModifiePayloadSchema = z.object({
   foyerId: z.string().uuid(),
   /** Prénom de l'enfant concerné par le contrat (ex. "Mia"/"Zoé"). */
   enfant: z.string().min(1),
+  /** Identifiant de l'enfant (`svc-foyer`), optionnel/nullable. Cf. `ContratCree`. */
+  enfantId: z.string().uuid().nullish(),
   /** Mode de garde du contrat (peut changer en édition). */
   mode: z.enum(MODES_CONTRAT),
   /** Début de validité, ISO `YYYY-MM-DD`. */

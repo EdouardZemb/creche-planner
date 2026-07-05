@@ -55,6 +55,11 @@ export interface ContratVue {
   readonly id: string;
   readonly foyerId: string;
   readonly enfant: string;
+  /**
+   * Identifiant de l'enfant (agrégat `svc-foyer`) — lien de référence du contrat ;
+   * `null` pour un contrat historique pas encore rapproché (back-fill en attente).
+   */
+  readonly enfantId: string | null;
   readonly mode: string;
   readonly valideDu: string;
   readonly valideAu: string | null;
@@ -120,6 +125,7 @@ export class PlanificationService {
         id,
         foyerId: dto.foyerId,
         enfant: dto.enfant,
+        enfantId: dto.enfantId,
         mode: dto.mode,
         etablissementId,
         valideDu: dto.valideDu,
@@ -136,6 +142,7 @@ export class PlanificationService {
         contratId: id,
         foyerId: dto.foyerId,
         enfant: dto.enfant,
+        enfantId: dto.enfantId,
         mode: dto.mode,
         valideDu: dto.valideDu,
         valideAu: dto.valideAu,
@@ -153,6 +160,7 @@ export class PlanificationService {
       id,
       foyerId: dto.foyerId,
       enfant: dto.enfant,
+      enfantId: dto.enfantId,
       mode: dto.mode,
       valideDu: dto.valideDu,
       valideAu: dto.valideAu,
@@ -175,6 +183,7 @@ export class PlanificationService {
       id: l.id,
       foyerId: l.foyerId,
       enfant: l.enfant,
+      enfantId: l.enfantId,
       mode: l.mode,
       etablissementId: l.etablissementId,
       valideDu: l.valideDu,
@@ -205,6 +214,7 @@ export class PlanificationService {
       id: ligne.id,
       foyerId: ligne.foyerId,
       enfant: ligne.enfant,
+      enfantId: ligne.enfantId,
       mode: ligne.mode,
       valideDu: ligne.valideDu,
       valideAu: ligne.valideAu,
@@ -251,6 +261,7 @@ export class PlanificationService {
         .set({
           foyerId: dto.foyerId,
           enfant: dto.enfant,
+          enfantId: dto.enfantId,
           mode: dto.mode,
           etablissementId,
           valideDu: dto.valideDu,
@@ -272,6 +283,7 @@ export class PlanificationService {
         contratId: id,
         foyerId: dto.foyerId,
         enfant: dto.enfant,
+        enfantId: dto.enfantId,
         mode: dto.mode,
         valideDu: dto.valideDu,
         valideAu: dto.valideAu,
@@ -289,6 +301,7 @@ export class PlanificationService {
       id,
       foyerId: dto.foyerId,
       enfant: dto.enfant,
+      enfantId: dto.enfantId,
       mode: dto.mode,
       valideDu: dto.valideDu,
       valideAu: dto.valideAu,
@@ -326,6 +339,7 @@ export class PlanificationService {
         id: ligne.id,
         foyerId: ligne.foyerId,
         enfant: ligne.enfant,
+        enfantId: ligne.enfantId,
         mode: ligne.mode,
         valideDu: ligne.valideDu,
         valideAu: ligne.valideAu,
@@ -359,6 +373,7 @@ export class PlanificationService {
         contratId: ligne.id,
         foyerId: ligne.foyerId,
         enfant: ligne.enfant,
+        enfantId: ligne.enfantId,
         mode: ligne.mode as ModeContrat,
         valideDu: ligne.valideDu,
         valideAu: ligne.valideAu,
@@ -371,6 +386,79 @@ export class PlanificationService {
         traceId: traceIdCourant(),
       });
       return vue;
+    });
+  }
+
+  /**
+   * Rattache le contrat `contratId` à l'enfant `enfantId` (lien de référence vers
+   * l'agrégat `svc-foyer`) **sans remplacer le reste du contrat ni invalider ses
+   * plannings** — même geste chirurgical que `rattacherEtablissement`. Dédié au
+   * **back-fill** des contrats historiques (`scripts/backfill-enfants.mjs`,
+   * rapprochement par prénom au sein du foyer, fait par l'appelant). L'existence
+   * de l'enfant n'est PAS vérifiée ici : `svc-planification` ne projette pas les
+   * enfants (référence inter-services de confiance, comme `foyerId`).
+   *
+   * Émet `ContratModifie` (état complet relu depuis la ligne) pour que les
+   * read-models aval propagent le lien. **Idempotent** : si le contrat pointe déjà
+   * sur cet enfant, no-op (aucune écriture, aucun événement) — un re-run est sûr.
+   * 404 si le contrat est introuvable.
+   */
+  async rattacherEnfant(
+    contratId: string,
+    enfantId: string,
+  ): Promise<ContratVue> {
+    return this.db.transaction(async (tx) => {
+      const lignes = await tx
+        .select()
+        .from(contrat)
+        .where(eq(contrat.id, contratId));
+      const ligne = lignes[0];
+      if (!ligne) {
+        throw new NotFoundException(`contrat introuvable : ${contratId}`);
+      }
+      // Idempotence : déjà rattaché à CET enfant → rien à faire.
+      if (ligne.enfantId === enfantId) {
+        return {
+          id: ligne.id,
+          foyerId: ligne.foyerId,
+          enfant: ligne.enfant,
+          enfantId: ligne.enfantId,
+          mode: ligne.mode,
+          valideDu: ligne.valideDu,
+          valideAu: ligne.valideAu,
+        };
+      }
+      // Met à jour le SEUL lien (pas de remplacement du contrat, pas de cascade
+      // planning) — non destructif sur les saisies de planning existantes.
+      await tx
+        .update(contrat)
+        .set({ enfantId, updatedAt: new Date() })
+        .where(eq(contrat.id, contratId));
+      const payload: ContratModifiePayload = {
+        contratId: ligne.id,
+        foyerId: ligne.foyerId,
+        enfant: ligne.enfant,
+        enfantId,
+        mode: ligne.mode as ModeContrat,
+        valideDu: ligne.valideDu,
+        valideAu: ligne.valideAu,
+        etablissementId: ligne.etablissementId,
+      };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: CONTRAT_MODIFIE_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+      return {
+        id: ligne.id,
+        foyerId: ligne.foyerId,
+        enfant: ligne.enfant,
+        enfantId,
+        mode: ligne.mode,
+        valideDu: ligne.valideDu,
+        valideAu: ligne.valideAu,
+      };
     });
   }
 

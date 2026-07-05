@@ -19,6 +19,8 @@ export interface SaisieContrat {
   readonly mode: 'CRECHE_PSU' | 'CANTINE' | 'PERISCOLAIRE' | 'ALSH';
   readonly foyerId: string;
   readonly enfant: string;
+  /** Lien de référence vers l'enfant (agrégat `svc-foyer`). */
+  readonly enfantId: string;
   readonly valideDu: string;
   readonly valideAu: string | null;
   readonly [k: string]: unknown;
@@ -29,6 +31,11 @@ const contratVueSchema = z.object({
   id: z.string(),
   foyerId: z.string(),
   enfant: z.string(),
+  /**
+   * Lien de référence vers l'enfant (`svc-foyer`), `null` pour un contrat
+   * historique pas encore rapproché (back-fill en attente).
+   */
+  enfantId: z.string().nullable(),
   mode: z.string(),
   /**
    * Établissement réel rattaché (lien explicite P2/P3), `null`/absent si aucun.
