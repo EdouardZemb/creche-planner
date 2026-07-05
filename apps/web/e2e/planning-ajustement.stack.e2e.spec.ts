@@ -1,5 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
-import { lireEtatSeed, urlPlanning } from './support/stack';
+import {
+  lireEtatSeed,
+  urlPlanning,
+  attendreEnregistrementPlanning as attendreEnregistrement,
+  rechargerEtRelirePlanning,
+} from './support/stack';
 
 // Parcours « ajustement de planning par jour » sur stack réelle.
 // Vérifie l'ajout et le retrait ponctuels d'un jour (exceptions ABCM) ET leur
@@ -24,15 +29,6 @@ function cellule(page: Page, iso: string) {
 function libelleFr(iso: string): string {
   const [a, m, j] = iso.split('-');
   return `${j}/${m}/${a}`;
-}
-
-/** Exécute `action` puis attend l'enregistrement serveur (PUT du planning, debounce 800 ms). */
-async function attendreEnregistrement(page: Page, action: () => Promise<void>) {
-  const reponse = page.waitForResponse(
-    (r) => /\/plannings\//.test(r.url()) && r.request().method() === 'PUT',
-  );
-  await action();
-  await reponse;
 }
 
 /**
@@ -78,7 +74,7 @@ test('stack réelle : retirer un jour de cantine persiste après rechargement', 
   await expect(page.getByText(/-1\s+jour/)).toBeVisible();
 
   // PERSISTANCE : après rechargement, le retrait est restitué depuis le serveur.
-  await page.reload();
+  await rechargerEtRelirePlanning(page);
   await expect(cellule(page, '2026-10-05')).toBeVisible();
   await expect(
     cellule(page, '2026-10-05').locator('.fc-event-title'),
@@ -120,7 +116,7 @@ test('stack réelle : ajouter un jour de cantine persiste après rechargement', 
   ).toHaveText('Ajouté');
 
   // PERSISTANCE : après rechargement, l'ajout est restitué depuis le serveur.
-  await page.reload();
+  await rechargerEtRelirePlanning(page);
   await expect(cellule(page, '2026-10-07')).toBeVisible();
   await expect(
     cellule(page, '2026-10-07').locator('.fc-event-title'),
