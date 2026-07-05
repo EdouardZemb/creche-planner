@@ -458,10 +458,11 @@ export function ContratForm({
   const [mode, setMode] = useState<Mode>(
     contrat && estMode(contrat.mode) ? contrat.mode : 'CRECHE_PSU',
   );
+  // Le contrat porte le lien `enfantId` (référence svc-foyer) : plus de
+  // rapprochement fragile par prénom. `null` (contrat historique pas encore
+  // back-fillé) retombe sur '' → l'utilisateur re-choisit dans le select.
   const [enfantId, setEnfantId] = useState<string>(
-    contrat
-      ? (enfants.find((e) => e.prenom === contrat.enfant)?.id ?? '')
-      : (enfants[0]?.id ?? ''),
+    contrat ? (contrat.enfantId ?? '') : (enfants[0]?.id ?? ''),
   );
   const [valideDu, setValideDu] = useState(contrat?.valideDu ?? '');
   const [valideAu, setValideAu] = useState(contrat?.valideAu ?? '');
@@ -592,6 +593,9 @@ export function ContratForm({
 
     const baseContrat = {
       foyerId,
+      // Lien de référence (id svc-foyer) + prénom dénormalisé pour l'affichage
+      // (rafraîchi côté services quand l'enfant est renommé).
+      enfantId: enfantSelectionne.id,
       enfant: enfantSelectionne.prenom,
       valideDu,
       ...(valideAu.trim() !== '' ? { valideAu: valideAu } : { valideAu: null }),

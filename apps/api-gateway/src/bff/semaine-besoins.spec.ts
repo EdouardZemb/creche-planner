@@ -22,6 +22,7 @@ const contrat = (
   id: '11111111-1111-1111-1111-111111111111',
   foyerId: '22222222-2222-2222-2222-222222222222',
   enfant: 'Mia',
+  enfantId: null,
   etablissementId: null,
   valideDu: '2026-01-01',
   valideAu: null,

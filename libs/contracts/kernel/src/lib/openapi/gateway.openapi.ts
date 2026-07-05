@@ -199,7 +199,16 @@ export const gatewayOpenApiDocument = {
         properties: {
           id: { type: 'string', format: 'uuid' },
           foyerId: { type: 'string', format: 'uuid' },
+          /**
+           * Prénom de l'enfant, dénormalisation d'affichage rafraîchie par la
+           * projection `foyer.EnfantModifie` — la référence est `enfantId`.
+           */
           enfant: { type: 'string' },
+          /**
+           * Lien de référence vers l'enfant (agrégat svc-foyer) ; `null` pour un
+           * contrat historique pas encore rapproché (back-fill en attente).
+           */
+          enfantId: { type: ['string', 'null'], format: 'uuid' },
           mode: { type: 'string' },
           /**
            * Établissement réel rattaché (lien explicite P2/P3) ; null/absent si
@@ -210,7 +219,15 @@ export const gatewayOpenApiDocument = {
           valideDu: { type: 'string', format: 'date' },
           valideAu: { type: ['string', 'null'], format: 'date' },
         },
-        required: ['id', 'foyerId', 'enfant', 'mode', 'valideDu', 'valideAu'],
+        required: [
+          'id',
+          'foyerId',
+          'enfant',
+          'enfantId',
+          'mode',
+          'valideDu',
+          'valideAu',
+        ],
       },
       PreavisRegle: {
         description:
@@ -668,9 +685,10 @@ export const gatewayOpenApiDocument = {
       put: {
         summary: 'Éditer un enfant (prénom/date)',
         description:
-          'Met à jour un enfant du foyer. Renommer un enfant n’affecte pas ' +
-          'les contrats existants (le contrat référence l’enfant par prénom ' +
-          'libre, dans un autre service).',
+          'Met à jour un enfant du foyer. Le renommage se propage aux ' +
+          'contrats existants : svc-planification référence l’enfant par ' +
+          '`enfantId` et rafraîchit son prénom dénormalisé à la réception de ' +
+          '`foyer.EnfantModifie` (projection NATS).',
         parameters: [
           {
             name: 'id',
@@ -716,7 +734,8 @@ export const gatewayOpenApiDocument = {
         summary: 'Retirer un enfant (hard delete)',
         description:
           'Supprime un enfant du foyer. Sans effet sur les contrats ' +
-          'existants (couplage par prénom libre, dans un autre service).',
+          'existants (leur `enfantId` pointe alors vers un enfant disparu ; ' +
+          'leur suppression reste un geste explicite de l’utilisateur).',
         parameters: [
           {
             name: 'id',
@@ -1137,6 +1156,7 @@ export const gatewayOpenApiDocument = {
                   },
                   foyerId: { type: 'string', format: 'uuid' },
                   enfant: { type: 'string' },
+                  enfantId: { type: 'string', format: 'uuid' },
                   etablissementId: { type: 'string', format: 'uuid' },
                   nouvelEtablissement: {
                     $ref: '#/components/schemas/CreerEtablissementCorps',
@@ -1144,7 +1164,14 @@ export const gatewayOpenApiDocument = {
                   valideDu: { type: 'string', format: 'date' },
                   valideAu: { type: ['string', 'null'], format: 'date' },
                 },
-                required: ['mode', 'foyerId', 'enfant', 'valideDu', 'valideAu'],
+                required: [
+                  'mode',
+                  'foyerId',
+                  'enfant',
+                  'enfantId',
+                  'valideDu',
+                  'valideAu',
+                ],
               },
             },
           },

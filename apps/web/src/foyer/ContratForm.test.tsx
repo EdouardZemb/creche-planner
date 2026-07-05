@@ -41,6 +41,7 @@ const contratVueFactice: ContratVue = {
   id: 'c1',
   foyerId: 'f1',
   enfant: 'Mia',
+  enfantId: 'e1',
   mode: 'CRECHE_PSU',
   valideDu: '2026-09-01',
   valideAu: null,
@@ -408,6 +409,7 @@ describe('ContratForm', () => {
     id: 'c1',
     foyerId: 'f1',
     enfant: 'Zoé',
+    enfantId: 'e2',
     mode: 'CRECHE_PSU',
     etablissementId: 'et-1',
     valideDu: '2026-01-01',
@@ -441,6 +443,25 @@ describe('ContratForm', () => {
     expect(
       screen.getByRole('button', { name: /Enregistrer les modifications/i }),
     ).toBeInTheDocument();
+  });
+
+  it('sélectionne l’enfant par son id (référence), même si le prénom dénormalisé ne correspond plus', () => {
+    // Un contrat dont le prénom stocké a divergé (ex. projection en retard) :
+    // l'ancien rapprochement par prénom aurait vidé le select ; le lien par id
+    // reste correct.
+    render(
+      <ContratForm
+        foyerId="f1"
+        enfants={enfantsTest}
+        etablissements={etablissementsTest}
+        contrat={{ ...contratEditeFactice, enfant: 'Ancien-Prénom' }}
+        onCree={vi.fn()}
+      />,
+    );
+
+    expect((screen.getByLabelText(/Enfant/i) as HTMLSelectElement).value).toBe(
+      'e2',
+    );
   });
 
   it('appelle modifierContrat (pas creerContrat) à la soumission en édition', async () => {

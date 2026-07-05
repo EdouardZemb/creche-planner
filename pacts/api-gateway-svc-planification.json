@@ -13,6 +13,7 @@
       "request": {
         "body": {
           "enfant": "Zoé",
+          "enfantId": "77777777-7777-4777-8777-777777777777",
           "foyerId": "33333333-3333-4333-8333-333333333333",
           "mode": "ALSH",
           "nouvelEtablissement": {
@@ -44,6 +45,7 @@
       "response": {
         "body": {
           "enfant": "Zoé",
+          "enfantId": "77777777-7777-4777-8777-777777777777",
           "foyerId": "33333333-3333-4333-8333-333333333333",
           "id": "44444444-4444-4444-4444-444444444444",
           "mode": "ALSH",
@@ -55,6 +57,15 @@
         },
         "matchingRules": {
           "body": {
+            "$.enfantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
             "$.foyerId": {
               "combine": "AND",
               "matchers": [
@@ -88,6 +99,7 @@
       "request": {
         "body": {
           "enfant": "Zoé",
+          "enfantId": "77777777-7777-4777-8777-777777777777",
           "foyerId": "33333333-3333-4333-8333-333333333333",
           "mode": "CANTINE",
           "nouvelEtablissement": {
@@ -116,6 +128,7 @@
       "response": {
         "body": {
           "enfant": "Zoé",
+          "enfantId": "77777777-7777-4777-8777-777777777777",
           "foyerId": "33333333-3333-4333-8333-333333333333",
           "id": "44444444-4444-4444-4444-444444444444",
           "mode": "CANTINE",
@@ -127,6 +140,15 @@
         },
         "matchingRules": {
           "body": {
+            "$.enfantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
             "$.foyerId": {
               "combine": "AND",
               "matchers": [
@@ -170,6 +192,7 @@
         "body": [
           {
             "enfant": "Mia",
+            "enfantId": "77777777-7777-4777-8777-777777777777",
             "foyerId": "22222222-2222-2222-2222-222222222222",
             "heuresAnnuellesContractualisees": 763,
             "id": "11111111-1111-1111-1111-111111111111",
@@ -208,6 +231,15 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            },
+            "$[*].enfantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
                 }
               ]
             },
@@ -417,6 +449,7 @@
       "response": {
         "body": {
           "enfant": "Mia",
+          "enfantId": "77777777-7777-4777-8777-777777777777",
           "foyerId": "22222222-2222-2222-2222-222222222222",
           "id": "11111111-1111-1111-1111-111111111111",
           "mode": "CRECHE_PSU",
@@ -433,6 +466,15 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            },
+            "$.enfantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
                 }
               ]
             },
@@ -496,6 +538,7 @@
       "request": {
         "body": {
           "enfant": "Mia",
+          "enfantId": "77777777-7777-4777-8777-777777777777",
           "foyerId": "22222222-2222-4222-8222-222222222222",
           "heuresAnnuellesContractualisees": 763,
           "mode": "CRECHE_PSU",
@@ -531,6 +574,7 @@
       "response": {
         "body": {
           "enfant": "Mia",
+          "enfantId": "77777777-7777-4777-8777-777777777777",
           "foyerId": "22222222-2222-4222-8222-222222222222",
           "id": "11111111-1111-1111-1111-111111111111",
           "mode": "CRECHE_PSU",
@@ -542,6 +586,15 @@
         },
         "matchingRules": {
           "body": {
+            "$.enfantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
             "$.foyerId": {
               "combine": "AND",
               "matchers": [

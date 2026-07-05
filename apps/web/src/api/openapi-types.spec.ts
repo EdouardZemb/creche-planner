@@ -63,6 +63,8 @@ describe('openapi-types — types générés depuis le contrat gateway', () => {
     >();
 
     // ContratVue : `valideAu` est nullable (type ['string','null'] du contrat) ;
+    // `enfantId` est le lien de référence vers l'enfant (svc-foyer), requis et
+    // nullable (null = contrat historique pas encore back-fillé) ;
     // `etablissementId` est le lien explicite vers l'établissement (P2/P3),
     // optionnel et nullable (non requis dans le schema).
     verifie<
@@ -72,6 +74,7 @@ describe('openapi-types — types générés depuis le contrat gateway', () => {
           id: string;
           foyerId: string;
           enfant: string;
+          enfantId: string | null;
           mode: string;
           etablissementId?: string | null;
           valideDu: string;

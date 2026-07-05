@@ -19,6 +19,7 @@ import {
   ecrirePlanningSchema,
   ecrireSemaineSchema,
   modifierContratSchema,
+  rattacherEnfantSchema,
   rattacherEtablissementSchema,
   ISO_MOIS,
   ZodValidationPipe,
@@ -26,6 +27,7 @@ import {
   type EcrirePlanningDto,
   type EcrireSemaineDto,
   type ModifierContratDto,
+  type RattacherEnfantDto,
   type RattacherEtablissementDto,
 } from './planification.dto.js';
 import {
@@ -95,6 +97,22 @@ export class PlanificationController {
     dto: RattacherEtablissementDto,
   ): Promise<ContratVue> {
     return this.planification.rattacherEtablissement(id, dto.etablissementId);
+  }
+
+  /**
+   * Rattache un contrat existant à son enfant (`svc-foyer`) **sans toucher au reste
+   * du contrat ni à ses plannings** — même geste chirurgical que le rattachement
+   * d'établissement. Opération idempotente dédiée au back-fill des contrats
+   * historiques (`scripts/backfill-enfants.mjs`) → émet `ContratModifie`.
+   * 404 si le contrat est absent.
+   */
+  @Put('contrats/:id/enfant')
+  rattacherEnfant(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(rattacherEnfantSchema))
+    dto: RattacherEnfantDto,
+  ): Promise<ContratVue> {
+    return this.planification.rattacherEnfant(id, dto.enfantId);
   }
 
   /** Supprime un contrat de garde (+ ses plannings) → émet `ContratSupprime`. */

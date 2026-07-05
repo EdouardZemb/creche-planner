@@ -67,6 +67,11 @@ export default [
               onlyDependOnLibsWithTags: [
                 'context:planification',
                 'context:shared',
+                // Consommateur des ÉVÉNEMENTS foyer (contracts-foyer) : la
+                // projection `foyer.EnfantModifie` rafraîchit la dénormalisation
+                // `contrat.enfant` (prénom). Couplage par contrats d'événements
+                // uniquement — même schéma que tarification/notifications.
+                'context:foyer',
               ],
             },
             {

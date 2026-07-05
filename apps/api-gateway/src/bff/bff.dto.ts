@@ -85,7 +85,9 @@ export const creerContratSchema = z
   .object({
     mode: z.enum(['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH']),
     foyerId: z.string().min(1),
+    // Prénom dénormalisé (affichage) + lien de référence vers l'enfant (svc-foyer).
     enfant: z.string().min(1),
+    enfantId: z.string().min(1),
     valideDu: z.string().min(1),
     valideAu: z.string().nullable(),
   })

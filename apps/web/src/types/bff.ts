@@ -137,8 +137,9 @@ export type CreerEnfant = CreerDossierFoyer['enfants'][number];
 
 /**
  * Corps d'**édition d'un enfant** (`PUT /api/v1/foyers/{id}/enfants/{enfantId}`) —
- * prénom + date. Renommer/supprimer un enfant n'affecte pas les contrats existants
- * (couplage par prénom libre, cf. svc-planification).
+ * prénom + date. Le renommage se propage aux contrats existants : ils référencent
+ * l'enfant par `enfantId` et leur prénom dénormalisé est rafraîchi par projection
+ * NATS (`foyer.EnfantModifie` → svc-planification).
  */
 export type ModifierEnfant = CorpsRequeteJson<
   '/api/v1/foyers/{id}/enfants/{enfantId}',
@@ -210,7 +211,10 @@ export type SemaineAbcm = Partial<Record<JourSemaine, InscriptionsJour>>;
 export interface CreerContratCreche {
   mode: 'CRECHE_PSU';
   foyerId: string;
+  /** Prénom dénormalisé (affichage) ; la référence est `enfantId`. */
   enfant: string;
+  /** Lien de référence vers l'enfant (id svc-foyer). */
+  enfantId: string;
   valideDu: string;
   valideAu: string | null;
   heuresAnnuellesContractualisees: number;
@@ -221,7 +225,10 @@ export interface CreerContratCreche {
 export interface CreerContratAbcm {
   mode: 'CANTINE' | 'PERISCOLAIRE' | 'ALSH';
   foyerId: string;
+  /** Prénom dénormalisé (affichage) ; la référence est `enfantId`. */
   enfant: string;
+  /** Lien de référence vers l'enfant (id svc-foyer). */
+  enfantId: string;
   valideDu: string;
   valideAu: string | null;
   semaineAbcm: SemaineAbcm;

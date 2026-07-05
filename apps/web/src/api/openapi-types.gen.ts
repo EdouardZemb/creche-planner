@@ -330,7 +330,7 @@ export interface paths {
         get?: never;
         /**
          * Éditer un enfant (prénom/date)
-         * @description Met à jour un enfant du foyer. Renommer un enfant n’affecte pas les contrats existants (le contrat référence l’enfant par prénom libre, dans un autre service).
+         * @description Met à jour un enfant du foyer. Le renommage se propage aux contrats existants : svc-planification référence l’enfant par `enfantId` et rafraîchit son prénom dénormalisé à la réception de `foyer.EnfantModifie` (projection NATS).
          */
         put: {
             parameters: {
@@ -373,7 +373,7 @@ export interface paths {
         post?: never;
         /**
          * Retirer un enfant (hard delete)
-         * @description Supprime un enfant du foyer. Sans effet sur les contrats existants (couplage par prénom libre, dans un autre service).
+         * @description Supprime un enfant du foyer. Sans effet sur les contrats existants (leur `enfantId` pointe alors vers un enfant disparu ; leur suppression reste un geste explicite de l’utilisateur).
          */
         delete: {
             parameters: {
@@ -960,6 +960,8 @@ export interface paths {
                         foyerId: string;
                         enfant: string;
                         /** Format: uuid */
+                        enfantId: string;
+                        /** Format: uuid */
                         etablissementId?: string;
                         nouvelEtablissement?: components["schemas"]["CreerEtablissementCorps"];
                         /** Format: date */
@@ -1375,6 +1377,8 @@ export interface components {
             /** Format: uuid */
             foyerId: string;
             enfant: string;
+            /** Format: uuid */
+            enfantId: string | null;
             mode: string;
             /** Format: uuid */
             etablissementId?: string | null;

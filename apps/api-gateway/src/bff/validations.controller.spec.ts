@@ -28,6 +28,7 @@ const contrat = (
 ): ContratVue => ({
   foyerId: 'foyer-1',
   enfant: 'Mia',
+  enfantId: null,
   etablissementId: null,
   valideDu: '2026-01-01',
   valideAu: null,
