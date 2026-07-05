@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  act,
+} from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { CalendrierAbcm } from './CalendrierAbcm';
 import type { ContratLocal } from '../types/bff';
@@ -304,6 +310,87 @@ describe('CalendrierAbcm - CANTINE', () => {
       },
       { timeout: 2000 },
     );
+  });
+
+  // Anti-clobber (race « saisie puis reload ») : une édition faite PENDANT le GET
+  // de réhydratation ne doit pas être écrasée quand ce GET (plus ancien) revient.
+  it('ne réécrase pas une édition locale faite pendant le chargement du GET', async () => {
+    // GET volontairement lent : on contrôle sa résolution pour éditer AVANT.
+    let resoudre!: (v: Awaited<ReturnType<typeof api.lirePlanning>>) => void;
+    const enAttente = new Promise<Awaited<ReturnType<typeof api.lirePlanning>>>(
+      (r) => {
+        resoudre = r;
+      },
+    );
+    vi.mocked(api.lirePlanning).mockReturnValue(enAttente);
+    vi.mocked(api.ecrirePlanning).mockResolvedValue(undefined);
+
+    render(
+      <CalendrierAbcm
+        contrat={contratCantine}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    // Édition locale pendant le chargement : retirer la cantine du 01/06 (lundi
+    // réservé au contrat) → une exception `cantine:false`, le jour passe « non réservé ».
+    fireEvent.click(screen.getByTestId('simulate-date-click-reserve'));
+    fireEvent.click(screen.getByLabelText('Cantine')); // décoche
+    fireEvent.click(screen.getByText('Confirmer'));
+    expect(
+      screen.getByRole('button', {
+        name: /Ajuster le 01\/06\/2026 \(non réservé\)/i,
+      }),
+    ).toBeInTheDocument();
+
+    // Le GET (antérieur à l'édition) se résout avec une saisie serveur SANS
+    // exception : sans garde, il restaurerait le 01/06 « réservé » (template).
+    await act(async () => {
+      resoudre({ saisie: {} });
+    });
+
+    // L'édition locale prime : le 01/06 reste « non réservé ».
+    expect(
+      screen.getByRole('button', {
+        name: /Ajuster le 01\/06\/2026 \(non réservé\)/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  // Contre-épreuve : sans édition locale, un GET lent reste la source de vérité.
+  it('réhydrate depuis un GET lent quand aucune édition locale n a eu lieu', async () => {
+    let resoudre!: (v: Awaited<ReturnType<typeof api.lirePlanning>>) => void;
+    const enAttente = new Promise<Awaited<ReturnType<typeof api.lirePlanning>>>(
+      (r) => {
+        resoudre = r;
+      },
+    );
+    vi.mocked(api.lirePlanning).mockReturnValue(enAttente);
+
+    render(
+      <CalendrierAbcm
+        contrat={contratCantine}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    // Aucune édition : à la résolution, l'exception serveur (01/06 retiré) doit
+    // s'appliquer et faire passer le 01/06 « non réservé ».
+    await act(async () => {
+      resoudre({
+        saisie: { exceptions: [{ date: '2026-06-01', cantine: false }] },
+      });
+    });
+
+    expect(
+      screen.getByRole('button', {
+        name: /Ajuster le 01\/06\/2026 \(non réservé\)/i,
+      }),
+    ).toBeInTheDocument();
   });
 });
 

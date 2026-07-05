@@ -131,6 +131,28 @@ La source de vérité d'une saisie est `planning_mois.saisie`, pas le navigateur
 
 Le sessionStorage n'est donc qu'un **brouillon** ; un autre poste retrouve la saisie via le serveur.
 
+### 5.1 Garde anti-écrasement (édition pendant le chargement)
+
+Le calendrier s'affiche depuis le brouillon local **avant** que le `GET` de réhydratation ne réponde :
+un parent peut donc éditer un jour **pendant** cette fenêtre de chargement (fréquent en 4G lente). Sans
+garde, la réponse — plus **ancienne** que l'édition — écraserait la saisie fraîche à son arrivée : l'UI
+« revient en arrière » quelques instants (le `PUT` debouncé finit par persister, donc auto-guérison au
+prochain chargement, mais le clignotement est une régression visible). C'est la course qui rendait aussi
+les specs e2e stack flaky (une absence supprimée « réapparaissait » en « Ajusté »).
+
+Solution : une **séquence d'édition locale monotone**. [`useCalendrierContrat`](../apps/web/src/planning/useCalendrierContrat.ts)
+tient un compteur (`seqMutationRef`) et expose `marquerSaisieLocale()` — appelé à chaque mutation locale
+(via `envoyer`, point de passage unique des éditions) — et `saisieServeurObsolete()`.
+[`useSaisieServeur`](../apps/web/src/planning/useSaisieServeur.ts) **fige** la valeur du compteur **au
+lancement du `GET`** (`seqAuChargement`). L'effet de réhydratation ignore la réponse quand
+`seqMutationRef.current > seqAuChargement` (une édition est survenue depuis) :
+
+- **édition pendant le chargement** → le `GET` périmé est ignoré, l'édition prime ;
+- **montage propre** (aucune édition) → `seqAuChargement` inchangé, le serveur reste **source de vérité**.
+
+> ⚠️ Le lecteur `lireSeqLocale` passé à `useSaisieServeur` doit avoir une **identité stable**
+> (`useCallback([])`), sinon l'effet du `GET` se redéclenche à chaque rendu (boucle de refetch).
+
 ---
 
 ## 6. Tests associés
@@ -142,9 +164,13 @@ Le sessionStorage n'est donc qu'un **brouillon** ; un autre poste retrouve la sa
     `ExceptionJour` : ajout (`true`), retrait explicite (`false`), héritage (`undefined`).
 - **Web (composant)** :
   - [`CalendrierCreche.test.tsx`](../apps/web/src/planning/CalendrierCreche.test.tsx) — heures
-    arrivée/départ, « absence toute la journée », ajout/retrait, choix de portée + confirmation.
-  - [`CalendrierAbcm.test.tsx`](../apps/web/src/planning/CalendrierAbcm.test.tsx),
-    [`PlanningPage.test.tsx`](../apps/web/src/planning/PlanningPage.test.tsx).
+    arrivée/départ, « absence toute la journée », ajout/retrait, choix de portée + confirmation, et
+    **garde anti-écrasement** (§5.1 : une édition faite pendant un `GET` lent survit à sa résolution ;
+    contre-épreuve : sans édition, le `GET` lent réhydrate bien).
+  - [`CalendrierAbcm.test.tsx`](../apps/web/src/planning/CalendrierAbcm.test.tsx) (dont la même garde
+    anti-écrasement), [`PlanningPage.test.tsx`](../apps/web/src/planning/PlanningPage.test.tsx).
+  - [`useSaisieServeur.test.ts`](../apps/web/src/planning/useSaisieServeur.test.ts) — round-trip exact,
+    abort au démontage, et capture du compteur d'édition figé au lancement du `GET` (`seqAuChargement`).
 - **Pact** : [`planification.consumer.pact.spec.ts`](../apps/api-gateway/src/contract/planification.consumer.pact.spec.ts)
   (relecture `GET …/plannings/:mois` : saisie présente vs `{ saisie: null }`) ; vérifié côté provider
   par [`planification.provider.pact.spec.ts`](../apps/svc-planification/src/contract/planification.provider.pact.spec.ts).
