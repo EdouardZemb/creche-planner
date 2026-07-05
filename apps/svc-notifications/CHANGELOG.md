@@ -1,3 +1,14 @@
+## 0.9.0 (2026-07-05)
+
+### 🚀 Features
+
+- **notifications:** émettre SemaineValidee.v1 via l'outbox à la validation d'une semaine ([#168](https://github.com/EdouardZemb/creche-planner/pull/168))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.8.1 (2026-07-03)
 
 ### 🚀 Features

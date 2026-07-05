@@ -1,3 +1,15 @@
+## 0.9.0 (2026-07-05)
+
+### 🚀 Features
+
+- **planification:** lier le contrat à l'enfant par enfantId (fin du couplage par prénom libre) ([#167](https://github.com/EdouardZemb/creche-planner/pull/167))
+- **planification:** modéliser l'inscription ALSH hebdomadaire de bout en bout ([#162](https://github.com/EdouardZemb/creche-planner/pull/162))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.8.1 (2026-07-03)
 
 ### 🚀 Features

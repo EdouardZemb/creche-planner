@@ -1,3 +1,32 @@
+## 0.9.0 (2026-07-05)
+
+### 🚀 Features
+
+- **planification:** lier le contrat à l'enfant par enfantId (fin du couplage par prénom libre) ([#167](https://github.com/EdouardZemb/creche-planner/pull/167))
+- **web:** page contrats professionnelle sur mobile (contrats lot 2) ([#164](https://github.com/EdouardZemb/creche-planner/pull/164))
+- **web:** saisie et affichage de l'ALSH hebdomadaire partout où le parent regarde (contrats lot 1b) ([#163](https://github.com/EdouardZemb/creche-planner/pull/163))
+- **web:** hiérarchie et stabilité visuelle du tableau de bord (UX dashboard lot 3) ([#161](https://github.com/EdouardZemb/creche-planner/pull/161))
+- **web:** micro-finition et langage parent sur le tableau de bord (UX dashboard lot 4) ([#160](https://github.com/EdouardZemb/creche-planner/pull/160))
+- **web:** section « Demain » toujours visible sur le tableau de bord (UX dashboard lot 2) ([#159](https://github.com/EdouardZemb/creche-planner/pull/159))
+- **web:** navigation mobile en barre d'onglets (pouce-friendly) ([#158](https://github.com/EdouardZemb/creche-planner/pull/158))
+- **web:** rendre la semaine à valider visible sur le tableau de bord (UX dashboard lot 1) ([#157](https://github.com/EdouardZemb/creche-planner/pull/157))
+- **web:** polish mobile de l'encart de validation et des modales (UX lot 5) ([#156](https://github.com/EdouardZemb/creche-planner/pull/156), [#6](https://github.com/EdouardZemb/creche-planner/issues/6), [#4](https://github.com/EdouardZemb/creche-planner/issues/4))
+- **web:** sécuriser la portée durable « modifie le contrat » (UX lot 4) ([#155](https://github.com/EdouardZemb/creche-planner/pull/155))
+- **web:** feedback d'enregistrement stable et horodaté (UX lot 3) ([#154](https://github.com/EdouardZemb/creche-planner/pull/154))
+- **web:** parler parent sur l'ecran Planning et le flux de validation (UX lot 2) ([#153](https://github.com/EdouardZemb/creche-planner/pull/153))
+- **web:** fiabiliser le moment critique validation → envoi au service (UX lot 1) ([#152](https://github.com/EdouardZemb/creche-planner/pull/152))
+
+### 🩹 Fixes
+
+- **planning:** garder la réhydratation d'écraser une édition faite pendant le GET ([#172](https://github.com/EdouardZemb/creche-planner/pull/172))
+- **web:** retry borné + timeout sur les appels idempotents du client API ([#170](https://github.com/EdouardZemb/creche-planner/pull/170))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.8.1 (2026-07-03)
 
 ### 🚀 Features
