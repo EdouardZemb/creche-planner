@@ -3,14 +3,20 @@
  * testable comme une fonction. L'inbox est un **journal informationnel** : le message
  * annonce simplement que le planning de la semaine est à valider, sans porter l'action
  * « Valider » elle-même (celle-ci reste dans l'encart `A_VALIDER`, cf. §5.6). On garde
- * le même vocabulaire que le mail récap du mardi (`recapMardi`) pour la cohérence, mais
- * sans lien profond ni pied de désabonnement (propres à l'e-mail).
+ * le même vocabulaire que le mail récap du mardi (`recapMardi`) pour la cohérence, sans
+ * pied de désabonnement (propre à l'e-mail), mais **avec** un lien profond : la carte de
+ * la cloche devient tapable et mène en un tap à l'éditeur de la semaine concernée.
  */
 
-/** Message in-app rendu : sujet court + corps informationnel (texte brut). */
+/**
+ * Message in-app rendu : sujet court + corps informationnel (texte brut) + lien profond
+ * vers l'éditeur de la semaine. Le lien est un **chemin relatif** (`/foyers/…`) : le web
+ * le rend tel quel (pas d'URL absolue en base).
+ */
 export interface MessageInApp {
   readonly sujet: string;
   readonly corps: string;
+  readonly lien: string;
 }
 
 /** Énumère « A », « A et B », « A, B et C » à partir d'une liste de prénoms. */
@@ -29,10 +35,11 @@ function enumerer(noms: readonly string[]): string {
  * l'invoque qu'avec au moins un enfant.
  */
 export function messageValidationHebdo(params: {
+  readonly foyerId: string;
   readonly noms: readonly string[];
   readonly semaineIso: string;
 }): MessageInApp {
-  const { noms, semaineIso } = params;
+  const { foyerId, noms, semaineIso } = params;
   const sujet = `Planning de la semaine ${semaineIso} à valider`;
   const pluriel = noms.length > 1;
   const corps =
@@ -41,5 +48,6 @@ export function messageValidationHebdo(params: {
       : pluriel
         ? `Les plannings de ${enumerer(noms)} pour la semaine ${semaineIso} sont à valider.`
         : `Le planning de ${enumerer(noms)} pour la semaine ${semaineIso} est à valider.`;
-  return { sujet, corps };
+  const lien = `/foyers/${foyerId}/planning?semaine=${semaineIso}`;
+  return { sujet, corps, lien };
 }

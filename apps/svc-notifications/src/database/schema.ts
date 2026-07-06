@@ -371,6 +371,13 @@ export const notification = pgTable(
     sujet: varchar('sujet', { length: 300 }).notNull(),
     /** Corps informationnel (texte rendu, figé à la création). */
     corps: text('corps').notNull(),
+    /**
+     * Lien profond in-app (chemin **relatif** `/foyers/:id/planning?semaine=…`) rendant
+     * la carte de la cloche tapable jusqu'à l'éditeur concerné. `null` pour les entrées
+     * antérieures à cette colonne (additif, pas de back-fill) — elles gardent le bouton
+     * « Marquer comme lu » sans navigation.
+     */
+    lien: varchar('lien', { length: 300 }),
     /** Horodatage de création (tri antéchronologique du panneau). */
     creeLe: timestamp('cree_le', { withTimezone: true }).notNull().defaultNow(),
     /** Horodatage de lecture par le parent (`null` = non lu, compté par la cloche). */

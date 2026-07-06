@@ -337,4 +337,39 @@ describe('EncartValidation', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Léa — Crèche/)).toBeInTheDocument();
   });
+
+  it('semaineInitiale (lien profond) : ouvre l’éditeur d’office sans clic', async () => {
+    vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER);
+    render(<EncartValidation foyerId="foyer-1" semaineInitiale="2026-W27" />);
+
+    // L'éditeur s'ouvre seul dès que la semaine ciblée apparaît dans la liste : le
+    // parent arrive directement sur l'éditeur (aucun bouton « Éditer » cliqué).
+    expect(
+      await screen.findByRole('heading', {
+        name: /Éditer les besoins de la semaine du 29 juin au 5 juillet/i,
+      }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(api.lireSemaineBesoins).toHaveBeenCalledWith(
+        'foyer-1',
+        '2026-W27',
+        { signal: expect.anything() },
+      );
+    });
+  });
+
+  it('semaineInitiale absente de la liste : ignorée sans erreur (éditeur fermé)', async () => {
+    vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER);
+    render(<EncartValidation foyerId="foyer-1" semaineInitiale="2026-W40" />);
+
+    // La liste s'affiche normalement…
+    expect(
+      await screen.findByText(/Planning de la semaine du 29 juin au 5 juillet/),
+    ).toBeInTheDocument();
+    // …mais l'éditeur ne s'ouvre pas (semaine non concernée / déjà validée).
+    expect(
+      screen.queryByRole('heading', { name: /Éditer les besoins/i }),
+    ).not.toBeInTheDocument();
+    expect(api.lireSemaineBesoins).not.toHaveBeenCalled();
+  });
 });

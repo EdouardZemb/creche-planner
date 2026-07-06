@@ -14,6 +14,8 @@ export interface NotificationInAppVue {
   readonly type: string;
   readonly sujet: string;
   readonly corps: string;
+  /** Lien profond in-app (chemin relatif `/foyers/…`), `null` pour les entrées legacy. */
+  readonly lien: string | null;
   readonly creeLe: string;
   readonly luLe: string | null;
 }
@@ -30,6 +32,8 @@ export interface CreerNotificationInApp {
   readonly type: string;
   readonly sujet: string;
   readonly corps: string;
+  /** Lien profond in-app (chemin relatif `/foyers/…`), `null` si la notification n'en porte pas. */
+  readonly lien: string | null;
 }
 
 /**
@@ -57,6 +61,7 @@ export class InboxService {
       type: entree.type,
       sujet: entree.sujet,
       corps: entree.corps,
+      lien: entree.lien,
     });
   }
 
@@ -115,6 +120,7 @@ export class InboxService {
       type: ligne.type,
       sujet: ligne.sujet,
       corps: ligne.corps,
+      lien: ligne.lien,
       creeLe: ligne.creeLe.toISOString(),
       luLe: ligne.luLe ? ligne.luLe.toISOString() : null,
     };

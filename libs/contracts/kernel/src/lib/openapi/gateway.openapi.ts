@@ -173,6 +173,13 @@ export const gatewayOpenApiDocument = {
           type: { type: 'string' },
           sujet: { type: 'string' },
           corps: { type: 'string' },
+          lien: {
+            type: ['string', 'null'],
+            description:
+              'Lien profond in-app (chemin relatif `/foyers/:id/planning?semaine=…`) ' +
+              'rendant la carte tapable jusqu’à l’éditeur concerné. `null` pour les ' +
+              'entrées sans lien. Champ **optionnel** (compat ascendante).',
+          },
           creeLe: { type: 'string', format: 'date-time' },
           luLe: { type: ['string', 'null'], format: 'date-time' },
         },

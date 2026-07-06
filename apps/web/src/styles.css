@@ -97,6 +97,16 @@ a {
   margin-left: auto;
 }
 
+/* Carte de notification tapable (avec lien profond) : affordance discrète au
+   survol / focus clavier pour signaler qu'elle mène à l'éditeur de la semaine. */
+.cloche-carte-lien {
+  border-radius: 4px;
+}
+.cloche-carte-lien:hover,
+.cloche-carte-lien:focus-visible {
+  background: var(--gris-clair);
+}
+
 /* ---- Navigation foyer : onglets bas (mobile) + en-tête (desktop) ---------- */
 /* En contexte foyer, la nav se scinde : les 3 destinations quotidiennes
    (Aujourd'hui / Planning / Coûts) + « Plus » forment une barre d'onglets FIXE

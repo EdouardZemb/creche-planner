@@ -15,6 +15,11 @@ vi.mock('../api/client', () => ({
     modifierContrat: vi.fn(),
     listerAValider: vi.fn(),
     validerSemaine: vi.fn(),
+    // Ouvrir l'éditeur hebdo (auto-ouverture via `?semaine`) charge la vue consolidée.
+    lireSemaineBesoins: vi.fn(),
+    ecrireSemaineBesoins: vi.fn(),
+    lireBrouillonEtablissement: vi.fn(),
+    envoyerRecapEtablissement: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -86,6 +91,33 @@ function renderPage(foyerId = 'foyer-1', search = '') {
   );
 }
 
+// Semaine notifiée `2026-W27` (29 juin → 5 juillet), consommée par l'éditeur hebdo
+// quand le lien profond `?semaine` ouvre celui-ci d'office.
+const A_VALIDER_W27 = [
+  {
+    contratId: '55555555-0000-4000-8000-000000000000',
+    foyerId: 'foyer-1',
+    semaineIso: '2026-W27',
+    statut: 'A_VALIDER' as const,
+    notifieeLe: '2026-06-23T06:00:00.000Z',
+  },
+];
+
+const SEMAINE_BESOINS_W27 = {
+  semaineIso: '2026-W27',
+  jours: [
+    '2026-06-29',
+    '2026-06-30',
+    '2026-07-01',
+    '2026-07-02',
+    '2026-07-03',
+    '2026-07-04',
+    '2026-07-05',
+  ],
+  etablissements: [],
+  contrats: [],
+};
+
 describe('PlanningPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -94,6 +126,7 @@ describe('PlanningPage', () => {
     vi.mocked(api.lirePlanning).mockResolvedValue({ saisie: null });
     // Encart de validation (Lot 4) : rien à valider par défaut.
     vi.mocked(api.listerAValider).mockResolvedValue([]);
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(SEMAINE_BESOINS_W27);
   });
 
   it('affiche le chargement puis le titre', async () => {
@@ -385,6 +418,34 @@ describe('PlanningPage', () => {
     // La colonne principale doit aussi pouvoir se rétrécir sous la largeur
     // intrinsèque de son contenu (sinon la borne ne sert à rien en flex).
     expect(colonnes[0]!.style.minWidth).not.toBe('');
+  });
+
+  it('lien profond ?semaine ouvre d’office l’éditeur de la semaine (Lot 1)', async () => {
+    vi.mocked(api.lireFoyer).mockResolvedValue(dossierMock);
+    vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER_W27);
+
+    renderPage('foyer-1', '?semaine=2026-W27');
+
+    // L'éditeur de la semaine notifiée s'ouvre sans aucun clic (entrée du parcours).
+    expect(
+      await screen.findByRole('heading', {
+        name: /Éditer les besoins de la semaine du 29 juin au 5 juillet/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('?semaine invalide : se comporte comme sans paramètre (éditeur fermé)', async () => {
+    vi.mocked(api.lireFoyer).mockResolvedValue(dossierMock);
+    vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER_W27);
+
+    renderPage('foyer-1', '?semaine=pas-une-semaine');
+
+    // La page se charge normalement mais l'éditeur ne s'auto-ouvre pas (regex rejetée).
+    await screen.findByText(/Planning mensuel/i);
+    expect(
+      screen.queryByRole('heading', { name: /Éditer les besoins/i }),
+    ).not.toBeInTheDocument();
+    expect(api.lireSemaineBesoins).not.toHaveBeenCalled();
   });
 
   it('affiche le libelle de mode accentue dans les onglets (EX-13)', async () => {

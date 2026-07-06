@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { recapMardi, type RecapMardiEnfant } from './recapMardi.js';
 
 const SEMAINE = '2026-W27';
-const LIEN = 'https://app.example.org/planning?semaine=2026-W27';
+// Lien profond réparé : préfixe `/foyers/:foyerId` (la route `/planning?semaine=` seule
+// était introuvable côté front). Le foyerId est câblé par le scheduler à l'envoi.
+const FOYER_ID = '22222222-2222-4222-8222-222222222222';
+const LIEN = `https://app.example.org/foyers/${FOYER_ID}/planning?semaine=2026-W27`;
 
 function enfant(partiel: Partial<RecapMardiEnfant> = {}): RecapMardiEnfant {
   return {
@@ -26,6 +29,10 @@ describe('recapMardi', () => {
     expect(message.html).toContain('2026-W27');
     expect(message.text).toContain(LIEN);
     expect(message.text).toContain('Léa');
+    // Le lien pointe bien vers l'éditeur de la semaine du foyer (route existante).
+    expect(message.text).toMatch(
+      /\/foyers\/[0-9a-f-]+\/planning\?semaine=2026-W27/,
+    );
   });
 
   it('un seul enfant : phrase au singulier', () => {

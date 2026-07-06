@@ -14,6 +14,9 @@ import { CalendrierCreche } from './CalendrierCreche';
 import { CalendrierAbcm } from './CalendrierAbcm';
 import type { ContratLocal } from '../types/bff';
 
+/** Forme d'une semaine ISO 8601 (`YYYY-Www`) acceptée dans `?semaine`. */
+const SEMAINE_ISO_REGEX = /^\d{4}-W\d{2}$/;
+
 export function PlanningPage() {
   useTitrePage('Planning');
 
@@ -21,6 +24,15 @@ export function PlanningPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const simule = searchParams.get('simule') === 'true';
+
+  // Lien profond du mail/de la cloche du mardi (`?semaine=YYYY-Www`) : ouvre d'office
+  // l'éditeur de cette semaine dans l'encart de validation. Paramètre malformé → ignoré
+  // silencieusement (rejet par la regex), sans écraser les autres paramètres d'URL.
+  const semaineParam = searchParams.get('semaine');
+  const semaineInitiale =
+    semaineParam !== null && SEMAINE_ISO_REGEX.test(semaineParam)
+      ? semaineParam
+      : undefined;
 
   // EX-06 : mois porté par l'URL (restauré au rechargement et au bouton retour).
   const mois = searchParams.get('mois') ?? moisCourant();
@@ -166,8 +178,9 @@ export function PlanningPage() {
       </h1>
 
       {/* Encart de validation hebdomadaire (Lot 4) : ne s'affiche que s'il y a une
-          semaine à valider pour ce foyer. */}
-      <EncartValidation foyerId={id} />
+          semaine à valider pour ce foyer. `semaineInitiale` (lien profond du mardi)
+          ouvre d'office l'éditeur de la semaine concernée. */}
+      <EncartValidation foyerId={id} semaineInitiale={semaineInitiale} />
 
       {/* Barre de contrôles */}
       <div

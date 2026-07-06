@@ -102,6 +102,9 @@ const notificationInAppSchema = z.object({
   type: z.string(),
   sujet: z.string(),
   corps: z.string(),
+  // Lien profond in-app (chemin relatif) rendant la carte tapable. Ajout **optionnel**
+  // côté consommateur (compat ascendante : les réponses/entrées legacy peuvent l'omettre).
+  lien: z.string().nullish(),
   creeLe: z.string(),
   luLe: z.string().nullable(),
 });
