@@ -1,12 +1,15 @@
 import { Duree } from '@creche-planner/shared-kernel';
 import { jourSemaineDeIso } from './jour-semaine.js';
 import { joursDuMois } from './mois.js';
+import type { PlageHoraire } from './plage-horaire.js';
 import type { SemaineType } from './semaine-type.js';
 import type { PrestationsMoisCreche } from './prestations-mois.types.js';
 import {
+  AjustementJourNonGardeError,
   DeductionExcessiveError,
   ParametreContratInvalideError,
   PeriodeContratInvalideError,
+  SaisieJourEnConflitError,
 } from './planification-error.js';
 
 /** Une absence du mois, candidate à déduction PSU (doc 02 §3.2, INV-08). */
@@ -38,6 +41,24 @@ export interface JourSupplementaireCreche {
   readonly duree: Duree;
 }
 
+/**
+ * Ajustement d'heures **réelles** d'un jour contractualisé : la présence réelle
+ * du jour (plage horaire), d'où le domaine dérive l'extension (minutes hors de la
+ * plage du contrat → complément) et la réduction (minutes de la plage du contrat
+ * non couvertes → déduction si éligible). Éligibilité identique aux absences
+ * (préavis suffisant OU certificat). La donnée est datée et restituable telle quelle.
+ */
+export interface AjustementCreche {
+  /** Date ISO `YYYY-MM-DD` du jour ajusté (jour gardé de la semaine type). */
+  readonly date: string;
+  /** Présence réelle du jour (arrivée/départ), comparée à la plage du contrat. */
+  readonly presence: PlageHoraire;
+  /** Délai de préavis en jours pleins (≥ 2 j ⇒ réduction déductible). */
+  readonly preavisJours: number;
+  /** Certificat médical (⇒ réduction déductible). */
+  readonly certificatMaladie: boolean;
+}
+
 /** Saisie de génération des prestations crèche d'un mois. */
 export interface SaisieGenerationCreche {
   /** Mois ISO `YYYY-MM`. */
@@ -48,6 +69,8 @@ export interface SaisieGenerationCreche {
   readonly joursSupplementaires?: readonly JourSupplementaireCreche[];
   /** Absences du mois ; seules les éligibles sont déduites. */
   readonly absences?: readonly AbsenceCreche[];
+  /** Ajustements d'heures réelles des jours gardés (extension et/ou réduction). */
+  readonly ajustements?: readonly AjustementCreche[];
   /** Jours non facturables (fériés/fermetures) fournis par le Référentiel. */
   readonly joursNonFacturables?: readonly string[];
 }
@@ -74,12 +97,47 @@ function arrondiCentiemeHeure(heures: number): number {
 }
 
 /**
- * Une absence est déductible **uniquement** si elle est prévenue au moins 2
- * jours à l'avance **ou** justifiée par un certificat de maladie (doc 02 §3.2,
- * INV-08). Sinon elle reste facturée (incluse dans la mensualité).
+ * Une absence (ou la réduction d'un ajustement) est déductible **uniquement** si
+ * elle est prévenue au moins 2 jours à l'avance **ou** justifiée par un certificat
+ * de maladie (doc 02 §3.2, INV-08). Sinon elle reste facturée (incluse dans la
+ * mensualité). Signature structurelle : partagée par les absences et les
+ * ajustements (une réduction d'heures est une absence partielle).
  */
-function estDeductible(absence: AbsenceCreche): boolean {
-  return absence.preavisJours >= 2 || absence.certificatMaladie;
+function estDeductible(saisie: {
+  readonly preavisJours: number;
+  readonly certificatMaladie: boolean;
+}): boolean {
+  return saisie.preavisJours >= 2 || saisie.certificatMaladie;
+}
+
+/**
+ * Écart d'une présence réelle par rapport à la plage contractuelle d'un jour :
+ * - `extension` = minutes présentes **hors** des plages du contrat (avant l'arrivée
+ *   et/ou après le départ contractuels) → facturées en complément ;
+ * - `reduction` = minutes de la plage du contrat **non couvertes** par la présence
+ *   → candidates à déduction.
+ * Robuste aux jours à plusieurs plages (chevauchement mesuré plage par plage ; les
+ * plages d'un jour de semaine type ne se recouvrent pas entre elles).
+ */
+function ecartAjustement(
+  plagesContrat: readonly PlageHoraire[],
+  presence: PlageHoraire,
+): { extension: Duree; reduction: Duree } {
+  let dureeContrat = 0;
+  let chevauchement = 0;
+  for (const plage of plagesContrat) {
+    dureeContrat += plage.finMinutes - plage.debutMinutes;
+    const debut = Math.max(presence.debutMinutes, plage.debutMinutes);
+    const fin = Math.min(presence.finMinutes, plage.finMinutes);
+    if (fin > debut) {
+      chevauchement += fin - debut;
+    }
+  }
+  const dureePresence = presence.finMinutes - presence.debutMinutes;
+  return {
+    extension: Duree.depuisMinutes(Math.max(0, dureePresence - chevauchement)),
+    reduction: Duree.depuisMinutes(Math.max(0, dureeContrat - chevauchement)),
+  };
 }
 
 /**
@@ -185,9 +243,17 @@ export class ContratCreche {
       joursNonFacturables,
     );
 
+    const prefixeMois = `${saisie.mois}-`;
+
+    // Ajustements d'heures réelles : extension (→ complément) et réduction (→
+    // déduction si éligible). Valide aussi les invariants de saisie (A2/A3).
+    const { extension: extensionAjustements, deduction: deductionAjustements } =
+      this.effetAjustements(saisie, prefixeMois);
+
     const heuresDeduites = (saisie.absences ?? [])
       .filter(estDeductible)
-      .reduce((total, absence) => total.plus(absence.duree), Duree.zero());
+      .reduce((total, absence) => total.plus(absence.duree), Duree.zero())
+      .plus(deductionAjustements);
 
     if (heuresDeduites.enMinutes > heuresReservees.enMinutes) {
       throw new DeductionExcessiveError(
@@ -197,7 +263,6 @@ export class ContratCreche {
 
     // Les jours ajoutés ponctuellement (dans le mois et la période de validité)
     // sont un dépassement : ils s'agrègent au complément facturé à la minute.
-    const prefixeMois = `${saisie.mois}-`;
     const complementJoursSup = (saisie.joursSupplementaires ?? [])
       .filter(
         (j) => j.date.startsWith(prefixeMois) && this.estDansPeriode(j.date),
@@ -210,9 +275,75 @@ export class ContratCreche {
         this.config.heuresAnnuellesContractualisees,
       nbMensualites: this.config.nbMensualites,
       heuresMensualisees: this.heuresMensualisees,
-      complement: (saisie.complement ?? Duree.zero()).plus(complementJoursSup),
+      complement: (saisie.complement ?? Duree.zero())
+        .plus(complementJoursSup)
+        .plus(extensionAjustements),
       heuresReservees,
       heuresDeduites,
     };
+  }
+
+  /**
+   * Effet des ajustements d'heures réelles du mois : agrège l'extension (heures
+   * hors plage contractuelle) et la réduction déductible (heures contractuelles
+   * non couvertes, éligibles préavis/certificat). Valide au passage les invariants
+   * de saisie : un ajustement ne porte que sur un **jour gardé** (A2), et une date
+   * ne peut cumuler un ajustement avec une autre saisie datée (A3). Les ajustements
+   * hors période de validité sont sans effet (comme les jours ajoutés).
+   */
+  private effetAjustements(
+    saisie: SaisieGenerationCreche,
+    prefixeMois: string,
+  ): { extension: Duree; deduction: Duree } {
+    const ajustements = (saisie.ajustements ?? []).filter((a) =>
+      a.date.startsWith(prefixeMois),
+    );
+    if (ajustements.length === 0) {
+      return { extension: Duree.zero(), deduction: Duree.zero() };
+    }
+
+    // Dates déjà porteuses d'une autre saisie datée (absence datée ou jour ajouté).
+    const datesOccupees = new Set<string>();
+    for (const absence of saisie.absences ?? []) {
+      if (absence.date !== undefined) {
+        datesOccupees.add(absence.date);
+      }
+    }
+    for (const jour of saisie.joursSupplementaires ?? []) {
+      datesOccupees.add(jour.date);
+    }
+
+    let extension = Duree.zero();
+    let deduction = Duree.zero();
+    const datesAjustees = new Set<string>();
+    for (const ajustement of ajustements) {
+      const jour = jourSemaineDeIso(ajustement.date);
+      const plagesContrat = this.config.semaineType.plagesJour(jour);
+      if (plagesContrat.length === 0) {
+        throw new AjustementJourNonGardeError(
+          `ajustement sur un jour non gardé (${ajustement.date}) : utiliser un jour ajouté`,
+        );
+      }
+      if (
+        datesOccupees.has(ajustement.date) ||
+        datesAjustees.has(ajustement.date)
+      ) {
+        throw new SaisieJourEnConflitError(
+          `plusieurs saisies datées sur le jour ${ajustement.date} : un jour porte un ajustement, une absence OU un jour ajouté, pas plusieurs (A3)`,
+        );
+      }
+      datesAjustees.add(ajustement.date);
+
+      // Hors période de validité : sans effet facturable (aligné jours ajoutés).
+      if (!this.estDansPeriode(ajustement.date)) {
+        continue;
+      }
+      const ecart = ecartAjustement(plagesContrat, ajustement.presence);
+      extension = extension.plus(ecart.extension);
+      if (estDeductible(ajustement)) {
+        deduction = deduction.plus(ecart.reduction);
+      }
+    }
+    return { extension, deduction };
   }
 }

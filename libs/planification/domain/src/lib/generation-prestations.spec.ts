@@ -251,6 +251,60 @@ describe('genererPrestationMois (crèche PSU)', () => {
     );
   });
 
+  it('mappe un ajustement d’heures réelles : extension → complément, réduction → déduction', () => {
+    // Contrat lundi 08:30–17:00 (510 min). Le 2026-10-05 est un lundi.
+    // Présence 08:00–16:00 : +30 min avant (extension), −60 min après (réduction).
+    const saisie: SaisiePlanningJson = {
+      ajustements: [
+        {
+          date: '2026-10-05',
+          debutHeures: 8,
+          debutMinutes: 0,
+          finHeures: 16,
+          finMinutes: 0,
+          preavisJours: 3,
+          certificatMaladie: false,
+        },
+      ],
+    };
+
+    const presta = genererPrestationMois(
+      contratCreche(),
+      MOIS,
+      saisie,
+      [],
+    ) as PrestationsMoisCreche;
+
+    expect(presta.complement.enMinutes).toBe(30);
+    expect(presta.heuresDeduites.enMinutes).toBe(60);
+  });
+
+  it('n’applique aucune déduction pour un ajustement réducteur non éligible', () => {
+    const saisie: SaisiePlanningJson = {
+      ajustements: [
+        {
+          date: '2026-10-05',
+          debutHeures: 10,
+          debutMinutes: 0,
+          finHeures: 15,
+          finMinutes: 0,
+          preavisJours: 0,
+          certificatMaladie: false,
+        },
+      ],
+    };
+
+    const presta = genererPrestationMois(
+      contratCreche(),
+      MOIS,
+      saisie,
+      [],
+    ) as PrestationsMoisCreche;
+
+    expect(presta.heuresDeduites.estZero()).toBe(true);
+    expect(presta.complement.estZero()).toBe(true);
+  });
+
   it('propage DeductionExcessiveError (message INV-05) si les déductions dépassent les heures réservées', () => {
     const saisie: SaisiePlanningJson = {
       absences: [

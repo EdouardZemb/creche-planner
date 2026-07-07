@@ -2,6 +2,7 @@ import { Duree } from '@creche-planner/shared-kernel';
 import {
   ContratCreche,
   type AbsenceCreche,
+  type AjustementCreche,
   type JourSupplementaireCreche,
   type SaisieGenerationCreche,
 } from './contrat-creche.js';
@@ -50,6 +51,18 @@ export interface JourSupplementaireJson extends PlageHeuresJson {
   readonly date: string;
 }
 
+/**
+ * Ajustement d'heures réelles d'un jour contractualisé (crèche) : la plage
+ * heures/minutes est la **présence réelle** du jour ; le domaine en dérive
+ * extension et réduction. `preavisJours`/`certificatMaladie` conditionnent la
+ * déductibilité de la réduction (même règle que les absences).
+ */
+export interface AjustementJson extends PlageHeuresJson {
+  readonly date: string;
+  readonly preavisJours: number;
+  readonly certificatMaladie: boolean;
+}
+
 /** Ajustement ponctuel d'un jour ABCM (surcharge la semaine type). */
 export interface ExceptionJourJson {
   readonly date: string;
@@ -75,6 +88,7 @@ export interface SaisiePlanningJson {
   readonly complementMinutes?: number | undefined;
   readonly joursSupplementaires?: readonly JourSupplementaireJson[] | undefined;
   readonly absences?: readonly AbsenceCrecheJson[] | undefined;
+  readonly ajustements?: readonly AjustementJson[] | undefined;
   readonly pai?: boolean | undefined;
   readonly exceptions?: readonly ExceptionJourJson[] | undefined;
   readonly joursAlsh?: readonly JourAlshJson[] | undefined;
@@ -155,6 +169,17 @@ export function genererPrestationMois(
       absences: (saisie.absences ?? []).map((a): AbsenceCreche => ({
         ...(a.date !== undefined ? { date: a.date } : {}),
         duree: dureeDePlage(a),
+        preavisJours: a.preavisJours,
+        certificatMaladie: a.certificatMaladie,
+      })),
+      ajustements: (saisie.ajustements ?? []).map((a): AjustementCreche => ({
+        date: a.date,
+        presence: PlageHoraire.creer(
+          a.debutHeures,
+          a.debutMinutes,
+          a.finHeures,
+          a.finMinutes,
+        ),
         preavisJours: a.preavisJours,
         certificatMaladie: a.certificatMaladie,
       })),

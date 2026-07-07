@@ -18,6 +18,7 @@ export type {
   ConfigContratCreche,
   SaisieGenerationCreche,
   AbsenceCreche,
+  AjustementCreche,
   JourSupplementaireCreche,
 } from './lib/contrat-creche.js';
 
@@ -43,6 +44,7 @@ export {
 } from './lib/generation-prestations.js';
 export type {
   AbsenceCrecheJson,
+  AjustementJson,
   ContratPourGeneration,
   ExceptionJourJson,
   JourAlshJson,
@@ -79,5 +81,7 @@ export {
   PeriodeContratInvalideError,
   ParametreContratInvalideError,
   DeductionExcessiveError,
+  AjustementJourNonGardeError,
+  SaisieJourEnConflitError,
   MoisIncoherentError,
 } from './lib/planification-error.js';

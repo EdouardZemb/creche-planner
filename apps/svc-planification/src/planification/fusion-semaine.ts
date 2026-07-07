@@ -12,7 +12,7 @@ import type { EcrirePlanningDto } from './planification.dto.js';
  * propriétés, `fusion-semaine.spec.ts`).
  *
  * Règle : seules les **catégories datées** (`joursSupplementaires`, `absences`,
- * `exceptions`, `joursAlsh`) sont touchées. On en retire les entrées dont la
+ * `exceptions`, `joursAlsh`, `ajustements`) sont touchées. On en retire les entrées dont la
  * `date` tombe dans la fenêtre de la semaine, puis on ré-insère les
  * `besoinsSemaine` de cette même fenêtre. Tout le reste est **préservé tel quel** :
  * les scalaires mensuels (`complementMinutes`, `pai`), les entrées datées **hors
@@ -24,7 +24,11 @@ import type { EcrirePlanningDto } from './planification.dto.js';
 /** Besoins datés d'une semaine pour un contrat : sous-ensemble daté d'une saisie. */
 export type BesoinsSemaine = Pick<
   EcrirePlanningDto,
-  'joursSupplementaires' | 'absences' | 'exceptions' | 'joursAlsh'
+  | 'joursSupplementaires'
+  | 'absences'
+  | 'exceptions'
+  | 'joursAlsh'
+  | 'ajustements'
 >;
 
 /** Catégories datées sous forme d'ensemble (test d'appartenance d'une clé). */

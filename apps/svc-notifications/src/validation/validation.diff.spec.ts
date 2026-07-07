@@ -71,4 +71,45 @@ describe('calculerDelta / aDesModifs', () => {
     const delta = calculerDelta(avant, apres);
     expect(delta.jours.map((j) => j.date)).toEqual(['2026-06-29']);
   });
+
+  const ajustement = (date: string) => ({
+    date,
+    debutHeures: 8,
+    debutMinutes: 0,
+    finHeures: 16,
+    finMinutes: 30,
+    preavisJours: 0,
+    certificatMaladie: false,
+  });
+
+  it('ajout d’un ajustement ⇒ delta non vide (catégorie ajustements diffée)', () => {
+    const avant = extraireSemaine([{}], JOURS_W27);
+    const apres = extraireSemaine(
+      [{ ajustements: [ajustement('2026-06-29')] }],
+      JOURS_W27,
+    );
+    const delta = calculerDelta(avant, apres);
+    expect(aDesModifs(delta)).toBe(true);
+    expect(delta.jours.map((j) => j.date)).toEqual(['2026-06-29']);
+    expect(delta.jours[0]?.apres?.ajustements).toHaveLength(1);
+  });
+
+  it('catégorie ajustements absente ≡ vide : un snapshot historique (4 clés) ne diffère pas', () => {
+    // Snapshot figé AVANT l'ajout de la catégorie `ajustements` (4 clés, tel qu'il
+    // vit en base) : la relecture actuelle produit la forme canonique à 5 clés.
+    // Le diff doit les tenir pour équivalents (pas de faux « validée avec modifs »).
+    const historique = {
+      '2026-06-29': {
+        joursSupplementaires: [],
+        absences: [absence('2026-06-29')],
+        exceptions: [],
+        joursAlsh: [],
+      },
+    } as unknown as Parameters<typeof calculerDelta>[0];
+    const actuel = extraireSemaine(
+      [{ absences: [absence('2026-06-29')] }],
+      JOURS_W27,
+    );
+    expect(aDesModifs(calculerDelta(historique, actuel))).toBe(false);
+  });
 });

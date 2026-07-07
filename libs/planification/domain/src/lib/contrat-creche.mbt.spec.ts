@@ -364,6 +364,71 @@ describe('BVA-09 — agrégation jours supplémentaires au complément', () => {
 });
 
 // ===========================================================================
+// Ajustements d'heures réelles — écart présence/contrat + INV-05
+// Contrat de référence (Mia) : lundi gardé 08:30–17:00 (510 min). Un ajustement
+// dérive une extension (hors plage) et/ou une réduction (plage non couverte,
+// déductible selon préavis/certificat, même règle que les absences). INV-05 doit
+// tenir : la réduction est bornée par la plage du jour ≤ heures réservées.
+// ===========================================================================
+describe('Ajustements — écart présence/contrat + INV-05 (BVA + property)', () => {
+  const MOIS_DANS = '2026-03';
+  const LUNDI = '2026-03-02'; // lundi gardé 08:30–17:00.
+
+  /** Prestation avec un unique ajustement sur le lundi de référence. */
+  function ajusteLundi(
+    presence: PlageHoraire,
+    preavisJours = 3,
+  ): PrestationsMoisCreche {
+    return presta(contratMia(), MOIS_DANS, {
+      ajustements: [
+        { date: LUNDI, presence, preavisJours, certificatMaladie: false },
+      ],
+    });
+  }
+
+  it('BVA réduction : présence pleine plage → 0 ; 30 min de moins → 30 déduites', () => {
+    expect(
+      ajusteLundi(PlageHoraire.creer(8, 30, 17, 0)).heuresDeduites.estZero(),
+    ).toBe(true);
+    expect(
+      ajusteLundi(PlageHoraire.creer(9, 0, 17, 0)).heuresDeduites.enMinutes,
+    ).toBe(30);
+  });
+
+  it('BVA extension : 30 min avant l’arrivée contractuelle → +30 min de complément', () => {
+    const p = ajusteLundi(PlageHoraire.creer(8, 0, 17, 0));
+    expect(p.complement.enMinutes).toBe(30);
+    expect(p.heuresDeduites.estZero()).toBe(true);
+  });
+
+  it('property : réduction déductible ≤ réservées, jamais d’erreur (INV-05)', () => {
+    fc.assert(
+      fc.property(
+        // Présence STRICTEMENT incluse dans la plage 08:30–17:00 (510..1020) :
+        // extension nulle, réduction = 510 − durée présente, toujours ≤ réservées.
+        fc.integer({ min: 510, max: 1019 }),
+        fc.integer({ min: 511, max: 1020 }),
+        (a, b) => {
+          fc.pre(b > a);
+          const presence = PlageHoraire.creer(
+            Math.floor(a / 60),
+            a % 60,
+            Math.floor(b / 60),
+            b % 60,
+          );
+          const p = ajusteLundi(presence);
+          expect(p.complement.estZero()).toBe(true);
+          expect(p.heuresDeduites.enMinutes).toBe(510 - (b - a));
+          expect(p.heuresDeduites.enMinutes).toBeLessThanOrEqual(
+            p.heuresReservees.enMinutes,
+          );
+        },
+      ),
+    );
+  });
+});
+
+// ===========================================================================
 // Property-based (fast-check)
 // ===========================================================================
 describe('Property-based — invariants oracles (fast-check)', () => {

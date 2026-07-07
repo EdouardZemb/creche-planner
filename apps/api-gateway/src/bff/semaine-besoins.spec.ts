@@ -150,6 +150,8 @@ describe('agregerSemaineBesoins', () => {
     expect(creche?.etablissementId).toBe(ID_CRECHE);
     expect(creche?.besoins['2026-06-29']?.absences).toHaveLength(1);
     expect(creche?.besoins['2026-06-29']?.joursAlsh).toHaveLength(0);
+    // La catégorie ajustements est exposée, vide par défaut (forme canonique).
+    expect(creche?.besoins['2026-06-29']?.ajustements).toEqual([]);
 
     // Les deux contrats rattachés à l'ABCM partagent une seule entrée d'établissement.
     expect(vue.etablissements.map((e) => e.etablissementId).sort()).toEqual(
@@ -163,6 +165,41 @@ describe('agregerSemaineBesoins', () => {
       libelle: 'École ABCM',
       preavisRegle: { type: 'JOUR_HEURE', jour: 'JEUDI', heure: '12:00' },
     });
+  });
+
+  it('expose les ajustements d’heures réelles d’un jour (crèche)', () => {
+    const vue = agregerSemaineBesoins({
+      semaineIso: '2026-W27',
+      jours: JOURS_W27,
+      contrats: [
+        {
+          contrat: contrat({
+            id: 'c-creche',
+            mode: 'CRECHE_PSU',
+            etablissementId: ID_CRECHE,
+          }),
+          saisies: [
+            {
+              ajustements: [
+                {
+                  date: '2026-06-29',
+                  debutHeures: 8,
+                  debutMinutes: 0,
+                  finHeures: 16,
+                  finMinutes: 30,
+                  preavisJours: 0,
+                  certificatMaladie: false,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      annuaire: [HIRONDELLES],
+    });
+
+    const creche = vue.contrats.find((c) => c.contratId === 'c-creche');
+    expect(creche?.besoins['2026-06-29']?.ajustements).toHaveLength(1);
   });
 
   it('fusionne les saisies des deux mois d’une semaine à cheval', () => {

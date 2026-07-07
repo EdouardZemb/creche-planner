@@ -11,9 +11,10 @@
  * (`schema.ts`, `brouillonService.ts`, `validation.service.ts`).
  */
 
-import type {
-  SaisieJour,
-  SnapshotSemaine,
+import {
+  CATEGORIES_DATEES,
+  type SaisieJour,
+  type SnapshotSemaine,
 } from '@creche-planner/shared-semaine';
 
 // Réexport du point d'accès historique : les consommateurs internes (`schema.ts`,
@@ -37,9 +38,30 @@ export interface DeltaModifs {
   readonly jours: readonly DeltaJour[];
 }
 
-/** Égalité structurelle de deux jours (les deux snapshots viennent du même serveur). */
+/**
+ * Forme canonique d'un jour pour la comparaison : toutes les catégories datées
+ * présentes dans un ordre fixe, une catégorie absente valant `[]`. Rend le diff
+ * **robuste aux évolutions du modèle** : un snapshot historique figé avant l'ajout
+ * d'une catégorie (ex. `ajustements`) reste équivalent à un snapshot recalculé qui
+ * la porte à vide (« catégorie absente ≡ vide ») — pas de faux « modifié ».
+ */
+function jourCanonique(
+  jour: SaisieJour | null,
+): Record<string, readonly unknown[]> | null {
+  if (jour === null) {
+    return null;
+  }
+  const source = jour as Record<string, readonly unknown[] | undefined>;
+  const canonique: Record<string, readonly unknown[]> = {};
+  for (const categorie of CATEGORIES_DATEES) {
+    canonique[categorie] = source[categorie] ?? [];
+  }
+  return canonique;
+}
+
+/** Égalité structurelle de deux jours, insensible aux catégories datées absentes. */
 function memeJour(a: SaisieJour | null, b: SaisieJour | null): boolean {
-  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  return JSON.stringify(jourCanonique(a)) === JSON.stringify(jourCanonique(b));
 }
 
 /**

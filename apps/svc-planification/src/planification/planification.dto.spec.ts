@@ -532,6 +532,72 @@ describe('ecrirePlanningSchema', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('accepte un ajustement d’heures réelles (préavis/certificat par défaut)', () => {
+    const resultat = ecrirePlanningSchema.safeParse({
+      ajustements: [
+        {
+          date: '2026-10-05',
+          debutHeures: 8,
+          debutMinutes: 0,
+          finHeures: 16,
+          finMinutes: 30,
+        },
+      ],
+    });
+    expect(resultat.success).toBe(true);
+    if (resultat.success) {
+      // preavisJours/certificatMaladie ont des valeurs par défaut appliquées.
+      expect(resultat.data.ajustements?.[0]).toMatchObject({
+        preavisJours: 0,
+        certificatMaladie: false,
+      });
+    }
+  });
+
+  it('accepte un ajustement avec préavis et certificat explicites', () => {
+    expect(
+      ecrirePlanningSchema.safeParse({
+        ajustements: [
+          {
+            date: '2026-10-05',
+            debutHeures: 10,
+            debutMinutes: 0,
+            finHeures: 15,
+            finMinutes: 0,
+            preavisJours: 3,
+            certificatMaladie: true,
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejette un ajustement dégénéré (fin ≤ début)', () => {
+    expect(
+      ecrirePlanningSchema.safeParse({
+        ajustements: [
+          {
+            date: '2026-10-05',
+            debutHeures: 16,
+            debutMinutes: 30,
+            finHeures: 8,
+            finMinutes: 0,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejette un ajustement sans date (entrée datée)', () => {
+    expect(
+      ecrirePlanningSchema.safeParse({
+        ajustements: [
+          { debutHeures: 8, debutMinutes: 0, finHeures: 16, finMinutes: 30 },
+        ],
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('ISO_MOIS', () => {

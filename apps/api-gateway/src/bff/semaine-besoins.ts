@@ -38,6 +38,9 @@ const saisieJourSchema = z.object({
   absences: z.array(z.unknown()),
   exceptions: z.array(z.unknown()),
   joursAlsh: z.array(z.unknown()),
+  // Ajustements d'heures réelles (crèche) : exposés comme les autres catégories
+  // datées (défaut `[]` via la forme canonique de `extraireSemaine`).
+  ajustements: z.array(z.unknown()),
 });
 
 /** Besoins de la semaine d'un contrat : jour `YYYY-MM-DD` → entrées (jours vides omis). */

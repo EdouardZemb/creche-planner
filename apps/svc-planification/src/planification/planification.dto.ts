@@ -171,6 +171,34 @@ const jourSupplementaireSchema = plageHoraireSchema.extend({
   date: z.iso.date('date ISO YYYY-MM-DD attendue'),
 });
 
+/** Minutes depuis minuit d'une borne heures/minutes (comparaison de plage). */
+const enMinutes = (heures: number, minutes: number): number =>
+  heures * 60 + minutes;
+
+/**
+ * Ajustement d'heures **réelles** d'un jour contractualisé (crèche) : la plage
+ * stockée est la présence RÉELLE du jour (arrivée/départ), pas un delta — elle
+ * reste restituable telle quelle et robuste aux évolutions de la semaine type. Le
+ * domaine en dérive l'extension (facturée en complément) et la réduction (candidate
+ * à déduction, selon `preavisJours`/`certificatMaladie`, même règle que les absences).
+ */
+const ajustementSchema = plageHoraireSchema
+  .extend({
+    date: z.iso.date('date ISO YYYY-MM-DD attendue'),
+    preavisJours: z.number().int().min(0).default(0),
+    certificatMaladie: z.boolean().default(false),
+  })
+  .refine(
+    (a) =>
+      enMinutes(a.finHeures, a.finMinutes) >
+      enMinutes(a.debutHeures, a.debutMinutes),
+    {
+      message:
+        'heure de fin strictement postérieure à l’heure de début attendue',
+      path: ['finHeures'],
+    },
+  );
+
 /** Ajustement ponctuel d'un jour ABCM (surcharge la semaine type pour une date). */
 const exceptionAbcmSchema = z.object({
   date: z.iso.date('date ISO YYYY-MM-DD attendue'),
@@ -206,6 +234,8 @@ export const ecrirePlanningSchema = z.object({
   exceptions: z.array(exceptionAbcmSchema).optional(),
   /** Jours ALSH réservés du mois (ALSH). */
   joursAlsh: z.array(jourAlshSchema).optional(),
+  /** Ajustements d'heures réelles par jour contractualisé (crèche). */
+  ajustements: z.array(ajustementSchema).optional(),
 });
 export type EcrirePlanningDto = z.infer<typeof ecrirePlanningSchema>;
 
@@ -221,6 +251,7 @@ export const ecrireSemaineSchema = z.object({
   absences: z.array(absenceCrecheSchema).optional(),
   exceptions: z.array(exceptionAbcmSchema).optional(),
   joursAlsh: z.array(jourAlshSchema).optional(),
+  ajustements: z.array(ajustementSchema).optional(),
 });
 export type EcrireSemaineDto = z.infer<typeof ecrireSemaineSchema>;
 

@@ -50,12 +50,23 @@ describe('extraireSemaine — oracles', () => {
     expect(extraireSemaine([saisie, null, undefined], JOURS_W27)).toEqual({});
   });
 
-  it('regroupe par jour les quatre catégories datées', () => {
+  it('regroupe par jour les cinq catégories datées', () => {
     const saisie = {
       joursSupplementaires: [{ date: '2026-06-29' }],
       absences: [absence('2026-06-29')],
       exceptions: [{ date: '2026-06-29', cantine: true }],
       joursAlsh: [{ date: '2026-06-29', type: 'COMPLETE' }],
+      ajustements: [
+        {
+          date: '2026-06-29',
+          debutHeures: 8,
+          debutMinutes: 0,
+          finHeures: 16,
+          finMinutes: 30,
+          preavisJours: 0,
+          certificatMaladie: false,
+        },
+      ],
     };
     const snap = extraireSemaine([saisie], JOURS_W27);
     const jour = snap['2026-06-29'];
@@ -63,6 +74,14 @@ describe('extraireSemaine — oracles', () => {
     expect(jour?.absences).toHaveLength(1);
     expect(jour?.exceptions).toHaveLength(1);
     expect(jour?.joursAlsh).toHaveLength(1);
+    expect(jour?.ajustements).toHaveLength(1);
+  });
+
+  it('un jour sans ajustement porte quand même la catégorie vide (forme canonique)', () => {
+    const saisie = { absences: [absence('2026-06-29')] };
+    const snap = extraireSemaine([saisie], JOURS_W27);
+    // Catégorie absente de la saisie ≡ tableau vide dans le snapshot canonique.
+    expect(snap['2026-06-29']?.ajustements).toEqual([]);
   });
 
   it('ignore une catégorie qui n’est pas un tableau', () => {
