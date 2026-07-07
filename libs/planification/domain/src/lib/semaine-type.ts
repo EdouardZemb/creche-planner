@@ -54,6 +54,15 @@ export class SemaineType {
     return this.plagesParJour.has(jour);
   }
 
+  /**
+   * Plages horaires contractuelles d'un jour donné (vide si le jour n'est pas
+   * gardé). Sert à comparer une présence réelle à la plage du contrat (ajustement
+   * d'heures) : extension hors plage, réduction sur la plage non couverte.
+   */
+  plagesJour(jour: JourSemaine): readonly PlageHoraire[] {
+    return this.plagesParJour.get(jour) ?? [];
+  }
+
   /** Jours gardés, dans l'ordre canonique lundi → dimanche. */
   get joursGardes(): JourSemaine[] {
     return ORDRE_JOURS.filter((jour) => this.plagesParJour.has(jour));

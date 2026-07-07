@@ -202,6 +202,7 @@ describe('ValidationService.notifier', () => {
         absences: [absence('2026-06-29')],
         exceptions: [],
         joursAlsh: [],
+        ajustements: [],
       },
     });
   });

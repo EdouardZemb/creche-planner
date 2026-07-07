@@ -4,9 +4,11 @@ import { ContratCreche } from './contrat-creche.js';
 import { PlageHoraire } from './plage-horaire.js';
 import { SemaineType } from './semaine-type.js';
 import {
+  AjustementJourNonGardeError,
   DeductionExcessiveError,
   ParametreContratInvalideError,
   PeriodeContratInvalideError,
+  SaisieJourEnConflitError,
 } from './planification-error.js';
 
 /** Semaine type crèche de Mia (doc 02 §7) : 25 h 30 / sem. */
@@ -348,6 +350,246 @@ describe('ContratCreche — couverture mensuelle (Phase 9, bug #2)', () => {
     const p = presta(contratMia(), '2026-07');
     expect(p.heuresMensualisees).toBe(126.5);
     expect(p.heuresAnnuellesContractualisees).toBe(885.5);
+  });
+});
+
+describe('ContratCreche — ajustements d’heures réelles', () => {
+  // 2026-03-02 est un lundi ; 2026-03-03 un mardi (cf. tests plus haut).
+  const LUNDI = '2026-03-02';
+  const MARDI = '2026-03-03';
+
+  /** Contrat crèche gardé le lundi sur une plage donnée (autres jours libres). */
+  function contratLundi(
+    plage = PlageHoraire.creer(9, 0, 16, 30),
+  ): ContratCreche {
+    return ContratCreche.creer({
+      valideDu: '2026-01-01',
+      valideAu: '2026-12-31',
+      heuresAnnuellesContractualisees: 885.5,
+      nbMensualites: 7,
+      semaineType: SemaineType.creer({ LUNDI: [plage] }),
+    });
+  }
+
+  /** Un ajustement (présence réelle) sur une date, préavis/certificat optionnels. */
+  function ajustement(
+    date: string,
+    presence: PlageHoraire,
+    preavisJours = 0,
+    certificatMaladie = false,
+  ) {
+    return { date, presence, preavisJours, certificatMaladie };
+  }
+
+  it('extension seule : 08:00–16:30 sur un contrat 09:00–16:30 → +60 min de complément', () => {
+    const p = presta(
+      contratLundi(PlageHoraire.creer(9, 0, 16, 30)),
+      '2026-03',
+      {
+        ajustements: [ajustement(LUNDI, PlageHoraire.creer(8, 0, 16, 30))],
+      },
+    );
+    expect(p.complement.enMinutes).toBe(60);
+    expect(p.heuresDeduites.estZero()).toBe(true);
+  });
+
+  it('réduction éligible : 10:00–15:00 sur 09:00–17:00 avec préavis suffisant → 180 min déduites', () => {
+    const p = presta(contratLundi(PlageHoraire.creer(9, 0, 17, 0)), '2026-03', {
+      ajustements: [ajustement(LUNDI, PlageHoraire.creer(10, 0, 15, 0), 3)],
+    });
+    expect(p.heuresDeduites.enMinutes).toBe(180);
+    expect(p.complement.estZero()).toBe(true);
+  });
+
+  it('réduction NON éligible (sans préavis ni certificat) → 0 déduction', () => {
+    const p = presta(contratLundi(PlageHoraire.creer(9, 0, 17, 0)), '2026-03', {
+      ajustements: [
+        ajustement(LUNDI, PlageHoraire.creer(10, 0, 15, 0), 1, false),
+      ],
+    });
+    expect(p.heuresDeduites.estZero()).toBe(true);
+    expect(p.complement.estZero()).toBe(true);
+  });
+
+  it('réduction éligible par certificat maladie (sans préavis)', () => {
+    const p = presta(contratLundi(PlageHoraire.creer(9, 0, 17, 0)), '2026-03', {
+      ajustements: [
+        ajustement(LUNDI, PlageHoraire.creer(10, 0, 15, 0), 0, true),
+      ],
+    });
+    expect(p.heuresDeduites.enMinutes).toBe(180);
+  });
+
+  it('extension + réduction simultanées se cumulent correctement', () => {
+    // Contrat 09:00–17:00, présence 08:00–16:00 : +60 min avant, −60 min après.
+    const p = presta(contratLundi(PlageHoraire.creer(9, 0, 17, 0)), '2026-03', {
+      ajustements: [ajustement(LUNDI, PlageHoraire.creer(8, 0, 16, 0), 3)],
+    });
+    expect(p.complement.enMinutes).toBe(60);
+    expect(p.heuresDeduites.enMinutes).toBe(60);
+  });
+
+  it('présence égale à la plage du contrat : entrée sans effet (no-op)', () => {
+    const p = presta(
+      contratLundi(PlageHoraire.creer(9, 0, 16, 30)),
+      '2026-03',
+      {
+        ajustements: [
+          ajustement(LUNDI, PlageHoraire.creer(9, 0, 16, 30), 0, true),
+        ],
+      },
+    );
+    expect(p.complement.estZero()).toBe(true);
+    expect(p.heuresDeduites.estZero()).toBe(true);
+  });
+
+  it('cumule l’extension d’un ajustement avec un complément libre saisi', () => {
+    const p = presta(
+      contratLundi(PlageHoraire.creer(9, 0, 16, 30)),
+      '2026-03',
+      {
+        complement: Duree.depuisMinutes(30),
+        ajustements: [ajustement(LUNDI, PlageHoraire.creer(8, 0, 16, 30))],
+      },
+    );
+    expect(p.complement.enMinutes).toBe(30 + 60);
+  });
+
+  it('ignore un ajustement d’un autre mois que celui demandé', () => {
+    const p = presta(
+      contratLundi(PlageHoraire.creer(9, 0, 16, 30)),
+      '2026-03',
+      {
+        ajustements: [
+          ajustement('2026-04-06', PlageHoraire.creer(8, 0, 16, 30)),
+        ],
+      },
+    );
+    expect(p.complement.estZero()).toBe(true);
+    expect(p.heuresDeduites.estZero()).toBe(true);
+  });
+
+  it('ignore un ajustement du mois mais hors période de validité (sans effet)', () => {
+    // Contrat gardé le lundi mais qui se termine le 2026-03-09 : un ajustement au
+    // lundi 2026-03-23 (même mois, couvert) est postérieur à valideAu → sans effet.
+    const contrat = ContratCreche.creer({
+      valideDu: '2026-01-01',
+      valideAu: '2026-03-09',
+      heuresAnnuellesContractualisees: 885.5,
+      nbMensualites: 7,
+      semaineType: SemaineType.creer({
+        LUNDI: [PlageHoraire.creer(9, 0, 16, 30)],
+      }),
+    });
+    const p = presta(contrat, '2026-03', {
+      ajustements: [
+        ajustement('2026-03-23', PlageHoraire.creer(8, 0, 17, 0), 3),
+      ],
+    });
+    expect(p.complement.estZero()).toBe(true);
+    expect(p.heuresDeduites.estZero()).toBe(true);
+  });
+
+  it('jour à plusieurs plages : présence sur la seule matinée → réduction de l’après-midi', () => {
+    // Contrat lundi 08:00–12:00 + 13:00–17:00. Présent le matin seulement :
+    // l'après-midi (240 min) n'est pas couvert → réduction, sans extension.
+    const contrat = ContratCreche.creer({
+      valideDu: '2026-01-01',
+      valideAu: '2026-12-31',
+      heuresAnnuellesContractualisees: 885.5,
+      nbMensualites: 7,
+      semaineType: SemaineType.creer({
+        LUNDI: [
+          PlageHoraire.creer(8, 0, 12, 0),
+          PlageHoraire.creer(13, 0, 17, 0),
+        ],
+      }),
+    });
+    const p = presta(contrat, '2026-03', {
+      ajustements: [ajustement(LUNDI, PlageHoraire.creer(8, 0, 12, 0), 3)],
+    });
+    expect(p.complement.estZero()).toBe(true);
+    expect(p.heuresDeduites.enMinutes).toBe(240);
+  });
+
+  it('tolère un ajustement au même mois qu’une absence sans date (aucun conflit)', () => {
+    // Une absence sans date n'occupe aucun jour → pas de conflit avec l'ajustement ;
+    // extension de l'ajustement et déduction de l'absence se cumulent.
+    const p = presta(
+      contratLundi(PlageHoraire.creer(9, 0, 16, 30)),
+      '2026-03',
+      {
+        ajustements: [ajustement(LUNDI, PlageHoraire.creer(8, 0, 16, 30))],
+        absences: [
+          {
+            duree: Duree.depuisHeuresMinutes(2, 0),
+            preavisJours: 3,
+            certificatMaladie: false,
+          },
+        ],
+      },
+    );
+    expect(p.complement.enMinutes).toBe(60);
+    expect(p.heuresDeduites.enMinutes).toBe(120);
+  });
+
+  it('rejette un ajustement sur un jour non gardé (A2)', () => {
+    expect(() =>
+      presta(contratLundi(), '2026-03', {
+        ajustements: [ajustement(MARDI, PlageHoraire.creer(8, 0, 16, 30))],
+      }),
+    ).toThrow(AjustementJourNonGardeError);
+  });
+
+  it('rejette un ajustement en double sur la même date (A3)', () => {
+    expect(() =>
+      presta(contratLundi(), '2026-03', {
+        ajustements: [
+          ajustement(LUNDI, PlageHoraire.creer(8, 0, 16, 30)),
+          ajustement(LUNDI, PlageHoraire.creer(9, 0, 17, 0)),
+        ],
+      }),
+    ).toThrow(SaisieJourEnConflitError);
+  });
+
+  it('rejette un ajustement ET une absence datés sur la même date (A3)', () => {
+    expect(() =>
+      presta(contratLundi(), '2026-03', {
+        ajustements: [ajustement(LUNDI, PlageHoraire.creer(8, 0, 16, 30))],
+        absences: [
+          {
+            date: LUNDI,
+            duree: Duree.depuisHeuresMinutes(2, 0),
+            preavisJours: 3,
+            certificatMaladie: false,
+          },
+        ],
+      }),
+    ).toThrow(SaisieJourEnConflitError);
+  });
+
+  it('rejette un ajustement ET un jour ajouté sur la même date (A3)', () => {
+    expect(() =>
+      presta(contratLundi(), '2026-03', {
+        ajustements: [ajustement(LUNDI, PlageHoraire.creer(8, 0, 16, 30))],
+        joursSupplementaires: [
+          { date: LUNDI, duree: Duree.depuisHeuresMinutes(3, 0) },
+        ],
+      }),
+    ).toThrow(SaisieJourEnConflitError);
+  });
+
+  it('INV-05 tient : la réduction d’un ajustement ne dépasse pas les heures réservées', () => {
+    // Réservées = plage du contrat ; la réduction est bornée par cette plage.
+    const contrat = contratLundi(PlageHoraire.creer(9, 0, 17, 0));
+    const p = presta(contrat, '2026-03', {
+      ajustements: [ajustement(LUNDI, PlageHoraire.creer(9, 0, 9, 30), 5)],
+    });
+    expect(p.heuresDeduites.enMinutes).toBeLessThanOrEqual(
+      p.heuresReservees.enMinutes,
+    );
+    // 09:00–09:30 présent → 7 h 30 réduites sur les 8 h du jour.
+    expect(p.heuresDeduites.enMinutes).toBe(450);
   });
 });
 

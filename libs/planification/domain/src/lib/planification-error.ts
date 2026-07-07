@@ -41,6 +41,26 @@ export class DeductionExcessiveError extends DomainError {
   }
 }
 
+/**
+ * Ajustement d'heures réelles porté sur un jour **non gardé** (absent de la
+ * semaine type) : le parent doit passer par un « jour ajouté » (A2).
+ */
+export class AjustementJourNonGardeError extends DomainError {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Plusieurs saisies datées en conflit sur une même date (A3) : un jour porte SOIT
+ * un ajustement, SOIT une absence, SOIT un jour ajouté — jamais deux à la fois.
+ */
+export class SaisieJourEnConflitError extends DomainError {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
 /** Comparaison de deux plannings portant sur des mois différents. */
 export class MoisIncoherentError extends DomainError {
   constructor(message: string) {

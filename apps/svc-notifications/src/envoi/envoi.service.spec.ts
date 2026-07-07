@@ -160,6 +160,7 @@ function deltaJour(date: string): DeltaModifs {
           absences: [{ date }],
           exceptions: [],
           joursAlsh: [],
+          ajustements: [],
         },
       },
     ],

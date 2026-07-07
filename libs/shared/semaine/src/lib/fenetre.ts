@@ -20,6 +20,7 @@ export const CATEGORIES_DATEES = [
   'absences',
   'exceptions',
   'joursAlsh',
+  'ajustements',
 ] as const;
 
 type CategorieDatee = (typeof CATEGORIES_DATEES)[number];
@@ -36,6 +37,7 @@ function jourVide(): Record<CategorieDatee, unknown[]> {
     absences: [],
     exceptions: [],
     joursAlsh: [],
+    ajustements: [],
   };
 }
 

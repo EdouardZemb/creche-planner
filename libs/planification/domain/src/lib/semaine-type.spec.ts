@@ -45,4 +45,15 @@ describe('SemaineType', () => {
   it('expose les jours gardés', () => {
     expect(semaineMia().joursGardes).toEqual(['LUNDI', 'MERCREDI', 'VENDREDI']);
   });
+
+  it('expose les plages contractuelles d un jour gardé', () => {
+    const plages = semaineMia().plagesJour('LUNDI');
+    expect(plages).toHaveLength(1);
+    expect(plages[0]?.debutMinutes).toBe(8 * 60 + 30);
+    expect(plages[0]?.finMinutes).toBe(17 * 60);
+  });
+
+  it('renvoie un tableau vide de plages pour un jour non gardé', () => {
+    expect(semaineMia().plagesJour('MARDI')).toEqual([]);
+  });
 });

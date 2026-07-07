@@ -88,6 +88,32 @@ function compte(n: number, singulier: string, pluriel: string): string {
   return `${String(n)} ${n > 1 ? pluriel : singulier}`;
 }
 
+/** `8`,`0` → `08:00` (heure d'affichage, zéro-paddée). */
+function heureLisible(heures: unknown, minutes: unknown): string | null {
+  if (typeof heures !== 'number' || typeof minutes !== 'number') {
+    return null;
+  }
+  return `${String(heures).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+/**
+ * Rend un ajustement d'heures réelles en clair pour le personnel de la crèche :
+ * « présence 08:00–16:30 » (plage RÉELLE du jour). La plage contractuelle n'est pas
+ * disponible dans le delta — on n'affiche que la présence. `null` si l'item est
+ * malformé (on l'ignore alors sans casser le récap).
+ */
+function presenceLisible(item: unknown): string | null {
+  const a = item as {
+    debutHeures?: unknown;
+    debutMinutes?: unknown;
+    finHeures?: unknown;
+    finMinutes?: unknown;
+  };
+  const debut = heureLisible(a.debutHeures, a.debutMinutes);
+  const fin = heureLisible(a.finHeures, a.finMinutes);
+  return debut !== null && fin !== null ? `présence ${debut}–${fin}` : null;
+}
+
 /**
  * Résume l'état **après** modification d'un jour : la liste des entrées par
  * catégorie, ou « journée retirée du planning » quand le jour n'a plus d'entrée
@@ -103,7 +129,17 @@ function resumeJour(jour: DeltaJour): string {
     const n = apres[c.cle].length;
     return n > 0 ? [compte(n, c.singulier, c.pluriel)] : [];
   });
-  return morceaux.length > 0 ? morceaux.join(', ') : 'journée modifiée';
+  // Les ajustements d'heures réelles sont rendus en clair (présence HH:MM–HH:MM)
+  // plutôt qu'en compte : c'est l'information utile au service. Lecture défensive :
+  // un `delta_modifs` figé avant l'ajout de la catégorie n'a pas la clé (≡ vide).
+  const ajustementsJour =
+    (apres as { ajustements?: readonly unknown[] }).ajustements ?? [];
+  const ajustements = ajustementsJour.flatMap((item) => {
+    const presence = presenceLisible(item);
+    return presence !== null ? [presence] : [];
+  });
+  const morceauxTout = [...morceaux, ...ajustements];
+  return morceauxTout.length > 0 ? morceauxTout.join(', ') : 'journée modifiée';
 }
 
 /** Lignes « date : résumé » d'un enfant (vide si aucun jour modifié). */

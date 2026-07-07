@@ -114,6 +114,50 @@ describe('fusionnerSemaineDansMois — oracles', () => {
     expect(fusion.absences?.[0]?.date).toBe('2026-03-11');
   });
 
+  it('fusionne la catégorie ajustements comme les autres entrées datées', () => {
+    const jours = joursDeLaSemaine('2026-W11'); // tout mars 2026.
+    const ajustement = (date: string) => ({
+      date,
+      debutHeures: 8,
+      debutMinutes: 0,
+      finHeures: 16,
+      finMinutes: 30,
+      preavisJours: 2,
+      certificatMaladie: false,
+    });
+    const saisieMois: EcrirePlanningDto = {
+      ajustements: [ajustement('2026-03-02'), ajustement('2026-03-10')], // hors / dans semaine
+    };
+    const besoins: BesoinsSemaine = {
+      ajustements: [ajustement('2026-03-12')], // nouvel ajustement de la semaine
+    };
+
+    const fusion = fusionnerSemaineDansMois(saisieMois, jours, besoins);
+
+    const dates = (fusion.ajustements ?? []).map((a) => a.date).sort();
+    // 03-10 (dans la semaine) retiré ; 03-12 ajouté ; 03-02 (hors semaine) gardé.
+    expect(dates).toEqual(['2026-03-02', '2026-03-12']);
+  });
+
+  it('forme canonique : la catégorie ajustements devenue vide est omise', () => {
+    const jours = joursDeLaSemaine('2026-W11');
+    const saisieMois: EcrirePlanningDto = {
+      ajustements: [
+        {
+          date: '2026-03-10',
+          debutHeures: 8,
+          debutMinutes: 0,
+          finHeures: 16,
+          finMinutes: 30,
+          preavisJours: 0,
+          certificatMaladie: false,
+        },
+      ],
+    };
+    const fusion = fusionnerSemaineDansMois(saisieMois, jours, {});
+    expect('ajustements' in fusion).toBe(false);
+  });
+
   it('idempotence : ré-appliquer la même édition ne change rien', () => {
     const jours = joursDeLaSemaine('2026-W11');
     const saisieMois: EcrirePlanningDto = {

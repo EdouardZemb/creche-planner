@@ -8,6 +8,7 @@ interface JourPartiel {
   absences?: unknown[];
   exceptions?: unknown[];
   joursAlsh?: unknown[];
+  ajustements?: unknown[];
 }
 
 /** Fabrique un `SaisieJour` à partir des seules catégories renseignées. */
@@ -17,6 +18,7 @@ function jour(partiel: JourPartiel): SaisieJour {
     absences: partiel.absences ?? [],
     exceptions: partiel.exceptions ?? [],
     joursAlsh: partiel.joursAlsh ?? [],
+    ajustements: partiel.ajustements ?? [],
   };
 }
 
@@ -95,6 +97,41 @@ describe('brouillonServiceAgrege', () => {
 
     expect(message.text).toContain('Aucune modification déclarée');
     expect(message.html).toContain('Aucune modification déclarée');
+  });
+
+  it('rend un ajustement d’heures réelles en clair (présence HH:MM–HH:MM)', () => {
+    const message = brouillonServiceAgrege({
+      ...BASE,
+      enfants: [
+        {
+          enfant: 'Léa',
+          deltaModifs: {
+            jours: [
+              {
+                date: '2026-06-29',
+                avant: null,
+                apres: jour({
+                  ajustements: [
+                    {
+                      date: '2026-06-29',
+                      debutHeures: 8,
+                      debutMinutes: 0,
+                      finHeures: 16,
+                      finMinutes: 30,
+                      preavisJours: 0,
+                      certificatMaladie: false,
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(message.text).toContain('29/06/2026 : présence 08:00–16:30');
+    expect(message.html).toContain('présence 08:00–16:30');
   });
 
   it('cumule plusieurs catégories d’un même jour', () => {
