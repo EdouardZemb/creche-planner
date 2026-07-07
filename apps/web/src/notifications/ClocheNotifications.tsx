@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { NotificationInApp } from '../types/bff';
 import { formaterDateFr } from '../utils/dates';
@@ -39,6 +40,19 @@ export function ClocheNotifications() {
       // Accusé de lecture best-effort : une panne ne doit pas casser l'entête.
     } finally {
       setEnCours(null);
+    }
+  }
+
+  /**
+   * Tap sur une notification **avec lien** : le panneau se ferme à la navigation et
+   * l'accusé de lecture part en **fire-and-forget** (une panne d'accusé ne doit jamais
+   * empêcher la navigation, prise en charge par le `<Link>`). Une notif déjà lue ne
+   * relance pas d'accusé inutile.
+   */
+  function ouvrirDepuisLien(n: NotificationInApp): void {
+    setOuvert(false);
+    if (n.luLe === null) {
+      void marquerLue(n.id);
     }
   }
 
@@ -91,15 +105,10 @@ export function ClocheNotifications() {
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {notifications.map((n) => {
                 const lue = n.luLe !== null;
-                return (
-                  <li
-                    key={n.id}
-                    style={{
-                      padding: '0.5rem 0',
-                      borderTop: '1px solid var(--bordure, #e5e5e5)',
-                      opacity: lue ? 0.65 : 1,
-                    }}
-                  >
+                const lien = n.lien ?? null;
+                // Corps commun (titre + date + texte), tapable ou non selon le lien.
+                const contenu = (
+                  <>
                     <div
                       style={{
                         display: 'flex',
@@ -119,20 +128,53 @@ export function ClocheNotifications() {
                       </span>
                     </div>
                     <p style={{ margin: '0.25rem 0 0' }}>{n.corps}</p>
-                    {!lue && (
-                      <button
-                        type="button"
-                        className="btn secondaire"
-                        disabled={enCours === n.id}
-                        style={{ marginTop: '0.35rem' }}
+                  </>
+                );
+                return (
+                  <li
+                    key={n.id}
+                    style={{
+                      padding: '0.5rem 0',
+                      borderTop: '1px solid var(--bordure, #e5e5e5)',
+                      opacity: lue ? 0.65 : 1,
+                    }}
+                  >
+                    {lien !== null && lien !== '' ? (
+                      // Carte entièrement tapable : mène à l'éditeur concerné et vaut
+                      // accusé de lecture. Cible tactile pleine largeur (≥ 2.75 rem).
+                      <Link
+                        to={lien}
+                        className="cloche-carte-lien"
+                        style={{
+                          display: 'block',
+                          color: 'inherit',
+                          textDecoration: 'none',
+                        }}
                         onClick={() => {
-                          void marquerLue(n.id);
+                          ouvrirDepuisLien(n);
                         }}
                       >
-                        {enCours === n.id
-                          ? 'Enregistrement…'
-                          : 'Marquer comme lu'}
-                      </button>
+                        {contenu}
+                      </Link>
+                    ) : (
+                      <>
+                        {contenu}
+                        {!lue && (
+                          <button
+                            type="button"
+                            className="btn secondaire"
+                            disabled={enCours === n.id}
+                            style={{ marginTop: '0.35rem' }}
+                            onClick={() => {
+                              void marquerLue(n.id);
+                            }}
+                          >
+                            {enCours === n.id
+                              ? 'Enregistrement…'
+                              : 'Marquer comme lu'}
+                          </button>
+                        )}
+                      </>
                     )}
                   </li>
                 );

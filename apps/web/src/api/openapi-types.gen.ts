@@ -1360,6 +1360,8 @@ export interface components {
             type: string;
             sujet: string;
             corps: string;
+            /** @description Lien profond in-app (chemin relatif `/foyers/:id/planning?semaine=…`) rendant la carte tapable jusqu’à l’éditeur concerné. `null` pour les entrées sans lien. Champ **optionnel** (compat ascendante). */
+            lien?: string | null;
             /** Format: date-time */
             creeLe: string;
             /** Format: date-time */

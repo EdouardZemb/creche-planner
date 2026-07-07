@@ -2100,3 +2100,43 @@ enfant_id = :enfantId AND enfant <> :prenom` **+ ré-émission d'un `ContratModi
    Prod attendue : 8 contrats, 2 enfants (Zoé/Mia), zéro homonyme ⇒ zéro ambiguïté attendue.
 3. Lot ultérieur (après vérification `0 NULL`) : migration différée `enfant_id SET NOT NULL` (pendant de
    `0004_contrat_etablissement_not_null`).
+
+## 28. Chantier « valider ma semaine » — Lot 1 : réparer l'entrée du parcours (✅ livré, PR #180)
+
+**But** — le parent recevait le mail du mardi « valider la semaine N+1 », mais son lien pointait vers
+`${appUrl}/planning?semaine=…` : **route inexistante** (tout le front vit sous
+`/foyers/:foyerId/planning`) ⇒ « Page introuvable », et le paramètre `?semaine` n'était lu nulle part.
+La cloche in-app listait par ailleurs des notifications **non actionnables**. Cible : mail **et** cloche
+mènent en **1 tap** à l'éditeur de la semaine concernée, **déjà ouvert**. (Plan complet :
+`.claude/plans/valider-ma-semaine.md`, Lot 1 de 6 ; les lots 2a/2b/3/4/5 restent à faire.)
+
+### 28.1 Architecture livrée
+
+- **Lien du mail (svc-notifications)** — `scheduler.hebdo.ts` construit désormais le lien **absolu**
+  `${appUrl}/foyers/${foyerId}/planning?semaine=${semaineIso}` (le `foyerId` est déjà disponible dans la
+  boucle d'envoi par foyer). Aucun changement du template pur `recapMardi.ts` (il reçoit le lien tel quel).
+- **Entrée du parcours (web)** — `PlanningPage` lit `?semaine`, le **valide par regex** `^\d{4}-W\d{2}$`
+  (rejet **silencieux** sinon) **sans écraser** les autres paramètres d'URL (`mois`/`simule`/`enfant`/
+  `mode`), et passe une prop `semaineInitiale?` à `EncartValidation`. Celui-ci **ouvre l'éditeur d'office**
+  dès que la semaine figure dans la liste à valider + `scrollIntoView` **une seule fois** (garde `useRef`) ;
+  semaine absente ou déjà validée ⇒ ignorée sans message d'erreur.
+- **Notification in-app tapable** — nouvelle colonne **`notification.lien varchar(300)` NULLABLE**
+  (migration svc-notifications **`0013_notification_lien.sql`**, additive, **aucun back-fill** : les entrées
+  antérieures restent sans lien et gardent leur bouton « Marquer comme lu »). `messageValidationHebdo`
+  reçoit le `foyerId` et produit un `lien` en **chemin relatif** `/foyers/:id/planning?semaine=…` (décision
+  A5 : pas d'URL absolue en base). La cloche rend alors la **carte entièrement tapable** (`<Link>`), le tap
+  vaut **accusé de lecture** (fire-and-forget, ne bloque pas la navigation) et **ferme le panneau**.
+- **Contrat BFF** — `NotificationInApp.lien` ajouté **optionnel** (hors `required`) dans l'OpenAPI
+  (`gateway.openapi.ts`) → types web régénérés (`openapi-types.gen.ts`) → schéma client
+  (`notifications.client.ts`, `.nullish()`). api-gateway : simple **passthrough**. Champs optionnels
+  uniquement ⇒ **compat ascendante**, `can-i-deploy` **inchangé**.
+- **Pacts** — aucune interaction pact ne couvre l'inbox `/moi/notifications` (endpoints ajoutés en PR6 sans
+  pact) : le fichier `api-gateway-svc-notifications.json` reste **byte-identique** après régénération à
+  blanc ; provider verification verte.
+
+### 28.2 Déploiement
+
+- **Migration additive `0013`** (svc-notifications), **rollback** = `ALTER TABLE notification DROP COLUMN
+lien;`. **Aucun secret, aucune variable d'env, aucun changement compose.** Périmètre : svc-notifications
+  (mail + colonne) + web (routing + cloche) + api-gateway/contracts-kernel (contrat). À embarquer dans le
+  prochain train de release (rien de manuel côté ops).

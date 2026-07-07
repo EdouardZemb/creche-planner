@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { ClocheNotifications } from './ClocheNotifications';
 import type { InboxVue, NotificationInApp } from '../types/bff';
@@ -146,5 +147,73 @@ describe('ClocheNotifications', () => {
         screen.getByRole('button', { name: 'Notifications' }),
       ).toBeInTheDocument();
     });
+  });
+
+  const LIEN = '/foyers/foyer-1/planning?semaine=2026-W27';
+
+  it('notification avec lien : carte tapable qui mène à l’éditeur, marque lu et ferme le panneau', async () => {
+    mockedApi.listerNotifications.mockResolvedValue(
+      inbox({ notifications: [notif({ lien: LIEN })] }),
+    );
+    mockedApi.marquerNotificationLue.mockResolvedValue(
+      notif({ lien: LIEN, luLe: '2026-06-24T10:00:00.000Z' }),
+    );
+    render(
+      <MemoryRouter>
+        <ClocheNotifications />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /notifications/i }),
+    );
+
+    // Carte entièrement tapable (un lien), pointant vers l'éditeur de la semaine.
+    const carte = screen.getByRole('link');
+    expect(carte).toHaveAttribute('href', LIEN);
+    expect(carte).toHaveTextContent(
+      'Planning de la semaine 2026-W27 à valider',
+    );
+    // Pas de bouton « Marquer comme lu » : le tap vaut accusé de lecture.
+    expect(
+      screen.queryByRole('button', { name: 'Marquer comme lu' }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(carte);
+
+    // Accusé de lecture fire-and-forget déclenché par le tap.
+    await waitFor(() => {
+      expect(mockedApi.marquerNotificationLue).toHaveBeenCalledWith('n1');
+    });
+    // Le panneau se ferme à la navigation (le titre du panneau disparaît).
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('heading', { name: 'Notifications' }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('notification lue avec lien : le tap navigue sans réémettre d’accusé de lecture', async () => {
+    mockedApi.listerNotifications.mockResolvedValue(
+      inbox({
+        nonLus: 0,
+        notifications: [
+          notif({ lien: LIEN, luLe: '2026-06-24T10:00:00.000Z' }),
+        ],
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <ClocheNotifications />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /notifications/i }),
+    );
+    fireEvent.click(screen.getByRole('link'));
+
+    // Déjà lue : aucun accusé de lecture superflu (garde `luLe === null`).
+    expect(mockedApi.marquerNotificationLue).not.toHaveBeenCalled();
   });
 });

@@ -28,6 +28,7 @@ function ligne(partiel: Partial<NotificationRow> = {}): NotificationRow {
     type: 'VALIDATION_HEBDO',
     sujet: 'Planning de la semaine 2026-W27 à valider',
     corps: 'Le planning de Léa pour la semaine 2026-W27 est à valider.',
+    lien: '/foyers/22222222-2222-4222-8222-222222222222/planning?semaine=2026-W27',
     creeLe: new Date('2026-06-23T06:01:00.000Z'),
     luLe: null,
     ...partiel,
@@ -80,7 +81,7 @@ function fakeBase(opts: Options = {}): {
 }
 
 describe('InboxService.creer', () => {
-  it('archive une ligne avec un id généré, le parent, le type, le sujet et le corps', async () => {
+  it('archive une ligne avec un id généré, le parent, le type, le sujet, le corps et le lien', async () => {
     const { db, inserted } = fakeBase();
     const service = new InboxService(db);
 
@@ -89,6 +90,7 @@ describe('InboxService.creer', () => {
       type: 'VALIDATION_HEBDO',
       sujet: 'Sujet',
       corps: 'Corps',
+      lien: '/foyers/f-1/planning?semaine=2026-W27',
     });
 
     expect(inserted).toHaveLength(1);
@@ -97,7 +99,23 @@ describe('InboxService.creer', () => {
     expect(valeurs['type']).toBe('VALIDATION_HEBDO');
     expect(valeurs['sujet']).toBe('Sujet');
     expect(valeurs['corps']).toBe('Corps');
+    expect(valeurs['lien']).toBe('/foyers/f-1/planning?semaine=2026-W27');
     expect(typeof valeurs['id']).toBe('string');
+  });
+
+  it('archive un lien nul (entrée sans navigation)', async () => {
+    const { db, inserted } = fakeBase();
+    const service = new InboxService(db);
+
+    await service.creer({
+      parentId: PARENT,
+      type: 'VALIDATION_HEBDO',
+      sujet: 'Sujet',
+      corps: 'Corps',
+      lien: null,
+    });
+
+    expect(inserted[0]!['lien']).toBeNull();
   });
 });
 
@@ -121,6 +139,7 @@ describe('InboxService.lister', () => {
     expect(vue.notifications[0]).toMatchObject({
       id: 'n1',
       type: 'VALIDATION_HEBDO',
+      lien: '/foyers/22222222-2222-4222-8222-222222222222/planning?semaine=2026-W27',
       creeLe: '2026-06-23T06:01:00.000Z',
       luLe: null,
     });

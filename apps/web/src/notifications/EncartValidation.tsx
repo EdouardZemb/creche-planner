@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import type { NotificationAValider } from '../types/bff';
 import { messageErreur } from '../utils/erreurs';
@@ -61,7 +61,20 @@ interface RetourValidation {
  * qu'il n'y a rien à valider (cas nominal hors notification du mardi), l'encart
  * ne s'affiche pas — il n'encombre pas la page.
  */
-export function EncartValidation({ foyerId }: { foyerId: string }) {
+export function EncartValidation({
+  foyerId,
+  semaineInitiale,
+}: {
+  foyerId: string;
+  /**
+   * Semaine ISO du lien profond du mardi (`?semaine`) : quand elle figure dans la
+   * liste à valider, l'éditeur s'ouvre d'office sur elle et l'encart défile à l'écran
+   * (une seule fois). Absente ou déjà validée : ignorée sans message. `undefined`
+   * explicite toléré (`exactOptionalPropertyTypes`) : PlanningPage passe la valeur
+   * dérivée du paramètre d'URL, éventuellement absente.
+   */
+  semaineInitiale?: string | undefined;
+}) {
   const [version, setVersion] = useState(0);
   const { data, loading } = useNotifications(foyerId, version);
   // Contrat en cours de validation (clé = `contratId`, PAS la semaine) : sinon valider un
@@ -76,6 +89,13 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
   // Semaine en cours d'édition (vue hebdo consolidée du foyer). `null` = repliée.
   const [semaineEditee, setSemaineEditee] = useState<string | null>(null);
 
+  // Auto-ouverture depuis un lien profond (`?semaine`) : l'encart défile à l'écran et
+  // l'éditeur de la semaine ciblée s'ouvre. `sectionRef` cible l'encart pour le
+  // `scrollIntoView` ; `autoOuvertureFaite` garantit un seul déclenchement (on ne
+  // ré-ouvre pas l'éditeur après que le parent l'a refermé).
+  const sectionRef = useRef<HTMLElement>(null);
+  const autoOuvertureFaite = useRef(false);
+
   // Chargement initial : l'encart s'affiche avec un placeholder plutôt que
   // rien — invisible, on ne savait pas s'il n'y avait rien à valider ou si la
   // vérification était en cours, et l'encart « sautait » à l'écran en
@@ -86,6 +106,22 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
   // avait marché.
   const enChargement = loading && data === null;
   const semaines = data ?? [];
+
+  // Ouvre l'éditeur de `semaineInitiale` dès qu'elle apparaît dans la liste chargée.
+  // Tant qu'elle n'y figure pas (liste encore en cours de chargement), on attend sans
+  // conclure ; si elle n'y est jamais (déjà validée), on n'ouvre rien — sans erreur.
+  useEffect(() => {
+    if (autoOuvertureFaite.current || semaineInitiale === undefined) {
+      return;
+    }
+    if (!semaines.some((n) => n.semaineIso === semaineInitiale)) {
+      return;
+    }
+    autoOuvertureFaite.current = true;
+    setSemaineEditee(semaineInitiale);
+    sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [semaineInitiale, semaines]);
+
   if (
     !enChargement &&
     semaines.length === 0 &&
@@ -128,6 +164,7 @@ export function EncartValidation({ foyerId }: { foyerId: string }) {
 
   return (
     <section
+      ref={sectionRef}
       className="carte"
       aria-label="Semaines de planning à valider"
       aria-busy={enChargement}

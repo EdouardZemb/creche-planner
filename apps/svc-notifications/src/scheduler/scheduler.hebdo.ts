@@ -264,7 +264,10 @@ export class SchedulerHebdo
         preavisRegle: etab?.preavisRegle ?? null,
       };
     });
-    const lienApp = `${this.options.appUrl}/planning?semaine=${semaineIso}`;
+    // Lien profond **absolu** vers l'éditeur de la semaine du foyer (le front vit
+    // sous `/foyers/:foyerId/planning` : sans le préfixe foyer, la route était
+    // introuvable). `?semaine` ouvre l'éditeur de la semaine concernée d'un tap.
+    const lienApp = `${this.options.appUrl}/foyers/${foyerId}/planning?semaine=${semaineIso}`;
 
     // Volet in-app (PR6) : indépendant de l'e-mail. Une entrée d'inbox est créée pour
     // chaque parent dont le canal IN_APP est actif pour ce type — au même moment que
@@ -347,7 +350,11 @@ export class SchedulerHebdo
     if (parents.length === 0) {
       return;
     }
-    const { sujet, corps } = messageValidationHebdo({ noms, semaineIso });
+    const { sujet, corps, lien } = messageValidationHebdo({
+      foyerId,
+      noms,
+      semaineIso,
+    });
     for (const parentId of parents) {
       try {
         await this.inbox.creer({
@@ -355,6 +362,7 @@ export class SchedulerHebdo
           type: TYPE_VALIDATION_HEBDO,
           sujet,
           corps,
+          lien,
         });
       } catch (erreur) {
         this.logger.warn(

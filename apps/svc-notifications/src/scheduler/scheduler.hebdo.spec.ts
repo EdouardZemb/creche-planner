@@ -423,11 +423,16 @@ describe('SchedulerHebdo.declencher', () => {
       type: string;
       sujet: string;
       corps: string;
+      lien: string;
     };
     expect(entree.parentId).toBe('p1');
     expect(entree.type).toBe('VALIDATION_HEBDO');
     expect(entree.sujet).toContain(SEMAINE_N1);
     expect(entree.corps).toContain('Léa');
+    // Lien profond relatif vers l'éditeur de la semaine du foyer (carte tapable côté web).
+    expect(entree.lien).toBe(
+      `/foyers/${FOYER_A}/planning?semaine=${SEMAINE_N1}`,
+    );
   });
 
   it('canal IN_APP coupé (aucun destinataire in-app) : ne crée aucune entrée', async () => {
