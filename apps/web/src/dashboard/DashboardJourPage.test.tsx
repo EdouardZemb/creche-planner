@@ -192,6 +192,7 @@ describe('DashboardJourPage', () => {
     const jourSansSaisie = {
       joursSupplementaires: [],
       absences: [],
+      ajustements: [],
       exceptions: [],
       joursAlsh: [],
     };
@@ -239,6 +240,48 @@ describe('DashboardJourPage', () => {
     expect(await screen.findByText(/Horaires modifiés/)).toBeInTheDocument();
     expect(screen.queryByText(/Ajusté/)).not.toBeInTheDocument();
     expect(screen.getByText(/Centre de loisirs \(ALSH\)/)).toBeInTheDocument();
+  });
+
+  it('reflète un ajustement d’heures du jour : libellé déduit + présence réelle', async () => {
+    const aujourdhui = jourCourantParis(new Date());
+    const jourSansSaisie = {
+      joursSupplementaires: [],
+      absences: [],
+      ajustements: [],
+      exceptions: [],
+      joursAlsh: [],
+    };
+    const vue: SemaineBesoins = {
+      ...semaineAvecGarde,
+      contrats: [
+        {
+          ...semaineAvecGarde.contrats[0]!,
+          // Base 08:30–17:00 ; présence réelle 08:00–17:00 → arrivée avancée.
+          besoins: {
+            [aujourdhui]: {
+              ...jourSansSaisie,
+              ajustements: [
+                {
+                  date: aujourdhui,
+                  debutHeures: 8,
+                  debutMinutes: 0,
+                  finHeures: 17,
+                  finMinutes: 0,
+                  preavisJours: 0,
+                  certificatMaladie: false,
+                },
+              ],
+            },
+          },
+        },
+      ],
+    };
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(vue);
+
+    renderPage();
+
+    expect(await screen.findByText(/Arrivée avancée/)).toBeInTheDocument();
+    expect(screen.getAllByText(/08:00–17:00/).length).toBeGreaterThan(0);
   });
 
   it('état vide : « Aucune garde prévue » + lien vers le planning', async () => {

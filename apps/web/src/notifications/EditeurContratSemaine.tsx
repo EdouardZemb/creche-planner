@@ -1,4 +1,10 @@
-import { useCallback, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import { api } from '../api/client';
 import type {
   ContratBesoinsSemaine,
@@ -22,10 +28,12 @@ import {
   ARRIVEE_DEFAUT,
   DEPART_DEFAUT,
   versHhmm,
+  minutesDeHhmm,
   plageDepuisHeures,
   plageValide,
   formaterPlage,
 } from '../planning/heures';
+import { classerAjustement } from '../planning/etatJourGarde';
 import { useEcritureSemaine } from './useEcritureSemaine';
 import {
   alshEffectif,
@@ -35,15 +43,17 @@ import {
   type BesoinsEtat,
 } from './besoinsSemaine';
 
-// Édition des besoins **datés** d'un contrat sur la seule semaine notifiée.
-// Contrairement aux calendriers mensuels, la vue hebdomadaire ne connaît pas la
-// semaine-type du contrat (le BFF ne renvoie que les entrées datées) : on édite
-// donc directement ces entrées, jour par jour, sans repère « jour gardé ».
-// L'aplatissement/reconstruction des besoins vit dans `besoinsSemaine.ts` (pur).
+// Édition des besoins **datés** d'un contrat sur la seule semaine notifiée. Le BFF
+// fournit désormais aussi le planning de BASE (semaine-type) : sur un jour gardé
+// crèche, on saisit donc les heures d'arrivée/départ RÉELLES (préremplies avec le
+// contrat) et l'app en déduit l'état (extension facturée / réduction déductible),
+// écrit comme une entrée `ajustements`. Sur un jour non gardé, c'est un « jour
+// ajouté ». L'aplatissement/reconstruction des besoins vit dans `besoinsSemaine.ts`.
 
 /** Forme de la modale d'édition d'un jour (champs selon le mode). */
 interface FormJour {
-  nature: 'absence' | 'ajout';
+  /** Crèche, jour gardé : absence pleine journée (vs saisie d'heures réelles). */
+  absentJournee: boolean;
   arrivee: string;
   depart: string;
   preavisJours: number;
@@ -56,7 +66,7 @@ interface FormJour {
 }
 
 const FORM_DEFAUT: FormJour = {
-  nature: 'absence',
+  absentJournee: false,
   arrivee: ARRIVEE_DEFAUT,
   depart: DEPART_DEFAUT,
   preavisJours: 0,
@@ -67,6 +77,186 @@ const FORM_DEFAUT: FormJour = {
   type: 'COMPLETE',
   repas: false,
 };
+
+/** Durée lisible d'un écart d'horaire : « 45 min », « 1 h », « 1 h 30 ». */
+function formaterDuree(minutes: number): string {
+  const heures = Math.floor(minutes / 60);
+  const reste = minutes % 60;
+  if (heures === 0) return `${reste} min`;
+  if (reste === 0) return `${heures} h`;
+  return `${heures} h ${reste}`;
+}
+
+/** État déduit d'une plage de présence réelle au regard de la plage de contrat. */
+interface EtatDeduit {
+  /** Une réduction (candidate à déduction) est présente → poser préavis/certificat. */
+  readonly reductionPresente: boolean;
+  /** L'entrée est sans effet (présence = plage de contrat) → rien à enregistrer. */
+  readonly identique: boolean;
+  /** Message annoncé sous les champs (aria-live), au mot près. */
+  readonly message: string;
+}
+
+/**
+ * Décrit, en mots de parent, l'écart entre la présence réelle saisie et la plage de
+ * garde contractuelle du jour : **extension** (minutes hors plage → facturées en
+ * complément), **réduction** (minutes de la plage non couvertes → candidate à
+ * déduction), les deux, ou rien. Pure : alimente la ligne d'état de la modale.
+ * Durées comparées en minutes depuis minuit ; libellés au mot près (plan Lot 2b).
+ */
+function etatDeduitAjustement(
+  arrivee: string,
+  depart: string,
+  base: { arrivee: string; depart: string },
+): EtatDeduit {
+  const arriveeContrat = minutesDeHhmm(base.arrivee);
+  const departContrat = minutesDeHhmm(base.depart);
+  const arriveeReelle = minutesDeHhmm(arrivee);
+  const departReel = minutesDeHhmm(depart);
+  const extension =
+    Math.max(0, arriveeContrat - arriveeReelle) +
+    Math.max(0, departReel - departContrat);
+  const reduction =
+    Math.max(0, arriveeReelle - arriveeContrat) +
+    Math.max(0, departContrat - departReel);
+  const habituel = `${base.arrivee}–${base.depart}`;
+
+  if (extension > 0 && reduction > 0) {
+    return {
+      reductionPresente: true,
+      identique: false,
+      message: `Horaires ajustés (${habituel} habituellement) : ${formaterDuree(
+        extension,
+      )} en plus (facturés en complément), ${formaterDuree(reduction)} en moins.`,
+    };
+  }
+  if (extension > 0) {
+    return {
+      reductionPresente: false,
+      identique: false,
+      message: `${formaterDuree(
+        extension,
+      )} de plus que les horaires habituels (${habituel}) — facturé en complément.`,
+    };
+  }
+  if (reduction > 0) {
+    return {
+      reductionPresente: true,
+      identique: false,
+      message: `${formaterDuree(
+        reduction,
+      )} de moins que les horaires habituels (${habituel}).`,
+    };
+  }
+  return {
+    reductionPresente: false,
+    identique: true,
+    message: 'Horaires habituels — rien à enregistrer.',
+  };
+}
+
+/** Champs heure d'arrivée / départ + message de plage invalide (crèche). */
+function ChampsHeuresPresence({
+  form,
+  setForm,
+  plageOk,
+}: {
+  form: FormJour;
+  setForm: Dispatch<SetStateAction<FormJour>>;
+  plageOk: boolean;
+}) {
+  return (
+    <>
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+          marginTop: '0.5rem',
+        }}
+      >
+        <label>
+          Heure d’arrivée
+          <input
+            type="time"
+            value={form.arrivee}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, arrivee: e.target.value }));
+            }}
+          />
+        </label>
+        <label>
+          Heure de départ
+          <input
+            type="time"
+            value={form.depart}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, depart: e.target.value }));
+            }}
+          />
+        </label>
+      </div>
+      {!plageOk && (
+        <div
+          className="muted"
+          style={{ fontSize: '0.8rem', marginTop: '0.4rem' }}
+        >
+          L’heure de départ doit être postérieure à l’arrivée.
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Questions préavis + certificat, communes à l'absence et à la réduction d'heures. */
+function ChampsPreavisCertificat({
+  form,
+  setForm,
+}: {
+  form: FormJour;
+  setForm: Dispatch<SetStateAction<FormJour>>;
+}) {
+  return (
+    <>
+      <label>
+        Signalée combien de jours à l’avance ?
+        <input
+          type="number"
+          min={0}
+          value={form.preavisJours}
+          onChange={(e) => {
+            setForm((f) => ({
+              ...f,
+              preavisJours: parseInt(e.target.value, 10) || 0,
+            }));
+          }}
+        />
+      </label>
+      <label
+        style={{
+          flexDirection: 'row',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.4rem',
+          marginTop: '0.5rem',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={form.certificatMaladie}
+          onChange={(e) => {
+            setForm((f) => ({
+              ...f,
+              certificatMaladie: e.target.checked,
+            }));
+          }}
+          style={{ width: 'auto', padding: 0 }}
+        />
+        Certificat médical
+      </label>
+    </>
+  );
+}
 
 export interface EditeurContratSemaineProps {
   contrat: ContratBesoinsSemaine;
@@ -121,6 +311,10 @@ export function EditeurContratSemaine({
     () => new Map(besoins.joursSup.map((j) => [j.date, j])),
     [besoins.joursSup],
   );
+  const ajustementParDate = useMemo(
+    () => new Map(besoins.ajustements.map((a) => [a.date, a])),
+    [besoins.ajustements],
+  );
   const exceptionParDate = useMemo(
     () => new Map(besoins.exceptions.map((e) => [e.date, e])),
     [besoins.exceptions],
@@ -138,6 +332,21 @@ export function EditeurContratSemaine({
     [ecrire, contrat.contratId, semaineIso],
   );
 
+  // Plage de garde contractuelle (1re plage de la semaine-type) d'un jour crèche →
+  // `{ arrivee, depart }` en `HH:MM`, ou `null` si le jour n'est pas gardé. Sert de
+  // repère « jour gardé » et de préremplissage des heures réelles.
+  const plageContratPremiere = useCallback(
+    (date: string): { arrivee: string; depart: string } | null => {
+      const base = contrat.semaineType?.[jourSemaineDeIso(date)]?.[0];
+      if (base === undefined) return null;
+      return {
+        arrivee: versHhmm(base.debutHeures, base.debutMinutes),
+        depart: versHhmm(base.finHeures, base.finMinutes),
+      };
+    },
+    [contrat.semaineType],
+  );
+
   // --- Modale d'édition d'un jour -------------------------------------------
   const [dialogDate, setDialogDate] = useState<string | null>(null);
   const [form, setForm] = useState<FormJour>(FORM_DEFAUT);
@@ -146,18 +355,34 @@ export function EditeurContratSemaine({
     (date: string) => {
       const f: FormJour = { ...FORM_DEFAUT };
       if (mode === 'CRECHE_PSU') {
+        // Jour gardé : préremplir avec la plage du contrat (heures réelles) ; sinon
+        // laisser les heures par défaut (« jour ajouté »). Une saisie existante prime.
+        const base = plageContratPremiere(date);
+        if (base) {
+          f.arrivee = base.arrivee;
+          f.depart = base.depart;
+        }
+        const aj = ajustementParDate.get(date);
         const abs = absenceParDate.get(date);
         const sup = jourSupParDate.get(date);
-        if (abs) {
-          f.nature = 'absence';
-          f.arrivee = versHhmm(abs.debutHeures, abs.debutMinutes);
-          f.depart = versHhmm(abs.finHeures, abs.finMinutes);
+        if (aj) {
+          f.arrivee = versHhmm(aj.debutHeures, aj.debutMinutes);
+          f.depart = versHhmm(aj.finHeures, aj.finMinutes);
+          f.preavisJours = aj.preavisJours;
+          f.certificatMaladie = aj.certificatMaladie;
+        } else if (abs && base) {
+          // Jour gardé avec absence existante (dont partielles historiques) →
+          // « Absent toute la journée » ; sa fenêtre n'est plus éditée.
+          f.absentJournee = true;
           f.preavisJours = abs.preavisJours;
           f.certificatMaladie = abs.certificatMaladie;
         } else if (sup) {
-          f.nature = 'ajout';
           f.arrivee = versHhmm(sup.debutHeures, sup.debutMinutes);
           f.depart = versHhmm(sup.finHeures, sup.finMinutes);
+        } else if (abs) {
+          // Jour non gardé avec absence héritée : sa fenêtre devient un jour ajouté.
+          f.arrivee = versHhmm(abs.debutHeures, abs.debutMinutes);
+          f.depart = versHhmm(abs.finHeures, abs.finMinutes);
         }
       } else if (mode === 'ALSH') {
         // Préremplit depuis l'état EFFECTIF (explicite > exception > récurrence),
@@ -187,9 +412,11 @@ export function EditeurContratSemaine({
       mode,
       absenceParDate,
       jourSupParDate,
+      ajustementParDate,
       alshParDate,
       exceptionParDate,
       contrat.semaineAbcm,
+      plageContratPremiere,
     ],
   );
 
@@ -199,28 +426,68 @@ export function EditeurContratSemaine({
 
   const plageOk = plageValide(form.arrivee, form.depart);
 
+  // Repère « jour gardé » + état déduit de la présence réelle (crèche), recalculés
+  // en direct pour la ligne d'annonce (aria-live) et la logique de confirmation.
+  const plageContratDialog =
+    dialogDate !== null ? plageContratPremiere(dialogDate) : null;
+  const estGardeDialog = plageContratDialog !== null;
+  const etatDeduit = useMemo<EtatDeduit | null>(() => {
+    if (plageContratDialog === null || !plageOk) return null;
+    return etatDeduitAjustement(form.arrivee, form.depart, plageContratDialog);
+  }, [plageContratDialog, plageOk, form.arrivee, form.depart]);
+
   const confirmer = useCallback(() => {
     if (dialogDate === null) return;
     const date = dialogDate;
     if (mode === 'CRECHE_PSU') {
-      if (!plageOk) return;
-      const plage = plageDepuisHeures(form.arrivee, form.depart);
+      const base = plageContratPremiere(date);
+      // Une seule saisie par jour (A3) : on repart d'un jour « propre ».
       const absences = besoins.absences.filter((a) => a.date !== date);
       const joursSup = besoins.joursSup.filter((j) => j.date !== date);
-      if (form.nature === 'absence') {
-        absences.push({
-          date,
-          ...plage,
-          preavisJours: form.preavisJours,
-          certificatMaladie: form.certificatMaladie,
-        });
+      const ajustements = besoins.ajustements.filter((a) => a.date !== date);
+
+      if (base !== null) {
+        // Jour gardé : absence pleine journée, ajustement d'heures réelles, ou rien.
+        if (form.absentJournee) {
+          absences.push({
+            date,
+            ...plageDepuisHeures(base.arrivee, base.depart),
+            preavisJours: form.preavisJours,
+            certificatMaladie: form.certificatMaladie,
+          });
+          enregistrer({ ...besoins, absences, joursSup, ajustements });
+          annoncer(`Absence enregistrée le ${formaterDateFr(date)}`);
+        } else {
+          if (!plageOk) return;
+          const etat = etatDeduitAjustement(form.arrivee, form.depart, base);
+          if (!etat.identique) {
+            ajustements.push({
+              date,
+              ...plageDepuisHeures(form.arrivee, form.depart),
+              // Préavis/certificat ne pèsent que sur une réduction déductible ;
+              // une extension pure part sans (0 / false).
+              preavisJours: etat.reductionPresente ? form.preavisJours : 0,
+              certificatMaladie: etat.reductionPresente
+                ? form.certificatMaladie
+                : false,
+            });
+            annoncer(`Horaires ajustés le ${formaterDateFr(date)}`);
+          } else {
+            // Horaires habituels : Confirmer nettoie une éventuelle saisie du jour.
+            annoncer(`Horaires habituels le ${formaterDateFr(date)}`);
+          }
+          enregistrer({ ...besoins, absences, joursSup, ajustements });
+        }
       } else {
-        joursSup.push({ date, ...plage });
+        // Jour non gardé : c'est un « jour ajouté ».
+        if (!plageOk) return;
+        joursSup.push({
+          date,
+          ...plageDepuisHeures(form.arrivee, form.depart),
+        });
+        enregistrer({ ...besoins, absences, joursSup, ajustements });
+        annoncer(`Jour ajouté le ${formaterDateFr(date)}`);
       }
-      enregistrer({ ...besoins, absences, joursSup });
-      annoncer(
-        `${form.nature === 'absence' ? 'Absence' : 'Jour ajouté'} enregistré le ${formaterDateFr(date)}`,
-      );
     } else if (mode === 'ALSH') {
       // Confirmer pose un jour EXPLICITE (il prime sur la récurrence) et lève une
       // éventuelle exception `alsh:false` de ce jour, devenue sans objet.
@@ -239,7 +506,16 @@ export function EditeurContratSemaine({
       annoncer(`Jour ajusté le ${formaterDateFr(date)}`);
     }
     setDialogDate(null);
-  }, [dialogDate, mode, plageOk, form, besoins, enregistrer, annoncer]);
+  }, [
+    dialogDate,
+    mode,
+    plageOk,
+    form,
+    besoins,
+    enregistrer,
+    annoncer,
+    plageContratPremiere,
+  ]);
 
   const supprimer = useCallback(() => {
     if (dialogDate === null) return;
@@ -249,6 +525,7 @@ export function EditeurContratSemaine({
         ...besoins,
         absences: besoins.absences.filter((a) => a.date !== date),
         joursSup: besoins.joursSup.filter((j) => j.date !== date),
+        ajustements: besoins.ajustements.filter((a) => a.date !== date),
       });
     } else if (mode === 'ALSH') {
       // Retire le jour effectif : on lève le jour explicite, puis — si la
@@ -272,7 +549,11 @@ export function EditeurContratSemaine({
   const aSaisie = useCallback(
     (date: string): boolean => {
       if (mode === 'CRECHE_PSU') {
-        return absenceParDate.has(date) || jourSupParDate.has(date);
+        return (
+          absenceParDate.has(date) ||
+          jourSupParDate.has(date) ||
+          ajustementParDate.has(date)
+        );
       }
       if (mode === 'ALSH') {
         // « Modifier » dès qu'un jour est réservé effectivement (explicite ou
@@ -292,19 +573,25 @@ export function EditeurContratSemaine({
       mode,
       absenceParDate,
       jourSupParDate,
+      ajustementParDate,
       alshParDate,
       exceptionParDate,
       contrat.semaineAbcm,
     ],
   );
 
-  // Affiche l'horaire EFFECTIF du jour, sans ouvrir la saisie : une exception datée
-  // (absence / jour ajouté / ajustement) prime ; à défaut, on retombe sur le planning
+  // Affiche l'horaire EFFECTIF du jour, sans ouvrir la saisie : une entrée datée
+  // (ajustement / absence / jour ajouté) prime ; à défaut, on retombe sur le planning
   // de BASE du contrat (semaine-type) pour ce jour de la semaine ; sinon « — ».
   const resume = useCallback(
     (date: string): string => {
       const jour = jourSemaineDeIso(date);
       if (mode === 'CRECHE_PSU') {
+        const aj = ajustementParDate.get(date);
+        if (aj) {
+          const classe = classerAjustement(aj, plageContratPremiere(date));
+          return `${classe.libelle} ${classe.presence}`;
+        }
         const abs = absenceParDate.get(date);
         if (abs) return `Absent (${formaterPlage(abs)})`;
         const sup = jourSupParDate.get(date);
@@ -342,10 +629,12 @@ export function EditeurContratSemaine({
       mode,
       absenceParDate,
       jourSupParDate,
+      ajustementParDate,
       alshParDate,
       exceptionParDate,
       contrat.semaineType,
       contrat.semaineAbcm,
+      plageContratPremiere,
     ],
   );
 
@@ -476,130 +765,61 @@ export function EditeurContratSemaine({
           titre={`${contrat.enfant} — ${formaterDateFr(dialogDate)}`}
           onClose={fermer}
         >
-          {mode === 'CRECHE_PSU' && (
+          {mode === 'CRECHE_PSU' && estGardeDialog && (
             <>
-              <fieldset style={{ border: 'none', margin: 0, padding: 0 }}>
-                <legend className="muted" style={{ fontSize: '0.85rem' }}>
-                  Nature
-                </legend>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    margin: 0,
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="nature-jour"
-                    checked={form.nature === 'absence'}
-                    onChange={() => {
-                      setForm((f) => ({ ...f, nature: 'absence' }));
-                    }}
-                    style={{ width: 'auto', padding: 0 }}
-                  />
-                  Absence
-                </label>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    margin: 0,
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="nature-jour"
-                    checked={form.nature === 'ajout'}
-                    onChange={() => {
-                      setForm((f) => ({ ...f, nature: 'ajout' }));
-                    }}
-                    style={{ width: 'auto', padding: 0 }}
-                  />
-                  Jour ajouté
-                </label>
-              </fieldset>
-
-              <div
+              {/* Jour gardé : heures réelles (l'app déduit l'état), ou absence
+                  pleine journée. Le radio Absence/Jour ajouté d'antan disparaît. */}
+              <label
                 style={{
                   display: 'flex',
-                  gap: '0.75rem',
-                  flexWrap: 'wrap',
-                  marginTop: '0.5rem',
+                  alignItems: 'center',
+                  gap: '0.4rem',
+                  margin: 0,
                 }}
               >
-                <label>
-                  Heure d’arrivée
-                  <input
-                    type="time"
-                    value={form.arrivee}
-                    onChange={(e) => {
-                      setForm((f) => ({ ...f, arrivee: e.target.value }));
-                    }}
-                  />
-                </label>
-                <label>
-                  Heure de départ
-                  <input
-                    type="time"
-                    value={form.depart}
-                    onChange={(e) => {
-                      setForm((f) => ({ ...f, depart: e.target.value }));
-                    }}
-                  />
-                </label>
-              </div>
-              {!plageOk && (
-                <div
-                  className="muted"
-                  style={{ fontSize: '0.8rem', marginTop: '0.4rem' }}
-                >
-                  L’heure de départ doit être postérieure à l’arrivée.
-                </div>
-              )}
-              {form.nature === 'absence' && (
+                <input
+                  type="checkbox"
+                  checked={form.absentJournee}
+                  onChange={(e) => {
+                    setForm((f) => ({ ...f, absentJournee: e.target.checked }));
+                  }}
+                  style={{ width: 'auto', padding: 0 }}
+                />
+                Absent toute la journée
+              </label>
+
+              {form.absentJournee ? (
+                <ChampsPreavisCertificat form={form} setForm={setForm} />
+              ) : (
                 <>
-                  <label>
-                    Signalée combien de jours à l’avance ?
-                    <input
-                      type="number"
-                      min={0}
-                      value={form.preavisJours}
-                      onChange={(e) => {
-                        setForm((f) => ({
-                          ...f,
-                          preavisJours: parseInt(e.target.value, 10) || 0,
-                        }));
-                      }}
-                    />
-                  </label>
-                  <label
-                    style={{
-                      flexDirection: 'row',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.4rem',
-                      marginTop: '0.5rem',
-                    }}
+                  <ChampsHeuresPresence
+                    form={form}
+                    setForm={setForm}
+                    plageOk={plageOk}
+                  />
+                  {/* État déduit annoncé en direct (durée + effet facturation). */}
+                  <p
+                    aria-live="polite"
+                    className="muted"
+                    style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={form.certificatMaladie}
-                      onChange={(e) => {
-                        setForm((f) => ({
-                          ...f,
-                          certificatMaladie: e.target.checked,
-                        }));
-                      }}
-                      style={{ width: 'auto', padding: 0 }}
-                    />
-                    Certificat médical
-                  </label>
+                    {etatDeduit?.message ?? ''}
+                  </p>
+                  {etatDeduit?.reductionPresente === true && (
+                    <ChampsPreavisCertificat form={form} setForm={setForm} />
+                  )}
                 </>
               )}
             </>
+          )}
+
+          {mode === 'CRECHE_PSU' && !estGardeDialog && (
+            // Jour non gardé : implicitement un « jour ajouté » (heures par défaut).
+            <ChampsHeuresPresence
+              form={form}
+              setForm={setForm}
+              plageOk={plageOk}
+            />
           )}
 
           {mode === 'CANTINE' && (
@@ -714,7 +934,12 @@ export function EditeurContratSemaine({
               type="button"
               className="btn"
               onClick={confirmer}
-              disabled={mode === 'CRECHE_PSU' && !plageOk}
+              // Une plage valide n'est requise que si l'on saisit des heures
+              // (jour gardé sans « absent », ou jour ajouté) ; l'absence pleine
+              // journée n'en dépend pas.
+              disabled={
+                mode === 'CRECHE_PSU' && !form.absentJournee && !plageOk
+              }
             >
               Confirmer
             </button>

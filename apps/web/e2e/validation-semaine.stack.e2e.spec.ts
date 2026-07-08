@@ -189,11 +189,11 @@ test.describe('stack réelle : valider la semaine notifiée (édition → valida
       .first();
     await boutonJour.click();
 
-    // Modale d'édition : « Jour ajouté » (crèche), heures par défaut, puis Confirmer.
-    // L'écriture est enregistrée en debounce → on attend le PUT semaine réel.
+    // Modale d'édition : le mardi n'est pas gardé (jours gardés LUN/MER/VEN) → la
+    // modale ouvre directement la saisie d'un « jour ajouté » (heures par défaut),
+    // sans radio. L'écriture est enregistrée en debounce → on attend le PUT réel.
     const modale = page.getByRole('dialog');
     await expect(modale).toBeVisible();
-    await modale.getByRole('radio', { name: 'Jour ajouté' }).check();
     const ecriture = page.waitForResponse(
       (r) =>
         /\/plannings\/semaine\//.test(r.url()) &&

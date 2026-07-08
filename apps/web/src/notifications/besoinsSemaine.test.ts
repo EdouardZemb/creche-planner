@@ -24,6 +24,7 @@ function contratAvec(
 const ETAT_VIDE: BesoinsEtat = {
   absences: [],
   joursSup: [],
+  ajustements: [],
   exceptions: [],
   joursAlsh: [],
 };
@@ -45,6 +46,7 @@ describe('initBesoins', () => {
             },
           ],
           joursSupplementaires: [],
+          ajustements: [],
           exceptions: [{ date: '2026-06-29', cantine: true }],
           joursAlsh: [],
         },
@@ -57,6 +59,17 @@ describe('initBesoins', () => {
               debutMinutes: 30,
               finHeures: 17,
               finMinutes: 0,
+            },
+          ],
+          ajustements: [
+            {
+              date: '2026-06-30',
+              debutHeures: 8,
+              debutMinutes: 0,
+              finHeures: 16,
+              finMinutes: 30,
+              preavisJours: 1,
+              certificatMaladie: false,
             },
           ],
           exceptions: [],
@@ -85,6 +98,17 @@ describe('initBesoins', () => {
         finMinutes: 0,
       },
     ]);
+    expect(etat.ajustements).toEqual([
+      {
+        date: '2026-06-30',
+        debutHeures: 8,
+        debutMinutes: 0,
+        finHeures: 16,
+        finMinutes: 30,
+        preavisJours: 1,
+        certificatMaladie: false,
+      },
+    ]);
     expect(etat.exceptions).toEqual([{ date: '2026-06-29', cantine: true }]);
     expect(etat.joursAlsh).toEqual([
       { date: '2026-06-30', type: 'COMPLETE', repas: true },
@@ -106,6 +130,7 @@ describe('initBesoins', () => {
             },
           ],
           joursSupplementaires: [],
+          ajustements: [],
           exceptions: [],
           joursAlsh: [],
         },
@@ -120,6 +145,7 @@ describe('initBesoins', () => {
         '2026-07-01': {
           absences: [],
           joursSupplementaires: [],
+          ajustements: [],
           exceptions: [],
           joursAlsh: [{ date: '2026-07-01', type: 'DEMI' }],
         },
@@ -173,6 +199,35 @@ describe('versCorps', () => {
     });
     expect(corps.joursSupplementaires).toBeUndefined();
     expect(corps.joursAlsh).toBeUndefined();
+  });
+
+  it('reconstruit la catégorie `ajustements` (heures réelles) quand elle est non vide', () => {
+    const corps = versCorps({
+      ...ETAT_VIDE,
+      ajustements: [
+        {
+          date: '2026-06-30',
+          debutHeures: 8,
+          debutMinutes: 0,
+          finHeures: 16,
+          finMinutes: 30,
+          preavisJours: 2,
+          certificatMaladie: true,
+        },
+      ],
+    });
+    expect(corps.ajustements).toEqual([
+      {
+        date: '2026-06-30',
+        debutHeures: 8,
+        debutMinutes: 0,
+        finHeures: 16,
+        finMinutes: 30,
+        preavisJours: 2,
+        certificatMaladie: true,
+      },
+    ]);
+    expect(corps.absences).toBeUndefined();
   });
 
   it('n’émet `repas` que lorsqu’il est vrai (parcimonie du corps ALSH)', () => {

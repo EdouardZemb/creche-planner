@@ -360,6 +360,101 @@ describe('CalendrierCreche', () => {
     });
   });
 
+  it('hydrate un ajustement d’heures réelles et l’affiche en état déduit', async () => {
+    // Présence réelle 09:00–17:00 sur la garde MARDI 08:00–17:00 → arrivée retardée.
+    vi.mocked(api.lirePlanning).mockResolvedValue({
+      saisie: {
+        ajustements: [
+          {
+            date: '2026-06-02',
+            debutHeures: 9,
+            debutMinutes: 0,
+            finHeures: 17,
+            finMinutes: 0,
+            preavisJours: 0,
+            certificatMaladie: false,
+          },
+        ],
+      },
+    });
+
+    render(
+      <CalendrierCreche
+        contrat={contratCreche}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      const ligne = screen.getByText('02/06/2026').closest('li');
+      expect(ligne?.textContent).toContain('Arrivée retardée');
+      expect(ligne?.textContent).toContain('09:00–17:00');
+    });
+  });
+
+  it('préserve les ajustements d’heures dans l’écriture du mois (édition d’un autre jour)', async () => {
+    // Le PUT du mois est un remplacement complet : sans réémission, un ajustement
+    // saisi côté « valider ma semaine » disparaîtrait à la 1ʳᵉ édition du mois.
+    vi.mocked(api.ecrirePlanning).mockResolvedValue(undefined);
+    vi.mocked(api.lirePlanning).mockResolvedValue({
+      saisie: {
+        ajustements: [
+          {
+            date: '2026-06-02',
+            debutHeures: 9,
+            debutMinutes: 0,
+            finHeures: 17,
+            finMinutes: 0,
+            preavisJours: 2,
+            certificatMaladie: false,
+          },
+        ],
+      },
+    });
+
+    render(
+      <CalendrierCreche
+        contrat={contratCreche}
+        mois="2026-06"
+        simule={false}
+        onEnregistre={vi.fn()}
+      />,
+    );
+
+    // Réhydratation : l'ajustement du 02/06 est affiché avant toute édition.
+    await waitFor(() => {
+      expect(
+        screen.getByText('02/06/2026').closest('li')?.textContent,
+      ).toContain('Arrivée retardée');
+    });
+
+    // Éditer un AUTRE jour (samedi libre 06/06 → jour ajouté), puis confirmer.
+    fireEvent.click(screen.getByTestId('simulate-date-click-libre'));
+    fireEvent.click(screen.getByText('Confirmer'));
+
+    await waitFor(
+      () => {
+        expect(api.ecrirePlanning).toHaveBeenCalledWith(
+          'contrat-creche-1',
+          '2026-06',
+          false,
+          expect.objectContaining({
+            joursSupplementaires: expect.arrayContaining([
+              expect.objectContaining({ date: '2026-06-06' }),
+            ]),
+            ajustements: expect.arrayContaining([
+              expect.objectContaining({ date: '2026-06-02', preavisJours: 2 }),
+            ]),
+          }),
+          expect.any(Object),
+        );
+      },
+      { timeout: 2000 },
+    );
+  });
+
   it('classe une absence de fin de journée en « Départ avancé »', async () => {
     // Fenêtre 15:00–17:00 finissant avec la garde MARDI (08:00–17:00) : présence
     // réduite à 08:00–15:00 → « Départ avancé » (ajustement, pas absence).

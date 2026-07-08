@@ -4,7 +4,7 @@ import type {
   PlageHoraire,
   SemaineBesoins,
 } from '../types/bff';
-import { classerAbsence } from '../planning/etatJourGarde';
+import { classerAbsence, classerAjustement } from '../planning/etatJourGarde';
 import { formaterPlage, minutesDeHhmm, versHhmm } from '../planning/heures';
 import { jourSemaineDeIso } from '../utils/dates';
 
@@ -27,6 +27,8 @@ import { jourSemaineDeIso } from '../utils/dates';
  * - `garde` — crèche présente sur sa journée de base (semaine-type) ;
  * - `absent` / `depart-avance` / `arrivee-retardee` / `ajuste` — absence crèche
  *   classée par `classerAbsence` au regard de la plage de base ;
+ * - `arrivee-avancee` / `arrivee-retardee` / `depart-avance` / `depart-retarde` /
+ *   `ajuste` — ajustement d'heures **réelles** classé par `classerAjustement` ;
  * - `jour-ajoute` — jour de garde crèche ponctuel hors semaine-type ;
  * - `cantine` — repas cantine ce jour (ABCM) ;
  * - `peri` — périscolaire matin et/ou soir ce jour (ABCM) ;
@@ -36,6 +38,8 @@ export type EtatJour =
   | 'garde'
   | 'absent'
   | 'depart-avance'
+  | 'depart-retarde'
+  | 'arrivee-avancee'
   | 'arrivee-retardee'
   | 'ajuste'
   | 'jour-ajoute'
@@ -61,6 +65,15 @@ const ETAT_ABSENCE: Readonly<Record<string, EtatJour>> = {
   'Départ avancé': 'depart-avance',
   'Arrivée retardée': 'arrivee-retardee',
   Ajusté: 'ajuste',
+};
+
+/** Libellé d'ajustement d'heures (`classerAjustement`) → jeton d'état stable. */
+const ETAT_AJUSTEMENT: Readonly<Record<string, EtatJour>> = {
+  'Arrivée avancée': 'arrivee-avancee',
+  'Arrivée retardée': 'arrivee-retardee',
+  'Départ avancé': 'depart-avance',
+  'Départ retardé': 'depart-retarde',
+  'Horaires ajustés': 'ajuste',
 };
 
 /** `minutes depuis minuit` → `HH:MM`. */
@@ -105,10 +118,18 @@ function ligneCreche(
 ): { etat: EtatJour; horaire: string | null } | null {
   const jour = jourSemaineDeIso(dateIso);
   const jourBesoins = contrat.besoins[dateIso];
+  const ajustement = jourBesoins?.ajustements[0];
   const absence = jourBesoins?.absences[0];
   const sup = jourBesoins?.joursSupplementaires[0];
   const base = contrat.semaineType?.[jour] ?? [];
 
+  if (ajustement) {
+    const classe = classerAjustement(ajustement, enveloppeBase(base));
+    return {
+      etat: ETAT_AJUSTEMENT[classe.libelle] ?? 'ajuste',
+      horaire: classe.presence,
+    };
+  }
   if (absence) {
     const classe = classerAbsence(absence, enveloppeBase(base));
     return {

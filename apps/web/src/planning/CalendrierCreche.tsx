@@ -4,6 +4,7 @@ import type { EventInput } from '@fullcalendar/core';
 import type {
   ContratLocal,
   AbsenceCreche,
+  AjustementJour,
   JourSupplementaire,
   CreerContratCreche,
   LienEtablissementSaisie,
@@ -22,7 +23,7 @@ import {
   socleContratDurable,
   useCalendrierContrat,
 } from './useCalendrierContrat';
-import { classerAbsence } from './etatJourGarde';
+import { classerAbsence, classerAjustement } from './etatJourGarde';
 import {
   couleurAjoute,
   couleurAjuste,
@@ -65,6 +66,16 @@ interface EtatJourSup extends PlageHoraire {
   date: string;
 }
 
+// Ajustement d'heures réelles d'un jour gardé (saisi dans l'éditeur hebdomadaire).
+// Le calendrier mensuel ne l'ÉDITE pas mais le PRÉSERVE (l'écriture du mois est un
+// remplacement complet) et l'affiche en ambre — sinon un ajustement posé côté
+// « valider ma semaine » disparaîtrait à la prochaine édition du mois.
+interface EtatAjustement extends PlageHoraire {
+  date: string;
+  preavisJours: number;
+  certificatMaladie: boolean;
+}
+
 // État d'affichage d'un jour gardé, classé une seule fois (couleur + libellés)
 // pour être partagé par le calendrier et la liste clavier accessible.
 interface EtatJourAffiche {
@@ -92,6 +103,8 @@ export function CalendrierCreche({
     usePersistanceAbsences<EtatAbsence>('creche:absences');
   const persistJoursSup =
     usePersistanceAbsences<EtatJourSup>('creche:joursSup');
+  const persistAjustements =
+    usePersistanceAbsences<EtatAjustement>('creche:ajustements');
 
   const [complementMinutes, setComplementMinutes] = useState<
     number | undefined
@@ -101,6 +114,9 @@ export function CalendrierCreche({
   );
   const [joursSup, setJoursSup] = useState<EtatJourSup[]>(() =>
     persistJoursSup.lire(contrat.id, mois),
+  );
+  const [ajustements, setAjustements] = useState<EtatAjustement[]>(() =>
+    persistAjustements.lire(contrat.id, mois),
   );
   const [selection, setSelection] = useState<Set<string>>(() => new Set());
 
@@ -118,6 +134,14 @@ export function CalendrierCreche({
       persistJoursSup.ecrire(contrat.id, mois, nouveaux);
     },
     [persistJoursSup.ecrire, contrat.id, mois],
+  );
+
+  const majAjustements = useCallback(
+    (nouveaux: EtatAjustement[]) => {
+      setAjustements(nouveaux);
+      persistAjustements.ecrire(contrat.id, mois, nouveaux);
+    },
+    [persistAjustements.ecrire, contrat.id, mois],
   );
 
   // Remplacement complet du contrat (PUT) pour la portée « tous les X » : la
@@ -139,8 +163,9 @@ export function CalendrierCreche({
   const reinitialiserSaisie = useCallback(() => {
     majAbsences([]);
     majJoursSup([]);
+    majAjustements([]);
     setComplementMinutes(undefined);
-  }, [majAbsences, majJoursSup]);
+  }, [majAbsences, majJoursSup, majAjustements]);
 
   // Enveloppe commune : écriture debouncée + statut, réhydratation serveur,
   // annonces (AQ-05), portée et flux de modification durable du contrat.
@@ -178,11 +203,18 @@ export function CalendrierCreche({
   useEffect(() => {
     setAbsences(persistAbsences.lire(contrat.id, mois));
     setJoursSup(persistJoursSup.lire(contrat.id, mois));
+    setAjustements(persistAjustements.lire(contrat.id, mois));
     setComplementMinutes(undefined);
     setSelection(new Set());
     // Dépendances sur les fonctions (stables), pas les objets : leur identité
     // change quand `indisponible` bascule et rejouerait la réhydratation.
-  }, [persistAbsences.lire, persistJoursSup.lire, contrat.id, mois]);
+  }, [
+    persistAbsences.lire,
+    persistJoursSup.lire,
+    persistAjustements.lire,
+    contrat.id,
+    mois,
+  ]);
 
   // À l'arrivée de la saisie serveur : elle devient la source de vérité. Si le
   // serveur ne renvoie rien, on conserve le brouillon local (saisie en cours).
@@ -214,11 +246,24 @@ export function CalendrierCreche({
         finMinutes: j.finMinutes,
       }),
     );
+    const ajust: EtatAjustement[] = (saisieServeur.ajustements ?? []).map(
+      (a) => ({
+        date: a.date,
+        debutHeures: a.debutHeures,
+        debutMinutes: a.debutMinutes,
+        finHeures: a.finHeures,
+        finMinutes: a.finMinutes,
+        preavisJours: a.preavisJours,
+        certificatMaladie: a.certificatMaladie,
+      }),
+    );
     setAbsences(abs);
     setJoursSup(sup);
+    setAjustements(ajust);
     setComplementMinutes(saisieServeur.complementMinutes);
     persistAbsences.ecrire(contrat.id, mois, abs);
     persistJoursSup.ecrire(contrat.id, mois, sup);
+    persistAjustements.ecrire(contrat.id, mois, ajust);
   }, [
     chargee,
     saisieServeur,
@@ -227,6 +272,7 @@ export function CalendrierCreche({
     mois,
     persistAbsences.ecrire,
     persistJoursSup.ecrire,
+    persistAjustements.ecrire,
   ]);
 
   // Modale jour : « absence » (jour gardé) ou « ajout » (jour non gardé).
@@ -313,6 +359,19 @@ export function CalendrierCreche({
     for (const jour of joursGardes) {
       const absence = absences.find((a) => a.date === jour);
       if (absence === undefined) {
+        // Ajustement d'heures réelles (édité dans l'éditeur hebdo) : affiché en
+        // ambre avec la présence, mais non éditable ici (bouton « Saisir »).
+        const ajustement = ajustements.find((a) => a.date === jour);
+        if (ajustement) {
+          const classe = classerAjustement(ajustement, plageContratJour(jour));
+          map.set(jour, {
+            aAbsence: false,
+            couleur: couleurAjustement,
+            titre: `${classe.libelle} (présent ${classe.presence})`,
+            libelle: `${classe.libelle} · ${classe.presence}`,
+          });
+          continue;
+        }
         map.set(jour, {
           aAbsence: false,
           couleur: couleurGarde,
@@ -346,6 +405,7 @@ export function CalendrierCreche({
   }, [
     joursGardes,
     absences,
+    ajustements,
     plageContratJour,
     couleurGarde,
     couleurAbsent,
@@ -388,6 +448,20 @@ export function CalendrierCreche({
       // Toute édition locale passe par ici : on marque la divergence pour qu'un
       // GET de réhydratation encore en vol ne vienne pas l'écraser à son retour.
       marquerSaisieLocale();
+      // L'écriture du mois est un remplacement complet : on réémet les ajustements
+      // d'heures (saisis dans l'éditeur hebdo) pour ne pas les perdre. Un jour ne
+      // porte qu'une seule saisie (A3) : une absence / un jour ajouté sur une date
+      // ajustée fait céder l'ajustement.
+      const datesOccupees = new Set<string>([
+        ...nvAbsences.map((a) => a.date),
+        ...nvJoursSup.map((j) => j.date),
+      ]);
+      const ajustementsConserves = ajustements.filter(
+        (a) => !datesOccupees.has(a.date),
+      );
+      if (ajustementsConserves.length !== ajustements.length) {
+        majAjustements(ajustementsConserves);
+      }
       const absencesApi: AbsenceCreche[] = nvAbsences.map((a) => ({
         date: a.date,
         debutHeures: a.debutHeures,
@@ -404,6 +478,17 @@ export function CalendrierCreche({
         finHeures: j.finHeures,
         finMinutes: j.finMinutes,
       }));
+      const ajustementsApi: AjustementJour[] = ajustementsConserves.map(
+        (a) => ({
+          date: a.date,
+          debutHeures: a.debutHeures,
+          debutMinutes: a.debutMinutes,
+          finHeures: a.finHeures,
+          finMinutes: a.finMinutes,
+          preavisJours: a.preavisJours,
+          certificatMaladie: a.certificatMaladie,
+        }),
+      );
       ecrire(contrat.id, mois, simule, {
         ...(nvComplementMinutes !== undefined
           ? { complementMinutes: nvComplementMinutes }
@@ -412,9 +497,18 @@ export function CalendrierCreche({
           ? { joursSupplementaires: joursSupApi }
           : {}),
         ...(absencesApi.length > 0 ? { absences: absencesApi } : {}),
+        ...(ajustementsApi.length > 0 ? { ajustements: ajustementsApi } : {}),
       });
     },
-    [ecrire, contrat.id, mois, simule, marquerSaisieLocale],
+    [
+      ecrire,
+      contrat.id,
+      mois,
+      simule,
+      marquerSaisieLocale,
+      ajustements,
+      majAjustements,
+    ],
   );
 
   // Ouvre la modale adaptée au jour cliqué (absence si gardé, ajout sinon).
