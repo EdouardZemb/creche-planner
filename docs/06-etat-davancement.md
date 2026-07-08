@@ -2140,3 +2140,60 @@ mènent en **1 tap** à l'éditeur de la semaine concernée, **déjà ouvert**. 
 lien;`. **Aucun secret, aucune variable d'env, aucun changement compose.** Périmètre : svc-notifications
   (mail + colonne) + web (routing + cloche) + api-gateway/contracts-kernel (contrat). À embarquer dans le
   prochain train de release (rien de manuel côté ops).
+
+## 29. Chantier « valider ma semaine » — Lot 3 : le mail du mardi part toujours (statut persisté + reprise) (✅ livré, PR #183)
+
+**But** — un échec SMTP au tick de **création** du mardi perdait le rappel **à jamais** : la ligne
+`notification_hebdo` (clé UNIQUE) était insérée **avant** l'envoi, si bien qu'au tick suivant « déjà
+notifié » = no-op → le mail ne repartait jamais, **sans trace exploitable** (contrairement à
+`envoi_etablissement`, déjà rejouable côté récap établissement). Cible : l'envoi du récap du mardi a un
+**statut persisté par foyer/semaine**, **retenté** aux ticks suivants jusqu'au début de la semaine cible,
+et un incident se **diagnostique par SQL/logs** sans deviner. (Plan : `.claude/plans/valider-ma-semaine.md`,
+Lot 3 de 6 ; restent les lots 4 « langage parent » et 5 « e2e ».)
+
+### 29.1 Architecture livrée
+
+- **Table `envoi_recap_hebdo`** (migration svc-notifications **`0014_envoi_recap_hebdo.sql`**, générée par
+  `drizzle-kit`) : PK `(foyer_id, semaine_iso)`, `statut` `A_ENVOYER|ENVOYE|DRY_RUN|ECHEC`, `destinataires`
+  jsonb (e-mails retenus au dernier essai), `message_id`/`erreur`/`envoye_le` + `cree_le`/`maj_le`. Même
+  style que `envoi_etablissement` (statuts, preuve figée). Le SQL est isolé dans un injectable
+  **`EnvoiRecapService`** (`scheduler/envoi-recap.service.ts`) : `reserver` (upsert idempotent),
+  `aRetenter` (slots `A_ENVOYER`/`ECHEC` d'une semaine), `marquerAbouti`/`marquerEchec` (compare-and-set).
+- **Scheduler découplé en deux phases** (`scheduler.hebdo.ts`, même service, même tick) :
+  - _Création_ — **le seul mardi ≥ heure de déclenchement** (`estJourCreation`) : fige les
+    `notification_hebdo` (idempotence **par contrat** inchangée) **puis réserve** un slot `A_ENVOYER` par
+    foyer concerné (`onConflictDoNothing` sur la PK). La réservation est **découplée** de l'envoi.
+  - _Envoi_ — **à chaque tick de la fenêtre** `estFenetreEnvoi` (**mardi 8 h → dimanche précédant la
+    semaine cible**, jamais le lundi, en **Europe/Paris** via l'helper existant `jourEtHeureParis`) : relit
+    les slots `A_ENVOYER`/`ECHEC` de la semaine, **reconstruit le récap depuis les données courantes**
+    (`envoyerRecapFoyer(ligne, contratsFoyer, annuaire)`), envoie, puis transitionne par **compare-and-set
+    `WHERE statut <> 'ENVOYE'`** → `ENVOYE`/`DRY_RUN` (+ `message_id`/`envoye_le`/`destinataires`) ou
+    `ECHEC` (+ `erreur`). Un échec d'un foyer est **isolé** (try/catch → `ECHEC`, log WARN) et n'interrompt
+    pas les autres foyers du tick.
+- **Sémantique des statuts** : `DRY_RUN` = tentative aboutie neutralisée par le garde-fou du mailer
+  (bac à sable / hors allowlist) — **jamais retentée** ; `ENVOYE` = au moins un transport SMTP réel a
+  répondu — **jamais renvoyé** ; `ECHEC` = exception mailer — **retenté** tant que la fenêtre est ouverte,
+  puis conservé comme **trace** ensuite.
+- **In-app (PR6) déplacé après le premier envoi abouti** : la phase envoi ne traite que des slots non
+  encore aboutis, donc tout envoi qui aboutit est le premier → l'entrée d'inbox n'est **jamais dupliquée**
+  au retry (un échec mailer lève **avant** la création in-app, laissant le slot `ECHEC` sans in-app).
+- **Reconstruction robuste** : un contrat supprimé entre la création et l'envoi ⇒ foyer sans enfant
+  concerné ⇒ slot **clôturé `ENVOYE` sans mail** (log INFO), pas de plantage.
+
+### 29.2 Diagnostic & observabilité (A7 : table + logs, aucun exporter custom)
+
+- **État par semaine** : `SELECT semaine_iso, statut, count(*) FROM envoi_recap_hebdo GROUP BY 1,2;` (un
+  `ECHEC` persistant révèle un incident SMTP ; un `A_ENVOYER` en fin de fenêtre = jamais tenté).
+- **Détail d'un échec** :
+  `SELECT foyer_id, statut, erreur, maj_le FROM envoi_recap_hebdo WHERE statut = 'ECHEC';`
+- **Logs** : une ligne INFO par tentative aboutie (foyer/semaine/statut), une ligne WARN par échec avec le
+  motif — corrélables par `trace_id` dans Loki. **Aucune** requête `postgres-exporter` custom n'existe pour
+  ces tables ⇒ rien ajouté à la config Prometheus (décision A7). La table journalise des e-mails
+  (`destinataires`) : périmètre RGPD ajouté à [observabilite.md](exploitation/observabilite.md).
+
+### 29.3 Déploiement
+
+- **Migration additive `0014`** (svc-notifications), **rollback** = `DROP TABLE envoi_recap_hebdo;`. **Aucun
+  secret, aucune variable d'env, aucun changement compose.** Périmètre : svc-notifications seul. À embarquer
+  dans le prochain train de release (rien de manuel côté ops) — la table est créée au boot par le migrator
+  embarqué, et le scheduler commence à réserver/rejouer dès le mardi suivant.
