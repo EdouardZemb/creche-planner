@@ -3,6 +3,7 @@ import type { MailerService } from '@creche-planner/nest-commons';
 import { SchedulerHebdo } from './scheduler.hebdo.js';
 import type { Clock } from './clock.js';
 import type { OptionsScheduler } from './scheduler.options.js';
+import type { EnvoiRecapService } from './envoi-recap.service.js';
 import type { Database } from '../database/database.types.js';
 import type { ContratRow } from '../database/schema.js';
 import type { ValidationService } from '../validation/validation.service.js';
@@ -20,24 +21,26 @@ import type {
 /**
  * Tests du scheduler du mardi avec **horloge mockée** (jamais `new Date()` dans la
  * logique) et sans Postgres ni SMTP : `ValidationService`, `EtablissementProjeteService`,
- * `DestinatairesService`, `DesabonnementClient` et `MailerService` sont des doubles
- * vitest, la base ne sert qu'à lister les contrats actifs (le prédicat drizzle n'est pas
- * évalué — la fonction renvoie le jeu fourni).
+ * `DestinatairesService`, `DesabonnementClient`, `MailerService` **et
+ * `EnvoiRecapService`** sont des doubles, la base ne sert qu'à lister les contrats actifs
+ * (le prédicat drizzle n'est pas évalué — la fonction renvoie le jeu fourni).
  *
- * Couvre PR4 « parents du foyer » **et** PR5 « désabonnement RFC 8058 » : idempotence
- * figée **par contrat**, **un mail par destinataire** (jeton one-shot + en-tête
- * `List-Unsubscribe` propres au parent), **repli** sur `NOTIF_EMAIL_PARENT` (un seul
- * mail, sans désabonnement) si le foyer n'a aucun parent joignable, **dégradation
- * propre** (mail sans en-tête) si la frappe du jeton échoue.
+ * Couvre PR4 « parents du foyer », PR5 « désabonnement RFC 8058 », PR6 « inbox in-app »
+ * **et Lot 3 « statut persisté + reprise »** : le double `EnvoiRecapService` est un
+ * **journal en mémoire** fidèle (réservation idempotente `A_ENVOYER`, filtre de reprise
+ * `A_ENVOYER`/`ECHEC`, compare-and-set `<> ENVOYE`) qui exerce réellement la machine à
+ * états `A_ENVOYER → ECHEC → ENVOYE` du découplage création/envoi.
  *
  * Instants de référence (`Europe/Paris` est en CEST = UTC+2 en juin) :
- * - mardi 2026-06-23 08:01 Paris = 2026-06-23T06:01:00Z → dans la fenêtre ;
+ * - mardi 2026-06-23 08:01 Paris = 2026-06-23T06:01:00Z → fenêtre création + envoi ;
+ * - mercredi 2026-06-24 08:01 Paris → fenêtre envoi seule (retry, pas de création) ;
  * - lundi 2026-06-22 08:01 Paris → hors fenêtre (pas mardi) ;
  * - mardi 2026-06-23 07:00 Paris → hors fenêtre (avant l'heure).
  * La semaine N+1 du mardi 2026-06-23 (semaine W26) est **2026-W27**.
  */
 
 const MARDI_8H01 = '2026-06-23T06:01:00.000Z';
+const MERCREDI_8H01 = '2026-06-24T06:01:00.000Z';
 const LUNDI_8H01 = '2026-06-22T06:01:00.000Z';
 const MARDI_7H00 = '2026-06-23T05:00:00.000Z';
 const SEMAINE_N1 = '2026-W27';
@@ -102,6 +105,104 @@ const ETAB_ABCM: EtablissementProjeteVue = {
   actif: true,
 };
 
+/** Ligne d'état d'envoi telle que tenue par le journal en mémoire du double. */
+interface EnvoiRow {
+  foyerId: string;
+  semaineIso: string;
+  statut: 'A_ENVOYER' | 'ENVOYE' | 'DRY_RUN' | 'ECHEC';
+  destinataires: string[];
+  messageId: string | null;
+  erreur: string | null;
+}
+
+/** Clé primaire composite `(foyer, semaine)` du journal `envoi_recap_hebdo`. */
+function cleEnvoi(foyerId: string, semaineIso: string): string {
+  return `${foyerId}|${semaineIso}`;
+}
+
+/**
+ * Double **fidèle** de `EnvoiRecapService` : un journal en mémoire qui reproduit la
+ * clé primaire `(foyer, semaine)`, la réservation idempotente, le filtre de reprise et
+ * les transitions compare-and-set `<> ENVOYE`. Les tests inspectent `rows` (état
+ * persisté) plutôt que la seule séquence d'appels.
+ */
+function fakeEnvoiRecap(): {
+  service: EnvoiRecapService;
+  rows: Map<string, EnvoiRow>;
+  reserver: ReturnType<typeof vi.fn>;
+  aRetenter: ReturnType<typeof vi.fn>;
+  marquerAbouti: ReturnType<typeof vi.fn>;
+  marquerEchec: ReturnType<typeof vi.fn>;
+} {
+  const rows = new Map<string, EnvoiRow>();
+  const reserver = vi.fn((foyerId: string, semaineIso: string) => {
+    const cle = cleEnvoi(foyerId, semaineIso);
+    if (!rows.has(cle)) {
+      rows.set(cle, {
+        foyerId,
+        semaineIso,
+        statut: 'A_ENVOYER',
+        destinataires: [],
+        messageId: null,
+        erreur: null,
+      });
+    }
+    return Promise.resolve();
+  });
+  const aRetenter = vi.fn((semaineIso: string) =>
+    Promise.resolve(
+      [...rows.values()].filter(
+        (r) =>
+          r.semaineIso === semaineIso &&
+          (r.statut === 'A_ENVOYER' || r.statut === 'ECHEC'),
+      ),
+    ),
+  );
+  const marquerAbouti = vi.fn(
+    (
+      foyerId: string,
+      semaineIso: string,
+      issue: {
+        statut: 'ENVOYE' | 'DRY_RUN';
+        messageId: string | null;
+        destinataires: readonly string[];
+      },
+    ) => {
+      const r = rows.get(cleEnvoi(foyerId, semaineIso));
+      if (r && r.statut !== 'ENVOYE') {
+        r.statut = issue.statut;
+        r.messageId = issue.messageId;
+        r.destinataires = [...issue.destinataires];
+        r.erreur = null;
+      }
+      return Promise.resolve();
+    },
+  );
+  const marquerEchec = vi.fn(
+    (foyerId: string, semaineIso: string, erreur: string) => {
+      const r = rows.get(cleEnvoi(foyerId, semaineIso));
+      if (r && r.statut !== 'ENVOYE') {
+        r.statut = 'ECHEC';
+        r.erreur = erreur;
+      }
+      return Promise.resolve();
+    },
+  );
+  return {
+    service: {
+      reserver,
+      aRetenter,
+      marquerAbouti,
+      marquerEchec,
+    } as unknown as EnvoiRecapService,
+    rows,
+    reserver,
+    aRetenter,
+    marquerAbouti,
+    marquerEchec,
+  };
+}
+
 interface Doubles {
   validation: ValidationService;
   notifier: ReturnType<typeof vi.fn>;
@@ -115,6 +216,12 @@ interface Doubles {
   creerInApp: ReturnType<typeof vi.fn>;
   mailer: MailerService;
   envoyer: ReturnType<typeof vi.fn>;
+  envoiRecap: EnvoiRecapService;
+  envoiRows: Map<string, EnvoiRow>;
+  reserver: ReturnType<typeof vi.fn>;
+  aRetenter: ReturnType<typeof vi.fn>;
+  marquerAbouti: ReturnType<typeof vi.fn>;
+  marquerEchec: ReturnType<typeof vi.fn>;
 }
 
 function doubles(
@@ -135,6 +242,7 @@ function doubles(
   const envoyer = vi.fn(() =>
     Promise.resolve({ messageId: null, dryRun: true }),
   );
+  const recap = fakeEnvoiRecap();
   return {
     validation: { notifier } as unknown as ValidationService,
     notifier,
@@ -153,6 +261,12 @@ function doubles(
     creerInApp,
     mailer: { envoyer } as unknown as MailerService,
     envoyer,
+    envoiRecap: recap.service,
+    envoiRows: recap.rows,
+    reserver: recap.reserver,
+    aRetenter: recap.aRetenter,
+    marquerAbouti: recap.marquerAbouti,
+    marquerEchec: recap.marquerEchec,
   };
 }
 
@@ -172,6 +286,7 @@ function scheduler(
     d.desabonnement,
     d.inbox,
     d.mailer,
+    d.envoiRecap,
   );
 }
 
@@ -396,6 +511,8 @@ describe('SchedulerHebdo.declencher', () => {
 
     expect(d.notifier).not.toHaveBeenCalled();
     expect(d.envoyer).not.toHaveBeenCalled();
+    expect(d.aRetenter).toHaveBeenCalledTimes(1);
+    expect(d.envoiRows.size).toBe(0);
   });
 
   // ---- Volet in-app (PR6) : création au canal IN_APP -----------------------
@@ -464,5 +581,155 @@ describe('SchedulerHebdo.declencher', () => {
 
     // Dégradation propre : l’e-mail part quand même.
     expect(dd.envoyer).toHaveBeenCalledTimes(1);
+  });
+
+  // ---- Lot 3 : statut persisté + reprise -----------------------------------
+
+  it('échec SMTP au 1er tick puis succès au 2e : A_ENVOYER → ECHEC → ENVOYE, 1 mail, 1 in-app', async () => {
+    const dd = doubles(
+      [ETAB_CRECHE],
+      [{ parentId: 'p1', email: 'solo@test' }],
+      'jeton-abc',
+      ['p1'],
+    );
+    dd.envoyer
+      .mockRejectedValueOnce(new Error('SMTP indisponible'))
+      .mockResolvedValue({ messageId: '<m1@test>', dryRun: false });
+    const s = scheduler(MARDI_8H01, [contratRow()], dd);
+
+    // 1er tick : création (slot A_ENVOYER) + envoi qui échoue → ECHEC, pas d'in-app.
+    await s.declencher();
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'ECHEC',
+    );
+    expect(dd.creerInApp).not.toHaveBeenCalled();
+
+    // 2e tick : reprise du slot ECHEC → envoi réussi → ENVOYE, in-app créé une fois.
+    await s.declencher();
+    const row = dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1));
+    expect(row?.statut).toBe('ENVOYE');
+    expect(row?.messageId).toBe('<m1@test>');
+    expect(row?.destinataires).toEqual(['solo@test']);
+    expect(dd.creerInApp).toHaveBeenCalledTimes(1);
+    // Deux tentatives d'envoi (1 échec + 1 succès), un seul mail réellement parti.
+    expect(dd.envoyer).toHaveBeenCalledTimes(2);
+  });
+
+  it('dry-run : slot DRY_RUN, aucun renvoi au tick suivant', async () => {
+    // Doubles par défaut : `envoyer` renvoie `{ dryRun: true }`.
+    const s = scheduler(MARDI_8H01, [contratRow()], d);
+
+    await s.declencher();
+    expect(d.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'DRY_RUN',
+    );
+
+    await s.declencher();
+    expect(d.envoyer).toHaveBeenCalledTimes(1); // DRY_RUN n'est jamais retenté.
+  });
+
+  it('slot ENVOYE : aucun renvoi aux ticks suivants (idempotence)', async () => {
+    const dd = doubles();
+    dd.envoyer.mockResolvedValue({ messageId: '<m@test>', dryRun: false });
+    const s = scheduler(MARDI_8H01, [contratRow()], dd);
+
+    await s.declencher();
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'ENVOYE',
+    );
+
+    await s.declencher();
+    await s.declencher();
+    expect(dd.envoyer).toHaveBeenCalledTimes(1);
+  });
+
+  it('reprise un jour ultérieur (mercredi) : hors création mais l’envoi rejoue l’ECHEC', async () => {
+    const dd = doubles(
+      [ETAB_CRECHE],
+      [{ parentId: 'p1', email: 'solo@test' }],
+      'jeton-abc',
+      ['p1'],
+    );
+    dd.envoyer
+      .mockRejectedValueOnce(new Error('SMTP down'))
+      .mockResolvedValue({ messageId: '<m@test>', dryRun: false });
+
+    // Mardi : création + échec d'envoi.
+    await scheduler(MARDI_8H01, [contratRow()], dd).declencher();
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'ECHEC',
+    );
+
+    // Mercredi (nouvelle instance, journal partagé) : fenêtre envoi mais pas création.
+    dd.notifier.mockClear();
+    await scheduler(MERCREDI_8H01, [contratRow()], dd).declencher();
+
+    expect(dd.notifier).not.toHaveBeenCalled(); // phase création NON rejouée hors mardi
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'ENVOYE',
+    );
+  });
+
+  it('tick hors fenêtre (lundi) : aucune tentative même avec un slot ECHEC en attente', async () => {
+    const dd = doubles();
+    dd.envoiRows.set(cleEnvoi(FOYER_A, SEMAINE_N1), {
+      foyerId: FOYER_A,
+      semaineIso: SEMAINE_N1,
+      statut: 'ECHEC',
+      destinataires: [],
+      messageId: null,
+      erreur: 'précédent',
+    });
+
+    await scheduler(LUNDI_8H01, [contratRow()], dd).declencher();
+
+    expect(dd.aRetenter).not.toHaveBeenCalled();
+    expect(dd.envoyer).not.toHaveBeenCalled();
+  });
+
+  it('foyer sans enfant concerné (contrat supprimé entre-temps) : slot ENVOYE sans mail', async () => {
+    const dd = doubles();
+    // Slot réservé mais plus aucun contrat actif à l'envoi (reconstruction vide).
+    dd.envoiRows.set(cleEnvoi(FOYER_A, SEMAINE_N1), {
+      foyerId: FOYER_A,
+      semaineIso: SEMAINE_N1,
+      statut: 'A_ENVOYER',
+      destinataires: [],
+      messageId: null,
+      erreur: null,
+    });
+
+    await scheduler(MARDI_8H01, [], dd).declencher();
+
+    expect(dd.envoyer).not.toHaveBeenCalled();
+    expect(dd.creerInApp).not.toHaveBeenCalled();
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'ENVOYE',
+    );
+  });
+
+  it('un foyer en échec n’empêche pas l’envoi des autres foyers du tick', async () => {
+    const dd = doubles();
+    // Foyer A échoue, foyer B réussit (repli des deux, ordre de réservation A puis B).
+    dd.envoyer
+      .mockRejectedValueOnce(new Error('SMTP A'))
+      .mockResolvedValue({ messageId: '<mB@test>', dryRun: false });
+
+    await scheduler(
+      MARDI_8H01,
+      [
+        contratRow({ id: 'c1', foyerId: FOYER_A, enfant: 'Léa' }),
+        contratRow({ id: 'c2', foyerId: FOYER_B, enfant: 'Noé' }),
+      ],
+      dd,
+    ).declencher();
+
+    expect(dd.envoyer).toHaveBeenCalledTimes(2);
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'ECHEC',
+    );
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_B, SEMAINE_N1))?.statut).toBe(
+      'ENVOYE',
+    );
   });
 });
