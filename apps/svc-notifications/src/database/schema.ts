@@ -4,6 +4,7 @@ import {
   index,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -340,6 +341,67 @@ export const envoiEtablissement = pgTable(
   ],
 );
 
+// --- État d'envoi du récap du mardi (statut persisté + reprise) --------------
+
+/**
+ * Statut de l'envoi du **récap du mardi** au(x) parent(s) d'un foyer pour une
+ * semaine (Lot 3, découplage création/envoi) :
+ * - `A_ENVOYER` : slot réservé à la phase **création** (mardi), en attente d'envoi ;
+ * - `ENVOYE` : au moins un transport SMTP réel a abouti (`message_id` renseigné) ;
+ * - `DRY_RUN` : tentative aboutie mais neutralisée par le garde-fou du mailer
+ *   (bac à sable / hors allowlist) — état **terminal**, jamais retenté ;
+ * - `ECHEC` : le mailer a levé — `erreur` porte le motif, **retenté** au tick suivant
+ *   tant que la fenêtre (mardi 8h → dimanche précédant la semaine cible) est ouverte.
+ */
+export const STATUTS_ENVOI_RECAP = [
+  'A_ENVOYER',
+  'ENVOYE',
+  'DRY_RUN',
+  'ECHEC',
+] as const;
+export type StatutEnvoiRecap = (typeof STATUTS_ENVOI_RECAP)[number];
+
+/**
+ * Journal de l'**envoi du récap hebdomadaire du mardi**, une ligne par
+ * `(foyer, semaine)`. Sépare la **création** (le mardi : figer les
+ * `notification_hebdo` + réserver ce slot `A_ENVOYER`) de l'**envoi** (à chaque tick
+ * de la fenêtre : reconstruire le récap depuis les données **courantes**, tenter
+ * l'e-mail, transitionner le statut). Sans cette table, un échec SMTP au tick de
+ * création perdait le rappel à jamais (`notification_hebdo` déjà créée → « déjà
+ * notifié » → no-op) ; ici l'échec laisse un `ECHEC` **retenté** jusqu'au début de la
+ * semaine cible, et un incident se diagnostique par requête SQL (`statut`/`erreur`).
+ *
+ * La clé primaire `(foyer_id, semaine_iso)` rend la réservation idempotente
+ * (`onConflictDoNothing`) et sert de cible au compare-and-set des transitions
+ * (`WHERE statut <> 'ENVOYE'` : une ligne aboutie ne redescend jamais). Suit le style
+ * de `envoi_etablissement` (statuts, `message_id`/`erreur`/`envoye_le`).
+ */
+export const envoiRecapHebdo = pgTable(
+  'envoi_recap_hebdo',
+  {
+    /** Foyer destinataire du récap (regroupe tous ses enfants notifiés). */
+    foyerId: uuid('foyer_id').notNull(),
+    /** Semaine ISO 8601 concernée, format `YYYY-Www`. */
+    semaineIso: varchar('semaine_iso', { length: 8 }).notNull(),
+    /** Statut courant (cf. `STATUTS_ENVOI_RECAP`). */
+    statut: varchar('statut', { length: 16 }).notNull(),
+    /** E-mails réellement visés au dernier essai (preuve, figée à la transition). */
+    destinataires: jsonb('destinataires')
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /** Identifiant de message SMTP du dernier envoi réel (`null` en dry-run / avant). */
+    messageId: varchar('message_id', { length: 998 }),
+    /** Motif du dernier échec si `statut = ECHEC` (`null` sinon). */
+    erreur: text('erreur'),
+    /** Horodatage du dernier envoi abouti (`null` tant que `A_ENVOYER`). */
+    envoyeLe: timestamp('envoye_le', { withTimezone: true }),
+    creeLe: timestamp('cree_le', { withTimezone: true }).notNull().defaultNow(),
+    majLe: timestamp('maj_le', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.foyerId, table.semaineIso] })],
+);
+
 // --- Inbox in-app (journal informationnel du parent) ------------------------
 
 /**
@@ -436,6 +498,8 @@ export type PreferenceNotificationRow =
 export type EtablissementProjeteRow = typeof etablissement.$inferSelect;
 export type NotificationHebdoRow = typeof notificationHebdo.$inferSelect;
 export type EnvoiEtablissementRow = typeof envoiEtablissement.$inferSelect;
+/** Ligne d'état d'envoi du récap du mardi d'un foyer (statut persisté + reprise, Lot 3). */
+export type EnvoiRecapHebdoRow = typeof envoiRecapHebdo.$inferSelect;
 /** Ligne de l'inbox in-app d'un parent (journal informationnel lu/non-lu, PR6). */
 export type NotificationRow = typeof notification.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;
