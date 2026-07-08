@@ -37,6 +37,8 @@ const LIBELLES_ETAT: Readonly<Record<EtatJour, string>> = {
   garde: 'Gardé',
   absent: 'Absent',
   'depart-avance': 'Départ avancé',
+  'depart-retarde': 'Départ retardé',
+  'arrivee-avancee': 'Arrivée avancée',
   'arrivee-retardee': 'Arrivée retardée',
   ajuste: 'Horaires modifiés',
   'jour-ajoute': 'Jour ajouté',
@@ -55,6 +57,8 @@ function couleurEtat(ligne: LigneJour): string {
     case 'absent':
       return couleurRetire();
     case 'depart-avance':
+    case 'depart-retarde':
+    case 'arrivee-avancee':
     case 'arrivee-retardee':
     case 'ajuste':
       return couleurAjuste();

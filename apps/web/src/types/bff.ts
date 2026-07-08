@@ -264,6 +264,21 @@ export interface JourSupplementaire extends PlageHoraire {
   date: string; // YYYY-MM-DD
 }
 
+/**
+ * Ajustement d'heures **réelles** d'un jour de garde crèche (Lot 2a/2b) : la plage
+ * stockée est la présence RÉELLE (arrivée/départ) du jour, pas un delta — elle
+ * reste restituable telle quelle et robuste aux évolutions de la semaine type. Le
+ * domaine en dérive l'**extension** (minutes hors plage contractuelle → complément)
+ * et la **réduction** (minutes de la plage contractuelle non couvertes → candidate à
+ * déduction selon `preavisJours`/`certificatMaladie`, même règle que les absences).
+ * Miroir web du `ajustementSchema` de svc-planification (`date` requise ici).
+ */
+export interface AjustementJour extends PlageHoraire {
+  date: string; // YYYY-MM-DD
+  preavisJours: number;
+  certificatMaladie: boolean;
+}
+
 /** Ajustement ponctuel d'un jour ABCM (surcharge la semaine type pour une date). */
 export interface ExceptionAbcm {
   date: string; // YYYY-MM-DD
@@ -284,6 +299,7 @@ export interface EcrirePlanning {
   complementMinutes?: number; // CRECHE_PSU
   joursSupplementaires?: JourSupplementaire[]; // CRECHE_PSU — jours ajoutés
   absences?: AbsenceCreche[]; // CRECHE_PSU
+  ajustements?: AjustementJour[]; // CRECHE_PSU — heures réelles d'un jour gardé
   pai?: boolean; // CANTINE
   exceptions?: ExceptionAbcm[]; // CANTINE / PERISCOLAIRE — ajustements par jour
   joursAlsh?: JourAlsh[]; // ALSH
@@ -298,6 +314,7 @@ export interface EcrirePlanning {
 export interface EcrireSemaineBesoins {
   joursSupplementaires?: JourSupplementaire[];
   absences?: AbsenceCreche[];
+  ajustements?: AjustementJour[];
   exceptions?: ExceptionAbcm[];
   joursAlsh?: JourAlsh[];
 }
@@ -363,6 +380,7 @@ export interface ValidationResultat {
 export interface SaisieJourBesoins {
   joursSupplementaires: JourSupplementaire[];
   absences: AbsenceCreche[];
+  ajustements: AjustementJour[];
   exceptions: ExceptionAbcm[];
   joursAlsh: JourAlsh[];
 }

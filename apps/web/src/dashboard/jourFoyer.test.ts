@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type {
   AbsenceCreche,
+  AjustementJour,
   ContratBesoinsSemaine,
   EtablissementConcerne,
   JourAlsh,
@@ -40,6 +41,15 @@ function jourSup(debut: string, fin: string): JourSupplementaire {
   return { date: MARDI, ...plage(debut, fin) };
 }
 
+function ajustement(debut: string, fin: string): AjustementJour {
+  return {
+    date: MARDI,
+    ...plage(debut, fin),
+    preavisJours: 0,
+    certificatMaladie: false,
+  };
+}
+
 /** Construit un `SaisieJourBesoins` (catégories vides par défaut). */
 function besoinsJour(
   partial: Partial<SaisieJourBesoins> = {},
@@ -47,6 +57,7 @@ function besoinsJour(
   return {
     joursSupplementaires: [],
     absences: [],
+    ajustements: [],
     exceptions: [],
     joursAlsh: [],
     ...partial,
@@ -186,6 +197,43 @@ describe('lignesDuJour — crèche (CRECHE_PSU)', () => {
     expect(lignesDuJour(vue(c), MARDI)[0]).toMatchObject({
       etat: 'jour-ajoute',
       horaire: '09:00–12:00',
+    });
+  });
+
+  it('ajustement d’heures : arrivée avancée → « arrivee-avancee » + présence réelle', () => {
+    // Base 08:30–16:30 (semaine-type) ; présence réelle 08:00–16:30.
+    const c = contratCreche({
+      besoins: {
+        [MARDI]: besoinsJour({ ajustements: [ajustement('08:00', '16:30')] }),
+      },
+    });
+    expect(lignesDuJour(vue(c), MARDI)[0]).toMatchObject({
+      etat: 'arrivee-avancee',
+      horaire: '08:00–16:30',
+    });
+  });
+
+  it('ajustement d’heures : départ retardé → « depart-retarde »', () => {
+    const c = contratCreche({
+      besoins: {
+        [MARDI]: besoinsJour({ ajustements: [ajustement('08:30', '18:00')] }),
+      },
+    });
+    expect(lignesDuJour(vue(c), MARDI)[0]).toMatchObject({
+      etat: 'depart-retarde',
+      horaire: '08:30–18:00',
+    });
+  });
+
+  it('ajustement d’heures : deux bornes décalées → « ajuste »', () => {
+    const c = contratCreche({
+      besoins: {
+        [MARDI]: besoinsJour({ ajustements: [ajustement('08:00', '18:00')] }),
+      },
+    });
+    expect(lignesDuJour(vue(c), MARDI)[0]).toMatchObject({
+      etat: 'ajuste',
+      horaire: '08:00–18:00',
     });
   });
 

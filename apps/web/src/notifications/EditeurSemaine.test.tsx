@@ -76,6 +76,7 @@ const VUE: SemaineBesoins = {
               certificatMaladie: false,
             },
           ],
+          ajustements: [],
           exceptions: [],
           joursAlsh: [],
         },
@@ -182,8 +183,8 @@ describe('EditeurSemaine', () => {
       }),
     );
 
-    // Bascule en « Jour ajouté » puis confirme.
-    await user.click(screen.getByLabelText('Jour ajouté'));
+    // Le 29/06 n'est pas gardé (semaine-type au mardi) : la modale ouvre
+    // directement la saisie d'un « jour ajouté ». Confirmer l'enregistre.
     await user.click(screen.getByRole('button', { name: 'Confirmer' }));
 
     // Le debounce (800 ms) écoulé, l'écriture part avec les besoins de la semaine :

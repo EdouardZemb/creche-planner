@@ -1,5 +1,6 @@
 import type {
   AbsenceCreche,
+  AjustementJour,
   ContratBesoinsSemaine,
   EcrireSemaineBesoins,
   ExceptionAbcm,
@@ -26,6 +27,13 @@ export interface JourSupEtat extends PlageHoraire {
   date: string;
 }
 
+/** Heures réelles d'un jour gardé (présence saisie) → catégorie `ajustements`. */
+export interface AjustementEtat extends PlageHoraire {
+  date: string;
+  preavisJours: number;
+  certificatMaladie: boolean;
+}
+
 export interface AlshEtat {
   date: string;
   type: 'COMPLETE' | 'DEMI';
@@ -35,6 +43,7 @@ export interface AlshEtat {
 export interface BesoinsEtat {
   absences: AbsenceEtat[];
   joursSup: JourSupEtat[];
+  ajustements: AjustementEtat[];
   exceptions: ExceptionAbcm[];
   joursAlsh: AlshEtat[];
 }
@@ -43,6 +52,7 @@ export interface BesoinsEtat {
 export function initBesoins(contrat: ContratBesoinsSemaine): BesoinsEtat {
   const absences: AbsenceEtat[] = [];
   const joursSup: JourSupEtat[] = [];
+  const ajustements: AjustementEtat[] = [];
   const exceptions: ExceptionAbcm[] = [];
   const joursAlsh: AlshEtat[] = [];
   for (const jour of Object.values(contrat.besoins)) {
@@ -67,12 +77,23 @@ export function initBesoins(contrat: ContratBesoinsSemaine): BesoinsEtat {
         finMinutes: j.finMinutes,
       });
     }
+    for (const a of jour.ajustements) {
+      ajustements.push({
+        date: a.date,
+        debutHeures: a.debutHeures,
+        debutMinutes: a.debutMinutes,
+        finHeures: a.finHeures,
+        finMinutes: a.finMinutes,
+        preavisJours: a.preavisJours,
+        certificatMaladie: a.certificatMaladie,
+      });
+    }
     exceptions.push(...jour.exceptions);
     for (const j of jour.joursAlsh) {
       joursAlsh.push({ date: j.date, type: j.type, repas: j.repas ?? false });
     }
   }
-  return { absences, joursSup, exceptions, joursAlsh };
+  return { absences, joursSup, ajustements, exceptions, joursAlsh };
 }
 
 /** Corps d'écriture (catégories datées non vides) depuis l'état d'édition. */
@@ -93,6 +114,15 @@ export function versCorps(etat: BesoinsEtat): EcrireSemaineBesoins {
     finHeures: j.finHeures,
     finMinutes: j.finMinutes,
   }));
+  const ajustements: AjustementJour[] = etat.ajustements.map((a) => ({
+    date: a.date,
+    debutHeures: a.debutHeures,
+    debutMinutes: a.debutMinutes,
+    finHeures: a.finHeures,
+    finMinutes: a.finMinutes,
+    preavisJours: a.preavisJours,
+    certificatMaladie: a.certificatMaladie,
+  }));
   const joursAlsh: JourAlsh[] = etat.joursAlsh.map((j) => ({
     date: j.date,
     type: j.type,
@@ -101,6 +131,7 @@ export function versCorps(etat: BesoinsEtat): EcrireSemaineBesoins {
   return {
     ...(joursSupplementaires.length > 0 ? { joursSupplementaires } : {}),
     ...(absences.length > 0 ? { absences } : {}),
+    ...(ajustements.length > 0 ? { ajustements } : {}),
     ...(etat.exceptions.length > 0 ? { exceptions: etat.exceptions } : {}),
     ...(joursAlsh.length > 0 ? { joursAlsh } : {}),
   };

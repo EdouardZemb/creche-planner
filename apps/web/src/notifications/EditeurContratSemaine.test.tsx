@@ -38,7 +38,7 @@ const JOURS = [
   '2026-07-05',
 ];
 
-/** Contrat crèche : une absence datée le lundi, gardée le mardi (semaine-type). */
+/** Contrat crèche gardé le mardi 09:00–16:30 (semaine-type), sans entrée datée. */
 function contratCreche(): ContratBesoinsSemaine {
   return {
     contratId: 'c-lea',
@@ -47,16 +47,25 @@ function contratCreche(): ContratBesoinsSemaine {
     etablissementId: null,
     semaineType: {
       MARDI: [
-        { debutHeures: 8, debutMinutes: 0, finHeures: 17, finMinutes: 0 },
+        { debutHeures: 9, debutMinutes: 0, finHeures: 16, finMinutes: 30 },
       ],
     },
+    besoins: {},
+  };
+}
+
+/** Idem, mais avec un ajustement d'heures réelles le mardi (arrivée avancée). */
+function contratCrecheAvecAjustement(): ContratBesoinsSemaine {
+  return {
+    ...contratCreche(),
     besoins: {
-      '2026-06-29': {
+      '2026-06-30': {
         joursSupplementaires: [],
-        absences: [
+        absences: [],
+        ajustements: [
           {
-            date: '2026-06-29',
-            debutHeures: 9,
+            date: '2026-06-30',
+            debutHeures: 8,
             debutMinutes: 0,
             finHeures: 16,
             finMinutes: 30,
@@ -107,84 +116,101 @@ beforeEach(() => {
 });
 
 describe('EditeurContratSemaine (crèche PSU)', () => {
-  it('initialise les besoins depuis le contrat : absence datée, semaine-type, jours vides', () => {
+  it('initialise les besoins depuis le contrat : semaine-type gardée, jours vides', () => {
     rendre(contratCreche());
 
     expect(screen.getByText('Léa — Crèche')).toBeInTheDocument();
-    // Lundi : absence datée → résumé + bouton « Modifier ».
-    expect(screen.getByText('Absent (09:00–16:30)')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Modifier le Lundi 29/06/2026' }),
-    ).toBeInTheDocument();
-    // Mardi : pas d'entrée datée → repli sur la semaine-type, bouton « Saisir ».
-    expect(screen.getByText('Gardé 08:00–17:00')).toBeInTheDocument();
+    // Mardi : jour gardé de la semaine-type → repli sur la base, bouton « Saisir ».
+    expect(screen.getByText('Gardé 09:00–16:30')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: 'Saisir le Mardi 30/06/2026' }),
     ).toBeInTheDocument();
-    // Mercredi → dimanche : ni entrée datée ni base → « — ».
-    expect(screen.getAllByText('—')).toHaveLength(5);
+    // Les 6 autres jours ne sont ni gardés ni saisis → « — ».
+    expect(screen.getAllByText('—')).toHaveLength(6);
   });
 
-  it('saisit un jour ajouté avec ses horaires et écrit la semaine (debounce)', async () => {
+  it('résume un ajustement d’heures existant par son libellé et sa présence réelle', () => {
+    rendre(contratCrecheAvecAjustement());
+
+    expect(screen.getByText('Arrivée avancée 08:00–16:30')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Modifier le Mardi 30/06/2026' }),
+    ).toBeInTheDocument();
+  });
+
+  it('saisir une arrivée en avance : état « facturé en complément » puis entrée ajustements', async () => {
     const user = userEvent.setup();
     const onEnregistre = vi.fn();
     rendre(contratCreche(), { onEnregistre });
 
     await user.click(
-      screen.getByRole('button', { name: 'Saisir le Mercredi 01/07/2026' }),
+      screen.getByRole('button', { name: 'Saisir le Mardi 30/06/2026' }),
     );
-    await user.click(screen.getByLabelText('Jour ajouté'));
+    // Champs préremplis avec la plage du contrat du jour.
+    expect(screen.getByLabelText(/Heure d’arrivée/)).toHaveValue('09:00');
+    expect(screen.getByLabelText(/Heure de départ/)).toHaveValue('16:30');
+
     fireEvent.change(screen.getByLabelText(/Heure d’arrivée/), {
-      target: { value: '08:30' },
+      target: { value: '08:00' },
     });
-    fireEvent.change(screen.getByLabelText(/Heure de départ/), {
-      target: { value: '17:30' },
-    });
+
+    expect(
+      screen.getByText(
+        '1 h de plus que les horaires habituels (09:00–16:30) — facturé en complément.',
+      ),
+    ).toBeInTheDocument();
+
     await user.click(screen.getByRole('button', { name: 'Confirmer' }));
 
-    // Le résumé du jour reflète la saisie sans attendre l'écriture.
-    expect(screen.getByText('Jour ajouté (08:30–17:30)')).toBeInTheDocument();
-    // La modale s'est fermée mais l'écriture est debouncée : le statut couvre
-    // ce trou dès la confirmation.
+    // Le résumé du jour reflète l'ajustement sans attendre l'écriture.
+    expect(screen.getByText('Arrivée avancée 08:00–16:30')).toBeInTheDocument();
     expect(screen.getByText('Enregistrement…')).toBeInTheDocument();
 
     const { contratId, semaine, corps } = await corpsEcrit();
     expect(contratId).toBe('c-lea');
     expect(semaine).toBe(SEMAINE);
-    expect(corps.joursSupplementaires).toEqual([
+    expect(corps.ajustements).toEqual([
       {
-        date: '2026-07-01',
+        date: '2026-06-30',
         debutHeures: 8,
-        debutMinutes: 30,
-        finHeures: 17,
+        debutMinutes: 0,
+        finHeures: 16,
         finMinutes: 30,
+        // Extension pure : préavis/certificat neutres.
+        preavisJours: 0,
+        certificatMaladie: false,
       },
     ]);
-    // L'absence du lundi est conservée dans le corps (semaine complète).
-    expect(corps.absences).toEqual([
-      expect.objectContaining({ date: '2026-06-29' }),
-    ]);
+    expect(corps.absences).toBeUndefined();
+    expect(corps.joursSupplementaires).toBeUndefined();
     await waitFor(() => {
       expect(onEnregistre).toHaveBeenCalled();
     });
-    // Le statut persiste, horodaté (plus de retour à « idle » après 2 s).
     expect(
       await screen.findByText(/^Enregistré à \d{2}:\d{2}$/),
     ).toBeInTheDocument();
   });
 
-  it('préremplit la modale depuis l’absence existante et enregistre ses modifications', async () => {
+  it('saisir une réduction : pose les questions préavis/certificat et les transmet', async () => {
     const user = userEvent.setup();
     rendre(contratCreche());
 
     await user.click(
-      screen.getByRole('button', { name: 'Modifier le Lundi 29/06/2026' }),
+      screen.getByRole('button', { name: 'Saisir le Mardi 30/06/2026' }),
     );
+    fireEvent.change(screen.getByLabelText(/Heure d’arrivée/), {
+      target: { value: '10:00' },
+    });
+    fireEvent.change(screen.getByLabelText(/Heure de départ/), {
+      target: { value: '15:00' },
+    });
 
-    // Champs préremplis depuis l'absence datée du contrat.
-    expect(screen.getByLabelText('Absence')).toBeChecked();
-    expect(screen.getByLabelText(/Heure d’arrivée/)).toHaveValue('09:00');
-    expect(screen.getByLabelText(/Heure de départ/)).toHaveValue('16:30');
+    // 09:00→10:00 (1 h) + 15:00→16:30 (1 h 30) = 2 h 30 de moins.
+    expect(
+      screen.getByText(
+        '2 h 30 de moins que les horaires habituels (09:00–16:30).',
+      ),
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/Signalée combien de jours/), {
       target: { value: '2' },
@@ -193,17 +219,112 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
     await user.click(screen.getByRole('button', { name: 'Confirmer' }));
 
     const { corps } = await corpsEcrit();
-    expect(corps.absences).toEqual([
+    expect(corps.ajustements).toEqual([
       {
-        date: '2026-06-29',
-        debutHeures: 9,
+        date: '2026-06-30',
+        debutHeures: 10,
         debutMinutes: 0,
-        finHeures: 16,
-        finMinutes: 30,
+        finHeures: 15,
+        finMinutes: 0,
         preavisJours: 2,
         certificatMaladie: true,
       },
     ]);
+  });
+
+  it('saisir une arrivée avancée ET un départ avancé : état mixte', async () => {
+    const user = userEvent.setup();
+    rendre(contratCreche());
+
+    await user.click(
+      screen.getByRole('button', { name: 'Saisir le Mardi 30/06/2026' }),
+    );
+    fireEvent.change(screen.getByLabelText(/Heure d’arrivée/), {
+      target: { value: '08:00' },
+    });
+    fireEvent.change(screen.getByLabelText(/Heure de départ/), {
+      target: { value: '15:00' },
+    });
+
+    expect(
+      screen.getByText(
+        'Horaires ajustés (09:00–16:30 habituellement) : 1 h en plus (facturés en complément), 1 h 30 en moins.',
+      ),
+    ).toBeInTheDocument();
+    // La réduction du mixte ouvre aussi les questions préavis/certificat.
+    expect(
+      screen.getByLabelText(/Signalée combien de jours/),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Confirmer' }));
+    const { corps } = await corpsEcrit();
+    expect(corps.ajustements).toEqual([
+      {
+        date: '2026-06-30',
+        debutHeures: 8,
+        debutMinutes: 0,
+        finHeures: 15,
+        finMinutes: 0,
+        preavisJours: 0,
+        certificatMaladie: false,
+      },
+    ]);
+  });
+
+  it('« Absent toute la journée » écrit une absence pleine plage de contrat', async () => {
+    const user = userEvent.setup();
+    rendre(contratCreche());
+
+    await user.click(
+      screen.getByRole('button', { name: 'Saisir le Mardi 30/06/2026' }),
+    );
+    await user.click(screen.getByLabelText('Absent toute la journée'));
+    // Les champs d'heures disparaissent au profit des questions d'absence.
+    expect(screen.queryByLabelText(/Heure d’arrivée/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Signalée combien de jours/), {
+      target: { value: '3' },
+    });
+    await user.click(screen.getByLabelText('Certificat médical'));
+    await user.click(screen.getByRole('button', { name: 'Confirmer' }));
+
+    expect(screen.getByText('Absent (09:00–16:30)')).toBeInTheDocument();
+    const { corps } = await corpsEcrit();
+    expect(corps.absences).toEqual([
+      {
+        date: '2026-06-30',
+        debutHeures: 9,
+        debutMinutes: 0,
+        finHeures: 16,
+        finMinutes: 30,
+        preavisJours: 3,
+        certificatMaladie: true,
+      },
+    ]);
+    expect(corps.ajustements).toBeUndefined();
+  });
+
+  it('heures identiques au contrat : « rien à enregistrer » et nettoyage de la saisie', async () => {
+    const user = userEvent.setup();
+    rendre(contratCrecheAvecAjustement());
+
+    await user.click(
+      screen.getByRole('button', { name: 'Modifier le Mardi 30/06/2026' }),
+    );
+    // Préremplie avec l'ajustement existant (08:00) ; on revient au contrat.
+    expect(screen.getByLabelText(/Heure d’arrivée/)).toHaveValue('08:00');
+    fireEvent.change(screen.getByLabelText(/Heure d’arrivée/), {
+      target: { value: '09:00' },
+    });
+    expect(
+      screen.getByText('Horaires habituels — rien à enregistrer.'),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Confirmer' }));
+
+    // La saisie du jour est retirée : retour à l'affichage de base.
+    expect(screen.getByText('Gardé 09:00–16:30')).toBeInTheDocument();
+    const { corps } = await corpsEcrit();
+    expect(corps).toEqual({});
   });
 
   it('refuse une plage invalide : message et confirmation désactivée', async () => {
@@ -211,9 +332,9 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
     rendre(contratCreche());
 
     await user.click(
-      screen.getByRole('button', { name: 'Saisir le Mercredi 01/07/2026' }),
+      screen.getByRole('button', { name: 'Saisir le Mardi 30/06/2026' }),
     );
-    // Départ avant l'arrivée par défaut (09:00).
+    // Départ avant l'arrivée du contrat (09:00).
     fireEvent.change(screen.getByLabelText(/Heure de départ/), {
       target: { value: '08:00' },
     });
@@ -225,21 +346,55 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
     expect(api.ecrireSemaineBesoins).not.toHaveBeenCalled();
   });
 
-  it('supprime la saisie d’un jour (corps vidé de l’absence)', async () => {
+  it('jour non gardé : pas de case « Absent », c’est un « jour ajouté »', async () => {
     const user = userEvent.setup();
     rendre(contratCreche());
 
     await user.click(
-      screen.getByRole('button', { name: 'Modifier le Lundi 29/06/2026' }),
+      screen.getByRole('button', { name: 'Saisir le Mercredi 01/07/2026' }),
+    );
+    // Aucune case « Absent toute la journée » ni état déduit sur un jour non gardé.
+    expect(
+      screen.queryByLabelText('Absent toute la journée'),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Heure d’arrivée/), {
+      target: { value: '08:30' },
+    });
+    fireEvent.change(screen.getByLabelText(/Heure de départ/), {
+      target: { value: '17:30' },
+    });
+    await user.click(screen.getByRole('button', { name: 'Confirmer' }));
+
+    expect(screen.getByText('Jour ajouté (08:30–17:30)')).toBeInTheDocument();
+    const { corps } = await corpsEcrit();
+    expect(corps.joursSupplementaires).toEqual([
+      {
+        date: '2026-07-01',
+        debutHeures: 8,
+        debutMinutes: 30,
+        finHeures: 17,
+        finMinutes: 30,
+      },
+    ]);
+    expect(corps.ajustements).toBeUndefined();
+  });
+
+  it('supprime l’ajustement d’un jour (corps vidé)', async () => {
+    const user = userEvent.setup();
+    rendre(contratCrecheAvecAjustement());
+
+    await user.click(
+      screen.getByRole('button', { name: 'Modifier le Mardi 30/06/2026' }),
     );
     await user.click(screen.getByRole('button', { name: 'Supprimer' }));
 
     const { corps } = await corpsEcrit();
     // Plus aucune catégorie datée : le corps est vide.
     expect(corps).toEqual({});
-    // La rangée du lundi retombe sur « — » (pas de semaine-type ce jour-là).
+    // La rangée du mardi retombe sur sa base « Gardé ».
+    expect(screen.getByText('Gardé 09:00–16:30')).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: 'Saisir le Lundi 29/06/2026' }),
+      screen.getByRole('button', { name: 'Saisir le Mardi 30/06/2026' }),
     ).toBeInTheDocument();
   });
 
@@ -248,10 +403,10 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
     vi.mocked(api.ecrireSemaineBesoins).mockRejectedValue(
       new ApiError(502, undefined),
     );
-    rendre(contratCreche());
+    rendre(contratCrecheAvecAjustement());
 
     await user.click(
-      screen.getByRole('button', { name: 'Modifier le Lundi 29/06/2026' }),
+      screen.getByRole('button', { name: 'Modifier le Mardi 30/06/2026' }),
     );
     await user.click(screen.getByRole('button', { name: 'Supprimer' }));
 
@@ -270,10 +425,10 @@ describe('EditeurContratSemaine (crèche PSU)', () => {
     vi.mocked(api.ecrireSemaineBesoins)
       .mockRejectedValueOnce(new ApiError(502, undefined))
       .mockResolvedValueOnce(undefined);
-    rendre(contratCreche());
+    rendre(contratCrecheAvecAjustement());
 
     await user.click(
-      screen.getByRole('button', { name: 'Modifier le Lundi 29/06/2026' }),
+      screen.getByRole('button', { name: 'Modifier le Mardi 30/06/2026' }),
     );
     await user.click(screen.getByRole('button', { name: 'Supprimer' }));
 
@@ -418,6 +573,7 @@ describe('EditeurContratSemaine (modes ABCM et ALSH)', () => {
         '2026-06-29': {
           joursSupplementaires: [],
           absences: [],
+          ajustements: [],
           exceptions: [],
           joursAlsh: [{ date: '2026-06-29', type: 'COMPLETE', repas: true }],
         },
@@ -496,6 +652,7 @@ describe('EditeurContratSemaine (modes ABCM et ALSH)', () => {
         '2026-07-01': {
           joursSupplementaires: [],
           absences: [],
+          ajustements: [],
           exceptions: [],
           joursAlsh: [{ date: '2026-07-01', type: 'DEMI' }],
         },
@@ -517,6 +674,7 @@ describe('EditeurContratSemaine (modes ABCM et ALSH)', () => {
         '2026-07-01': {
           joursSupplementaires: [],
           absences: [],
+          ajustements: [],
           exceptions: [{ date: '2026-07-01', alsh: false }],
           joursAlsh: [],
         },

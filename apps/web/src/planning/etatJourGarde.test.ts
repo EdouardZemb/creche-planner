@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { PlageHoraire } from '../types/bff';
-import { classerAbsence } from './etatJourGarde';
+import { classerAbsence, classerAjustement } from './etatJourGarde';
 
 // Plage de garde de référence : 09:00 → 16:30 (forme produite par
 // `plageContratJour` dans `CalendrierCreche`).
@@ -64,6 +64,53 @@ describe('classerAbsence', () => {
       statut: 'ajuste',
       libelle: 'Ajusté',
       presence: null,
+    });
+  });
+});
+
+describe('classerAjustement', () => {
+  // Plage de garde de référence : 09:00 → 16:30.
+  const CONTRAT = { arrivee: '09:00', depart: '16:30' };
+
+  it('classe une arrivée plus tôt comme « Arrivée avancée » (présence réelle)', () => {
+    expect(classerAjustement(plage('08:00', '16:30'), CONTRAT)).toEqual({
+      libelle: 'Arrivée avancée',
+      presence: '08:00–16:30',
+    });
+  });
+
+  it('classe une arrivée plus tard comme « Arrivée retardée »', () => {
+    expect(classerAjustement(plage('10:00', '16:30'), CONTRAT)).toEqual({
+      libelle: 'Arrivée retardée',
+      presence: '10:00–16:30',
+    });
+  });
+
+  it('classe un départ plus tôt comme « Départ avancé »', () => {
+    expect(classerAjustement(plage('09:00', '15:00'), CONTRAT)).toEqual({
+      libelle: 'Départ avancé',
+      presence: '09:00–15:00',
+    });
+  });
+
+  it('classe un départ plus tard comme « Départ retardé »', () => {
+    expect(classerAjustement(plage('09:00', '18:00'), CONTRAT)).toEqual({
+      libelle: 'Départ retardé',
+      presence: '09:00–18:00',
+    });
+  });
+
+  it('classe deux bornes décalées comme « Horaires ajustés »', () => {
+    expect(classerAjustement(plage('08:00', '18:00'), CONTRAT)).toEqual({
+      libelle: 'Horaires ajustés',
+      presence: '08:00–18:00',
+    });
+  });
+
+  it('restitue la présence réelle même sans plage de contrat', () => {
+    expect(classerAjustement(plage('08:00', '16:30'), null)).toEqual({
+      libelle: 'Horaires ajustés',
+      presence: '08:00–16:30',
     });
   });
 });

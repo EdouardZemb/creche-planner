@@ -71,3 +71,70 @@ export function classerAbsence(
 
   return { statut: 'ajuste', libelle: 'Ajusté', presence: null };
 }
+
+/** Résultat de la classification d'un ajustement d'heures réelles (Lot 2b). */
+export interface EtatAjustementClasse {
+  /**
+   * Libellé court de l'écart : « Arrivée avancée », « Arrivée retardée »,
+   * « Départ avancé », « Départ retardé », ou « Horaires ajustés » (deux bornes
+   * modifiées, ou plage de contrat inconnue).
+   */
+  readonly libelle: string;
+  /** Plage de présence RÉELLE (HH:MM–HH:MM, tiret demi-cadratin « – »). */
+  readonly presence: string;
+}
+
+/**
+ * Classe un ajustement d'heures **réelles** (plage de présence saisie) au regard de
+ * la plage de garde contractuelle du jour. Mêmes conventions que `classerAbsence`
+ * (comparaison en minutes depuis minuit), mais l'entrée porte la présence réelle :
+ * `presence` restitue donc toujours la plage saisie.
+ *
+ * - une seule borne décalée → « Arrivée avancée/retardée » ou « Départ avancé/retardé » ;
+ * - les deux bornes décalées → « Horaires ajustés » ;
+ * - plage de contrat absente (ne devrait pas arriver sur un jour gardé) → « Horaires ajustés ».
+ *
+ * Une plage réelle strictement égale à la plage de contrat retombe sur « Horaires
+ * ajustés » (aucune borne décalée) : ce cas est neutralisé en amont par l'éditeur,
+ * qui ne persiste alors aucune entrée.
+ */
+export function classerAjustement(
+  plageReelle: PlageHoraire,
+  plageContrat: { arrivee: string; depart: string } | null,
+): EtatAjustementClasse {
+  const arriveeReelle = versHhmm(
+    plageReelle.debutHeures,
+    plageReelle.debutMinutes,
+  );
+  const departReel = versHhmm(plageReelle.finHeures, plageReelle.finMinutes);
+  const presence = `${arriveeReelle}–${departReel}`;
+
+  if (plageContrat === null) {
+    return { libelle: 'Horaires ajustés', presence };
+  }
+
+  const arriveeContrat = minutesDeHhmm(plageContrat.arrivee);
+  const departContrat = minutesDeHhmm(plageContrat.depart);
+  const arriveeMin = minutesDeHhmm(arriveeReelle);
+  const departMin = minutesDeHhmm(departReel);
+  const arriveeDecalee = arriveeMin !== arriveeContrat;
+  const departDecale = departMin !== departContrat;
+
+  if (arriveeDecalee && departDecale) {
+    return { libelle: 'Horaires ajustés', presence };
+  }
+  if (arriveeDecalee) {
+    return {
+      libelle:
+        arriveeMin < arriveeContrat ? 'Arrivée avancée' : 'Arrivée retardée',
+      presence,
+    };
+  }
+  if (departDecale) {
+    return {
+      libelle: departMin < departContrat ? 'Départ avancé' : 'Départ retardé',
+      presence,
+    };
+  }
+  return { libelle: 'Horaires ajustés', presence };
+}
