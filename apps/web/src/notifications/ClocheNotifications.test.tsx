@@ -34,8 +34,9 @@ function notif(p: Partial<NotificationInApp> = {}): NotificationInApp {
   return {
     id: 'n1',
     type: 'VALIDATION_HEBDO',
-    sujet: 'Planning de la semaine 2026-W27 à valider',
-    corps: 'Le planning de Léa pour la semaine 2026-W27 est à valider.',
+    sujet: 'Planning de la semaine du 29 juin au 5 juillet 2026 à valider',
+    corps:
+      'Le planning de Léa pour la semaine du 29 juin au 5 juillet 2026 est à valider.',
     creeLe: '2026-06-23T06:01:00.000Z',
     luLe: null,
     ...p,
@@ -88,7 +89,9 @@ describe('ClocheNotifications', () => {
     fireEvent.click(bouton);
 
     expect(
-      screen.getByText('Planning de la semaine 2026-W27 à valider'),
+      screen.getByText(
+        'Planning de la semaine du 29 juin au 5 juillet 2026 à valider',
+      ),
     ).toBeInTheDocument();
     expect(bouton).toHaveAttribute('aria-expanded', 'true');
   });
@@ -172,7 +175,7 @@ describe('ClocheNotifications', () => {
     const carte = screen.getByRole('link');
     expect(carte).toHaveAttribute('href', LIEN);
     expect(carte).toHaveTextContent(
-      'Planning de la semaine 2026-W27 à valider',
+      'Planning de la semaine du 29 juin au 5 juillet 2026 à valider',
     );
     // Pas de bouton « Marquer comme lu » : le tap vaut accusé de lecture.
     expect(

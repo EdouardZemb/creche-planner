@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  dateLongueFr,
   formaterDateFr,
   formaterDateCourtFr,
   formaterHeureFr,
@@ -64,6 +65,23 @@ describe('libelleDate', () => {
 
   it('dit « 1er » pour le premier jour du mois', () => {
     expect(libelleDate('2026-08-01')).toBe('samedi 1er août');
+  });
+});
+
+describe('dateLongueFr', () => {
+  it('rend une date longue : jour nommé + quantième en chiffres + mois', () => {
+    // 2026-07-01 = mercredi ; quantième « 1 » (et non « 1er »).
+    expect(dateLongueFr('2026-07-01')).toBe('mercredi 1 juillet');
+    expect(dateLongueFr('2026-06-29')).toBe('lundi 29 juin');
+  });
+
+  it('ne décale pas le jour quel que soit le fuseau (formatage UTC)', () => {
+    // Une date « minuit » mal formatée basculerait sur la veille en fuseau négatif.
+    expect(dateLongueFr('2026-07-01')).not.toContain('30 juin');
+  });
+
+  it('replie sur la chaîne brute si le format n’est pas YYYY-MM-DD', () => {
+    expect(dateLongueFr('pas-une-date')).toBe('pas-une-date');
   });
 });
 

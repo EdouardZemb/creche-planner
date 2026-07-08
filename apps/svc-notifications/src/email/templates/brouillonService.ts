@@ -1,3 +1,4 @@
+import { libelleSemaineFr } from '@creche-planner/shared-semaine';
 import type {
   DeltaJour,
   DeltaModifs,
@@ -158,7 +159,9 @@ export function brouillonServiceAgrege(
   params: BrouillonServiceParams,
 ): MessageRendu {
   const { semaineIso, etablissementLibelle, enfants } = params;
-  const subject = `Plannings modifiés — semaine ${semaineIso}`;
+  // Libellé parent (« semaine du 6 au 12 juillet 2026 ») lisible par le service.
+  const libelle = libelleSemaineFr(semaineIso);
+  const subject = `Plannings modifiés — ${libelle}`;
   const etabHtml = echapper(etablissementLibelle);
 
   const aucune = enfants.length === 0;
@@ -178,7 +181,7 @@ export function brouillonServiceAgrege(
 
   const html = [
     `<p>Bonjour ${etabHtml},</p>`,
-    `<p>Voici le récapitulatif des modifications de planning pour la semaine <strong>${semaineIso}</strong>.</p>`,
+    `<p>Voici le récapitulatif des modifications de planning pour la <strong>${libelle}</strong>.</p>`,
     ...blocsHtml,
     '<p>Cordialement,</p>',
     '<p>— Crèche Planner (pour la famille)</p>',
@@ -200,7 +203,7 @@ export function brouillonServiceAgrege(
   const text = [
     `Bonjour ${etablissementLibelle},`,
     '',
-    `Voici le récapitulatif des modifications de planning pour la semaine ${semaineIso}.`,
+    `Voici le récapitulatif des modifications de planning pour la ${libelle}.`,
     '',
     ...blocsTexte,
     'Cordialement,',

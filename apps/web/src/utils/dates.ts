@@ -141,6 +141,24 @@ export function libelleDate(iso: string): string {
 }
 
 /**
+ * Date « YYYY-MM-DD » → « mardi 1 juillet » : jour nommé + quantième + mois, sans
+ * année (relecture d'envoi — la semaine notifiée tient sur un horizon court). Le
+ * quantième reste en chiffres (« 1 juillet », pas « 1er ») pour coller au delta figé.
+ * Formaté en UTC depuis la date calendaire (sans heure) : aucun fuseau ne décale le
+ * jour. Repli sur la chaîne brute si la forme n'est pas `YYYY-MM-DD`.
+ */
+export function dateLongueFr(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [y, m, d] = partsIso(iso);
+  return new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'UTC',
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+/**
  * Rend `2026-W28` en libellé parent « semaine du 6 au 12 juillet » : des dates
  * réelles, jamais le numéro de semaine ISO (jargon pour un parent). Le mois de
  * début n'apparaît que si la semaine en chevauche deux (« semaine du 29 juin au

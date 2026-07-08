@@ -7,21 +7,28 @@ import type {
   EnvoiEtablissementResultat,
 } from '../types/bff';
 import { messageErreur } from '../utils/erreurs';
+import { dateLongueFr } from '../utils/dates';
 import { useAsync } from '../hooks/useAsync';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 
-/** `2026-06-29` → `29/06/2026` (affichage FR). */
-function jourLisible(date: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : date;
-}
-
-/** Courte description d'un jour modifié pour la relecture (date + nature). */
+/**
+ * Courte description d'un jour modifié pour la relecture, en mots de parent :
+ * « mardi 1 juillet — modifiée » (date longue + nature du changement). Un jour
+ * portant des heures réelles ajustées (Lot 2a/2b) est annoncé « horaires ajustés »
+ * plutôt que « modifiée ». `apres` est de forme libre (relayée par la gateway) : on
+ * lit `ajustements` défensivement (absent ≡ vide).
+ */
 function descriptionJour(jour: DeltaJour): string {
+  const dateLongue = dateLongueFr(jour.date);
   if (jour.apres === null) {
-    return `${jourLisible(jour.date)} — journée retirée`;
+    return `${dateLongue} — journée retirée`;
   }
-  return `${jourLisible(jour.date)} — modifiée`;
+  const ajustements = (jour.apres as { ajustements?: readonly unknown[] })
+    .ajustements;
+  if (ajustements !== undefined && ajustements.length > 0) {
+    return `${dateLongue} — horaires ajustés`;
+  }
+  return `${dateLongue} — modifiée`;
 }
 
 /** Message de résultat selon l'issue réelle de l'envoi. */

@@ -103,7 +103,7 @@ function brouillonPour(etablissementId: string): BrouillonEtablissement {
     destinataire: concerne
       ? 'contact-creche@example.org'
       : 'contact-abcm@example.org',
-    sujet: 'Plannings modifiés — semaine 2026-W27',
+    sujet: 'Plannings modifiés — semaine du 29 juin au 5 juillet 2026',
     corps: '<p>Bonjour</p>',
     texte: 'Bonjour',
     // Seule la crèche a un enfant concerné dans ces tests.
