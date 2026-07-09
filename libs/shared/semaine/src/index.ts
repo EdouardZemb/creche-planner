@@ -13,3 +13,4 @@ export {
   type SnapshotSemaine,
 } from './lib/fenetre.js';
 export { jourCourantParis } from './lib/jour-courant.js';
+export { libelleSemaineFr } from './lib/libelle-semaine.js';

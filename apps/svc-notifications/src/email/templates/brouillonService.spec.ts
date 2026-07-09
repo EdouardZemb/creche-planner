@@ -59,7 +59,11 @@ describe('brouillonServiceAgrege', () => {
       ],
     });
 
-    expect(message.subject).toBe('Plannings modifiés — semaine 2026-W27');
+    // 2026-W27 = semaine à cheval sur deux mois (29 juin → 5 juillet).
+    expect(message.subject).toBe(
+      'Plannings modifiés — semaine du 29 juin au 5 juillet 2026',
+    );
+    expect(message.subject).not.toMatch(/\d{4}-W\d{2}/);
     expect(message.html).toContain('Crèche Les Hirondelles');
     // Les deux enfants apparaissent, chacun avec ses jours.
     expect(message.text).toContain('Léa :');

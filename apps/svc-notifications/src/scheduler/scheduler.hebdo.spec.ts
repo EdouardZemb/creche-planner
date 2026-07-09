@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { libelleSemaineFr } from '@creche-planner/shared-semaine';
 import type { MailerService } from '@creche-planner/nest-commons';
 import { SchedulerHebdo } from './scheduler.hebdo.js';
 import type { Clock } from './clock.js';
@@ -310,9 +311,11 @@ describe('SchedulerHebdo.declencher', () => {
       to: string;
       subject: string;
     };
+    // Sujet humanisé (Lot 4) : plus de numéro de semaine ISO, un libellé parent.
     expect(message.subject).toBe(
-      `Valider le planning de la semaine ${SEMAINE_N1}`,
+      `Valider le planning — ${libelleSemaineFr(SEMAINE_N1)}`,
     );
+    expect(message.subject).not.toMatch(/\d{4}-W\d{2}/);
   });
 
   it('repli : foyer sans parent → un mail vers NOTIF_EMAIL_PARENT, sans en-tête ni jeton', async () => {
@@ -544,7 +547,9 @@ describe('SchedulerHebdo.declencher', () => {
     };
     expect(entree.parentId).toBe('p1');
     expect(entree.type).toBe('VALIDATION_HEBDO');
-    expect(entree.sujet).toContain(SEMAINE_N1);
+    // Sujet humanisé (Lot 4) : le libellé parent, plus le numéro de semaine ISO.
+    expect(entree.sujet).toContain(libelleSemaineFr(SEMAINE_N1));
+    expect(entree.sujet).not.toMatch(/\d{4}-W\d{2}/);
     expect(entree.corps).toContain('Léa');
     // Lien profond relatif vers l'éditeur de la semaine du foyer (carte tapable côté web).
     expect(entree.lien).toBe(

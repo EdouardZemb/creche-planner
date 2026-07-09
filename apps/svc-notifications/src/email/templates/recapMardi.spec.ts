@@ -21,12 +21,22 @@ function rendre(enfants: RecapMardiEnfant[]) {
 }
 
 describe('recapMardi', () => {
-  it('rend le sujet « Valider le planning de la semaine … » et le lien', () => {
+  it('rend le sujet « Valider le planning — semaine du … » et le lien', () => {
     const message = rendre([enfant()]);
 
-    expect(message.subject).toBe('Valider le planning de la semaine 2026-W27');
+    // 2026-W27 = lundi 29 juin → dimanche 5 juillet (semaine à cheval sur deux mois).
+    expect(message.subject).toBe(
+      'Valider le planning — semaine du 29 juin au 5 juillet 2026',
+    );
+    // Plus aucun numéro de semaine ISO visible dans le sujet (jargon).
+    expect(message.subject).not.toMatch(/\d{4}-W\d{2}/);
     expect(message.html).toContain(`href="${LIEN}"`);
-    expect(message.html).toContain('2026-W27');
+    // Le corps affiche le libellé parent ; l'ISO ne subsiste que dans l'URL du lien.
+    expect(message.html).toContain('semaine du 29 juin au 5 juillet 2026');
+    // Texte du lien (distinct du sujet).
+    expect(message.text).toContain(
+      'Valider le planning de la semaine du 29 juin au 5 juillet 2026',
+    );
     expect(message.text).toContain(LIEN);
     expect(message.text).toContain('Léa');
     // Le lien pointe bien vers l'éditeur de la semaine du foyer (route existante).
@@ -39,7 +49,7 @@ describe('recapMardi', () => {
     const message = rendre([enfant({ enfant: 'Léa' })]);
 
     expect(message.text).toContain(
-      'Le planning de Léa pour la semaine 2026-W27 est à valider.',
+      'Le planning de Léa pour la semaine du 29 juin au 5 juillet 2026 est à valider.',
     );
     expect(message.text).not.toContain('Les plannings');
   });
@@ -52,7 +62,7 @@ describe('recapMardi', () => {
     ]);
 
     expect(message.text).toContain(
-      'Les plannings de Léa, Tom et Zoé pour la semaine 2026-W27 sont à valider.',
+      'Les plannings de Léa, Tom et Zoé pour la semaine du 29 juin au 5 juillet 2026 sont à valider.',
     );
     expect(message.html).toContain('<strong>Léa</strong>');
     expect(message.html).toContain('<strong>Tom</strong>');

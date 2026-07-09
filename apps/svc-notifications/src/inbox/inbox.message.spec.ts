@@ -10,9 +10,12 @@ describe('messageValidationHebdo', () => {
       noms: ['Léa'],
       semaineIso: '2026-W27',
     });
-    expect(m.sujet).toBe('Planning de la semaine 2026-W27 à valider');
+    // 2026-W27 = semaine à cheval sur deux mois (29 juin → 5 juillet).
+    expect(m.sujet).toBe(
+      'Planning de la semaine du 29 juin au 5 juillet 2026 à valider',
+    );
     expect(m.corps).toBe(
-      'Le planning de Léa pour la semaine 2026-W27 est à valider.',
+      'Le planning de Léa pour la semaine du 29 juin au 5 juillet 2026 est à valider.',
     );
   });
 
@@ -23,7 +26,7 @@ describe('messageValidationHebdo', () => {
       semaineIso: '2026-W27',
     });
     expect(m.corps).toBe(
-      'Les plannings de Léa et Tom pour la semaine 2026-W27 sont à valider.',
+      'Les plannings de Léa et Tom pour la semaine du 29 juin au 5 juillet 2026 sont à valider.',
     );
   });
 
@@ -42,7 +45,9 @@ describe('messageValidationHebdo', () => {
       noms: [],
       semaineIso: '2026-W27',
     });
-    expect(m.corps).toBe('Le planning de la semaine 2026-W27 est à valider.');
+    expect(m.corps).toBe(
+      'Le planning de la semaine du 29 juin au 5 juillet 2026 est à valider.',
+    );
   });
 
   it('produit un lien profond relatif vers l’éditeur de la semaine du foyer', () => {

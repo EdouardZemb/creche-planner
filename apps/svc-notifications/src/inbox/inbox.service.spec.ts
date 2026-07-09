@@ -26,8 +26,9 @@ function ligne(partiel: Partial<NotificationRow> = {}): NotificationRow {
     id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     parentId: PARENT,
     type: 'VALIDATION_HEBDO',
-    sujet: 'Planning de la semaine 2026-W27 à valider',
-    corps: 'Le planning de Léa pour la semaine 2026-W27 est à valider.',
+    sujet: 'Planning de la semaine du 29 juin au 5 juillet 2026 à valider',
+    corps:
+      'Le planning de Léa pour la semaine du 29 juin au 5 juillet 2026 est à valider.',
     lien: '/foyers/22222222-2222-4222-8222-222222222222/planning?semaine=2026-W27',
     creeLe: new Date('2026-06-23T06:01:00.000Z'),
     luLe: null,

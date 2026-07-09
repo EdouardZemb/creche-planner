@@ -59,7 +59,7 @@ function brouillonPour(
     destinataire: concerne
       ? 'contact-creche@example.org'
       : 'contact-abcm@example.org',
-    sujet: 'Plannings modifiés — semaine 2026-W27',
+    sujet: 'Plannings modifiés — semaine du 29 juin au 5 juillet 2026',
     corps: '<p>Bonjour</p>',
     texte: 'Bonjour\n\nLéa :\n- 29/06/2026 : 1 absence',
     enfants: concerne
@@ -107,6 +107,46 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     expect(
       screen.queryByText(/contact-abcm@example.org/),
     ).not.toBeInTheDocument();
+  });
+
+  it('nomme chaque jour du delta en langage parent (date longue + nature)', async () => {
+    // Seule la crèche porte les jours (l'ABCM reste sans enfant → un seul bloc rendu,
+    // donc chaque libellé de jour n'apparaît qu'une fois).
+    mockBrouillons((id) =>
+      id === CRECHE_ID
+        ? brouillonPour(id, {
+            enfants: [
+              {
+                contratId: 'c-lea',
+                enfant: 'Léa',
+                deltaModifs: {
+                  jours: [
+                    { date: '2026-06-29', avant: null, apres: {} }, // lundi — modifiée
+                    { date: '2026-06-30', avant: {}, apres: null }, // mardi — retirée
+                    {
+                      date: '2026-07-01', // mercredi — ajustement d'heures réelles
+                      avant: null,
+                      apres: { ajustements: [{ date: '2026-07-01' }] },
+                    },
+                  ],
+                },
+              },
+            ],
+          })
+        : brouillonPour(id),
+    );
+    render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
+
+    // Dates longues (« mardi 1 juillet ») plutôt que « 2026-W27 » ou « 01/07/2026 ».
+    expect(
+      await screen.findByText('lundi 29 juin — modifiée'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('mardi 30 juin — journée retirée'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('mercredi 1 juillet — horaires ajustés'),
+    ).toBeInTheDocument();
   });
 
   it('indique l’absence de modification quand aucun établissement n’est concerné', async () => {

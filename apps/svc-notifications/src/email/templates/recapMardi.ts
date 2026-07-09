@@ -1,11 +1,13 @@
+import { libelleSemaineFr } from '@creche-planner/shared-semaine';
 import type { PreavisRegle } from '../../database/schema.js';
 
 /**
  * Template **pur** du mail récapitulatif du mardi (aucune I/O, aucune horloge), donc
  * testable comme une fonction. Le mardi, les parents du foyer reçoivent l'invitation à
- * **valider le planning de la semaine N+1** : titre « Valider le planning de la semaine
- * YYYY-Www », lien profond vers le front et rappel de **préavis propre à
- * l'établissement** (2 jours ouvrés crèche RM-03 / jeudi 12h ABCM RM-07).
+ * **valider le planning de la semaine N+1** : titre « Valider le planning — semaine du
+ * 6 au 12 juillet 2026 » (libellé parent sans jargon via `libelleSemaineFr`), lien
+ * profond vers le front et rappel de **préavis propre à l'établissement** (2 jours
+ * ouvrés crèche RM-03 / jeudi 12h ABCM RM-07).
  *
  * Depuis la PR4 « parents du foyer », un **seul** mail est adressé **par foyer** et
  * regroupe **tous les enfants** (contrats) fraîchement notifiés de la semaine — d'où la
@@ -115,20 +117,25 @@ function enumerer(noms: readonly string[]): string {
  */
 export function recapMardi(params: RecapMardiParams): MessageRendu {
   const { enfants, semaineIso, lienApp, lienDesabonnement } = params;
-  const subject = `Valider le planning de la semaine ${semaineIso}`;
+  // Libellé parent (« semaine du 6 au 12 juillet 2026 ») partout où la semaine est
+  // *lue* ; l'identifiant ISO ne subsiste que dans l'URL du lien profond (`lienApp`).
+  const libelle = libelleSemaineFr(semaineIso);
+  const subject = `Valider le planning — ${libelle}`;
+  // Texte du lien (distinct du sujet) : une phrase d'action complète et naturelle.
+  const texteLien = `Valider le planning de la ${libelle}`;
   const preavis = preavisDistincts(enfants);
   const pluriel = enfants.length > 1;
 
   const noms = enfants.map((e) => e.enfant);
   const phraseTexte = pluriel
-    ? `Les plannings de ${enumerer(noms)} pour la semaine ${semaineIso} sont à valider.`
-    : `Le planning de ${enumerer(noms)} pour la semaine ${semaineIso} est à valider.`;
+    ? `Les plannings de ${enumerer(noms)} pour la ${libelle} sont à valider.`
+    : `Le planning de ${enumerer(noms)} pour la ${libelle} est à valider.`;
 
   const nomsHtml = enfants.map((e) => `<strong>${echapper(e.enfant)}</strong>`);
   const lienHtml = echapper(lienApp);
   const phraseHtml = pluriel
-    ? `Les plannings de ${enumerer(nomsHtml)} pour la semaine <strong>${semaineIso}</strong> sont à valider.`
-    : `Le planning de ${enumerer(nomsHtml)} pour la semaine <strong>${semaineIso}</strong> est à valider.`;
+    ? `Les plannings de ${enumerer(nomsHtml)} pour la <strong>${libelle}</strong> sont à valider.`
+    : `Le planning de ${enumerer(nomsHtml)} pour la <strong>${libelle}</strong> est à valider.`;
 
   const pieds = lienDesabonnement
     ? {
@@ -140,7 +147,7 @@ export function recapMardi(params: RecapMardiParams): MessageRendu {
   const html = [
     '<p>Bonjour,</p>',
     `<p>${phraseHtml}</p>`,
-    `<p><a href="${lienHtml}">${subject}</a></p>`,
+    `<p><a href="${lienHtml}">${texteLien}</a></p>`,
     ...preavis.map((p) => `<p>${echapper(p)}</p>`),
     '<p>— Crèche Planner</p>',
     ...(pieds ? [pieds.html] : []),
@@ -151,7 +158,7 @@ export function recapMardi(params: RecapMardiParams): MessageRendu {
     '',
     phraseTexte,
     '',
-    `${subject} : ${lienApp}`,
+    `${texteLien} : ${lienApp}`,
     ...(preavis.length > 0 ? ['', ...preavis] : []),
     '',
     '— Crèche Planner',

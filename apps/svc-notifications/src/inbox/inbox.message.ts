@@ -1,3 +1,5 @@
+import { libelleSemaineFr } from '@creche-planner/shared-semaine';
+
 /**
  * Composition **pure** du message in-app de la validation hebdomadaire (aucune I/O),
  * testable comme une fonction. L'inbox est un **journal informationnel** : le message
@@ -40,14 +42,16 @@ export function messageValidationHebdo(params: {
   readonly semaineIso: string;
 }): MessageInApp {
   const { foyerId, noms, semaineIso } = params;
-  const sujet = `Planning de la semaine ${semaineIso} à valider`;
+  // Libellé parent lu à l'écran ; l'identifiant ISO ne reste que dans le lien profond.
+  const libelle = libelleSemaineFr(semaineIso);
+  const sujet = `Planning de la ${libelle} à valider`;
   const pluriel = noms.length > 1;
   const corps =
     noms.length === 0
-      ? `Le planning de la semaine ${semaineIso} est à valider.`
+      ? `Le planning de la ${libelle} est à valider.`
       : pluriel
-        ? `Les plannings de ${enumerer(noms)} pour la semaine ${semaineIso} sont à valider.`
-        : `Le planning de ${enumerer(noms)} pour la semaine ${semaineIso} est à valider.`;
+        ? `Les plannings de ${enumerer(noms)} pour la ${libelle} sont à valider.`
+        : `Le planning de ${enumerer(noms)} pour la ${libelle} est à valider.`;
   const lien = `/foyers/${foyerId}/planning?semaine=${semaineIso}`;
   return { sujet, corps, lien };
 }
