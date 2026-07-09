@@ -1,5 +1,15 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
-import { lireEtatSeed, urlPlanning } from './support/stack';
+import {
+  test,
+  expect,
+  type APIRequestContext,
+  type Page,
+} from '@playwright/test';
+import {
+  lireEtatSeed,
+  urlPlanning,
+  attendreEnregistrementPlanning,
+  rechargerEtRelirePlanning,
+} from './support/stack';
 
 // Parcours PARENT critique du mardi, contre la pile réelle (comble le trou d'audit) :
 //   « une semaine N+1 est à valider → le parent édite les besoins → il valide →
@@ -51,6 +61,8 @@ interface NotificationAValider {
   readonly semaineIso: string;
   readonly statut: string;
   readonly enfant?: string;
+  /** Mode enrichi par le BFF (`CRECHE_PSU`, `CANTINE`…) — cible le contrat crèche. */
+  readonly mode?: string;
 }
 
 /** Jour ISO `YYYY-MM-DD` → libellé français `JJ/MM/AAAA` (comme les aria-labels de l'UI). */
@@ -83,6 +95,15 @@ function ajouterJours(iso: string, n: number): string {
   const d = new Date(`${iso}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Cellule FullCalendar (v6) d'une date ISO, pour relire l'état affiché d'un jour
+ * crèche après rechargement (persistance de la saisie). Helper local trivial (comme
+ * `libelleFr`) plutôt qu'un helper partagé : il ne sert qu'ici, dans ce fichier.
+ */
+function celluleCalendrier(page: Page, iso: string) {
+  return page.locator(`td.fc-daygrid-day[data-date="${iso}"]`);
 }
 
 /**
@@ -276,5 +297,174 @@ test.describe('stack réelle : valider la semaine notifiée (édition → valida
       { data: {} },
     );
     expect(revert.status()).toBe(204);
+  });
+});
+
+// ── Lot 5 — Filet e2e du parcours n°1 « valider ma semaine » ──────────────────────
+// Le premier test (ci-dessus) couvre l'idempotence de la validation. Celui-ci couvre
+// le parcours PARENT nominal COMPLET introduit par les lots 1/2a/2b, maillon par
+// maillon, pour qu'une régression casse le filet :
+//   lien profond (?semaine) → éditeur auto-ouvert → saisie d'HEURES RÉELLES sur un
+//   jour gardé → état déduit annoncé → validation « avec modifications » → relecture
+//   → envoi au service en MODE TEST (dry-run) → persistance de la saisie ET du statut
+//   validé après rechargement.
+//
+// Le fichier tourne en worker unique (playwright.stack.config : workers=1), donc CE
+// test s'exécute APRÈS celui d'idempotence, qui a déjà validé UN contrat crèche de la
+// semaine notifiée. On cible ici le contrat crèche ENCORE `A_VALIDER` (l'autre) : les
+// deux tests ne se disputent jamais le même contrat sur la pile partagée.
+test.describe('stack réelle : parcours complet « valider ma semaine » (lien profond → heures réelles → envoi test)', () => {
+  test('lien profond ouvre l’éditeur, saisit des heures réelles, valide, envoie en mode test, et persiste au reload', async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(180_000);
+    const { foyerId } = lireEtatSeed();
+
+    // Pré-condition : au moins une semaine crèche `A_VALIDER` (figée par le scheduler,
+    // forcé au boot via NOTIF_SCHEDULER_FORCER). Skip résiduel : pile sans l'affordance,
+    // ou toutes les semaines déjà consommées sur une pile persistante.
+    const aValider = await attendreAValider(request, foyerId);
+    const creche = aValider.find((l) => l.mode === 'CRECHE_PSU' && l.enfant);
+    test.skip(
+      creche === undefined,
+      'Aucune semaine crèche « à valider » (pile sans NOTIF_SCHEDULER_FORCER, ou ' +
+        'notifications déjà consommées par une exécution antérieure sur pile persistante).',
+    );
+    if (creche === undefined || creche.enfant === undefined) return;
+    const { contratId, semaineIso } = creche;
+    const enfant = creche.enfant;
+
+    // Jour GARDÉ de la semaine notifiée : le LUNDI (jours gardés seedés LUN/MER/VEN,
+    // 08:30–17:00). C'est là que la modale crèche propose la saisie d'heures réelles.
+    const jourGarde = lundiDeSemaineIso(semaineIso);
+    const moisNotifie = jourGarde.slice(0, 7);
+
+    // ── 1) Lien profond du mardi : /planning?semaine=… ouvre l'éditeur d'office ────
+    await page.goto(`${urlPlanning(foyerId)}?semaine=${semaineIso}`);
+    await expect(
+      page.getByRole('heading', { name: 'Planning mensuel' }),
+    ).toBeVisible();
+    // L'éditeur de la semaine notifiée s'ouvre SANS aucun clic (auto-ouverture depuis
+    // `?semaine`, entrée du parcours réparée au Lot 1) : sa seule visibilité l'atteste.
+    const editeur = page.getByRole('region', {
+      name: /^Éditer les besoins de la /,
+    });
+    await expect(editeur).toBeVisible();
+
+    // Bloc du contrat crèche ciblé. L'éditeur liste TOUS les contrats actifs de la
+    // semaine (dont l'autre crèche, déjà validé) : on remonte du `<h5>` « Enfant —
+    // Crèche » jusqu'à la racine du bloc de contrat (le div qui porte AUSSI la liste
+    // des jours) pour scoper jour édité, message et « Valider » au bon contrat.
+    const bloc = editeur
+      .getByRole('heading', {
+        level: 5,
+        name: new RegExp(`^${enfant} \\S+ Crèche$`),
+      })
+      .locator('xpath=ancestor::div[.//ul[contains(@class,"jours-liste")]]')
+      .last();
+
+    // ── 2) Heures réelles sur le jour gardé : arrivée en avance → EXTENSION ────────
+    await bloc
+      .getByRole('button', {
+        name: new RegExp(`(Saisir|Modifier) le .*${libelleFr(jourGarde)}`),
+      })
+      .click();
+    const modale = page.getByRole('dialog');
+    await expect(modale).toBeVisible();
+
+    // Heures préremplies avec la plage du contrat (08:30–17:00). On avance l'arrivée à
+    // 08:00 : l'app doit annoncer une extension facturée en complément (aria-live).
+    await modale.getByLabel('Heure d’arrivée').fill('08:00');
+    await expect(
+      modale.getByText(
+        /de plus que les horaires habituels.*facturé en complément/,
+      ),
+    ).toBeVisible();
+
+    // Confirmer → écriture debouncée : on attend le PUT de SUCCÈS (204) + le badge
+    // « Enregistré à » (helper partagé, filtre méthode ET statut — piège #171).
+    await attendreEnregistrementPlanning(page, () =>
+      modale.getByRole('button', { name: 'Confirmer' }).click(),
+    );
+
+    // ── 3) Validation du contrat → « validée (avec modifications) » ────────────────
+    const reponseValidation = page.waitForResponse(
+      (r) =>
+        /\/notifications\/validations\//.test(r.url()) &&
+        r.request().method() === 'POST',
+    );
+    await bloc.getByRole('button', { name: /^Valider/ }).click();
+    const resultat = (await (
+      await reponseValidation
+    ).json()) as ValidationResultat;
+    await expect(
+      bloc.getByText('Semaine validée (avec modifications).'),
+    ).toBeVisible();
+    expect(resultat.contratId).toBe(contratId);
+    expect(resultat.statut).toBe('VALIDEE_AVEC_MODIFS');
+    // L'ajustement d'heures réelles du jour gardé figure dans le delta figé : preuve
+    // que la catégorie `ajustements` traverse la chaîne (BFF → svc-notifications).
+    expect(
+      resultat.deltaModifs?.jours.some((j) => j.date === jourGarde),
+    ).toBeTruthy();
+
+    // ── 4) Relecture + envoi au service en MODE TEST (dry-run) ─────────────────────
+    const relecture = page.getByRole('region', {
+      name: 'Dernière étape : prévenir les services',
+    });
+    await expect(relecture).toBeVisible();
+    // Bandeau dry-run : la pile e2e garde le mailer en dry-run (aucun mail réel).
+    await expect(relecture.getByText('Mode test')).toBeVisible();
+    // Le jour ajusté est décrit en clair dans le récap établissement (ajustements → BFF).
+    await expect(relecture.getByText(/horaires ajustés/)).toBeVisible();
+
+    await relecture
+      .getByRole('button', {
+        name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
+      })
+      .click();
+    const confirmationEnvoi = page.getByRole('dialog', {
+      name: 'Envoyer le récapitulatif au service ?',
+    });
+    await expect(confirmationEnvoi).toBeVisible();
+    await confirmationEnvoi
+      .getByRole('button', { name: 'Envoyer (mode test)' })
+      .click();
+    // Oracle d'envoi dry-run réussi (aucun mail réellement parti).
+    await expect(relecture.getByText(/Test réussi/)).toBeVisible();
+
+    // ── 5) Rechargement : la saisie ET le statut validé persistent ─────────────────
+    // (a) Saisie — le calendrier crèche du mois notifié restitue l'ajustement, et
+    //     survit à un rechargement (garde de réhydratation `saisieServeurObsolete`,
+    //     #172). Une régression de réhydratation « perdrait » l'ajustement ici.
+    await page.goto(
+      `${urlPlanning(foyerId)}?mois=${moisNotifie}&enfant=${enfant}`,
+    );
+    await expect(
+      page.getByRole('heading', { name: 'Planning mensuel' }),
+    ).toBeVisible();
+    await page.getByRole('tab', { name: 'Crèche' }).click();
+    await expect(
+      celluleCalendrier(page, jourGarde).locator('.fc-event-title'),
+    ).toContainText('Arrivée avancée');
+
+    await rechargerEtRelirePlanning(page);
+    await expect(
+      celluleCalendrier(page, jourGarde).locator('.fc-event-title'),
+    ).toContainText('Arrivée avancée');
+
+    // (b) Statut validé — terminal et idempotent côté serveur : une revalidation
+    //     renvoie l'état figé (succès, jamais 409) et le contrat ne réapparaît plus
+    //     dans la liste « à valider ».
+    const revalidation = await request.post(
+      `/api/v1/notifications/validations/${contratId}/${semaineIso}`,
+    );
+    expect(revalidation.ok()).toBeTruthy();
+    expect(((await revalidation.json()) as ValidationResultat).statut).toBe(
+      'VALIDEE_AVEC_MODIFS',
+    );
+    const restantes = await lignesAValider(request, foyerId);
+    expect(restantes.map((l) => l.contratId)).not.toContain(contratId);
   });
 });
