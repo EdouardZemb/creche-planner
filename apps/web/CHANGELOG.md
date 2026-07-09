@@ -1,3 +1,19 @@
+## 0.10.0 (2026-07-09)
+
+### 🚀 Features
+
+- **notifications:** libellés de semaine en clair dans le parcours de validation (lot 4) ([#184](https://github.com/EdouardZemb/creche-planner/pull/184))
+- **web:** saisir les heures réelles d'un jour gardé, l'app déduit l'état (lot 2b) ([#182](https://github.com/EdouardZemb/creche-planner/pull/182))
+
+### 🩹 Fixes
+
+- **planning:** le mail du mardi et la cloche ouvrent l'éditeur de la semaine en 1 tap ([#180](https://github.com/EdouardZemb/creche-planner/pull/180))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.9.0 (2026-07-05)
 
 ### 🚀 Features

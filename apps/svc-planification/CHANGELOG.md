@@ -1,3 +1,14 @@
+## 0.10.0 (2026-07-09)
+
+### 🚀 Features
+
+- **planification:** catégorie datée « ajustements » — heures réelles (Lot 2a) ([#181](https://github.com/EdouardZemb/creche-planner/pull/181))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.9.0 (2026-07-05)
 
 ### 🚀 Features

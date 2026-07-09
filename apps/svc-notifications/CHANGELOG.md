@@ -1,3 +1,20 @@
+## 0.10.0 (2026-07-09)
+
+### 🚀 Features
+
+- **notifications:** libellés de semaine en clair dans le parcours de validation (lot 4) ([#184](https://github.com/EdouardZemb/creche-planner/pull/184))
+- **notifications:** le récap du mardi part toujours — statut persisté + reprise (lot 3) ([#183](https://github.com/EdouardZemb/creche-planner/pull/183))
+- **planification:** catégorie datée « ajustements » — heures réelles (Lot 2a) ([#181](https://github.com/EdouardZemb/creche-planner/pull/181))
+
+### 🩹 Fixes
+
+- **planning:** le mail du mardi et la cloche ouvrent l'éditeur de la semaine en 1 tap ([#180](https://github.com/EdouardZemb/creche-planner/pull/180))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.9.0 (2026-07-05)
 
 ### 🚀 Features

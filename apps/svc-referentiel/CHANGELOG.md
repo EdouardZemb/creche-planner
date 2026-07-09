@@ -1,3 +1,7 @@
+## 0.10.0 (2026-07-09)
+
+This was a version bump only for svc-referentiel to align it with other projects, there were no code changes.
+
 ## 0.9.0 (2026-07-05)
 
 This was a version bump only for svc-referentiel to align it with other projects, there were no code changes.
