@@ -4,7 +4,7 @@ export type VarianteBadge = 'defaut' | 'simulation';
 
 export interface BadgeProps {
   children: ReactNode;
-  /** Variante visuelle ; « simulation » pour le badge « SIMULATION ». */
+  /** Variante visuelle ; « simulation » pour le badge « Simulation ». */
   variante?: VarianteBadge;
 }
 

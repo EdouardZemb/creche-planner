@@ -6,6 +6,7 @@
 import type { CoutMoisVue, CoutAnnuelVue } from '../types/bff';
 import { centimesEnEuros, deltaEnEuros } from '../utils/money';
 import { formaterMoisFr } from '../utils/dates';
+import { estFraisFixesAbcm } from '../utils/libelles';
 
 const SEPARATEUR = ';'; // fr-FR : Excel attend le point-virgule (la virgule = décimale).
 
@@ -45,10 +46,13 @@ export function coutMoisVersCsv(cout: CoutMoisVue): string {
   lignes.push(['Enfant', 'Mode', 'Libellé', 'Sens', 'Montant']);
 
   for (const p of cout.prestations) {
+    // Langage parent aussi dans le CSV : la pseudo-prestation des frais fixes
+    // ABCM dit « Frais annuels », jamais le code brut.
+    const modeCsv = estFraisFixesAbcm(p.mode) ? 'Frais annuels' : p.mode;
     for (const l of p.lignes) {
       lignes.push([
         p.enfant,
-        p.mode,
+        modeCsv,
         l.libelle,
         l.sens === 'debit' ? 'Débit' : 'Crédit',
         montantSigne(l.sens, l.montantCentimes),
@@ -56,7 +60,7 @@ export function coutMoisVersCsv(cout: CoutMoisVue): string {
     }
     lignes.push([
       p.enfant,
-      p.mode,
+      modeCsv,
       'Sous-total',
       '',
       centimesEnEuros(p.totalCentimes),
@@ -89,7 +93,7 @@ export function coutMoisVersCsv(cout: CoutMoisVue): string {
   return assemblerCsv(lignes);
 }
 
-/** CSV du coût annuel : une ligne par mois (+ colonnes réel/delta si simulation). */
+/** CSV du coût annuel : une ligne par mois (+ colonnes réel/écart si simulation). */
 export function coutAnnuelVersCsv(
   simule: CoutAnnuelVue,
   reel: CoutAnnuelVue | null,
@@ -101,7 +105,7 @@ export function coutAnnuelVersCsv(
   lignes.push([]);
 
   const entete = estSimule
-    ? ['Mois', 'Total simulé', 'Total réel', 'Delta']
+    ? ['Mois', 'Simulé', 'Réel', 'Écart']
     : ['Mois', 'Total'];
   lignes.push(entete);
 

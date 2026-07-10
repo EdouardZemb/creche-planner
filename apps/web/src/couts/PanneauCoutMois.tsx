@@ -1,19 +1,14 @@
 import { Fragment, useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { CoutMoisVue, Ligne, Mode, PrestationCout } from '../types/bff';
+import type { CoutMoisVue, Ligne, PrestationCout } from '../types/bff';
 import { centimesEnEuros, deltaEnEuros, repereDelta } from '../utils/money';
-import { LIBELLES_MODE } from '../utils/libelles';
+import { titrePrestationCout } from '../utils/libelles';
 import { estSigleConnu } from '../utils/glossaire';
 import { messageErreur } from '../utils/erreurs';
 import { Spinner } from '../ui/Spinner';
 import { Abbr } from '../ui/Abbr';
 import { Badge } from '../ui/Badge';
 import { coutMoisVersCsv, telechargerCsv, nomFichierCoutMois } from './export';
-
-/** Libellé accentué du mode (jamais le code brut « CRECHE_PSU »). */
-function libelleMode(mode: string): string {
-  return LIBELLES_MODE[mode as Mode] ?? mode;
-}
 
 /**
  * Rend un libellé en explicitant ses sigles métier (UT-08) : chaque token connu
@@ -75,8 +70,12 @@ function SectionPrestation({ prestation }: { prestation: PrestationCout }) {
           marginBottom: '0.25rem',
         }}
       >
+        {/* Titre en langage parent : « <enfant> — <mode accentué> », ou
+            « Frais annuels — ABCM » pour la pseudo-prestation des frais fixes
+            (jamais le code brut « FRAIS_FIXES_ABCM ») ; les sigles connus du
+            glossaire (ABCM, ALSH…) restent explicités via Abbr. */}
         <span>
-          {prestation.enfant} — {avecSigles(libelleMode(prestation.mode))}
+          {avecSigles(titrePrestationCout(prestation.enfant, prestation.mode))}
         </span>
         <span>{centimesEnEuros(prestation.totalCentimes)}</span>
       </div>
