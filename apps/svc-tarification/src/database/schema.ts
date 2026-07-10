@@ -173,6 +173,19 @@ export const contrat = pgTable('contrat', {
   enfant: varchar('enfant', { length: 200 }).notNull(),
   /** Mode de garde (CRECHE_PSU | CANTINE | PERISCOLAIRE | ALSH). */
   mode: varchar('mode', { length: 32 }).notNull(),
+  /**
+   * Première année d'inscription de l'enfant à l'association ABCM (frais de
+   * 1ʳᵉ inscription, doc 02 §4.4 — lot 4b). Projeté depuis les événements
+   * `ContratCree`/`ContratModifie` (`payload.premiereInscription ?? false` :
+   * un événement antérieur au lot 4a ne porte pas le champ).
+   */
+  premiereInscription: boolean('premiere_inscription').notNull().default(false),
+  /**
+   * Début de validité du contrat ISO `YYYY-MM-DD` — dérive l'année scolaire de
+   * rattachement des frais de 1ʳᵉ inscription. NULLABLE : les contrats projetés
+   * avant ce lot n'ont pas la date (elle se remplit au prochain événement).
+   */
+  valideDu: varchar('valide_du', { length: 10 }),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow(),

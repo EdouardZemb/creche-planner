@@ -37,6 +37,8 @@ const CONTRAT_ROW = {
   foyerId: FOYER_ID,
   enfant: 'Mia',
   mode: 'CANTINE',
+  premiereInscription: false,
+  valideDu: '2026-09-01',
   updatedAt: new Date(),
 };
 
@@ -241,6 +243,55 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
     const vue = await service.coutAnnuel(FOYER_ID, 2026, false);
     expect(vue.mois).toHaveLength(12);
     expect(vue.totalCentimes).toBeGreaterThan(0);
+  });
+
+  it('frais fixes ABCM : contrat « première inscription » (année scolaire du mois) → 436 €', async () => {
+    const service = new CoutService(
+      fakeDb({
+        foyers: [FOYER_ROW],
+        contrats: [{ ...CONTRAT_ROW, premiereInscription: true }],
+        prestations: [{ ...PRESTATION_ROW, mois: '2026-09' }],
+      }),
+      foyerClient('echec'),
+      planificationClient('echec'),
+    );
+    const vue = await service.coutMois(FOYER_ID, '2026-09', false);
+    const frais = vue.prestations.find((p) => p.mode === 'FRAIS_FIXES_ABCM');
+    expect(frais?.totalCentimes).toBe(43600); // 286 € cotisation + 150 € 1ère inscription
+    expect(frais?.lignes.map((l) => l.libelle)).toEqual([
+      'Cotisation annuelle ABCM',
+      'Frais de 1ère inscription',
+    ]);
+  });
+
+  it('frais fixes ABCM : même contrat l’année scolaire suivante → cotisation seule (286 €)', async () => {
+    const service = new CoutService(
+      fakeDb({
+        foyers: [FOYER_ROW],
+        contrats: [{ ...CONTRAT_ROW, premiereInscription: true }],
+        prestations: [{ ...PRESTATION_ROW, mois: '2027-09' }],
+      }),
+      foyerClient('echec'),
+      planificationClient('echec'),
+    );
+    const vue = await service.coutMois(FOYER_ID, '2027-09', false);
+    const frais = vue.prestations.find((p) => p.mode === 'FRAIS_FIXES_ABCM');
+    expect(frais?.totalCentimes).toBe(28600);
+  });
+
+  it('frais fixes ABCM : aucun contrat marqué « première inscription » → cotisation seule', async () => {
+    const service = new CoutService(
+      fakeDb({
+        foyers: [FOYER_ROW],
+        contrats: [CONTRAT_ROW], // premiereInscription: false
+        prestations: [{ ...PRESTATION_ROW, mois: '2026-09' }],
+      }),
+      foyerClient('echec'),
+      planificationClient('echec'),
+    );
+    const vue = await service.coutMois(FOYER_ID, '2026-09', false);
+    const frais = vue.prestations.find((p) => p.mode === 'FRAIS_FIXES_ABCM');
+    expect(frais?.totalCentimes).toBe(28600);
   });
 
   it('projection corrompue : erreur Zod explicite, PAS un 503', async () => {

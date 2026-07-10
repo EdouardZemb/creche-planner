@@ -15,6 +15,13 @@
       "when": 1780469459503,
       "tag": "0001_wooden_miek",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783200000000,
+      "tag": "0002_contrat_premiere_inscription",
+      "breakpoints": true
     }
   ]
 }

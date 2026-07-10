@@ -37,6 +37,11 @@ export type {
   ConfigFraisFixesAbcm,
   SaisieMoisFraisFixes,
 } from './lib/abcm/frais-fixes-abcm.js';
+export {
+  anneeScolaireDe,
+  estPremiereAnneeAbcm,
+} from './lib/abcm/premiere-annee-abcm.js';
+export type { ContratPremiereAnnee } from './lib/abcm/premiere-annee-abcm.js';
 export { UnitesAssociativesAbcm } from './lib/abcm/unites-associatives-abcm.js';
 export type {
   ConfigUnitesAssociatives,
