@@ -181,6 +181,45 @@ describe('PanneauCoutMois', () => {
     expect(abbr).toHaveAttribute('tabindex', '0');
   });
 
+  // Lot 2 qualité Coûts — la pseudo-prestation des frais fixes annuels ABCM
+  // (septembre) s'affiche en langage parent, jamais le code brut.
+  it('affiche « Frais annuels — ABCM » pour la pseudo-prestation des frais fixes', async () => {
+    vi.mocked(api.lireCoutMois).mockResolvedValue({
+      ...coutMoisFactice,
+      mois: '2026-09',
+      prestations: [
+        {
+          enfant: '',
+          mode: 'FRAIS_FIXES_ABCM',
+          totalCentimes: 43600,
+          lignes: [
+            {
+              libelle: 'Cotisation annuelle',
+              sens: 'debit',
+              montantCentimes: 28600,
+            },
+            {
+              libelle: 'Frais de 1ère inscription',
+              sens: 'debit',
+              montantCentimes: 15000,
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-09" simule={false} />);
+
+    // Titre de section « Frais annuels — ABCM », sans prénom ni code brut.
+    await screen.findByText(/Frais annuels/);
+    expect(screen.queryByText(/FRAIS_FIXES_ABCM/)).not.toBeInTheDocument();
+    // Le sigle « ABCM » reste explicité via le glossaire (Abbr).
+    const abbr = document.querySelector('abbr[title]');
+    expect(abbr).toBeTruthy();
+    expect(abbr?.textContent).toBe('ABCM');
+    expect(abbr?.getAttribute('title')).toMatch(/Association des bénévoles/i);
+  });
+
   // UT-09 CA2 — repère NON COLORÉ du delta (économie)
   it('ajoute un repère non coloré « économie » au delta négatif (UT-09)', async () => {
     vi.mocked(api.lireCoutMois)

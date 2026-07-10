@@ -240,13 +240,13 @@ describe('PlanningPage', () => {
     expect(screen.getByLabelText(/Mode simulation/i)).toBeInTheDocument();
   });
 
-  it('affiche SIMULATION si simule=true dans les searchParams', async () => {
+  it('affiche le badge « Simulation » si simule=true dans les searchParams', async () => {
     vi.mocked(api.lireFoyer).mockResolvedValue(dossierMock);
 
     renderPage('foyer-1', '?simule=true');
 
     await screen.findByText(/Planning mensuel/i);
-    expect(screen.getByText('SIMULATION')).toBeInTheDocument();
+    expect(screen.getByText('Simulation')).toBeInTheDocument();
   });
 
   it('lit le mois depuis l URL (EX-06)', async () => {

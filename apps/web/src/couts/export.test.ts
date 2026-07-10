@@ -84,6 +84,31 @@ describe('coutMoisVersCsv', () => {
     expect(csv).toContain('\r\n');
     expect(csv.split('\r\n')[3]).toBe('Enfant;Mode;Libellé;Sens;Montant');
   });
+
+  // Lot 2 qualité Coûts — la pseudo-prestation des frais fixes ABCM dit
+  // « Frais annuels » dans la colonne Mode, jamais le code brut.
+  it('la ligne frais fixes ABCM dit « Frais annuels », pas le code brut', () => {
+    const csv = coutMoisVersCsv({
+      ...coutMois,
+      mois: '2026-09',
+      prestations: [
+        {
+          enfant: '',
+          mode: 'FRAIS_FIXES_ABCM',
+          totalCentimes: 43600,
+          lignes: [
+            {
+              libelle: 'Cotisation annuelle',
+              sens: 'debit',
+              montantCentimes: 28600,
+            },
+          ],
+        },
+      ],
+    });
+    expect(csv).toContain(';Frais annuels;Cotisation annuelle;');
+    expect(csv).not.toContain('FRAIS_FIXES_ABCM');
+  });
 });
 
 describe('coutAnnuelVersCsv', () => {
@@ -91,12 +116,13 @@ describe('coutAnnuelVersCsv', () => {
     const csv = coutAnnuelVersCsv(coutAnnuelReel, null);
     expect(csv).toContain('Mois;Total');
     expect(csv).toContain('Total annuel');
-    expect(csv).not.toContain('Delta');
+    expect(csv).not.toContain('Écart');
   });
 
-  it('en mode simulation : colonnes simulé / réel / delta', () => {
+  it('en mode simulation : colonnes Simulé / Réel / Écart (langage parent, lot 2)', () => {
     const csv = coutAnnuelVersCsv(coutAnnuelSimule, coutAnnuelReel);
-    expect(csv).toContain('Mois;Total simulé;Total réel;Delta');
+    expect(csv).toContain('Mois;Simulé;Réel;Écart');
+    expect(csv).not.toContain('Delta');
     // janvier : simulé 300 € - réel 350 € = -50 €
     expect(csv).toContain('-50,00');
   });
