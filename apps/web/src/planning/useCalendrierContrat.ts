@@ -26,6 +26,8 @@ export interface SocleContratDurable extends LienEtablissementSaisie {
   enfantId: string;
   valideDu: string;
   valideAu: string | null;
+  /** Première inscription ABCM (lot 4a), reconduite quand le contrat la porte. */
+  premiereInscription?: boolean;
 }
 
 /**
@@ -35,6 +37,9 @@ export interface SocleContratDurable extends LienEtablissementSaisie {
  * Le lien enfant (`enfantId`) est reconduit de même ; un contrat historique
  * pas encore back-fillé (`null`) reconduit '' → 400 explicite du service
  * (fenêtre transitoire, résolue par `scripts/backfill-enfants.mjs`).
+ * La première inscription ABCM (lot 4a) est reconduite quand elle est cochée :
+ * le PUT étant un remplacement complet, l'omettre la remettrait à `false`
+ * (pour un contrat crèche elle vaut toujours `false` → omise, défaut serveur).
  */
 export function socleContratDurable(
   contrat: ContratLocal,
@@ -47,6 +52,9 @@ export function socleContratDurable(
     valideAu: contrat.valideAu,
     ...(contrat.etablissementId
       ? { etablissementId: contrat.etablissementId }
+      : {}),
+    ...(contrat.premiereInscription === true
+      ? { premiereInscription: true }
       : {}),
   };
 }

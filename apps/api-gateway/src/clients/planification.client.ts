@@ -23,6 +23,11 @@ export interface SaisieContrat {
   readonly enfantId: string;
   readonly valideDu: string;
   readonly valideAu: string | null;
+  /**
+   * Première année d'inscription à l'association ABCM (lot 4a). Optionnel,
+   * contrats ABCM uniquement — le service élimine la clé pour CRECHE_PSU.
+   */
+  readonly premiereInscription?: boolean;
   readonly [k: string]: unknown;
 }
 
@@ -46,6 +51,12 @@ const contratVueSchema = z.object({
   etablissementId: z.string().nullish(),
   valideDu: z.string(),
   valideAu: z.string().nullable(),
+  /**
+   * Première année d'inscription ABCM (lot 4a). Tolérant à l'absence
+   * (`nullish`) : rétro-compat avec un provider pas encore à niveau — le
+   * schéma objet (strip) doit sinon le CONSERVER dans les réponses relayées.
+   */
+  premiereInscription: z.boolean().nullish(),
 });
 
 export type ContratVue = z.infer<typeof contratVueSchema>;

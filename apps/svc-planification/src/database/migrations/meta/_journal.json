@@ -43,6 +43,13 @@
       "when": 1783000000000,
       "tag": "0005_contrat_enfant_id",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783100000000,
+      "tag": "0006_contrat_premiere_inscription",
+      "breakpoints": true
     }
   ]
 }

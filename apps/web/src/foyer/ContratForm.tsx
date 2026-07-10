@@ -487,6 +487,11 @@ export function ContratForm({
   const [semaineAbcm, setSemaineAbcm] = useState<SemaineAbcm>(() =>
     abcmDepuisSemaine(contrat?.semaineAbcm),
   );
+  // Première inscription à l'association (lot 4a) : ABCM uniquement, pré-cochée
+  // à l'édition si le contrat lu porte le champ à `true`.
+  const [premiereInscription, setPremiereInscription] = useState(
+    contrat?.premiereInscription === true,
+  );
 
   const [chargement, setChargement] = useState(false);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
@@ -630,6 +635,7 @@ export function ContratForm({
           ...baseContrat,
           mode,
           semaineAbcm: construireSemaineAbcmComplete(),
+          premiereInscription,
         };
         const reponse =
           edition && contrat
@@ -970,30 +976,58 @@ export function ContratForm({
       )}
 
       {mode !== 'CRECHE_PSU' && (
-        <fieldset style={{ border: 'none', padding: 0, margin: '0.75rem 0 0' }}>
-          <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-            Inscriptions hebdomadaires
-          </legend>
-          {mode === 'ALSH' ? (
-            <>
-              <p className="muted" style={{ margin: '0 0 0.5rem' }}>
-                Cochez les jours d’accueil de loisirs (
-                <Abbr sigle="ALSH" />) réguliers, chaque semaine. Les jours de
-                vacances se réservent par date, depuis le planning.
-              </p>
-              <AlshHebdoEditor
+        <>
+          <fieldset
+            style={{ border: 'none', padding: 0, margin: '0.75rem 0 0' }}
+          >
+            <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
+              Inscriptions hebdomadaires
+            </legend>
+            {mode === 'ALSH' ? (
+              <>
+                <p className="muted" style={{ margin: '0 0 0.5rem' }}>
+                  Cochez les jours d’accueil de loisirs (
+                  <Abbr sigle="ALSH" />) réguliers, chaque semaine. Les jours de
+                  vacances se réservent par date, depuis le planning.
+                </p>
+                <AlshHebdoEditor
+                  semaineAbcm={semaineAbcm}
+                  onChange={setSemaineAbcm}
+                />
+              </>
+            ) : (
+              <AbcmEditor
+                mode={mode}
                 semaineAbcm={semaineAbcm}
                 onChange={setSemaineAbcm}
               />
-            </>
-          ) : (
-            <AbcmEditor
-              mode={mode}
-              semaineAbcm={semaineAbcm}
-              onChange={setSemaineAbcm}
+            )}
+          </fieldset>
+
+          {/* Première inscription à l'association (lot 4a) : ABCM uniquement —
+              jamais affichée pour un contrat crèche (CRECHE_PSU). */}
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              marginTop: '0.75rem',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={premiereInscription}
+              onChange={(e) => {
+                setPremiereInscription(e.target.checked);
+              }}
             />
-          )}
-        </fieldset>
+            Première inscription de l’enfant à l’association
+          </label>
+          <p className="muted" style={{ margin: '0.15rem 0 0' }}>
+            Ajoute les frais de première inscription (150 €) au mois de
+            septembre de la première année.
+          </p>
+        </>
       )}
 
       <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>

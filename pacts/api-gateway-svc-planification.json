@@ -49,6 +49,7 @@
           "foyerId": "33333333-3333-4333-8333-333333333333",
           "id": "44444444-4444-4444-4444-444444444444",
           "mode": "ALSH",
+          "premiereInscription": false,
           "valideAu": null,
           "valideDu": "2026-09-01"
         },
@@ -105,6 +106,7 @@
           "nouvelEtablissement": {
             "nom": "Crèche Pact CANTINE"
           },
+          "premiereInscription": true,
           "semaineAbcm": {
             "DIMANCHE": {},
             "JEUDI": {},
@@ -132,6 +134,7 @@
           "foyerId": "33333333-3333-4333-8333-333333333333",
           "id": "44444444-4444-4444-4444-444444444444",
           "mode": "CANTINE",
+          "premiereInscription": true,
           "valideAu": null,
           "valideDu": "2026-09-01"
         },
@@ -198,6 +201,7 @@
             "id": "11111111-1111-1111-1111-111111111111",
             "mode": "CRECHE_PSU",
             "nbMensualites": 7,
+            "premiereInscription": false,
             "semaineType": {
               "LUNDI": [
                 {
@@ -282,6 +286,14 @@
               "matchers": [
                 {
                   "match": "integer"
+                }
+              ]
+            },
+            "$[*].premiereInscription": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             },
@@ -453,6 +465,7 @@
           "foyerId": "22222222-2222-2222-2222-222222222222",
           "id": "11111111-1111-1111-1111-111111111111",
           "mode": "CRECHE_PSU",
+          "premiereInscription": false,
           "valideAu": "2026-07-31",
           "valideDu": "2026-01-01"
         },
@@ -497,6 +510,14 @@
               ]
             },
             "$.mode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.premiereInscription": {
               "combine": "AND",
               "matchers": [
                 {
@@ -578,6 +599,7 @@
           "foyerId": "22222222-2222-4222-8222-222222222222",
           "id": "11111111-1111-1111-1111-111111111111",
           "mode": "CRECHE_PSU",
+          "premiereInscription": false,
           "valideAu": "2026-12-31",
           "valideDu": "2026-01-01"
         },

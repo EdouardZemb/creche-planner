@@ -91,6 +91,13 @@ const creerContratAbcmSchema = z.object({
   valideDu: z.iso.date('date ISO YYYY-MM-DD attendue'),
   valideAu: z.iso.date('date ISO YYYY-MM-DD attendue').nullable(),
   semaineAbcm: semaineAbcmSchema,
+  /**
+   * Première année d'inscription de l'enfant à l'association ABCM (frais de
+   * 1ʳᵉ inscription, doc 02 §4.4 — lot 4a). Optionnel, défaut `false` (base).
+   * Volontairement ABSENT du payload crèche : un contrat CRECHE_PSU ne porte
+   * jamais ce champ (la clé est éliminée par Zod si elle est fournie).
+   */
+  premiereInscription: z.boolean().optional(),
   ...lienEtablissementChamps,
 });
 

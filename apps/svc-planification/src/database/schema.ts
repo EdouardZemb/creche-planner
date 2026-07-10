@@ -65,6 +65,14 @@ export const contrat = pgTable('contrat', {
   /** Fin de validité ISO `YYYY-MM-DD` (incluse), `null` si période ouverte. */
   valideAu: varchar('valide_au', { length: 10 }),
   /**
+   * Première année d'inscription de l'enfant à l'association ABCM (frais de
+   * 1ʳᵉ inscription, doc 02 §4.4 — chantier Coûts lot 4a). Saisi par le parent
+   * dans le formulaire de contrat ABCM ; l'année de rattachement est dérivée de
+   * `valide_du` (pas de date dédiée). Toujours `false` pour un contrat
+   * CRECHE_PSU (le DTO crèche n'expose pas le champ ; défaut base conservé).
+   */
+  premiereInscription: boolean('premiere_inscription').notNull().default(false),
+  /**
    * Heures annuelles contractualisées (crèche PSU, doc 02 §7). Valeur
    * **fractionnaire** (ex. 885,5 / 831,5 h-an) → `double precision`, pas `integer`.
    */

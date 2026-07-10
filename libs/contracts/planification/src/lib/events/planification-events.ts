@@ -61,6 +61,13 @@ export const contratCreePayloadSchema = z.object({
    * (`svc-tarification`, `svc-notifications`) ne sont pas cassés.
    */
   etablissementId: z.string().uuid().nullish(),
+  /**
+   * Première année d'inscription de l'enfant à l'association ABCM (frais de
+   * 1ʳᵉ inscription, doc 02 §4.4). Champ **additif et OPTIONNEL** dans la v1
+   * (même évolution non rupteur que `enfantId`/`etablissementId`) ; absent ou
+   * `null` ⇒ `false`. Toujours `false` pour un contrat CRECHE_PSU.
+   */
+  premiereInscription: z.boolean().nullish(),
 });
 export type ContratCreePayload = z.infer<typeof contratCreePayloadSchema>;
 
@@ -115,6 +122,11 @@ export const contratModifiePayloadSchema = z.object({
     .nullable(),
   /** Établissement d'accueil rattaché (P2), optionnel/nullable. Cf. `ContratCree`. */
   etablissementId: z.string().uuid().nullish(),
+  /**
+   * Première année d'inscription à l'association ABCM, optionnel/nullable
+   * (absent/`null` ⇒ `false`). Cf. `ContratCree`.
+   */
+  premiereInscription: z.boolean().nullish(),
 });
 export type ContratModifiePayload = z.infer<typeof contratModifiePayloadSchema>;
 
