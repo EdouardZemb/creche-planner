@@ -9,6 +9,12 @@
       "toleranceCentimes": 10
     },
     {
+      "mois": "2026-09",
+      "attendu": "prestations ABCM + frais fixes 436 € (cotisation 286 + 1ère inscription 150)",
+      "cas": "docs/02-modele-de-cout.md §4.4 CT-13/CT-14 et docs/14 §1 : les contrats ABCM du seed portent premiereInscription: true (année scolaire 2026, valideDu 2026-09-01) → septembre 2026 rattache la cotisation annuelle 286 € ET les frais de 1ère inscription 150 € (= 436 €) en plus des prestations du mois. Seuil > 43600 c : garantit les DEUX lignes de frais fixes + au moins une prestation.",
+      "minCentimes": 43601
+    },
+    {
       "mois": "2026-10",
       "attendu": "ABCM Zoé (cantine + péri soir) > 0",
       "cas": "docs/02-modele-de-cout.md §7-§8 : après la transition crèche→école (rentrée sept. 2026), Zoé est en cantine + périscolaire soir (cf. CT-10/CT-11 pour les barèmes). Le montant exact dépend du calendrier scolaire du mois → pas de montant figé, seuil strictement positif.",

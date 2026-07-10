@@ -292,6 +292,9 @@ export class ProjectionService {
           foyerId: p.foyerId,
           enfant: p.enfant,
           mode: p.mode,
+          // Champ additif lot 4a : un événement historique ne le porte pas.
+          premiereInscription: p.premiereInscription ?? false,
+          valideDu: p.valideDu,
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -300,6 +303,8 @@ export class ProjectionService {
             foyerId: p.foyerId,
             enfant: p.enfant,
             mode: p.mode,
+            premiereInscription: p.premiereInscription ?? false,
+            valideDu: p.valideDu,
             updatedAt: new Date(),
           },
         });
@@ -330,6 +335,9 @@ export class ProjectionService {
           foyerId: p.foyerId,
           enfant: p.enfant,
           mode: p.mode,
+          // Champ additif lot 4a : un événement historique ne le porte pas.
+          premiereInscription: p.premiereInscription ?? false,
+          valideDu: p.valideDu,
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -338,6 +346,8 @@ export class ProjectionService {
             foyerId: p.foyerId,
             enfant: p.enfant,
             mode: p.mode,
+            premiereInscription: p.premiereInscription ?? false,
+            valideDu: p.valideDu,
             updatedAt: new Date(),
           },
         });

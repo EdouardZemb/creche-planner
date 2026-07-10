@@ -29,7 +29,7 @@ node scripts/seed-demo.mjs --verify  # + contrôle des coûts calculés
 
 - Cible le BFF `/api/v1` (variable `SEED_BASE_URL`, défaut `http://localhost:3000/api/v1`).
 - Idempotence via `scripts/.seed-demo-state.json` (ignoré par git, lié à l'instance de base) : réutilise le foyer s'il existe (`GET /foyers/:id`), sinon recrée ; contrats en PUT, plannings en upsert.
-- Crée : 1 foyer + 2 enfants, 2 contrats crèche PSU, **2 contrats ABCM** pour Zoé (CANTINE + PERISCOLAIRE — voir §4), plannings mensuels nominaux.
+- Crée : 1 foyer + 2 enfants, 2 contrats crèche PSU, **2 contrats ABCM** pour Zoé (CANTINE + PERISCOLAIRE — voir §4, marqués `premiereInscription: true` : la 1ʳᵉ année ABCM est portée par le contrat depuis le lot 4b des Coûts, plus par une année codée en dur), plannings mensuels nominaux.
 
 ### Résultat vérifié (coûts recalculés par le moteur)
 
