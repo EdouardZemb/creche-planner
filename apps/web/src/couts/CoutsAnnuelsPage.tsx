@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { type CSSProperties } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { CoutAnnuelVue } from '../types/bff';
@@ -14,8 +14,26 @@ import {
   nomFichierCoutAnnuel,
 } from './export';
 
+/** Bornes de navigation d'année (◀/▶ désactivés aux extrémités). */
+const ANNEE_MIN = 2020;
+const ANNEE_MAX = 2099;
+
 function anneeCourante(): number {
   return new Date().getFullYear();
+}
+
+/**
+ * Lit l'année depuis `?annee=YYYY` (partageable par URL). Absente, non
+ * numérique ou hors bornes → année courante, sans crash.
+ */
+function lireAnnee(searchParams: URLSearchParams): number {
+  const brut = searchParams.get('annee');
+  if (brut === null) return anneeCourante();
+  const valeur = Number.parseInt(brut, 10);
+  if (Number.isNaN(valeur) || valeur < ANNEE_MIN || valeur > ANNEE_MAX) {
+    return anneeCourante();
+  }
+  return valeur;
 }
 
 interface LigneMois {
@@ -39,11 +57,28 @@ function construireLignes(
 }
 
 /**
- * Cellule « Delta » d'une ligne du tableau. Distingue le sens de l'écart
+ * Valeur « Delta » (table ou carte mobile). Distingue le sens de l'écart
  * SANS reposer sur la couleur seule (UT-09 / WCAG 1.4.1) : préfixe signé `+`/`-`
  * conservé (CA1) + repère NON COLORÉ symbole/libellé (CA2), cas d'égalité inclus.
  * `delta === null` → tiret « — » (réel indisponible), sans repère.
  */
+function ValeurDelta({ delta }: { delta: number | null }) {
+  if (delta === null) {
+    return <span className="muted">—</span>;
+  }
+  const repere = repereDelta(delta);
+  return (
+    <span className={delta < 0 ? 'credit' : delta > 0 ? 'debit' : undefined}>
+      <span aria-hidden="true" className="repere-delta">
+        {repere.symbole}
+      </span>
+      {deltaEnEuros(delta)}
+      <span className="sr-only"> ({repere.libelle})</span>
+    </span>
+  );
+}
+
+/** Cellule « Delta » d'une ligne du tableau. */
 function CelluleDelta({
   delta,
   style,
@@ -51,44 +86,117 @@ function CelluleDelta({
   delta: number | null;
   style: CSSProperties;
 }) {
-  if (delta === null) {
-    return (
-      <td style={style}>
-        <span className="muted">—</span>
-      </td>
-    );
-  }
-  const repere = repereDelta(delta);
   return (
-    <td
-      style={{
-        ...style,
-        ...(delta < 0
-          ? { color: 'var(--vert)' }
-          : delta > 0
-            ? { color: 'var(--rouge)' }
-            : {}),
-      }}
-    >
-      <span aria-hidden="true" style={{ marginRight: '0.25rem' }}>
-        {repere.symbole}
-      </span>
-      {deltaEnEuros(delta)}
-      <span className="sr-only"> ({repere.libelle})</span>
+    <td style={style}>
+      <ValeurDelta delta={delta} />
     </td>
+  );
+}
+
+/**
+ * Vue simulation sous 768px : la table 4 colonnes ne tient pas sur un
+ * téléphone → une carte par mois (Simulé / Réel / Delta) + carte de synthèse
+ * « Total annuel ». Mêmes données que la table desktop (`construireLignes`),
+ * bascule d'affichage en CSS (`.liste-couts-mobile` / `.table-couts-desktop`).
+ */
+function ListeCoutsMobile({
+  lignes,
+  totalSimule,
+  totalReel,
+}: {
+  lignes: readonly LigneMois[];
+  totalSimule: number;
+  totalReel: number | null;
+}) {
+  return (
+    <div className="liste-couts-mobile">
+      {lignes.map((ligne) => (
+        <CarteCoutMois
+          key={ligne.mois}
+          titre={formaterMoisFr(ligne.mois)}
+          totalSimule={ligne.totalSimule}
+          totalReel={ligne.totalReel}
+        />
+      ))}
+      <CarteCoutMois
+        titre="Total annuel"
+        totalSimule={totalSimule}
+        totalReel={totalReel}
+        synthese
+      />
+    </div>
+  );
+}
+
+function CarteCoutMois({
+  titre,
+  totalSimule,
+  totalReel,
+  synthese = false,
+}: {
+  titre: string;
+  totalSimule: number;
+  totalReel: number | null;
+  synthese?: boolean;
+}) {
+  const delta = totalReel !== null ? totalSimule - totalReel : null;
+  return (
+    <div
+      className={
+        synthese
+          ? 'carte carte-cout-mois carte-cout-total'
+          : 'carte carte-cout-mois'
+      }
+    >
+      <h2 className="carte-cout-mois-titre">{titre}</h2>
+      <dl className="carte-cout-mois-lignes">
+        <div className="carte-cout-mois-ligne">
+          <dt>Total simulé</dt>
+          <dd>{centimesEnEuros(totalSimule)}</dd>
+        </div>
+        <div className="carte-cout-mois-ligne">
+          <dt>Total réel</dt>
+          <dd>
+            {totalReel !== null ? (
+              centimesEnEuros(totalReel)
+            ) : (
+              <span className="muted">—</span>
+            )}
+          </dd>
+        </div>
+        <div className="carte-cout-mois-ligne">
+          <dt>Delta</dt>
+          <dd>
+            <ValeurDelta delta={delta} />
+          </dd>
+        </div>
+      </dl>
+    </div>
   );
 }
 
 export function CoutsAnnuelsPage() {
   const { foyerId } = useParams<{ foyerId: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const simule = searchParams.get('simule') === 'true';
-
-  const [annee, setAnnee] = useState<number>(anneeCourante());
+  const annee = lireAnnee(searchParams);
 
   useTitrePage('Coûts annuels');
 
   const id = foyerId ?? '';
+
+  /** Met à jour un paramètre d'URL (supprime la clé si valeur nulle). */
+  const setParam = (cles: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [cle, valeur] of Object.entries(cles)) {
+      if (valeur === null) {
+        next.delete(cle);
+      } else {
+        next.set(cle, valeur);
+      }
+    }
+    setSearchParams(next);
+  };
 
   const etatSimule = useAsync(
     (signal) => api.lireCoutAnnuel(id, annee, simule, { signal }),
@@ -105,6 +213,10 @@ export function CoutsAnnuelsPage() {
 
   const loading = etatSimule.loading || etatReel.loading;
   const error = etatSimule.error ?? etatReel.error;
+
+  const lignes = etatSimule.data
+    ? construireLignes(etatSimule.data, etatReel.data ?? null)
+    : [];
 
   const exporterCsv = () => {
     if (!etatSimule.data) return;
@@ -134,22 +246,32 @@ export function CoutsAnnuelsPage() {
             </span>
           )}
         </h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <label htmlFor="annee-select" style={{ margin: 0 }}>
-            Année :
-          </label>
-          <input
-            id="annee-select"
-            type="number"
-            value={annee}
-            min={2020}
-            max={2099}
-            style={{ width: '5rem' }}
-            onChange={(e) => {
-              const v = parseInt(e.target.value, 10);
-              if (!isNaN(v)) setAnnee(v);
+        <div className="selecteur-annee">
+          <button
+            type="button"
+            className="btn secondaire"
+            aria-label="Année précédente"
+            disabled={annee <= ANNEE_MIN}
+            onClick={() => {
+              setParam({ annee: String(annee - 1) });
             }}
-          />
+          >
+            ◀
+          </button>
+          <span className="selecteur-annee-valeur" aria-live="polite">
+            {annee}
+          </span>
+          <button
+            type="button"
+            className="btn secondaire"
+            aria-label="Année suivante"
+            disabled={annee >= ANNEE_MAX}
+            onClick={() => {
+              setParam({ annee: String(annee + 1) });
+            }}
+          >
+            ▶
+          </button>
         </div>
         <div
           className="actions-export no-print"
@@ -213,54 +335,62 @@ export function CoutsAnnuelsPage() {
       )}
 
       {!loading && !error && etatSimule.data && (
-        <div className="carte table-couts-wrap" style={{ padding: 0 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <caption
-              style={{
-                position: 'absolute',
-                width: 1,
-                height: 1,
-                overflow: 'hidden',
-                clip: 'rect(0 0 0 0)',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Coûts mensuels {simule ? 'simulés' : ''} pour l&apos;année {annee}
-            </caption>
-            <thead>
-              <tr
-                style={{ background: 'var(--gris-clair)', textAlign: 'left' }}
+        <>
+          <div
+            className={
+              simule
+                ? 'carte table-couts-wrap table-couts-desktop'
+                : 'carte table-couts-wrap'
+            }
+            style={{ padding: 0 }}
+          >
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <caption
+                style={{
+                  position: 'absolute',
+                  width: 1,
+                  height: 1,
+                  overflow: 'hidden',
+                  clip: 'rect(0 0 0 0)',
+                  whiteSpace: 'nowrap',
+                }}
               >
-                <th scope="col" style={{ padding: '0.6rem 1rem' }}>
-                  Mois
-                </th>
-                <th
-                  scope="col"
-                  style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
+                Coûts mensuels {simule ? 'simulés' : ''} pour l&apos;année{' '}
+                {annee}
+              </caption>
+              <thead>
+                <tr
+                  style={{ background: 'var(--gris-clair)', textAlign: 'left' }}
                 >
-                  {simule ? 'Total simulé' : 'Total'}
-                </th>
-                {simule && (
-                  <>
-                    <th
-                      scope="col"
-                      style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
-                    >
-                      Total réel
-                    </th>
-                    <th
-                      scope="col"
-                      style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
-                    >
-                      Delta
-                    </th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {construireLignes(etatSimule.data, etatReel.data ?? null).map(
-                (ligne) => {
+                  <th scope="col" style={{ padding: '0.6rem 1rem' }}>
+                    Mois
+                  </th>
+                  <th
+                    scope="col"
+                    style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
+                  >
+                    {simule ? 'Total simulé' : 'Total'}
+                  </th>
+                  {simule && (
+                    <>
+                      <th
+                        scope="col"
+                        style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
+                      >
+                        Total réel
+                      </th>
+                      <th
+                        scope="col"
+                        style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
+                      >
+                        Delta
+                      </th>
+                    </>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.map((ligne) => {
                   const delta =
                     simule && ligne.totalReel !== null
                       ? ligne.totalSimule - ligne.totalReel
@@ -310,47 +440,58 @@ export function CoutsAnnuelsPage() {
                       )}
                     </tr>
                   );
-                },
-              )}
-            </tbody>
-            <tfoot>
-              <tr
-                style={{
-                  borderTop: '2px solid var(--bordure)',
-                  fontWeight: 700,
-                  background: 'var(--gris-clair)',
-                }}
-              >
-                <th scope="row" style={{ padding: '0.6rem 1rem' }}>
-                  Total annuel
-                </th>
-                <td style={{ padding: '0.6rem 1rem', textAlign: 'right' }}>
-                  {centimesEnEuros(etatSimule.data.totalCentimes)}
-                </td>
-                {simule && (
-                  <>
-                    <td style={{ padding: '0.6rem 1rem', textAlign: 'right' }}>
-                      {etatReel.data !== null ? (
-                        centimesEnEuros(etatReel.data.totalCentimes)
-                      ) : (
-                        <span className="muted">—</span>
-                      )}
-                    </td>
-                    <CelluleDelta
-                      delta={
-                        etatReel.data !== null
-                          ? etatSimule.data.totalCentimes -
-                            etatReel.data.totalCentimes
-                          : null
-                      }
-                      style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
-                    />
-                  </>
-                )}
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+                })}
+              </tbody>
+              <tfoot>
+                <tr
+                  style={{
+                    borderTop: '2px solid var(--bordure)',
+                    fontWeight: 700,
+                    background: 'var(--gris-clair)',
+                  }}
+                >
+                  <th scope="row" style={{ padding: '0.6rem 1rem' }}>
+                    Total annuel
+                  </th>
+                  <td style={{ padding: '0.6rem 1rem', textAlign: 'right' }}>
+                    {centimesEnEuros(etatSimule.data.totalCentimes)}
+                  </td>
+                  {simule && (
+                    <>
+                      <td
+                        style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
+                      >
+                        {etatReel.data !== null ? (
+                          centimesEnEuros(etatReel.data.totalCentimes)
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <CelluleDelta
+                        delta={
+                          etatReel.data !== null
+                            ? etatSimule.data.totalCentimes -
+                              etatReel.data.totalCentimes
+                            : null
+                        }
+                        style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
+                      />
+                    </>
+                  )}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          {simule && (
+            <ListeCoutsMobile
+              lignes={lignes}
+              totalSimule={etatSimule.data.totalCentimes}
+              totalReel={
+                etatReel.data !== null ? etatReel.data.totalCentimes : null
+              }
+            />
+          )}
+        </>
       )}
 
       {!loading && !error && !etatSimule.data && (

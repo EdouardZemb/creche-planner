@@ -975,15 +975,90 @@ button:disabled,
   width: 100%;
 }
 
-/* Le tableau annuel peut défiler horizontalement plutôt que de déborder. */
+/* Le tableau annuel est fluide : la vue normale (2 colonnes) tient à 320px
+   sans scroll horizontal (l'overflow reste un filet de sécurité). */
 .table-couts-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-/* Largeur minimale : le tableau scrolle au lieu de se comprimer sur mobile. */
-.table-couts-wrap table {
-  min-width: 640px;
+/* Montants : jamais coupés sur deux lignes (lisibilité des sommes). */
+.table-couts-wrap td {
+  white-space: nowrap;
+}
+
+/* Sélecteur d'année ◀ AAAA ▶ : cibles tactiles ≥ 44px héritées de .btn. */
+.selecteur-annee {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.selecteur-annee-valeur {
+  min-width: 3.5rem;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Repère non coloré du delta (symbole ▲/▼/=) : espacé du montant. */
+.repere-delta {
+  margin-right: 0.25rem;
+}
+
+/* Vue simulation (4 colonnes) : sous 768px, la table cède la place à une
+   liste de cartes par mois. La vue normale (2 colonnes) garde sa table fluide
+   sur toutes les largeurs (elle ne porte pas .table-couts-desktop). */
+.liste-couts-mobile {
+  display: block;
+}
+
+@media (max-width: 767.98px) {
+  .table-couts-desktop {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) {
+  .liste-couts-mobile {
+    display: none;
+  }
+}
+
+/* Carte d'un mois (vue simulation mobile) : titre + lignes libellées. */
+.carte-cout-mois-titre {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.carte-cout-mois-lignes {
+  margin: 0;
+}
+
+.carte-cout-mois-ligne {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.15rem 0;
+}
+
+.carte-cout-mois-ligne dt {
+  color: var(--gris);
+}
+
+.carte-cout-mois-ligne dd {
+  margin: 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Carte de synthèse « Total annuel » : visuellement distincte. */
+.carte-cout-total {
+  font-weight: 700;
+}
+
+.carte-cout-total .carte-cout-mois-ligne dt {
+  color: inherit;
 }
 
 /* ---- Calendrier (FullCalendar) : compactage mobile-first ----------------- */
@@ -1063,5 +1138,16 @@ button:disabled,
   * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  /* Coûts annuels : la table desktop reste la vue imprimée (la classe est
+     portée par la carte englobante, d'où display: block) ; la liste de
+     cartes mobile ne s'imprime pas. */
+  .table-couts-desktop {
+    display: block !important;
+  }
+
+  .liste-couts-mobile {
+    display: none !important;
   }
 }
