@@ -225,6 +225,13 @@ export const gatewayOpenApiDocument = {
           etablissementId: { type: ['string', 'null'], format: 'uuid' },
           valideDu: { type: 'string', format: 'date' },
           valideAu: { type: ['string', 'null'], format: 'date' },
+          /**
+           * Première année d'inscription de l'enfant à l'association ABCM
+           * (frais de 1ʳᵉ inscription, doc 02 §4.4 — chantier Coûts lot 4a).
+           * Champ additif OPTIONNEL (rétro-compat) ; absent ⇒ `false`.
+           * Toujours `false` pour un contrat CRECHE_PSU.
+           */
+          premiereInscription: { type: 'boolean' },
         },
         required: [
           'id',
@@ -1170,6 +1177,13 @@ export const gatewayOpenApiDocument = {
                   },
                   valideDu: { type: 'string', format: 'date' },
                   valideAu: { type: ['string', 'null'], format: 'date' },
+                  /**
+                   * Première année d'inscription à l'association ABCM (lot 4a).
+                   * OPTIONNEL, contrats ABCM uniquement (cantine/péri/ALSH) —
+                   * jamais exposé/accepté pour CRECHE_PSU (le service élimine
+                   * la clé) ; absent ⇒ `false`.
+                   */
+                  premiereInscription: { type: 'boolean' },
                 },
                 required: [
                   'mode',

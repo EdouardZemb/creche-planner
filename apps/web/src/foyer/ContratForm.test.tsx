@@ -303,6 +303,116 @@ describe('ContratForm', () => {
     expect(saisie.semaineAbcm['LUNDI']?.alsh).toBeUndefined();
   });
 
+  // ---- Première inscription à l'association (lot 4a) ------------------------
+
+  it('coche « Première inscription » (cantine) → payload premiereInscription: true', async () => {
+    mockedApi.creerContrat.mockResolvedValueOnce({
+      ...contratVueFactice,
+      mode: 'CANTINE',
+      premiereInscription: true,
+    });
+    rendu();
+
+    fireEvent.change(screen.getByLabelText(/Mode/i), {
+      target: { value: 'CANTINE' },
+    });
+    fireEvent.change(screen.getByLabelText(/Valide du/i), {
+      target: { value: '2026-09-01' },
+    });
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: /Première inscription de l’enfant à l’association/i,
+      }),
+    );
+    choisirEtablissement();
+    fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.creerContrat).toHaveBeenCalledTimes(1);
+    });
+    const saisie = (mockedApi.creerContrat.mock.calls[0] as unknown[])[0] as {
+      premiereInscription?: boolean;
+    };
+    expect(saisie.premiereInscription).toBe(true);
+  });
+
+  it('case décochée (défaut) → payload premiereInscription: false', async () => {
+    mockedApi.creerContrat.mockResolvedValueOnce({
+      ...contratVueFactice,
+      mode: 'CANTINE',
+    });
+    rendu();
+
+    fireEvent.change(screen.getByLabelText(/Mode/i), {
+      target: { value: 'CANTINE' },
+    });
+    fireEvent.change(screen.getByLabelText(/Valide du/i), {
+      target: { value: '2026-09-01' },
+    });
+    choisirEtablissement();
+    fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.creerContrat).toHaveBeenCalledTimes(1);
+    });
+    const saisie = (mockedApi.creerContrat.mock.calls[0] as unknown[])[0] as {
+      premiereInscription?: boolean;
+    };
+    expect(saisie.premiereInscription).toBe(false);
+  });
+
+  it('la case « Première inscription » est absente en mode crèche (CRECHE_PSU)', () => {
+    rendu();
+
+    // Mode par défaut : CRECHE_PSU — la case ne doit pas exister.
+    expect(
+      screen.queryByRole('checkbox', {
+        name: /Première inscription de l’enfant à l’association/i,
+      }),
+    ).not.toBeInTheDocument();
+
+    // Elle apparaît pour chaque mode ABCM.
+    for (const mode of ['CANTINE', 'PERISCOLAIRE', 'ALSH']) {
+      fireEvent.change(screen.getByLabelText(/Mode/i), {
+        target: { value: mode },
+      });
+      expect(
+        screen.getByRole('checkbox', {
+          name: /Première inscription de l’enfant à l’association/i,
+        }),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it('pré-coche « Première inscription » à l’édition d’un contrat qui la porte', () => {
+    render(
+      <ContratForm
+        foyerId="f1"
+        enfants={enfantsTest}
+        etablissements={etablissementsTest}
+        contrat={{
+          id: 'c2',
+          foyerId: 'f1',
+          enfant: 'Zoé',
+          enfantId: 'e2',
+          mode: 'CANTINE',
+          etablissementId: 'et-1',
+          valideDu: '2026-09-01',
+          valideAu: null,
+          premiereInscription: true,
+          semaineAbcm: { LUNDI: { cantine: true } },
+        }}
+        onCree={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('checkbox', {
+        name: /Première inscription de l’enfant à l’association/i,
+      }),
+    ).toBeChecked();
+  });
+
   // UT-08 : sigle ALSH explicité via <abbr> dans l'en-tête de colonne.
   it('explicite le sigle ALSH via un <abbr> dans la colonne', () => {
     rendu();

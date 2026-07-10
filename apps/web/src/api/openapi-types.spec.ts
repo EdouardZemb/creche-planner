@@ -66,7 +66,9 @@ describe('openapi-types — types générés depuis le contrat gateway', () => {
     // `enfantId` est le lien de référence vers l'enfant (svc-foyer), requis et
     // nullable (null = contrat historique pas encore back-fillé) ;
     // `etablissementId` est le lien explicite vers l'établissement (P2/P3),
-    // optionnel et nullable (non requis dans le schema).
+    // optionnel et nullable (non requis dans le schema) ;
+    // `premiereInscription` est la première année d'inscription ABCM (lot 4a),
+    // optionnelle (champ additif, rétro-compat).
     verifie<
       Egal<
         ContratVue,
@@ -79,6 +81,7 @@ describe('openapi-types — types générés depuis le contrat gateway', () => {
           etablissementId?: string | null;
           valideDu: string;
           valideAu: string | null;
+          premiereInscription?: boolean;
         }
       >
     >();

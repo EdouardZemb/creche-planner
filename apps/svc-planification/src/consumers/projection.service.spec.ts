@@ -22,7 +22,11 @@ const ENFANT_ID = '77777777-7777-4777-8777-777777777777';
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
 
 /** Ligne contrat renvoyée par l'`update().returning()` (post-rafraîchissement). */
-function ligneRafraichie(id: string, prenom: string): ContratRow {
+function ligneRafraichie(
+  id: string,
+  prenom: string,
+  premiereInscription = false,
+): ContratRow {
   return {
     id,
     foyerId: FOYER_ID,
@@ -32,6 +36,7 @@ function ligneRafraichie(id: string, prenom: string): ContratRow {
     etablissementId: '99999999-9999-4999-8999-999999999999',
     valideDu: '2026-01-01',
     valideAu: '2026-12-31',
+    premiereInscription,
     heuresAnnuellesContractualisees: 885.5,
     nbMensualites: 7,
     semaineType: null,
@@ -173,6 +178,28 @@ describe('ProjectionService.traiter (svc-planification, stream FOYER)', () => {
         enfant: 'Léa',
         enfantId: ENFANT_ID,
       }),
+    });
+  });
+
+  it('le ContratModifie ré-émis reconduit premiereInscription (lot 4a — pas de « clignotement »)', async () => {
+    const { db, outboxInserts } = fakeDb({
+      marqueurInsere: true,
+      contratsRafraichis: [
+        ligneRafraichie('55555555-5555-4555-8555-555555555555', 'Léa', true),
+      ],
+    });
+    const projection = new ProjectionService(db);
+
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementEnfantModifie('11111111-1111-4111-8111-111111111111', 'Léa'),
+      ),
+    ).resolves.toBe(true);
+
+    expect(outboxInserts[0]).toMatchObject({
+      type: CONTRAT_MODIFIE_TYPE,
+      payload: expect.objectContaining({ premiereInscription: true }),
     });
   });
 

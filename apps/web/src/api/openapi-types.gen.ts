@@ -968,6 +968,7 @@ export interface paths {
                         valideDu: string;
                         /** Format: date */
                         valideAu: string | null;
+                        premiereInscription?: boolean;
                     } & {
                         [key: string]: unknown;
                     };
@@ -1388,6 +1389,7 @@ export interface components {
             valideDu: string;
             /** Format: date */
             valideAu: string | null;
+            premiereInscription?: boolean;
         };
         /** @description Règle de préavis d’un établissement (union discriminée par `type`). */
         PreavisRegle: {
