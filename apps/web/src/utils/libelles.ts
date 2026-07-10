@@ -27,3 +27,29 @@ export function estMode(mode: string): mode is Mode {
 export function libelleMode(mode: string): string {
   return estMode(mode) ? LIBELLES_MODE[mode] : mode;
 }
+
+/**
+ * Pseudo-mode émis par le backend pour la section des frais fixes annuels ABCM
+ * (cotisation + 1ʳᵉ inscription, rattachés à septembre). Ce n'est PAS un `Mode`
+ * de contrat (le type généré ne le connaît pas) : seule comparaison technique
+ * autorisée, via `estFraisFixesAbcm` — jamais affiché brut à l'écran.
+ */
+const MODE_FRAIS_FIXES_ABCM = 'FRAIS_FIXES_ABCM';
+
+/** Indique si un mode de prestation est la pseudo-prestation des frais fixes ABCM. */
+export function estFraisFixesAbcm(mode: string): boolean {
+  return mode === MODE_FRAIS_FIXES_ABCM;
+}
+
+/**
+ * Titre affichable d'une prestation de coût (panneau du mois, exports).
+ * Cas général : « <enfant> — <mode accentué> » ; frais fixes annuels ABCM :
+ * « Frais annuels — ABCM » (le backend émet `enfant: ''` pour cette
+ * pseudo-prestation — ni prénom ni tiret superflu).
+ */
+export function titrePrestationCout(enfant: string, mode: string): string {
+  if (estFraisFixesAbcm(mode)) {
+    return 'Frais annuels — ABCM';
+  }
+  return `${enfant} — ${libelleMode(mode)}`;
+}

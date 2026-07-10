@@ -8,6 +8,7 @@ import { useAsync } from '../hooks/useAsync';
 import { useTitrePage } from '../hooks/useTitrePage';
 import { Spinner } from '../ui/Spinner';
 import { Badge } from '../ui/Badge';
+import { EtatVide } from '../ui/EtatVide';
 import {
   coutAnnuelVersCsv,
   telechargerCsv,
@@ -56,15 +57,32 @@ function construireLignes(
   });
 }
 
+/** Explication du tiret « — » : le mois n'a pas (encore) de planning réel. */
+const REEL_INDISPONIBLE = 'Pas encore de planning réel pour ce mois';
+
 /**
- * Valeur « Delta » (table ou carte mobile). Distingue le sens de l'écart
+ * Tiret « — » (réel indisponible) : explicité pour tout le monde — `title`
+ * au survol pour la souris, texte `sr-only` équivalent pour les lecteurs
+ * d'écran (le glyphe seul est masqué aux technologies d'assistance).
+ */
+function TiretReelIndisponible() {
+  return (
+    <span className="muted" title={REEL_INDISPONIBLE}>
+      <span aria-hidden="true">—</span>
+      <span className="sr-only">{REEL_INDISPONIBLE}</span>
+    </span>
+  );
+}
+
+/**
+ * Valeur « Écart » (table ou carte mobile). Distingue le sens de l'écart
  * SANS reposer sur la couleur seule (UT-09 / WCAG 1.4.1) : préfixe signé `+`/`-`
  * conservé (CA1) + repère NON COLORÉ symbole/libellé (CA2), cas d'égalité inclus.
  * `delta === null` → tiret « — » (réel indisponible), sans repère.
  */
 function ValeurDelta({ delta }: { delta: number | null }) {
   if (delta === null) {
-    return <span className="muted">—</span>;
+    return <TiretReelIndisponible />;
   }
   const repere = repereDelta(delta);
   return (
@@ -78,7 +96,7 @@ function ValeurDelta({ delta }: { delta: number | null }) {
   );
 }
 
-/** Cellule « Delta » d'une ligne du tableau. */
+/** Cellule « Écart » d'une ligne du tableau. */
 function CelluleDelta({
   delta,
   style,
@@ -95,7 +113,7 @@ function CelluleDelta({
 
 /**
  * Vue simulation sous 768px : la table 4 colonnes ne tient pas sur un
- * téléphone → une carte par mois (Simulé / Réel / Delta) + carte de synthèse
+ * téléphone → une carte par mois (Simulé / Réel / Écart) + carte de synthèse
  * « Total annuel ». Mêmes données que la table desktop (`construireLignes`),
  * bascule d'affichage en CSS (`.liste-couts-mobile` / `.table-couts-desktop`).
  */
@@ -151,21 +169,21 @@ function CarteCoutMois({
       <h2 className="carte-cout-mois-titre">{titre}</h2>
       <dl className="carte-cout-mois-lignes">
         <div className="carte-cout-mois-ligne">
-          <dt>Total simulé</dt>
+          <dt>Simulé</dt>
           <dd>{centimesEnEuros(totalSimule)}</dd>
         </div>
         <div className="carte-cout-mois-ligne">
-          <dt>Total réel</dt>
+          <dt>Réel</dt>
           <dd>
             {totalReel !== null ? (
               centimesEnEuros(totalReel)
             ) : (
-              <span className="muted">—</span>
+              <TiretReelIndisponible />
             )}
           </dd>
         </div>
         <div className="carte-cout-mois-ligne">
-          <dt>Delta</dt>
+          <dt>Écart</dt>
           <dd>
             <ValeurDelta delta={delta} />
           </dd>
@@ -218,6 +236,13 @@ export function CoutsAnnuelsPage() {
     ? construireLignes(etatSimule.data, etatReel.data ?? null)
     : [];
 
+  // Nouveau foyer (aucun contrat / aucun planning saisi) : douze lignes de
+  // 0,00 € n'orientent personne → état vide avec un CTA vers les contrats.
+  const aucunCout =
+    etatSimule.data !== null &&
+    etatSimule.data.totalCentimes === 0 &&
+    etatSimule.data.mois.every((m) => m.prestations.length === 0);
+
   const exporterCsv = () => {
     if (!etatSimule.data) return;
     telechargerCsv(
@@ -238,14 +263,7 @@ export function CoutsAnnuelsPage() {
           marginBottom: '1rem',
         }}
       >
-        <h1 style={{ margin: 0 }}>
-          Coûts annuels
-          {simule && (
-            <span style={{ marginLeft: '0.75rem', verticalAlign: 'middle' }}>
-              <Badge variante="simulation">SIMULATION</Badge>
-            </span>
-          )}
-        </h1>
+        <h1 style={{ margin: 0 }}>Coûts annuels</h1>
         <div className="selecteur-annee">
           <button
             type="button"
@@ -273,6 +291,28 @@ export function CoutsAnnuelsPage() {
             ▶
           </button>
         </div>
+        {/* Interrupteur simulation : même UI que le Planning, lié à ?simule
+            (l'état survit au rechargement et se partage par URL). */}
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            margin: 0,
+            fontSize: '0.9rem',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={simule}
+            onChange={(e) => {
+              setParam({ simule: e.target.checked ? 'true' : null });
+            }}
+            style={{ width: 'auto', padding: 0 }}
+          />
+          Mode simulation
+        </label>
+        {simule && <Badge variante="simulation">Simulation</Badge>}
         <div
           className="actions-export no-print"
           style={{
@@ -282,32 +322,52 @@ export function CoutsAnnuelsPage() {
             marginLeft: 'auto',
           }}
         >
-          <button
-            type="button"
-            className="btn secondaire"
-            onClick={exporterCsv}
-            disabled={!etatSimule.data}
-            aria-label="Exporter les coûts annuels au format CSV"
-          >
-            Exporter CSV
-          </button>
-          <button
-            type="button"
-            className="btn secondaire"
-            onClick={() => {
-              window.print();
-            }}
-            aria-label="Imprimer ou enregistrer les coûts annuels en PDF"
-          >
-            Imprimer / PDF
-          </button>
+          {/* Rien à exporter/imprimer sur l'état vide : boutons masqués. */}
+          {!aucunCout && (
+            <>
+              <button
+                type="button"
+                className="btn secondaire"
+                onClick={exporterCsv}
+                disabled={!etatSimule.data}
+                aria-label="Exporter les coûts annuels au format CSV"
+              >
+                Exporter CSV
+              </button>
+              <button
+                type="button"
+                className="btn secondaire"
+                onClick={() => {
+                  window.print();
+                }}
+                aria-label="Imprimer ou enregistrer les coûts annuels en PDF"
+              >
+                Imprimer / PDF
+              </button>
+            </>
+          )}
           {id && (
-            <Link to={`/foyers/${id}/planning`} className="btn secondaire">
+            <Link
+              // Cohérence aller-retour : le mode simulation suit vers le
+              // planning (PlanningPage lit déjà ?simule).
+              to={
+                simule
+                  ? `/foyers/${id}/planning?simule=true`
+                  : `/foyers/${id}/planning`
+              }
+              className="btn secondaire"
+            >
               Voir le détail du planning
             </Link>
           )}
         </div>
       </div>
+
+      {simule && (
+        <p className="muted" style={{ margin: '-0.5rem 0 1rem' }}>
+          Comparez le coût du planning simulé au planning réel.
+        </p>
+      )}
 
       {loading && (
         <div className="carte muted" aria-live="polite">
@@ -334,7 +394,23 @@ export function CoutsAnnuelsPage() {
         </div>
       )}
 
-      {!loading && !error && etatSimule.data && (
+      {/* État vide orienté action : le sélecteur d'année et l'interrupteur
+          restent utilisables au-dessus (on peut changer d'année d'ici). */}
+      {!loading && !error && aucunCout && (
+        <EtatVide
+          titre={`Aucun coût en ${annee}`}
+          description="Les coûts apparaîtront dès qu'un contrat existe et qu'un planning est saisi."
+          actions={[
+            {
+              libelle: 'Voir les contrats',
+              href: `/foyers/${id}/contrats`,
+              primaire: true,
+            },
+          ]}
+        />
+      )}
+
+      {!loading && !error && etatSimule.data && !aucunCout && (
         <>
           <div
             className={
@@ -369,7 +445,7 @@ export function CoutsAnnuelsPage() {
                     scope="col"
                     style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
                   >
-                    {simule ? 'Total simulé' : 'Total'}
+                    {simule ? 'Simulé' : 'Total'}
                   </th>
                   {simule && (
                     <>
@@ -377,13 +453,13 @@ export function CoutsAnnuelsPage() {
                         scope="col"
                         style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
                       >
-                        Total réel
+                        Réel
                       </th>
                       <th
                         scope="col"
                         style={{ padding: '0.6rem 1rem', textAlign: 'right' }}
                       >
-                        Delta
+                        Écart
                       </th>
                     </>
                   )}
@@ -426,7 +502,7 @@ export function CoutsAnnuelsPage() {
                             {ligne.totalReel !== null ? (
                               centimesEnEuros(ligne.totalReel)
                             ) : (
-                              <span className="muted">—</span>
+                              <TiretReelIndisponible />
                             )}
                           </td>
                           <CelluleDelta
@@ -464,7 +540,7 @@ export function CoutsAnnuelsPage() {
                         {etatReel.data !== null ? (
                           centimesEnEuros(etatReel.data.totalCentimes)
                         ) : (
-                          <span className="muted">—</span>
+                          <TiretReelIndisponible />
                         )}
                       </td>
                       <CelluleDelta

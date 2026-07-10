@@ -306,7 +306,7 @@ test.describe("Audit d'accessibilité automatisé (axe-core, WCAG 2.1 AA)", () =
     await expect(
       page.getByRole('heading', { name: /Coûts annuels/i }),
     ).toBeVisible();
-    // Le tableau annuel (avec colonne Delta UT-09) doit être rendu.
+    // Le tableau annuel (avec colonne Écart UT-09) doit être rendu.
     await expect(page.getByRole('table')).toBeVisible();
     const r = await auditer(page, 'coûts annuels');
     expect(r.violations).toEqual([]);

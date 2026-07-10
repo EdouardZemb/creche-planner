@@ -233,7 +233,7 @@ export function PlanningPage() {
           Mode simulation
         </label>
 
-        {simule && <Badge variante="simulation">SIMULATION</Badge>}
+        {simule && <Badge variante="simulation">Simulation</Badge>}
       </div>
 
       {/* États loading / error */}

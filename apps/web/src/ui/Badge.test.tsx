@@ -11,8 +11,8 @@ describe('Badge', () => {
   });
 
   it('rend la variante simulation', () => {
-    render(<Badge variante="simulation">SIMULATION</Badge>);
-    const el = screen.getByText('SIMULATION');
+    render(<Badge variante="simulation">Simulation</Badge>);
+    const el = screen.getByText('Simulation');
     expect(el).toHaveClass('badge');
     expect(el).toHaveClass('badge-simulation');
   });
