@@ -1,4 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { and, eq, like } from 'drizzle-orm';
 import {
   CoutMois,
@@ -235,9 +240,11 @@ export class CoutService {
 
   /**
    * Charge le foyer depuis le read model ; si la projection est froide (absente),
-   * bascule sur le client de repli synchrone `svc-foyer`. À défaut, un foyer neutre
-   * (T3, 1 enfant à charge, ressources 0) est renvoyé pour ne pas planter — les
-   * coûts PSU seront simplement nuls et l'ABCM s'appuiera sur la grille T3.
+   * bascule sur le client de repli synchrone `svc-foyer`. Si le repli échoue à son
+   * tour, on répond **503 explicite** plutôt qu'un foyer « neutre » : un montant
+   * calculé sur des ressources fausses serait affiché avec assurance (0,00 € pour
+   * la crèche PSU) — c'est de l'argent, un chiffre affiché doit être un chiffre
+   * vrai. Le client web rejoue automatiquement les 503 transitoires.
    */
   private async chargerFoyer(foyerId: string): Promise<FoyerCalcul> {
     const lignes = await this.db
@@ -263,11 +270,12 @@ export class CoutService {
         tranche: repli.tranche,
       };
     }
-    return {
-      ressourcesMensuellesCentimes: 0,
-      nbEnfantsACharge: 1,
-      tranche: 3,
-    };
+    this.logger.error(
+      `Foyer ${foyerId} indisponible : read model froid et repli svc-foyer en échec`,
+    );
+    throw new ServiceUnavailableException(
+      `foyer ${foyerId} indisponible : read model froid et repli svc-foyer en échec`,
+    );
   }
 
   /** Identité des contrats du foyer (indépendante du mois). */
@@ -332,8 +340,10 @@ export class CoutService {
    * (`contrats`), on prend la projection si présente ; si elle est **froide**
    * (absente pour ce mois/simulé), on bascule sur un **repli synchrone**
    * `svc-planification` (timeout/retry/CB) pour la reconstituer à la volée.
-   * Dégradation propre : un contrat dont le repli échoue est simplement omis
-   * (pas de crash de l'endpoint).
+   * Un repli qui **échoue** (réseau/circuit ouvert) répond **503 explicite** :
+   * omettre le contrat sous-estimerait silencieusement le total. Un repli qui
+   * **réussit** avec zéro prestation (contrat sans prestation ce mois) reste une
+   * omission légitime — comportement inchangé.
    */
   private async assemblerPrestations(
     mois: string,
@@ -360,7 +370,15 @@ export class CoutService {
         mois,
         simule,
       );
-      const prestation = repli?.prestations[0];
+      if (!repli) {
+        this.logger.error(
+          `Prestations du contrat ${c.id} (${mois}) indisponibles : read model froid et repli svc-planification en échec`,
+        );
+        throw new ServiceUnavailableException(
+          `prestations du contrat ${c.id} (${mois}) indisponibles : read model froid et repli svc-planification en échec`,
+        );
+      }
+      const prestation = repli.prestations[0];
       if (prestation) {
         resultat.push({
           enfant: c.enfant,
