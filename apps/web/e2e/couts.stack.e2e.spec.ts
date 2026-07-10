@@ -54,17 +54,12 @@ test('stack réelle : coût crèche mensuel ≈ 851,16 € (jan→juil) et 0 €
 }) => {
   const { foyerId } = lireEtatSeed();
 
-  await page.goto(urlCouts(foyerId));
+  // L'année vit dans l'URL (?annee=, lot 1 Coûts) : on force 2026 par
+  // navigation directe — robuste et indépendant de l'horloge du runner.
+  await page.goto(`${urlCouts(foyerId)}?annee=2026`);
   await expect(
     page.getByRole('heading', { name: /Coûts annuels/ }),
   ).toBeVisible();
-
-  // L'année par défaut est l'année courante (2026 au moment du seed). On vérifie
-  // que le champ « Année » vaut bien 2026 ; sinon on le force.
-  const champAnnee = page.getByLabel('Année :');
-  if ((await champAnnee.inputValue()) !== '2026') {
-    await champAnnee.fill('2026');
-  }
 
   // Projection asynchrone : on poll le total de mars 2026 jusqu'à atteindre la
   // valeur réelle (851,16 €) ; en cas d'erreur transitoire, le helper relance via
