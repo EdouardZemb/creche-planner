@@ -194,9 +194,49 @@ describe('CoutsAnnuelsPage', () => {
 
     renderPage('foyer-1', '?simule=true');
 
-    await screen.findByText(/Total simulé/i);
-    expect(screen.getByText(/Total réel/i)).toBeInTheDocument();
-    expect(screen.getByText(/Delta/i)).toBeInTheDocument();
+    await screen.findByRole('columnheader', { name: /Total simulé/i });
+    expect(
+      screen.getByRole('columnheader', { name: /Total réel/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: /Delta/i }),
+    ).toBeInTheDocument();
+  });
+
+  // Lot 1 — vue simulation mobile : une carte par mois (Simulé/Réel/Delta)
+  // + carte de synthèse « Total annuel » (la bascule table/cartes est en CSS,
+  // les deux structures coexistent dans le DOM).
+  it('rend une liste de cartes par mois en mode simulation', async () => {
+    vi.mocked(api.lireCoutAnnuel)
+      .mockResolvedValueOnce(coutAnnuelSimuleFactice)
+      .mockResolvedValueOnce(coutAnnuelFactice);
+
+    renderPage('foyer-1', '?simule=true');
+
+    await screen.findByRole('heading', { level: 2, name: /janvier 2026/i });
+    expect(
+      screen.getByRole('heading', { level: 2, name: /février 2026/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 2, name: /Total annuel/i }),
+    ).toBeInTheDocument();
+    // Chaque carte porte les trois lignes libellées (janvier, février, total).
+    expect(screen.getAllByText(/Total simulé/i).length).toBeGreaterThanOrEqual(
+      3,
+    );
+    expect(screen.getAllByText(/Total réel/i).length).toBeGreaterThanOrEqual(3);
+    expect(screen.getAllByText(/^Delta$/).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('ne rend pas la liste de cartes en vue normale', async () => {
+    vi.mocked(api.lireCoutAnnuel).mockResolvedValue(coutAnnuelFactice);
+
+    renderPage();
+
+    await screen.findByText(/janvier 2026/i);
+    expect(
+      screen.queryByRole('heading', { level: 2, name: /Total annuel/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('calcule les deltas par mois en mode simulation', async () => {
@@ -220,8 +260,8 @@ describe('CoutsAnnuelsPage', () => {
 
     renderPage('foyer-1', '?simule=true');
 
-    // jan: -50 € (économie ▼), fev: -30 € (économie ▼)
-    await screen.findByText(/-50,00/);
+    // jan: -50 € (économie ▼), fev: -30 € (économie ▼) — table + cartes mobiles
+    await screen.findAllByText(/-50,00/);
     expect(screen.getAllByText('▼').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/\(économie\)/).length).toBeGreaterThan(0);
   });
@@ -262,7 +302,8 @@ describe('CoutsAnnuelsPage', () => {
 
     renderPage('foyer-1', '?simule=true');
 
-    await screen.findByText(/janvier 2026/i);
+    // janvier apparaît dans la table ET la carte mobile
+    await screen.findAllByText(/janvier 2026/i);
     // symbole « = » et libellé « identique » présents (ligne + total annuel)
     expect(screen.getAllByText('=').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/\(identique\)/).length).toBeGreaterThan(0);
@@ -331,20 +372,87 @@ describe('CoutsAnnuelsPage', () => {
     vi.restoreAllMocks();
   });
 
-  it("permet de changer l'année et refetch", async () => {
+  // Lot 1 — l'année vit dans l'URL (?annee=) et se navigue par ◀/▶.
+  it("lit l'année depuis l'URL (?annee=2027)", async () => {
     vi.mocked(api.lireCoutAnnuel).mockResolvedValue(coutAnnuelFactice);
 
-    renderPage();
+    renderPage('foyer-1', '?annee=2027');
 
-    await screen.findByText(/janvier 2026/i);
-
-    const input = screen.getByLabelText(/Année/i);
-    fireEvent.change(input, { target: { value: '2027' } });
-
+    await screen.findByText('2027');
     await waitFor(() => {
       const appels = vi.mocked(api.lireCoutAnnuel).mock.calls;
-      const avecAnnee2027 = appels.some((c) => c[1] === 2027);
-      expect(avecAnnee2027).toBe(true);
+      expect(appels.some((c) => c[1] === 2027)).toBe(true);
     });
+  });
+
+  it("retombe sur l'année courante si ?annee est invalide", async () => {
+    vi.mocked(api.lireCoutAnnuel).mockResolvedValue(coutAnnuelFactice);
+
+    renderPage('foyer-1', '?annee=abc');
+
+    const courante = new Date().getFullYear();
+    await screen.findByText(String(courante));
+    await waitFor(() => {
+      const appels = vi.mocked(api.lireCoutAnnuel).mock.calls;
+      expect(appels.some((c) => c[1] === courante)).toBe(true);
+    });
+  });
+
+  it("passe à l'année suivante avec ▶ et refetch", async () => {
+    vi.mocked(api.lireCoutAnnuel).mockResolvedValue(coutAnnuelFactice);
+
+    renderPage('foyer-1', '?annee=2026');
+
+    await screen.findByText(/janvier 2026/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Année suivante' }));
+
+    await screen.findByText('2027');
+    await waitFor(() => {
+      const appels = vi.mocked(api.lireCoutAnnuel).mock.calls;
+      expect(appels.some((c) => c[1] === 2027)).toBe(true);
+    });
+  });
+
+  it("revient à l'année précédente avec ◀ et refetch", async () => {
+    vi.mocked(api.lireCoutAnnuel).mockResolvedValue(coutAnnuelFactice);
+
+    renderPage('foyer-1', '?annee=2026');
+
+    await screen.findByText(/janvier 2026/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Année précédente' }));
+
+    await screen.findByText('2025');
+    await waitFor(() => {
+      const appels = vi.mocked(api.lireCoutAnnuel).mock.calls;
+      expect(appels.some((c) => c[1] === 2025)).toBe(true);
+    });
+  });
+
+  it('désactive ◀ à la borne 2020', async () => {
+    vi.mocked(api.lireCoutAnnuel).mockResolvedValue(coutAnnuelFactice);
+
+    renderPage('foyer-1', '?annee=2020');
+
+    await screen.findByText('2020');
+    expect(
+      screen.getByRole('button', { name: 'Année précédente' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Année suivante' }),
+    ).toBeEnabled();
+  });
+
+  it('désactive ▶ à la borne 2099', async () => {
+    vi.mocked(api.lireCoutAnnuel).mockResolvedValue(coutAnnuelFactice);
+
+    renderPage('foyer-1', '?annee=2099');
+
+    await screen.findByText('2099');
+    expect(
+      screen.getByRole('button', { name: 'Année suivante' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Année précédente' }),
+    ).toBeEnabled();
   });
 });
