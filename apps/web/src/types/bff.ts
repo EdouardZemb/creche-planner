@@ -232,6 +232,12 @@ export interface CreerContratAbcm {
   valideDu: string;
   valideAu: string | null;
   semaineAbcm: SemaineAbcm;
+  /**
+   * Première année d'inscription de l'enfant à l'association ABCM (frais de
+   * 1ʳᵉ inscription, chantier Coûts lot 4a). Optionnel, défaut `false` ;
+   * volontairement absent de `CreerContratCreche` (jamais pour CRECHE_PSU).
+   */
+  premiereInscription?: boolean;
 }
 
 /**

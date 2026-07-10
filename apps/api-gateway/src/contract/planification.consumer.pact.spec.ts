@@ -183,6 +183,9 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           mode: MatchersV3.string('CRECHE_PSU'),
           valideDu: MatchersV3.string('2026-01-01'),
           valideAu: MatchersV3.string('2026-07-31'),
+          // Première inscription ABCM (lot 4a) : exposée en lecture (false ici,
+          // contrat crèche seedé — le champ est toujours false en CRECHE_PSU).
+          premiereInscription: MatchersV3.boolean(false),
           heuresAnnuellesContractualisees: integer(763),
           nbMensualites: integer(7),
           semaineType: {
@@ -232,6 +235,8 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           valideDu: '2026-09-01',
           valideAu: null,
           semaineAbcm: semaineAbcmCantineLundi,
+          // Première inscription ABCM (lot 4a) : cochée par le parent.
+          premiereInscription: true,
           // Lien établissement OBLIGATOIRE (P5) : créé à la volée (aucun seed requis).
           nouvelEtablissement: { nom: 'Crèche Pact CANTINE' },
         },
@@ -248,6 +253,8 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           mode: 'CANTINE',
           valideDu: '2026-09-01',
           valideAu: null,
+          // Valeur exacte : la coche demandée est persistée et restituée.
+          premiereInscription: true,
         },
       });
 
@@ -263,12 +270,18 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           valideDu: '2026-09-01',
           valideAu: null,
           semaineAbcm: semaineAbcmCantineLundi,
+          premiereInscription: true,
           nouvelEtablissement: { nom: 'Crèche Pact CANTINE' },
         }),
       });
       expect(reponse.status).toBe(201);
-      const corps = (await reponse.json()) as { id: string; mode: string };
+      const corps = (await reponse.json()) as {
+        id: string;
+        mode: string;
+        premiereInscription: boolean;
+      };
       expect(corps.mode).toBe('CANTINE');
+      expect(corps.premiereInscription).toBe(true);
     });
   });
 
@@ -314,6 +327,9 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           mode: 'ALSH',
           valideDu: '2026-09-01',
           valideAu: null,
+          // Rétro-compat lot 4a : corps de création SANS premiereInscription
+          // (comme le front pré-lot 4a) → défaut false persisté et restitué.
+          premiereInscription: false,
         },
       });
 
@@ -350,6 +366,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           mode: MatchersV3.string('CRECHE_PSU'),
           valideDu: MatchersV3.string('2026-01-01'),
           valideAu: MatchersV3.string('2026-07-31'),
+          premiereInscription: MatchersV3.boolean(false),
         },
       });
 
@@ -398,6 +415,8 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
           mode: 'CRECHE_PSU',
           valideDu: '2026-01-01',
           valideAu: '2026-12-31',
+          // Toujours false pour un contrat crèche (le DTO n'expose pas le champ).
+          premiereInscription: false,
         },
       });
 

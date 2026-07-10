@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   CONTRAT_CREE_TYPE,
+  CONTRAT_MODIFIE_TYPE,
   ETABLISSEMENT_CREE_TYPE,
   ETABLISSEMENT_SUPPRIME_TYPE,
   PLANIFICATION_EVENT_SOURCE,
   PLANNING_MODIFIE_TYPE,
   contratCreeEventSchema,
+  contratModifieEventSchema,
   etablissementCreeEventSchema,
   etablissementSupprimeEventSchema,
   planningModifieEventSchema,
@@ -72,6 +74,106 @@ describe('contracts-planification (événements planification.*)', () => {
       },
     });
     expect(result.success).toBe(true);
+  });
+
+  it('accepte premiereInscription: true dans ContratCree (contrat ABCM, lot 4a)', () => {
+    const event = {
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: CONTRAT_CREE_TYPE,
+      source: PLANIFICATION_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-07-10T00:00:00.000Z',
+      traceId: '0af7651916cd43dd8448eb211c80319c',
+      payload: {
+        contratId: '55555555-0000-4000-8000-000000000000',
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        enfant: 'Zoé',
+        mode: 'CANTINE',
+        valideDu: '2026-09-01',
+        valideAu: null,
+        etablissementId: '99999999-0000-4000-8000-000000000000',
+        premiereInscription: true,
+      },
+    };
+    expect(contratCreeEventSchema.safeParse(event).success).toBe(true);
+  });
+
+  it('accepte un premiereInscription absent dans ContratCree (événement historique, rétro-compat)', () => {
+    // Un événement émis AVANT le lot 4a ne porte pas le champ : les consommateurs
+    // (svc-tarification, svc-notifications) doivent toujours pouvoir le décoder.
+    const result = contratCreeEventSchema.safeParse({
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: CONTRAT_CREE_TYPE,
+      source: PLANIFICATION_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        contratId: '55555555-0000-4000-8000-000000000000',
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        enfant: 'Mia',
+        mode: 'CRECHE_PSU',
+        valideDu: '2026-09-01',
+        valideAu: null,
+        etablissementId: null,
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepte premiereInscription (true/null/absent) dans ContratModifie (rétro-compat)', () => {
+    const base = {
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: CONTRAT_MODIFIE_TYPE,
+      source: PLANIFICATION_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-07-10T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        contratId: '55555555-0000-4000-8000-000000000000',
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        enfant: 'Zoé',
+        mode: 'CANTINE' as const,
+        valideDu: '2026-09-01',
+        valideAu: null,
+        etablissementId: null,
+      },
+    };
+    expect(contratModifieEventSchema.safeParse(base).success).toBe(true);
+    expect(
+      contratModifieEventSchema.safeParse({
+        ...base,
+        payload: { ...base.payload, premiereInscription: true },
+      }).success,
+    ).toBe(true);
+    expect(
+      contratModifieEventSchema.safeParse({
+        ...base,
+        payload: { ...base.payload, premiereInscription: null },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejette un premiereInscription non booléen dans ContratCree', () => {
+    const result = contratCreeEventSchema.safeParse({
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: CONTRAT_CREE_TYPE,
+      source: PLANIFICATION_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-07-10T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        contratId: '55555555-0000-4000-8000-000000000000',
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        enfant: 'Zoé',
+        mode: 'CANTINE',
+        valideDu: '2026-09-01',
+        valideAu: null,
+        etablissementId: null,
+        premiereInscription: 'oui',
+      },
+    });
+    expect(result.success).toBe(false);
   });
 
   it('rejette un mode inconnu dans ContratCree', () => {

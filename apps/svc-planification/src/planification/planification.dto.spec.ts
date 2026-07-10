@@ -113,6 +113,19 @@ describe('creerContratSchema (crèche PSU)', () => {
     },
   );
 
+  it('élimine premiereInscription du payload crèche (champ ABCM uniquement, lot 4a)', () => {
+    // Le schéma crèche n'expose pas le champ : Zod (objet non strict) l'élimine
+    // silencieusement — un contrat CRECHE_PSU garde le défaut base `false`.
+    const resultat = creerContratSchema.safeParse({
+      ...basePsu,
+      premiereInscription: true,
+    });
+    expect(resultat.success).toBe(true);
+    if (resultat.success) {
+      expect('premiereInscription' in resultat.data).toBe(false);
+    }
+  });
+
   it('accepte un 29 février bissextile (AQ-04)', () => {
     expect(
       creerContratSchema.safeParse({ ...basePsu, valideDu: '2024-02-29' })
@@ -236,6 +249,32 @@ describe('creerContratSchema (ABCM)', () => {
         alsh: { type: 'COMPLETE', repas: true },
       });
     }
+  });
+
+  it('accepte ET conserve premiereInscription: true (première inscription ABCM, lot 4a)', () => {
+    const resultat = creerContratSchema.safeParse({
+      ...baseAbcm,
+      premiereInscription: true,
+    });
+    expect(resultat.success).toBe(true);
+    if (resultat.success && resultat.data.mode === 'CANTINE') {
+      expect(resultat.data.premiereInscription).toBe(true);
+    }
+  });
+
+  it('accepte un contrat ABCM sans premiereInscription (optionnel, défaut base false)', () => {
+    const resultat = creerContratSchema.safeParse(baseAbcm);
+    expect(resultat.success).toBe(true);
+    if (resultat.success && resultat.data.mode === 'CANTINE') {
+      expect(resultat.data.premiereInscription).toBeUndefined();
+    }
+  });
+
+  it('rejette un premiereInscription non booléen', () => {
+    expect(
+      creerContratSchema.safeParse({ ...baseAbcm, premiereInscription: 'oui' })
+        .success,
+    ).toBe(false);
   });
 
   it('rejette une inscription ALSH hebdomadaire de formule inconnue', () => {

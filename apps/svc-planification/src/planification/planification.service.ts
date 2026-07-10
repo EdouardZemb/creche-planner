@@ -63,6 +63,11 @@ export interface ContratVue {
   readonly mode: string;
   readonly valideDu: string;
   readonly valideAu: string | null;
+  /**
+   * Première année d'inscription de l'enfant à l'association ABCM (frais de
+   * 1ʳᵉ inscription, doc 02 §4.4 — lot 4a). Toujours `false` pour CRECHE_PSU.
+   */
+  readonly premiereInscription: boolean;
 }
 
 /**
@@ -113,6 +118,10 @@ export class PlanificationService {
     }
 
     const id = randomUUID();
+    // Première inscription ABCM (lot 4a) : le DTO crèche n'expose pas le champ →
+    // toujours `false` pour CRECHE_PSU ; défaut `false` si non coché (ABCM).
+    const premiereInscription =
+      dto.mode === 'CRECHE_PSU' ? false : (dto.premiereInscription ?? false);
     await this.db.transaction(async (tx) => {
       // Résout le lien établissement DANS la même transaction (atomicité : pas de
       // contrat orphelin ni d'établissement fantôme — cf. `resoudreEtablissement`).
@@ -130,6 +139,7 @@ export class PlanificationService {
         etablissementId,
         valideDu: dto.valideDu,
         valideAu: dto.valideAu,
+        premiereInscription,
         heuresAnnuellesContractualisees:
           dto.mode === 'CRECHE_PSU'
             ? dto.heuresAnnuellesContractualisees
@@ -147,6 +157,7 @@ export class PlanificationService {
         valideDu: dto.valideDu,
         valideAu: dto.valideAu,
         etablissementId,
+        premiereInscription,
       };
       await tx.insert(outbox).values({
         id: randomUUID(),
@@ -164,6 +175,7 @@ export class PlanificationService {
       mode: dto.mode,
       valideDu: dto.valideDu,
       valideAu: dto.valideAu,
+      premiereInscription,
     };
   }
 
@@ -188,6 +200,7 @@ export class PlanificationService {
       etablissementId: l.etablissementId,
       valideDu: l.valideDu,
       valideAu: l.valideAu,
+      premiereInscription: l.premiereInscription,
       heuresAnnuellesContractualisees: l.heuresAnnuellesContractualisees,
       nbMensualites: l.nbMensualites,
       semaineType: l.semaineType,
@@ -218,6 +231,7 @@ export class PlanificationService {
       mode: ligne.mode,
       valideDu: ligne.valideDu,
       valideAu: ligne.valideAu,
+      premiereInscription: ligne.premiereInscription,
     };
   }
 
@@ -243,6 +257,10 @@ export class PlanificationService {
       });
     }
 
+    // Remplacement complet : un DTO ABCM sans le champ (case décochée) ou un
+    // passage en crèche remettent `premiere_inscription` à `false` (lot 4a).
+    const premiereInscription =
+      dto.mode === 'CRECHE_PSU' ? false : (dto.premiereInscription ?? false);
     await this.db.transaction(async (tx) => {
       const lignes = await tx.select().from(contrat).where(eq(contrat.id, id));
       if (!lignes[0]) {
@@ -266,6 +284,7 @@ export class PlanificationService {
           etablissementId,
           valideDu: dto.valideDu,
           valideAu: dto.valideAu,
+          premiereInscription,
           heuresAnnuellesContractualisees:
             dto.mode === 'CRECHE_PSU'
               ? dto.heuresAnnuellesContractualisees
@@ -288,6 +307,7 @@ export class PlanificationService {
         valideDu: dto.valideDu,
         valideAu: dto.valideAu,
         etablissementId,
+        premiereInscription,
       };
       await tx.insert(outbox).values({
         id: randomUUID(),
@@ -305,6 +325,7 @@ export class PlanificationService {
       mode: dto.mode,
       valideDu: dto.valideDu,
       valideAu: dto.valideAu,
+      premiereInscription,
     };
   }
 
@@ -343,6 +364,7 @@ export class PlanificationService {
         mode: ligne.mode,
         valideDu: ligne.valideDu,
         valideAu: ligne.valideAu,
+        premiereInscription: ligne.premiereInscription,
       };
       // Idempotence : déjà rattaché à CET établissement → rien à faire.
       if (ligne.etablissementId === etablissementId) {
@@ -378,6 +400,7 @@ export class PlanificationService {
         valideDu: ligne.valideDu,
         valideAu: ligne.valideAu,
         etablissementId,
+        premiereInscription: ligne.premiereInscription,
       };
       await tx.insert(outbox).values({
         id: randomUUID(),
@@ -426,6 +449,7 @@ export class PlanificationService {
           mode: ligne.mode,
           valideDu: ligne.valideDu,
           valideAu: ligne.valideAu,
+          premiereInscription: ligne.premiereInscription,
         };
       }
       // Met à jour le SEUL lien (pas de remplacement du contrat, pas de cascade
@@ -443,6 +467,7 @@ export class PlanificationService {
         valideDu: ligne.valideDu,
         valideAu: ligne.valideAu,
         etablissementId: ligne.etablissementId,
+        premiereInscription: ligne.premiereInscription,
       };
       await tx.insert(outbox).values({
         id: randomUUID(),
@@ -458,6 +483,7 @@ export class PlanificationService {
         mode: ligne.mode,
         valideDu: ligne.valideDu,
         valideAu: ligne.valideAu,
+        premiereInscription: ligne.premiereInscription,
       };
     });
   }

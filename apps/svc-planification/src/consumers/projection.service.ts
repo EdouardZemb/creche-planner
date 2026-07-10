@@ -133,6 +133,9 @@ export class ProjectionService {
           valideDu: ligne.valideDu,
           valideAu: ligne.valideAu,
           etablissementId: ligne.etablissementId,
+          // État complet ré-émis : la première inscription ABCM (lot 4a) doit
+          // survivre au renommage d'un enfant (sinon le champ « clignote »).
+          premiereInscription: ligne.premiereInscription,
         };
         await tx.insert(outbox).values({
           id: randomUUID(),

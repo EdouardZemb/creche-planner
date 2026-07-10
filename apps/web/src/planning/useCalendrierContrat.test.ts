@@ -61,6 +61,22 @@ describe('socleContratDurable', () => {
       '',
     );
   });
+
+  it('reconduit premiereInscription: true quand le contrat ABCM la porte (lot 4a)', () => {
+    // Le PUT contrat est un remplacement complet : sans reconduction, une
+    // modification durable du planning décocherait la première inscription.
+    expect(
+      socleContratDurable({
+        ...CONTRAT,
+        mode: 'CANTINE',
+        premiereInscription: true,
+      }).premiereInscription,
+    ).toBe(true);
+  });
+
+  it('omet premiereInscription quand le contrat ne la porte pas (défaut serveur false)', () => {
+    expect('premiereInscription' in socleContratDurable(CONTRAT)).toBe(false);
+  });
 });
 
 describe('useCalendrierContrat', () => {

@@ -49,6 +49,7 @@ function ligneCreche(overrides: Partial<ContratRow> = {}): ContratRow {
     etablissementId: ETAB_ID,
     valideDu: '2026-01-01',
     valideAu: '2026-12-31',
+    premiereInscription: false,
     heuresAnnuellesContractualisees: 885.5,
     nbMensualites: 7,
     semaineType: {
@@ -77,6 +78,7 @@ function ligneAbcm(
     etablissementId: ETAB_ID,
     valideDu: '2026-01-01',
     valideAu: '2026-12-31',
+    premiereInscription: false,
     heuresAnnuellesContractualisees: null,
     nbMensualites: null,
     semaineType: null,
@@ -781,6 +783,77 @@ describe('PlanificationService.creerContrat (lien établissement, P2)', () => {
   });
 });
 
+/** Semaine ABCM complète (les 7 jours — `z.record(enum, …)` exhaustif en Zod v4). */
+const SEMAINE_ABCM_COMPLETE = {
+  LUNDI: { cantine: true },
+  MARDI: {},
+  MERCREDI: {},
+  JEUDI: {},
+  VENDREDI: {},
+  SAMEDI: {},
+  DIMANCHE: {},
+};
+
+describe('PlanificationService (première inscription ABCM, lot 4a)', () => {
+  /** DTO ABCM valide de base (cantine), rattaché à l'établissement existant. */
+  const DTO_ABCM_BASE = {
+    mode: 'CANTINE' as const,
+    foyerId: FOYER_ID,
+    enfant: 'Zoé',
+    enfantId: ENFANT_ID,
+    valideDu: '2026-09-01',
+    valideAu: null,
+    semaineAbcm: SEMAINE_ABCM_COMPLETE,
+    etablissementId: ETAB_ID,
+  };
+
+  it('création ABCM cochée : colonne + payload ContratCree + vue avec premiereInscription: true', async () => {
+    const { db, inserts } = fakeCreerAvecEtab(true);
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.creerContrat({
+      ...DTO_ABCM_BASE,
+      premiereInscription: true,
+    });
+
+    expect(vue.premiereInscription).toBe(true);
+    const contratInsert = inserts.find((i) => i['mode'] === 'CANTINE');
+    expect(contratInsert).toMatchObject({ premiereInscription: true });
+    const cree = outboxDeType(inserts, CONTRAT_CREE_TYPE);
+    expect(cree?.['payload']).toMatchObject({ premiereInscription: true });
+  });
+
+  it('création ABCM sans le champ : défaut false (colonne, événement, vue)', async () => {
+    const { db, inserts } = fakeCreerAvecEtab(true);
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.creerContrat(DTO_ABCM_BASE);
+
+    expect(vue.premiereInscription).toBe(false);
+    expect(inserts.find((i) => i['mode'] === 'CANTINE')).toMatchObject({
+      premiereInscription: false,
+    });
+    expect(outboxDeType(inserts, CONTRAT_CREE_TYPE)?.['payload']).toMatchObject(
+      { premiereInscription: false },
+    );
+  });
+
+  it('création crèche : toujours false (le DTO crèche n’expose pas le champ)', async () => {
+    const { db, inserts } = fakeCreerAvecEtab(true);
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.creerContrat({
+      ...DTO_CRECHE_BASE,
+      etablissementId: ETAB_ID,
+    });
+
+    expect(vue.premiereInscription).toBe(false);
+    expect(outboxDeType(inserts, CONTRAT_CREE_TYPE)?.['payload']).toMatchObject(
+      { premiereInscription: false },
+    );
+  });
+});
+
 /**
  * Faux `db` transactionnel pour `modifierContrat`, instrumenté pour vérifier
  * l'**atomicité** : on espionne séparément l'`update` du contrat, le `delete`
@@ -861,6 +934,65 @@ describe('PlanificationService.modifierContrat (atomicité / invariant contrat)'
       expect.objectContaining({
         type: CONTRAT_MODIFIE_TYPE,
         payload: expect.objectContaining({ contratId: CONTRAT_ID }),
+      }),
+    );
+  });
+
+  it('édition ABCM cochée → update + ContratModifie avec premiereInscription: true', async () => {
+    const { db, updateSet, insertValues } = fakeDbModif({
+      contratPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.modifierContrat(CONTRAT_ID, {
+      mode: 'CANTINE',
+      foyerId: FOYER_ID,
+      enfant: 'Zoé',
+      enfantId: ENFANT_ID,
+      etablissementId: ETAB_ID,
+      valideDu: '2026-09-01',
+      valideAu: null,
+      semaineAbcm: SEMAINE_ABCM_COMPLETE,
+      premiereInscription: true,
+    });
+
+    expect(vue.premiereInscription).toBe(true);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ premiereInscription: true }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: CONTRAT_MODIFIE_TYPE,
+        payload: expect.objectContaining({ premiereInscription: true }),
+      }),
+    );
+  });
+
+  it('édition ABCM décochée (champ absent) → premiereInscription remis à false', async () => {
+    const { db, updateSet, insertValues } = fakeDbModif({
+      contratPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.modifierContrat(CONTRAT_ID, {
+      mode: 'CANTINE',
+      foyerId: FOYER_ID,
+      enfant: 'Zoé',
+      enfantId: ENFANT_ID,
+      etablissementId: ETAB_ID,
+      valideDu: '2026-09-01',
+      valideAu: null,
+      semaineAbcm: SEMAINE_ABCM_COMPLETE,
+    });
+
+    expect(vue.premiereInscription).toBe(false);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ premiereInscription: false }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: CONTRAT_MODIFIE_TYPE,
+        payload: expect.objectContaining({ premiereInscription: false }),
       }),
     );
   });
@@ -1065,6 +1197,30 @@ describe('PlanificationService.rattacherEnfant (back-fill enfant_id)', () => {
           enfant: 'Mia',
           enfantId: ENFANT_ID,
         }),
+      }),
+    );
+  });
+
+  it('reconduit premiereInscription dans le ContratModifie ré-émis (rattachement chirurgical)', async () => {
+    // Contrat ABCM première inscription : le geste chirurgical ne touche QUE le
+    // lien enfant — le champ doit voyager tel quel (sinon il « clignote »).
+    const { db, insertValues } = fakeDbRattacher({
+      contratLigne: {
+        ...ligneAbcm('CANTINE', {}),
+        enfantId: null,
+        premiereInscription: true,
+      },
+      etabPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.rattacherEnfant(CONTRAT_ID, ENFANT_ID);
+
+    expect(vue.premiereInscription).toBe(true);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: CONTRAT_MODIFIE_TYPE,
+        payload: expect.objectContaining({ premiereInscription: true }),
       }),
     );
   });
