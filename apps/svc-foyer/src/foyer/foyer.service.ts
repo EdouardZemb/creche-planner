@@ -44,6 +44,7 @@ import {
 import type {
   AjouterEnfantDto,
   AjouterParentDto,
+  CreerFoyerDto,
   EcrireFoyerDto,
   MajPreferencesDto,
   ModifierEnfantDto,
@@ -92,6 +93,13 @@ export interface ParentVue {
   readonly actif: boolean;
 }
 
+/** Dossier complet renvoyé par la création atomique : foyer + enfants + parents. */
+export interface DossierFoyerVue {
+  readonly foyer: FoyerVue;
+  readonly enfants: readonly EnfantVue[];
+  readonly parents: readonly ParentVue[];
+}
+
 /** Détection d'une violation d'unicité Postgres (`23505`) portée par `postgres`. */
 function estViolationUnicite(
   erreur: unknown,
@@ -107,27 +115,111 @@ function estViolationUnicite(
 export class FoyerService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Crée un foyer + émet `FoyerMisAJour` dans la même transaction (outbox). */
-  async creer(dto: EcrireFoyerDto): Promise<FoyerVue> {
+  /**
+   * Crée un foyer **et son dossier** (enfants + parents) dans **une seule
+   * transaction** : soit le dossier complet existe, soit rien (atomicité, doc 06
+   * §8.4). Chaque changement d'état émet son événement outbox dans la même
+   * transaction (`FoyerMisAJour`, N×`EnfantAjoute`, M×`ParentAjoute`). La règle
+   * « le créateur devient parent » (P5) vit **ici** (portée depuis la gateway) :
+   * `createurEmail`, fourni pour une identité non-admin, est rattaché en fin de
+   * liste s'il n'est pas déjà saisi. Un e-mail dupliqué (unicité) annule **tout**
+   * le dossier (409 via `traduireUnicite`).
+   */
+  async creer(dto: CreerFoyerDto): Promise<DossierFoyerVue> {
+    // Validation domaine AVANT toute écriture (foyer + chaque enfant).
     const domaine = this.versDomaine(dto);
-    const id = randomUUID();
-    await this.db.transaction(async (tx) => {
-      await tx.insert(foyer).values({
-        id,
-        ressourcesMensuellesCentimes: domaine.ressourcesMensuelles.centimes,
-        rfrCentimes: domaine.rfr.centimes,
-        nbEnfantsACharge: domaine.nbEnfantsACharge,
-        nbParts: domaine.nbParts,
+    const foyerId = randomUUID();
+    const enfantsPrepares = dto.enfants.map((saisie) => ({
+      id: enfantIdSchema.parse(randomUUID()),
+      prenom: Enfant.creer({
+        prenom: saisie.prenom,
+        dateNaissance: new Date(saisie.dateNaissance),
+      }).prenom,
+      dateNaissance: saisie.dateNaissance,
+    }));
+    // Le créateur non-admin devient parent (dédoublonnage insensible à la casse).
+    const parentsFinal = parentsAvecCreateur(dto.parents, dto.createurEmail);
+    try {
+      return await this.db.transaction(async (tx) => {
+        // 1) foyer + FoyerMisAJour.
+        await tx.insert(foyer).values({
+          id: foyerId,
+          ressourcesMensuellesCentimes: domaine.ressourcesMensuelles.centimes,
+          rfrCentimes: domaine.rfr.centimes,
+          nbEnfantsACharge: domaine.nbEnfantsACharge,
+          nbParts: domaine.nbParts,
+        });
+        await tx.insert(outbox).values(this.evenementFoyer(foyerId, domaine));
+        // 2) enfants + EnfantAjoute.
+        const enfants: EnfantVue[] = [];
+        for (const prepare of enfantsPrepares) {
+          const insere = await tx
+            .insert(enfant)
+            .values({
+              id: prepare.id,
+              foyerId,
+              prenom: prepare.prenom,
+              dateNaissance: prepare.dateNaissance,
+            })
+            .returning();
+          const ligne = insere[0];
+          if (!ligne) {
+            throw new Error(
+              `insertion enfant échouée pour le foyer ${foyerId}`,
+            );
+          }
+          const payload: EnfantAjoutePayload = {
+            foyerId: foyerIdSchema.parse(foyerId),
+            enfantId: prepare.id,
+            prenom: prepare.prenom,
+            dateNaissance: prepare.dateNaissance,
+          };
+          await tx.insert(outbox).values({
+            id: randomUUID(),
+            type: ENFANT_AJOUTE_TYPE,
+            payload,
+            traceId: traceIdCourant(),
+          });
+          enfants.push(this.versEnfantVue(ligne));
+        }
+        // 3) parents + ParentAjoute (état complet).
+        const parents: ParentVue[] = [];
+        for (const saisie of parentsFinal) {
+          const insere = await tx
+            .insert(parent)
+            .values({
+              id: parentIdSchema.parse(randomUUID()),
+              foyerId,
+              prenom: saisie.prenom ?? null,
+              nom: saisie.nom ?? null,
+              email: saisie.email.trim(),
+              principal: saisie.principal,
+              ordre: saisie.ordre,
+            })
+            .returning();
+          const ligne = insere[0];
+          if (!ligne) {
+            throw new Error(
+              `insertion parent échouée pour le foyer ${foyerId}`,
+            );
+          }
+          await tx
+            .insert(outbox)
+            .values(this.evenementParentEtat(PARENT_AJOUTE_TYPE, ligne));
+          parents.push(this.versParentVue(ligne));
+        }
+        const foyerVue = this.versVue({
+          id: foyerId,
+          ressourcesMensuellesCentimes: domaine.ressourcesMensuelles.centimes,
+          rfrCentimes: domaine.rfr.centimes,
+          nbEnfantsACharge: domaine.nbEnfantsACharge,
+          nbParts: domaine.nbParts,
+        });
+        return { foyer: foyerVue, enfants, parents };
       });
-      await tx.insert(outbox).values(this.evenementFoyer(id, domaine));
-    });
-    return this.versVue({
-      id,
-      ressourcesMensuellesCentimes: domaine.ressourcesMensuelles.centimes,
-      rfrCentimes: domaine.rfr.centimes,
-      nbEnfantsACharge: domaine.nbEnfantsACharge,
-      nbParts: domaine.nbParts,
-    });
+    } catch (erreur) {
+      this.traduireUnicite(erreur);
+    }
   }
 
   /** Met à jour les finances d'un foyer + ré-émet `FoyerMisAJour`. */
@@ -697,4 +789,35 @@ export class FoyerService {
     }
     return ligne;
   }
+}
+
+/**
+ * Garantit que l'**e-mail du créateur** figure parmi les parents (P5) : sans lui,
+ * un parent qui s'auto-crée un foyer ne pourrait pas l'éditer ensuite
+ * (`AppartenanceGuard` autorise via `foyersParEmail`). Idempotent : on ne duplique
+ * pas un e-mail déjà saisi (comparaison insensible à la casse). Le créateur est
+ * ajouté **en fin** de liste avec l'`ordre` suivant. La gateway ne fournit
+ * `createurEmail` que pour une identité **non-admin** (l'admin provisionne pour
+ * autrui, sans se rattacher ; une identité absente reste en mode hérité).
+ */
+function parentsAvecCreateur(
+  parents: readonly AjouterParentDto[],
+  createurEmail: string | undefined,
+): AjouterParentDto[] {
+  if (createurEmail === undefined) {
+    return [...parents];
+  }
+  const cible = createurEmail.trim().toLowerCase();
+  const dejaPresent = parents.some(
+    (p) => p.email.trim().toLowerCase() === cible,
+  );
+  if (dejaPresent) {
+    return [...parents];
+  }
+  const ordreSuivant =
+    parents.reduce((max, p) => Math.max(max, p.ordre), -1) + 1;
+  return [
+    ...parents,
+    { email: createurEmail, principal: false, ordre: ordreSuivant },
+  ];
 }
