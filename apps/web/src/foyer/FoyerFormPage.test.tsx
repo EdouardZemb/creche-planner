@@ -401,6 +401,44 @@ describe('FoyerFormPage — accès self-service (P5, besoin B)', () => {
     ).toHaveAttribute('href', '/foyers/foyer-9/modifier');
   });
 
+  it('rafraîchit la session (recharger) après une création réussie', async () => {
+    // 1er /moi : admin sans foyer (le formulaire s'affiche). 2e /moi (déclenché
+    // par `recharger()` après création) : le foyer créé est désormais rattaché.
+    mockedApi.moi
+      .mockResolvedValueOnce({
+        email: 'admin@test.fr',
+        admin: true,
+        foyers: [],
+      })
+      .mockResolvedValueOnce({
+        email: 'admin@test.fr',
+        admin: true,
+        foyers: ['foyer-123'],
+      });
+    mockedApi.creerFoyer.mockResolvedValueOnce(dossierFactice);
+    render(
+      <MemoryRouter>
+        <MoiProvider>
+          <FoyerFormPage />
+        </MoiProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Créer le foyer/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApi.creerFoyer).toHaveBeenCalledTimes(1);
+    });
+    // La session a été rechargée : /api/v1/moi est ré-interrogé après création
+    // (1 montage de MoiProvider + 1 recharger), pour que `moi.foyers` soit frais.
+    await waitFor(() => {
+      expect(mockedApi.moi).toHaveBeenCalledTimes(2);
+    });
+    expect(setFoyerId).toHaveBeenCalledWith('foyer-123');
+  });
+
   it('admin : le formulaire de création s’affiche', async () => {
     mockedApi.moi.mockResolvedValue({
       email: 'admin@test.fr',

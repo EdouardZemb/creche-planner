@@ -67,3 +67,45 @@ test.describe('stack réelle : création unique de foyer (P5)', () => {
     ).toHaveAttribute('href', `/foyers/${foyerId}/modifier`);
   });
 });
+
+// Session fraîche après création (lot 3) — après avoir créé sa famille via l'UI,
+// revenir à l'accueil en navigation SPA (clic sur la marque, sans reload) doit
+// router le nouveau parent vers son tableau de bord, jamais vers « Vous n'avez
+// pas encore de foyer ». C'est la régression de fraîcheur corrigée par
+// `MoiContext.recharger()`. E-mail unique : identité NON-admin distincte du
+// scénario ci-dessus (garde create-once inactive tant qu'il n'a pas de foyer).
+test.describe('stack réelle : session fraîche après création (lot 3)', () => {
+  const EMAIL_FRAICHEUR = `fraicheur-lot3-${Date.now()}@example.test`;
+  test.use({ extraHTTPHeaders: { 'x-dev-user-email': EMAIL_FRAICHEUR } });
+
+  test('création via l’UI puis retour accueil (SPA) → dashboard, pas « pas encore de foyer »', async ({
+    page,
+  }) => {
+    await page.goto('/foyers/new');
+
+    // Formulaire réordonné (lot 3) : enfants, parents, ressources. En build de
+    // prod les champs sont vides → on les remplit (parents laissés facultatifs).
+    const enfants = page.getByRole('group', { name: 'Enfants' });
+    await enfants.getByLabel(/Prénom/i).fill('EnfantFraicheur');
+    await enfants.getByLabel(/Date de naissance/i).fill('2024-01-15');
+    await page.getByLabel(/Ressources mensuelles/i).fill('4000');
+    await page.getByLabel(/Revenu fiscal/i).fill('40000');
+    await page.getByLabel(/enfants à charge/i).fill('1');
+    await page.getByLabel(/parts fiscales/i).fill('2');
+
+    await page.getByRole('button', { name: 'Créer le foyer' }).click();
+
+    // La création aboutit sur la page Contrats du foyer neuf.
+    await expect(page).toHaveURL(/\/foyers\/[^/]+\/contrats/);
+
+    // Retour à l'accueil en navigation SPA (marque), sans rechargement complet.
+    await page.getByRole('link', { name: 'Crèche Planner' }).click();
+
+    // La session est fraîche : l'accueil route vers le dashboard du foyer…
+    await expect(page).toHaveURL(/\/foyers\/[^/]+\/dashboard/);
+    // …et jamais vers l'écran « pas encore de foyer ».
+    await expect(page.getByText(/Vous n.avez pas encore de foyer/)).toHaveCount(
+      0,
+    );
+  });
+});

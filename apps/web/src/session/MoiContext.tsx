@@ -23,6 +23,13 @@ export interface EtatMoi {
   readonly foyers: readonly string[];
   /** Vrai tant que `/api/v1/moi` n'a pas répondu (décision de routage différée). */
   readonly loading: boolean;
+  /**
+   * Invalide et relance `GET /api/v1/moi` (le `reload` de `useAsync`). À appeler
+   * après une mutation qui change l'ensemble des foyers rattachés — typiquement
+   * la création d'un foyer — pour que le routage (`Accueil`, en-tête) reflète
+   * immédiatement le nouvel état sans rechargement complet de la page.
+   */
+  readonly recharger: () => void;
 }
 
 /**
@@ -36,6 +43,10 @@ const DEFAUT: EtatMoi = {
   admin: true,
   foyers: [],
   loading: false,
+  // Hors `MoiProvider` (tests isolés), il n'y a rien à recharger : no-op.
+  recharger: () => {
+    /* no-op : aucune requête /moi à invalider hors du provider */
+  },
 };
 
 const MoiContext = createContext<EtatMoi>(DEFAUT);
@@ -44,7 +55,7 @@ export function MoiProvider({ children }: { children: ReactNode }) {
   // Une seule requête /moi pour toute l'app (montée à la racine). En cas d'échec
   // (gateway ancienne, réseau), `data` reste null → on retombe sur le défaut
   // permissif/hérité plutôt que de bloquer l'app.
-  const { data, loading } = useAsync<MoiVue>(
+  const { data, loading, reload } = useAsync<MoiVue>(
     (signal) => api.moi({ signal }),
     [],
   );
@@ -55,8 +66,9 @@ export function MoiProvider({ children }: { children: ReactNode }) {
           admin: data.admin,
           foyers: data.foyers,
           loading,
+          recharger: reload,
         }
-      : { ...DEFAUT, loading };
+      : { ...DEFAUT, loading, recharger: reload };
   return <MoiContext.Provider value={valeur}>{children}</MoiContext.Provider>;
 }
 
