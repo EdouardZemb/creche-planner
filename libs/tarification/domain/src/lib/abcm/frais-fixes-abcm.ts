@@ -23,7 +23,8 @@ export interface SaisieMoisFraisFixes {
 /**
  * Stratégie **frais fixes annuels ABCM** (doc 02 §4.4). La cotisation est
  * rattachée en totalité à septembre ; les frais de 1ère inscription ne
- * s'ajoutent que la 1ère année (septembre 2026). Tout autre mois → 0 €.
+ * s'ajoutent que la 1ère année (déterminée par les contrats du foyer, cf.
+ * `premiere-annee-abcm.ts`). Tout autre mois → 0 €.
  */
 export class FraisFixesAbcm implements PolitiqueTarifaire<SaisieMoisFraisFixes> {
   readonly mode = 'FRAIS_FIXES_ABCM' as const;

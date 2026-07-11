@@ -9,6 +9,7 @@ import {
   CoutMois,
   FraisFixesAbcm,
   consoliderCoutMoisFoyer,
+  estPremiereAnneeAbcm,
 } from '@creche-planner/tarification-domain';
 import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
@@ -160,10 +161,19 @@ export class CoutService {
     }
 
     // Frais fixes annuels ABCM, rattachés à septembre (doc 02 §4.4, CT-13/CT-20).
+    // La « première année » découle des contrats du foyer (champ
+    // `premiereInscription` + année scolaire de `valideDu`) — règle du domaine.
     if (auMoinsUnAbcm && this.estMoisFraisFixes(mois)) {
       const coutFrais = new FraisFixesAbcm().calculerCoutMois({
         mois: MOIS_FRAIS_FIXES,
-        premiereAnnee: this.estPremiereAnneeAbcm(mois),
+        premiereAnnee: estPremiereAnneeAbcm(
+          mois,
+          contrats.map((c) => ({
+            modeAbcm: MODES_ABCM.has(c.mode),
+            premiereInscription: c.premiereInscription,
+            valideDu: c.valideDu,
+          })),
+        ),
       });
       if (!coutFrais.estVide()) {
         couts.push(coutFrais);
@@ -416,14 +426,5 @@ export class CoutService {
 
   private estMoisFraisFixes(mois: string): boolean {
     return Number(mois.slice(5, 7)) === MOIS_FRAIS_FIXES;
-  }
-
-  /**
-   * 1ʳᵉ année ABCM = septembre 2026 (entrée à l'école de Zoé, doc 02 §8). Les
-   * frais de 1ère inscription ne s'ajoutent qu'alors ; les années suivantes ne
-   * portent que la cotisation.
-   */
-  private estPremiereAnneeAbcm(mois: string): boolean {
-    return mois.startsWith('2026');
   }
 }

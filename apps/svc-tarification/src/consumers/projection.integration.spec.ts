@@ -7,6 +7,7 @@ import {
 import { GRILLE_PUBLIEE_TYPE } from '@creche-planner/contracts-referentiel';
 import {
   CONTRAT_CREE_TYPE,
+  CONTRAT_MODIFIE_TYPE,
   PLANNING_MODIFIE_TYPE,
 } from '@creche-planner/contracts-planification';
 import { ProjectionService } from './projection.service.js';
@@ -174,7 +175,10 @@ function evenementFoyer(
   };
 }
 
-function evenementContratCree(id: string): unknown {
+function evenementContratCree(
+  id: string,
+  surcharge: Record<string, unknown> = {},
+): unknown {
   return {
     id,
     type: CONTRAT_CREE_TYPE,
@@ -189,7 +193,20 @@ function evenementContratCree(id: string): unknown {
       mode: 'CRECHE_PSU',
       valideDu: '2026-01-01',
       valideAu: null,
+      ...surcharge,
     },
+  };
+}
+
+function evenementContratModifie(
+  id: string,
+  surcharge: Record<string, unknown> = {},
+): unknown {
+  return {
+    ...(evenementContratCree(id, surcharge) as Record<string, unknown>),
+    type: CONTRAT_MODIFIE_TYPE,
+    occurredAt: '2026-10-01T00:00:00.000Z',
+    traceId: 'trace-5',
   };
 }
 
@@ -444,5 +461,98 @@ describe('Chaîne planification : ContratCree → PlanningModifie → prestation
     expect(
       lignesDe(processedEvent).filter((l) => l['id'] === ID_EVT_PLANNING),
     ).toHaveLength(0);
+  });
+});
+
+describe('Projection « première inscription » (Coûts lot 4b)', () => {
+  const ID_EVT_CONTRAT = '44444444-4444-4444-8444-444444444444';
+  const ID_EVT_MODIF = '88888888-8888-4888-8888-888888888888';
+
+  it('ContratCree avec premiereInscription: true + valideDu alimente les colonnes', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await expect(
+      projection.traiter(
+        'PLANIFICATION',
+        evenementContratCree(ID_EVT_CONTRAT, {
+          mode: 'CANTINE',
+          valideDu: '2026-09-01',
+          premiereInscription: true,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(lignesDe(contrat)[0]).toMatchObject({
+      id: CONTRAT_ID,
+      mode: 'CANTINE',
+      premiereInscription: true,
+      valideDu: '2026-09-01',
+    });
+  });
+
+  it('événement SANS le champ (antérieur au lot 4a) : projette false, valideDu conservé', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      evenementContratCree(ID_EVT_CONTRAT), // pas de premiereInscription
+    );
+
+    expect(lignesDe(contrat)[0]).toMatchObject({
+      id: CONTRAT_ID,
+      premiereInscription: false,
+      valideDu: '2026-01-01', // toujours présent dans le payload v1
+    });
+  });
+
+  it('ContratModifie met à jour premiereInscription/valideDu (upsert `set`)', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      evenementContratCree(ID_EVT_CONTRAT),
+    );
+    await expect(
+      projection.traiter(
+        'PLANIFICATION',
+        evenementContratModifie(ID_EVT_MODIF, {
+          mode: 'CANTINE',
+          valideDu: '2026-09-01',
+          premiereInscription: true,
+        }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(lignesDe(contrat)).toHaveLength(1);
+    expect(lignesDe(contrat)[0]).toMatchObject({
+      id: CONTRAT_ID,
+      premiereInscription: true,
+      valideDu: '2026-09-01',
+    });
+  });
+
+  it('rejeu idempotent : la même enveloppe ré-livrée ne rebascule pas le champ', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      evenementContratCree(ID_EVT_CONTRAT, { premiereInscription: true }),
+    );
+    // Rejeu de la MÊME enveloppe avec un payload altéré : si la projection
+    // était ré-appliquée, premiereInscription redeviendrait false.
+    await expect(
+      projection.traiter(
+        'PLANIFICATION',
+        evenementContratCree(ID_EVT_CONTRAT, { premiereInscription: false }),
+      ),
+    ).resolves.toBe(true);
+
+    expect(lignesDe(contrat)).toHaveLength(1);
+    expect(lignesDe(contrat)[0]).toMatchObject({ premiereInscription: true });
+    expect(lignesDe(processedEvent)).toHaveLength(1);
   });
 });

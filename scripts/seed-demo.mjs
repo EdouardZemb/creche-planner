@@ -113,11 +113,15 @@ const CONTRATS_DEFAUT = {
 
   // --- ABCM Zoé, maternelle tranche 3 (année scolaire 2026/2027) ------------
   // Jours de présence indicatifs : cantine en semaine + périscolaire soir.
+  // `premiereInscription: true` (lot 4b) : 1ʳᵉ année d'inscription à
+  // l'association → septembre 2026 porte les frais fixes 436 € (cotisation
+  // 286 € + 1ʳᵉ inscription 150 €, doc 14 §1) et non la cotisation seule.
   'abcm-cantine-enfant-1': {
     mode: 'CANTINE',
     enfant: 'Zoé',
     valideDu: '2026-09-01',
     valideAu: null,
+    premiereInscription: true,
     semaineAbcm: {
       LUNDI: { cantine: true },
       JEUDI: { cantine: true },
@@ -128,6 +132,7 @@ const CONTRATS_DEFAUT = {
     enfant: 'Zoé',
     valideDu: '2026-09-01',
     valideAu: null,
+    premiereInscription: true,
     semaineAbcm: {
       VENDREDI: { periSoir: true },
     },
