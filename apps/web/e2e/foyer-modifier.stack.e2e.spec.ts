@@ -14,6 +14,32 @@ import { lireEtatSeed, urlPlanning } from './support/stack';
 
 const urlModifier = (foyerId: string): string => `/foyers/${foyerId}/modifier`;
 
+/**
+ * Crée un foyer **isolé** avec un unique parent (via l'API BFF, mode hérité en
+ * stack e2e), et renvoie son id. Sert les scénarios « retrait de parent » : un
+ * foyer dédié évite de dépendre du nombre de parents du foyer seedé et de heurter
+ * la garde « dernier parent actif » (le retrait exige ≥ 2 parents, sauf le test
+ * qui la vérifie justement).
+ */
+async function creerFoyerAvecParent(
+  request: APIRequestContext,
+  email: string,
+): Promise<string> {
+  const reponse = await request.post('/api/v1/foyers', {
+    data: {
+      ressourcesMensuelles: 3000,
+      rfr: 30000,
+      nbEnfantsACharge: 1,
+      nbParts: 2,
+      enfants: [],
+      parents: [{ email }],
+    },
+  });
+  expect(reponse.ok()).toBeTruthy();
+  const dossier = (await reponse.json()) as { foyer: { id: string } };
+  return dossier.foyer.id;
+}
+
 /** Scalaires d'un foyer (euros), tels qu'attendus par PUT /api/v1/foyers/:id. */
 interface ScalairesFoyer {
   ressourcesMensuelles: number;
@@ -99,15 +125,19 @@ test.describe('stack réelle : le parent modifie les ressources de son foyer', (
 
 // Gestion des parents (P3) : depuis l'écran d'édition, le parent ajoute un
 // nouveau parent puis le retire — écritures unitaires contre la pile réelle
-// (POST puis DELETE /api/v1/foyers/:id/parents[...]).
+// (POST puis DELETE /api/v1/foyers/:id/parents[...]). Le retrait passe désormais
+// par une modale de confirmation (geste destructif, Lot 1).
 //
-// ⚠️ L'index d'unicité `lower(email)` est GLOBAL (y compris les soft-deletes) :
-// on utilise un e-mail unique par exécution pour ne pas heurter une exécution
-// précédente, et on retire le parent en fin de test pour ne rien laisser d'actif.
-test('stack réelle : le parent ajoute puis retire un parent', async ({
+// Foyer DÉDIÉ avec un parent initial : le retrait du parent ajouté laisse ≥ 1
+// parent actif (garde « dernier parent » non déclenchée) et isole ce test.
+test('stack réelle : le parent ajoute puis retire un parent (via modale)', async ({
   page,
+  request,
 }) => {
-  const { foyerId } = lireEtatSeed();
+  const foyerId = await creerFoyerAvecParent(
+    request,
+    `parent-init-${Date.now()}@example.test`,
+  );
   const email = `parent-e2e-${Date.now()}@example.test`;
 
   await page.goto(urlModifier(foyerId));
@@ -115,8 +145,8 @@ test('stack réelle : le parent ajoute puis retire un parent', async ({
     page.getByRole('heading', { name: 'Modifier le foyer' }),
   ).toBeVisible();
 
-  // Le bloc « Ajouter un parent » porte ses propres champs (l'écran peut déjà
-  // afficher des parents seedés) → on s'y limite via son conteneur.
+  // Le bloc « Ajouter un parent » porte ses propres champs (l'écran affiche déjà
+  // le parent initial) → on s'y limite via son conteneur.
   const blocAjout = page.locator('.parent-ligne', {
     hasText: 'Ajouter un parent',
   });
@@ -125,7 +155,7 @@ test('stack réelle : le parent ajoute puis retire un parent', async ({
 
   // Le parent ajouté apparaît comme une ligne éditable : son bouton « Retirer »
   // porte sa désignation par défaut (sans prénom/nom = l'e-mail) dans son nom
-  // accessible, ce qui l'identifie sans ambiguïté parmi d'éventuels parents seedés.
+  // accessible, ce qui l'identifie sans ambiguïté.
   const boutonRetirer = page.getByRole('button', {
     name: `Retirer le parent ${email}`,
   });
@@ -133,8 +163,43 @@ test('stack réelle : le parent ajoute puis retire un parent', async ({
 
   await boutonRetirer.click();
 
+  // Confirmation obligatoire : le clic « Retirer » DANS la modale déclenche le retrait.
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Retirer', exact: true })
+    .click();
+
   // Retiré : la ligne (et son bouton) disparaît de l'écran.
   await expect(boutonRetirer).toHaveCount(0);
+});
+
+// Garde « dernier parent actif » (Lot 1) : sur un foyer à un seul parent, tenter
+// de le retirer est REFUSÉ par svc-foyer (409 DERNIER_PARENT_ACTIF) → message
+// explicite et la ligne demeure. La garde ne modifie rien → sûr sur la pile.
+test('stack réelle : retirer le dernier parent est bloqué avec un message explicite', async ({
+  page,
+  request,
+}) => {
+  const email = `dernier-parent-${Date.now()}@example.test`;
+  const foyerId = await creerFoyerAvecParent(request, email);
+
+  await page.goto(urlModifier(foyerId));
+  const boutonRetirer = page.getByRole('button', {
+    name: `Retirer le parent ${email}`,
+  });
+  await expect(boutonRetirer).toBeVisible();
+  await boutonRetirer.click();
+
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Retirer', exact: true })
+    .click();
+
+  // Refus explicite (message Lot 1) et la ligne reste affichée.
+  await expect(
+    page.getByText(/Impossible de retirer le dernier parent/),
+  ).toBeVisible();
+  await expect(boutonRetirer).toBeVisible();
 });
 
 // Gestion des enfants (P4) : depuis l'écran d'édition, le parent ajoute un
@@ -189,8 +254,13 @@ test('stack réelle : le parent ajoute, édite puis supprime un enfant', async (
   });
   await ligneModifiee.getByRole('button', { name: 'Enregistrer' }).click();
 
-  // Suppression (hard delete) : la ligne disparaît de l'écran.
+  // Suppression (hard delete) : le clic ouvre la modale de confirmation (Lot 1),
+  // puis le clic « Supprimer » DANS la modale efface la ligne.
   await boutonSupprimerModifie.click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Supprimer', exact: true })
+    .click();
   await expect(boutonSupprimerModifie).toHaveCount(0);
 });
 
