@@ -184,6 +184,11 @@ export function FoyerFormPage() {
         parents: parentsValides,
       });
       setFoyerId(dossier.foyer.id);
+      // Fraîcheur de session (lot 3) : invalide et relance `/api/v1/moi` pour
+      // que `moi.foyers` inclue immédiatement le foyer créé. Sans cela, revenir
+      // à l'accueil réafficherait « Vous n'avez pas encore de foyer ».
+      // `recharger` est synchrone (il relance en arrière-plan) : pas d'`await`.
+      moi.recharger();
       // react-router v7 : `navigate` renvoie une Promise ; navigation
       // fire-and-forget (on n'attend pas la transition), d'où le `void`.
       void navigate(`/foyers/${dossier.foyer.id}/contrats`);
@@ -237,6 +242,13 @@ export function FoyerFormPage() {
     <div className="carte" style={{ maxWidth: 600 }}>
       <h1 style={{ marginTop: 0 }}>Nouveau foyer</h1>
 
+      {/* Onboarding guidé (lot 3) : dire d'entrée ce qu'on construit, avant les
+          champs — le formaire raconte enfants → parents → ressources. */}
+      <p className="muted" style={{ marginTop: 0 }}>
+        Votre famille regroupe vos enfants, les parents qui suivent leur garde,
+        et vos ressources pour estimer les tarifs.
+      </p>
+
       {erreurGlobale && (
         <p className="debit" role="alert" tabIndex={-1} ref={refErreurGlobale}>
           {erreurGlobale}
@@ -244,14 +256,7 @@ export function FoyerFormPage() {
       )}
 
       <form onSubmit={(ev) => void soumettre(ev)}>
-        <FoyerScalairesForm
-          valeurs={scalaires}
-          onChange={setScalaire}
-          erreurPour={erreurPour}
-          idErreur={idErreur}
-        />
-
-        <fieldset style={{ border: 'none', padding: 0, margin: '1rem 0 0' }}>
+        <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
           <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
             Enfants
           </legend>
@@ -337,8 +342,8 @@ export function FoyerFormPage() {
             Parents
           </legend>
           <p className="muted" style={{ marginTop: 0 }}>
-            Destinataires des récapitulatifs hebdomadaires. Au moins un parent
-            est recommandé.
+            Chaque parent recevra les récapitulatifs hebdomadaires et pourra
+            accéder à l&apos;application avec son adresse e-mail.
           </p>
 
           {parents.map((parent) => {
@@ -449,6 +454,17 @@ export function FoyerFormPage() {
             + Ajouter un parent
           </button>
         </fieldset>
+
+        {/* Ressources en dernier (lot 3) : après les enfants et les parents,
+            avec l'explication (barème CAF) portée par le composant partagé. */}
+        <div style={{ margin: '1rem 0 0' }}>
+          <FoyerScalairesForm
+            valeurs={scalaires}
+            onChange={setScalaire}
+            erreurPour={erreurPour}
+            idErreur={idErreur}
+          />
+        </div>
 
         <div style={{ marginTop: '1.5rem' }}>
           <button type="submit" className="btn" disabled={chargement}>

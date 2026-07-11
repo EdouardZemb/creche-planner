@@ -1,14 +1,26 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 
 export interface ActionEtatVide {
   /** Libellé du bouton/lien. */
   libelle: string;
-  /** Si fourni, l'action est rendue comme un lien (`<a href>`). */
+  /**
+   * Si fourni, l'action est rendue comme un lien. Une `href` **interne**
+   * (commençant par `/`) est rendue en navigation SPA (`<Link to>`), sauf si
+   * `rechargement` est vrai ; une `href` externe reste un `<a href>` classique.
+   */
   href?: string;
   /** Si fourni, l'action est rendue comme un bouton. */
   onClick?: () => void;
   /** Mise en avant visuelle (bouton primaire). Défaut : primaire pour la 1re. */
   primaire?: boolean;
+  /**
+   * Force un `<a href>` (rechargement complet) même pour une `href` interne. À
+   * réserver aux sorties qui exigent un aller-retour réseau réel plutôt qu'une
+   * transition SPA (p. ex. reconnexion Cloudflare Access après session expirée),
+   * pour lesquelles une navigation client laisserait une session morte.
+   */
+  rechargement?: boolean;
 }
 
 export interface EtatVideProps {
@@ -38,6 +50,22 @@ export function EtatVide({ titre, description, actions = [] }: EtatVideProps) {
           {actions.map((action, i) => {
             const primaire = action.primaire ?? i === 0;
             if (action.href != null) {
+              // Interne (`/…`) sans rechargement forcé → transition SPA (pas de
+              // rechargement complet de l'app). Externe ou `rechargement` →
+              // `<a href>` classique (aller-retour réseau).
+              const spa =
+                action.href.startsWith('/') && action.rechargement !== true;
+              if (spa) {
+                return (
+                  <Link
+                    key={action.libelle}
+                    to={action.href}
+                    className={classeAction(primaire)}
+                  >
+                    {action.libelle}
+                  </Link>
+                );
+              }
               return (
                 <a
                   key={action.libelle}

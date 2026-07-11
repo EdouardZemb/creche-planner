@@ -16,6 +16,9 @@ vi.mock('../api/client', () => ({
     lireSemaineBesoins: vi.fn(),
     lireCoutMois: vi.fn(),
     listerAValider: vi.fn(),
+    // Lot 3 onboarding : la carte « aucune garde » interroge les contrats du
+    // foyer (via `useContrats`) pour distinguer un foyer neuf d'un foyer actif.
+    listerContrats: vi.fn(),
   },
   // `messageErreur` (utils/erreurs) teste `e instanceof ApiError` : le mock doit
   // exposer la classe, sinon le chemin d'erreur lève « No ApiError export ».
@@ -32,8 +35,17 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api } from '../api/client';
+import { viderCacheAsync } from '../hooks/useAsync';
+import type { ContratLocal } from '../types/bff';
 
 const FOYER_ID = 'foyer-1';
+
+// Contrat factice minimal : seule sa PRÉSENCE compte (la carte « aucune garde »
+// ne lit que `contrats.length`).
+const contratFactice = {
+  id: 'c1',
+  foyerId: FOYER_ID,
+} as unknown as ContratLocal;
 
 // Semaine-type couvrant les 7 jours : quel que soit le jour réel du run, le
 // contrat est « gardé » aujourd'hui (le test ne dépend pas du calendrier).
@@ -126,6 +138,9 @@ function renderPage(foyerId = FOYER_ID) {
 describe('DashboardJourPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // `useContrats` met en cache par foyer (clé module-level) : on le vide entre
+    // les tests pour que chaque cas parte d'un état de contrats propre.
+    viderCacheAsync();
     // Le bandeau « coût du mois » (P3c) est secondaire : par défaut on sert un
     // coût valide pour qu'il ne pollue pas les autres cas (il s'efface seul si
     // l'appel échoue / charge).
@@ -133,6 +148,10 @@ describe('DashboardJourPage', () => {
     // Rien à valider par défaut : la carte « semaine à valider » reste muette
     // dans les cas qui ne la concernent pas.
     vi.mocked(api.listerAValider).mockResolvedValue([]);
+    // Par défaut le foyer a AU MOINS un contrat : la carte « aucune garde »
+    // garde son comportement historique (« Prochaine garde » + « Voir le
+    // planning »). Les cas « foyer neuf » redéfinissent une liste vide.
+    vi.mocked(api.listerContrats).mockResolvedValue([contratFactice]);
   });
 
   it('affiche une carte squelette au chargement, annoncée aux lecteurs d’écran (lot 3 UX)', () => {
@@ -295,6 +314,43 @@ describe('DashboardJourPage', () => {
     expect(
       screen.getByRole('link', { name: /Voir le planning/i }),
     ).toHaveAttribute('href', `/foyers/${FOYER_ID}/planning`);
+  });
+
+  it('foyer neuf (0 contrat) : oriente vers « Créer un contrat » (lot 3 onboarding)', async () => {
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineVide);
+    // Aucun contrat : le foyer vient d'être créé, rien à planifier encore.
+    vi.mocked(api.listerContrats).mockResolvedValue([]);
+
+    renderPage();
+
+    // Le premier geste utile est proposé en primaire, vers la page Contrats…
+    const cta = await screen.findByRole('link', { name: 'Créer un contrat' });
+    expect(cta).toHaveAttribute('href', `/foyers/${FOYER_ID}/contrats`);
+    expect(
+      screen.getByText(/Pour démarrer, créez le contrat de garde/i),
+    ).toBeInTheDocument();
+    // …et les sorties « planning » (culs-de-sac pour un foyer neuf) disparaissent.
+    expect(
+      screen.queryByRole('link', { name: /Voir le planning/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Prochaine garde/)).not.toBeInTheDocument();
+  });
+
+  it('foyer actif (≥ 1 contrat) : garde « Voir le planning », pas de CTA contrat', async () => {
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineVide);
+    vi.mocked(api.listerContrats).mockResolvedValue([contratFactice]);
+
+    renderPage();
+
+    expect(
+      await screen.findByText(/Aucune garde prévue aujourd/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /Voir le planning/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Créer un contrat' }),
+    ).not.toBeInTheDocument();
   });
 
   it('erreur : libellé générique en mots de parent + bouton « Réessayer » (lot 3 UX)', async () => {

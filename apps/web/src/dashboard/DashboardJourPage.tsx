@@ -24,6 +24,7 @@ import { centimesEnEuros } from '../utils/money';
 import { useAsync } from '../hooks/useAsync';
 import { useTitrePage } from '../hooks/useTitrePage';
 import { useNotifications } from '../notifications/useNotifications';
+import { useContrats } from '../foyer/useContrats';
 import { api } from '../api/client';
 import { lignesDuJour, type EtatJour, type LigneJour } from './jourFoyer';
 
@@ -370,6 +371,49 @@ function ProchaineGarde({
 }
 
 /**
+ * Contenu de la carte « aucune garde aujourd'hui » orienté selon la maturité du
+ * foyer (lot 3 onboarding). Un foyer NEUF (0 contrat) n'a rien à planifier : au
+ * lieu de « Prochaine garde » / « Voir le planning » (culs-de-sac pour lui), on
+ * pointe vers le premier geste utile — créer un contrat, qui alimente planning
+ * et coûts. Tant que la liste des contrats charge ou échoue, on conserve le
+ * comportement existant (ne pas masquer les sorties sur une simple panne de
+ * lecture). `useContrats` est mis en cache par foyer : coût quasi nul.
+ */
+function CarteJourneeVide({
+  foyerId,
+  aujourdhui,
+  vue,
+}: {
+  foyerId: string;
+  aujourdhui: string;
+  vue: SemaineBesoins;
+}) {
+  const { contrats, chargement } = useContrats(foyerId);
+  if (!chargement && contrats.length === 0) {
+    return (
+      <>
+        <p className="etat-vide-texte">
+          Pour démarrer, créez le contrat de garde de votre enfant : c&apos;est
+          lui qui alimente le planning et les coûts.
+        </p>
+        <Link to={`/foyers/${foyerId}/contrats`} className="btn">
+          Créer un contrat
+        </Link>
+      </>
+    );
+  }
+  return (
+    <>
+      {/* Lot 4 UX : dire quand ça reprend plutôt qu'un cul-de-sac. */}
+      <ProchaineGarde foyerId={foyerId} aujourdhui={aujourdhui} vue={vue} />
+      <Link to={`/foyers/${foyerId}/planning`} className="btn secondaire">
+        Voir le planning
+      </Link>
+    </>
+  );
+}
+
+/**
  * Tableau de bord « ma journée » : les gardes prévues **aujourd'hui** (fuseau
  * Europe/Paris) pour le foyer, dérivées de la vue hebdomadaire consolidée
  * (`lireSemaineBesoins`) par la logique pure `lignesDuJour`. Per-foyer (route
@@ -457,11 +501,9 @@ export function DashboardJourPage() {
       {data && lignes.length === 0 && (
         <div className="carte muted">
           <p className="etat-vide-texte">Aucune garde prévue aujourd’hui.</p>
-          {/* Lot 4 UX : dire quand ça reprend plutôt qu'un cul-de-sac. */}
-          <ProchaineGarde foyerId={id} aujourdhui={aujourdhui} vue={data} />
-          <Link to={`/foyers/${id}/planning`} className="btn secondaire">
-            Voir le planning
-          </Link>
+          {/* Lot 3 onboarding : oriente vers « Créer un contrat » pour un foyer
+              neuf (0 contrat), sinon garde « Prochaine garde » + planning. */}
+          <CarteJourneeVide foyerId={id} aujourdhui={aujourdhui} vue={data} />
         </div>
       )}
 

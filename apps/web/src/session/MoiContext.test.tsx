@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 vi.mock('../api/client', () => ({
@@ -79,5 +80,48 @@ describe('MoiContext', () => {
       'email=null admin=true foyers=',
     );
     expect(mockedApi.moi).not.toHaveBeenCalled();
+  });
+
+  it('recharger() relance /api/v1/moi et reflète le nouvel ensemble de foyers', async () => {
+    const user = userEvent.setup();
+    // 1er appel : aucun foyer (état avant création). 2e appel (après recharger) :
+    // un foyer rattaché — comme après la création d'un foyer.
+    mockedApi.moi
+      .mockResolvedValueOnce({ email: 'p@test.fr', admin: false, foyers: [] })
+      .mockResolvedValueOnce({
+        email: 'p@test.fr',
+        admin: false,
+        foyers: ['f1'],
+      });
+
+    function SondeAvecRecharger() {
+      const moi = useMoi();
+      return (
+        <>
+          <div data-testid="moi">foyers={moi.foyers.join(',')}</div>
+          <button type="button" onClick={moi.recharger}>
+            recharger
+          </button>
+        </>
+      );
+    }
+
+    render(
+      <MoiProvider>
+        <SondeAvecRecharger />
+      </MoiProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('moi')).toHaveTextContent('foyers=');
+    });
+    expect(mockedApi.moi).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: 'recharger' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('moi')).toHaveTextContent('foyers=f1');
+    });
+    expect(mockedApi.moi).toHaveBeenCalledTimes(2);
   });
 });
