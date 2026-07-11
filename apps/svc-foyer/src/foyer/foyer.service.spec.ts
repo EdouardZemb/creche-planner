@@ -654,6 +654,11 @@ function fakeDbParentTx(
     foyerPresent?: boolean;
     lignesUpdate?: ParentRow[];
     erreurInsert?: { code: string; constraint_name?: string };
+    /**
+     * Rejette l'erreur d'insert ENVELOPPÉE (forme réelle drizzle-orm ≥ 0.45 :
+     * `DrizzleQueryError` avec la `PostgresError` en `cause`, plus au 1er niveau).
+     */
+    envelopperErreurInsert?: boolean;
     parentsActifs?: { id: string }[];
     /** Ligne(s) inactive(s) même e-mail renvoyée(s) par le 2ᵉ select d'`ajouterParent`. */
     parentInactif?: ParentRow[];
@@ -667,10 +672,16 @@ function fakeDbParentTx(
 } {
   const insertValues = vi.fn((valeurs: Record<string, unknown>) => {
     const estParent = typeof valeurs['email'] === 'string';
-    const erreur =
+    const erreurPg =
       options.erreurInsert && estParent
         ? Object.assign(new Error('violation unicité'), options.erreurInsert)
         : undefined;
+    const erreur =
+      erreurPg && options.envelopperErreurInsert
+        ? Object.assign(new Error('Failed query: insert into "parent" …'), {
+            cause: erreurPg,
+          })
+        : erreurPg;
     return Object.assign(Promise.resolve(), {
       returning: () =>
         erreur
@@ -799,6 +810,61 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
       statusCode: 409,
       code: 'EMAIL_DEJA_UTILISE',
       message: 'adresse e-mail déjà utilisée dans ce foyer',
+    });
+  });
+
+  it('traduit la violation ENVELOPPÉE par drizzle (PostgresError en cause) en 409 EMAIL_DEJA_UTILISE', async () => {
+    // Forme réelle en base : drizzle-orm ≥ 0.45 enveloppe la PostgresError dans un
+    // `DrizzleQueryError` — `code`/`constraint_name` sont dans `cause`, plus au
+    // 1er niveau. Sans le déballage, l'erreur retraversait en 500 générique
+    // (échec provider pact observé en CI).
+    const { db } = fakeDbParentTx({
+      foyerPresent: true,
+      erreurInsert: {
+        code: '23505',
+        constraint_name: 'parent_email_par_foyer_actif_idx',
+      },
+      envelopperErreurInsert: true,
+    });
+    const service = new FoyerService(db);
+
+    const err = await service
+      .ajouterParent(FOYER_ID, {
+        email: 'parent@example.com',
+        principal: false,
+        ordre: 0,
+      })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      statusCode: 409,
+      code: 'EMAIL_DEJA_UTILISE',
+      message: 'adresse e-mail déjà utilisée dans ce foyer',
+    });
+  });
+
+  it('traduit la violation ENVELOPPÉE du principal unique en 409 PARENT_PRINCIPAL_EXISTANT', async () => {
+    const { db } = fakeDbParentTx({
+      foyerPresent: true,
+      erreurInsert: {
+        code: '23505',
+        constraint_name: 'parent_principal_unique_idx',
+      },
+      envelopperErreurInsert: true,
+    });
+    const service = new FoyerService(db);
+
+    const err = await service
+      .ajouterParent(FOYER_ID, {
+        email: 'parent@example.com',
+        principal: true,
+        ordre: 0,
+      })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      statusCode: 409,
+      code: 'PARENT_PRINCIPAL_EXISTANT',
     });
   });
 

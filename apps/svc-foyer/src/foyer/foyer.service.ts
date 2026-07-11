@@ -100,15 +100,28 @@ export interface DossierFoyerVue {
   readonly parents: readonly ParentVue[];
 }
 
-/** Détection d'une violation d'unicité Postgres (`23505`) portée par `postgres`. */
-function estViolationUnicite(
+/**
+ * Extrait une violation d'unicité Postgres (`23505`) de l'erreur, en remontant la
+ * chaîne des `cause` : drizzle-orm (≥ 0.45) enveloppe toute erreur de requête dans
+ * un `DrizzleQueryError` dont la `PostgresError` d'origine (portant `code` et
+ * `constraint_name`) est la **cause** — elle n'est plus au premier niveau.
+ * Renvoie l'erreur Postgres trouvée, ou `undefined` si ce n'en est pas une.
+ */
+function violationUnicite(
   erreur: unknown,
-): erreur is { code: string; constraint_name?: string } {
-  return (
-    typeof erreur === 'object' &&
-    erreur !== null &&
-    (erreur as { code?: unknown }).code === '23505'
-  );
+): { code: string; constraint_name?: string } | undefined {
+  let courant: unknown = erreur;
+  for (
+    let profondeur = 0;
+    profondeur < 4 && typeof courant === 'object' && courant !== null;
+    profondeur += 1
+  ) {
+    if ((courant as { code?: unknown }).code === '23505') {
+      return courant as { code: string; constraint_name?: string };
+    }
+    courant = (courant as { cause?: unknown }).cause;
+  }
+  return undefined;
 }
 
 @Injectable()
@@ -747,22 +760,26 @@ export class FoyerService {
    * Traduit une violation d'unicité en **409 structuré** (`{ statusCode, code,
    * message }`) ; re-jette sinon (dont les 409 déjà structurés — la garde dernier
    * parent — qui ne sont pas des violations Postgres et retraversent tel quel).
+   * La violation est cherchée dans l'erreur **et sa chaîne de `cause`**
+   * (drizzle-orm l'enveloppe dans un `DrizzleQueryError`, cf. `violationUnicite`).
    * Le `code` machine permet au front de distinguer chaque cause (le BFF relaie le
    * corps amont via `ErreurAmont`).
    */
   private traduireUnicite(erreur: unknown): never {
-    if (estViolationUnicite(erreur)) {
-      if (erreur.constraint_name === 'parent_principal_unique_idx') {
+    const violation = violationUnicite(erreur);
+    if (violation) {
+      if (violation.constraint_name === 'parent_principal_unique_idx') {
         throw new ConflictException({
           statusCode: 409,
           code: 'PARENT_PRINCIPAL_EXISTANT',
           message: 'un parent principal existe déjà pour ce foyer',
         });
       }
-      // Autre violation d'unicité sur `parent` = index e-mail
-      // `parent_email_par_foyer_actif_idx` : un parent **actif** avec ce
-      // `lower(email)` existe déjà **dans ce foyer** (l'unicité est par foyer,
-      // plus globale — un même e-mail peut être parent d'un autre foyer).
+      // Index e-mail `parent_email_par_foyer_actif_idx` : un parent **actif** avec
+      // ce `lower(email)` existe déjà **dans ce foyer** (l'unicité est par foyer,
+      // plus globale — un même e-mail peut être parent d'un autre foyer). Toute
+      // autre unicité 23505 sur `parent` retombe défensivement sur le même code
+      // (il n'en existe pas d'autre à ce jour).
       throw new ConflictException({
         statusCode: 409,
         code: 'EMAIL_DEJA_UTILISE',
