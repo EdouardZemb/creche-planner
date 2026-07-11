@@ -253,17 +253,8 @@ export function CoutsAnnuelsPage() {
 
   return (
     <div id="recap-couts-annuels">
-      <div
-        className="barre-couts-annuels"
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: '1rem',
-          marginBottom: '1rem',
-        }}
-      >
-        <h1 style={{ margin: 0 }}>Coûts annuels</h1>
+      <div className="barre-couts-annuels">
+        <h1>Coûts annuels</h1>
         <div className="selecteur-annee">
           <button
             type="button"
@@ -293,35 +284,18 @@ export function CoutsAnnuelsPage() {
         </div>
         {/* Interrupteur simulation : même UI que le Planning, lié à ?simule
             (l'état survit au rechargement et se partage par URL). */}
-        <label
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.4rem',
-            margin: 0,
-            fontSize: '0.9rem',
-          }}
-        >
+        <label className="interrupteur-simulation">
           <input
             type="checkbox"
             checked={simule}
             onChange={(e) => {
               setParam({ simule: e.target.checked ? 'true' : null });
             }}
-            style={{ width: 'auto', padding: 0 }}
           />
           Mode simulation
         </label>
         {simule && <Badge variante="simulation">Simulation</Badge>}
-        <div
-          className="actions-export no-print"
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.5rem',
-            marginLeft: 'auto',
-          }}
-        >
+        <div className="actions-export actions-export-fin no-print">
           {/* Rien à exporter/imprimer sur l'état vide : boutons masqués. */}
           {!aucunCout && (
             <>
@@ -364,7 +338,7 @@ export function CoutsAnnuelsPage() {
       </div>
 
       {simule && (
-        <p className="muted" style={{ margin: '-0.5rem 0 1rem' }}>
+        <p className="muted aide-simulation">
           Comparez le coût du planning simulé au planning réel.
         </p>
       )}
@@ -372,15 +346,13 @@ export function CoutsAnnuelsPage() {
       {loading && (
         <div className="carte muted" aria-live="polite">
           <Spinner />
-          <span style={{ marginLeft: '0.5rem' }}>
-            Chargement des coûts annuels…
-          </span>
+          <span className="texte-spinner">Chargement des coûts annuels…</span>
         </div>
       )}
 
       {!loading && error && (
         <div className="carte" role="alert">
-          <p style={{ color: 'var(--rouge)', margin: '0 0 0.5rem' }}>{error}</p>
+          <p className="texte-erreur">{error}</p>
           <button
             type="button"
             className="btn secondaire no-print"
@@ -418,19 +390,9 @@ export function CoutsAnnuelsPage() {
                 ? 'carte table-couts-wrap table-couts-desktop'
                 : 'carte table-couts-wrap'
             }
-            style={{ padding: 0 }}
           >
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <caption
-                style={{
-                  position: 'absolute',
-                  width: 1,
-                  height: 1,
-                  overflow: 'hidden',
-                  clip: 'rect(0 0 0 0)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
+            <table>
+              <caption className="sr-only">
                 Coûts mensuels {simule ? 'simulés' : ''} pour l&apos;année{' '}
                 {annee}
               </caption>

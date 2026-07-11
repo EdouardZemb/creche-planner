@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PanneauCoutMois } from './PanneauCoutMois';
 import { ApiError } from '../api/client';
@@ -296,6 +296,28 @@ describe('PanneauCoutMois', () => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
     });
     expect(screen.getByText(/Service indisponible/i)).toBeInTheDocument();
+  });
+
+  // Lot 5 qualité Coûts — le panneau gagne un bouton « Réessayer » en erreur
+  // (auparavant seule la page annuelle l'avait) ; le clic relance le fetch.
+  it('affiche un bouton Réessayer en erreur et relance le chargement au clic', async () => {
+    vi.mocked(api.lireCoutMois)
+      .mockRejectedValueOnce(new Error('Serveur indisponible'))
+      .mockResolvedValueOnce(coutMoisFactice);
+
+    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule={false} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    const bouton = screen.getByRole('button', { name: /Réessayer/i });
+    fireEvent.click(bouton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByText(/350,00/).length).toBeGreaterThan(0);
   });
 
   it('affiche les boutons export CSV et PDF', async () => {

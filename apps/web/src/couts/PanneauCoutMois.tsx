@@ -1,10 +1,10 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment } from 'react';
 import { api } from '../api/client';
-import type { CoutMoisVue, Ligne, PrestationCout } from '../types/bff';
+import type { Ligne, PrestationCout } from '../types/bff';
 import { centimesEnEuros, deltaEnEuros, repereDelta } from '../utils/money';
 import { titrePrestationCout } from '../utils/libelles';
 import { estSigleConnu } from '../utils/glossaire';
-import { messageErreur } from '../utils/erreurs';
+import { useAsync } from '../hooks/useAsync';
 import { Spinner } from '../ui/Spinner';
 import { Abbr } from '../ui/Abbr';
 import { Badge } from '../ui/Badge';
@@ -43,13 +43,7 @@ function LigneCout({ ligne }: { ligne: Ligne }) {
   const prefixe = ligne.sens === 'debit' ? '-' : '+';
   const classe = ligne.sens === 'debit' ? 'debit' : 'credit';
   return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        padding: '0.2rem 0',
-      }}
-    >
+    <div className="ligne-cout">
       <span>{ligne.libelle}</span>
       <span className={classe}>
         {prefixe}
@@ -61,19 +55,12 @@ function LigneCout({ ligne }: { ligne: Ligne }) {
 
 function SectionPrestation({ prestation }: { prestation: PrestationCout }) {
   return (
-    <div style={{ marginBottom: '0.75rem' }}>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          fontWeight: 600,
-          marginBottom: '0.25rem',
-        }}
-      >
-        {/* Titre en langage parent : « <enfant> — <mode accentué> », ou
-            « Frais annuels — ABCM » pour la pseudo-prestation des frais fixes
-            (jamais le code brut « FRAIS_FIXES_ABCM ») ; les sigles connus du
-            glossaire (ABCM, ALSH…) restent explicités via Abbr. */}
+    <div className="section-prestation">
+      {/* Titre en langage parent : « <enfant> — <mode accentué> », ou
+          « Frais annuels — ABCM » pour la pseudo-prestation des frais fixes
+          (jamais le code brut « FRAIS_FIXES_ABCM ») ; les sigles connus du
+          glossaire (ABCM, ALSH…) restent explicités via Abbr. */}
+      <div className="section-prestation-entete">
         <span>
           {avecSigles(titrePrestationCout(prestation.enfant, prestation.mode))}
         </span>
@@ -89,16 +76,8 @@ function SectionPrestation({ prestation }: { prestation: PrestationCout }) {
 function RecapGlobal({ lignes }: { lignes: Ligne[] }) {
   if (lignes.length === 0) return null;
   return (
-    <div
-      style={{
-        borderTop: '1px solid #e5e7eb',
-        paddingTop: '0.5rem',
-        marginTop: '0.5rem',
-      }}
-    >
-      <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
-        Récapitulatif
-      </div>
+    <div className="recap-global">
+      <div className="recap-global-titre">Récapitulatif</div>
       {lignes.map((l, i) => (
         <LigneCout key={i} ligne={l} />
       ))}
@@ -112,56 +91,50 @@ export function PanneauCoutMois({
   simule,
   version,
 }: PanneauCoutMoisProps) {
-  const [coutSimule, setCoutSimule] = useState<CoutMoisVue | null>(null);
-  const [coutReel, setCoutReel] = useState<CoutMoisVue | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Deux fetchs comme la page annuelle (`CoutsAnnuelsPage`) : le simulé est
+  // toujours chargé, le réel seulement en mode simulation (comparaison). La
+  // prop `version` reste le déclencheur de re-fetch après écriture de planning.
+  const etatSimule = useAsync(
+    (signal) => api.lireCoutMois(foyerId, mois, simule, { signal }),
+    [foyerId, mois, simule, version],
+  );
 
-  useEffect(() => {
-    const ctrl = new AbortController();
-    setLoading(true);
-    setError(null);
+  const etatReel = useAsync(
+    (signal) =>
+      simule
+        ? api.lireCoutMois(foyerId, mois, false, { signal })
+        : Promise.resolve(null),
+    [foyerId, mois, simule, version],
+  );
 
-    const fetchSimule = api.lireCoutMois(foyerId, mois, simule, {
-      signal: ctrl.signal,
-    });
-    const fetchReel = simule
-      ? api.lireCoutMois(foyerId, mois, false, { signal: ctrl.signal })
-      : Promise.resolve(null);
-
-    Promise.all([fetchSimule, fetchReel])
-      .then(([sim, reel]) => {
-        if (ctrl.signal.aborted) return;
-        setCoutSimule(sim);
-        setCoutReel(reel);
-        setLoading(false);
-      })
-      .catch((e: unknown) => {
-        if (ctrl.signal.aborted) return;
-        setError(messageErreur(e));
-        setLoading(false);
-      });
-
-    return () => {
-      ctrl.abort();
-    };
-  }, [foyerId, mois, simule, version]);
+  const loading = etatSimule.loading || etatReel.loading;
+  const error = etatSimule.error ?? etatReel.error;
+  const coutSimule = etatSimule.data;
+  const coutReel = etatReel.data;
 
   if (loading) {
     return (
       <div className="carte muted" aria-live="polite">
         <Spinner />
-        <span style={{ marginLeft: '0.5rem' }}>
-          Chargement du coût du mois…
-        </span>
+        <span className="texte-spinner">Chargement du coût du mois…</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="carte" role="alert" style={{ color: 'var(--rouge)' }}>
-        {error}
+      <div className="carte" role="alert">
+        <p className="texte-erreur">{error}</p>
+        <button
+          type="button"
+          className="btn secondaire no-print"
+          onClick={() => {
+            etatSimule.reload();
+            etatReel.reload();
+          }}
+        >
+          Réessayer
+        </button>
       </div>
     );
   }
@@ -170,7 +143,7 @@ export function PanneauCoutMois({
     return <div className="carte muted">Aucune donnée de coût disponible.</div>;
   }
 
-  const deltaCentimes =
+  const deltaCentimes: number | null =
     simule && coutReel !== null
       ? coutSimule.totalCentimes - coutReel.totalCentimes
       : null;
@@ -181,26 +154,17 @@ export function PanneauCoutMois({
 
   return (
     <div className="carte panneau-cout" id="recap-cout-mois">
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          marginBottom: '0.75rem',
-        }}
-      >
-        <h3 style={{ margin: 0, fontSize: '1rem' }}>
+      <div className="panneau-cout-entete">
+        <h3 className="panneau-cout-titre">
           Coût du mois
           {simule ? (
-            <span style={{ marginLeft: '0.5rem', verticalAlign: 'middle' }}>
+            <span className="panneau-cout-badge">
               <Badge variante="simulation">Simulation</Badge>
             </span>
           ) : null}
         </h3>
-        <div
-          style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem' }}
-        >
-          <strong style={{ fontSize: '1.1rem' }}>
+        <div className="panneau-cout-total">
+          <strong className="panneau-cout-montant">
             {centimesEnEuros(coutSimule.totalCentimes)}
           </strong>
           {deltaCentimes !== null &&
@@ -208,19 +172,18 @@ export function PanneauCoutMois({
               const repere = repereDelta(deltaCentimes);
               return (
                 <span
-                  style={{
-                    fontSize: '0.9rem',
-                    ...(deltaCentimes < 0
+                  className="panneau-cout-delta"
+                  style={
+                    deltaCentimes < 0
                       ? { color: 'var(--vert)' }
                       : deltaCentimes > 0
                         ? { color: 'var(--rouge)' }
-                        : {}),
-                    fontWeight: 500,
-                  }}
+                        : undefined
+                  }
                 >
                   {/* Repère NON COLORÉ (UT-09 CA2) : symbole + libellé textuel,
                       pour ne pas reposer sur la couleur seule (cas d'égalité inclus). */}
-                  <span aria-hidden="true" style={{ marginRight: '0.25rem' }}>
+                  <span aria-hidden="true" className="repere-delta">
                     {repere.symbole}
                   </span>
                   {deltaEnEuros(deltaCentimes)}
@@ -241,15 +204,7 @@ export function PanneauCoutMois({
 
       <RecapGlobal lignes={coutSimule.lignes} />
 
-      <div
-        className="actions-export no-print"
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '0.5rem',
-          marginTop: '0.75rem',
-        }}
-      >
+      <div className="actions-export actions-export-panneau no-print">
         <button
           type="button"
           className="btn secondaire"

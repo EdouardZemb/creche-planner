@@ -718,6 +718,75 @@ h3 {
   top: 1rem;
 }
 
+/* ---- Panneau coût du mois : mise en page (lot 5 qualité coûts) ----------- */
+.panneau-cout-entete {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--esp-3);
+}
+
+.panneau-cout-titre {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.panneau-cout-badge {
+  margin-left: var(--esp-2);
+  vertical-align: middle;
+}
+
+.panneau-cout-total {
+  display: flex;
+  align-items: baseline;
+  gap: var(--esp-3);
+}
+
+.panneau-cout-montant {
+  font-size: 1.1rem;
+}
+
+.panneau-cout-delta {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+/* Titre + montant d'une prestation (« <enfant> — <mode> »). */
+.section-prestation {
+  margin-bottom: var(--esp-3);
+}
+
+.section-prestation-entete {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+  margin-bottom: var(--esp-1);
+}
+
+/* Une ligne de détail (libellé + montant signé). */
+.ligne-cout {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.2rem 0;
+}
+
+/* Récapitulatif global du panneau (bloc en pied de carte). */
+.recap-global {
+  border-top: 1px solid var(--bordure);
+  padding-top: var(--esp-2);
+  margin-top: var(--esp-2);
+}
+
+.recap-global-titre {
+  font-weight: 600;
+  margin-bottom: var(--esp-1);
+}
+
+/* Texte à côté d'un Spinner (chargement) : couts/* uniquement. */
+.texte-spinner {
+  margin-left: var(--esp-2);
+}
+
 /* ---- Rangées « jour » de l'éditeur hebdo (mobile-first) ------------------ */
 /* Chaque jour est une grille à 3 colonnes [jour | résumé | action]. La colonne
    action garde une largeur fixe (et le bouton la remplit) pour que « Saisir » /
@@ -972,19 +1041,74 @@ button:disabled,
 /* Boutons d'export : pleine largeur sur mobile (cibles tactiles), largeur
    naturelle dès la tablette (cf. min-width: 768px). */
 .actions-export {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--esp-2);
   width: 100%;
+}
+
+/* Modificateur : le panneau coût du mois espace sa rangée d'actions du
+   contenu au-dessus. */
+.actions-export-panneau {
+  margin-top: var(--esp-3);
+}
+
+/* Modificateur : dans la barre d'en-tête de la page annuelle, la rangée
+   d'actions se pousse à droite. */
+.actions-export-fin {
+  margin-left: auto;
 }
 
 /* Le tableau annuel est fluide : la vue normale (2 colonnes) tient à 320px
    sans scroll horizontal (l'overflow reste un filet de sécurité). */
 .table-couts-wrap {
+  padding: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.table-couts-wrap table {
+  width: 100%;
+  border-collapse: collapse;
 }
 
 /* Montants : jamais coupés sur deux lignes (lisibilité des sommes). */
 .table-couts-wrap td {
   white-space: nowrap;
+}
+
+/* Barre d'en-tête de la page Coûts annuels : titre, sélecteur d'année,
+   interrupteur simulation et actions, alignés sur une ligne (empilés si la
+   largeur manque). */
+.barre-couts-annuels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--esp-4);
+  margin-bottom: var(--esp-4);
+}
+
+.barre-couts-annuels h1 {
+  margin: 0;
+}
+
+/* Interrupteur « Mode simulation » de la page annuelle. */
+.interrupteur-simulation {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.interrupteur-simulation input[type='checkbox'] {
+  width: auto;
+  padding: 0;
+}
+
+/* Ligne d'aide sous l'interrupteur actif. */
+.aide-simulation {
+  margin: -0.5rem 0 1rem;
 }
 
 /* Sélecteur d'année ◀ AAAA ▶ : cibles tactiles ≥ 44px héritées de .btn. */
