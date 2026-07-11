@@ -37,6 +37,11 @@ const ETAT_FOYER_AVEC_ENFANT = 'un foyer de référence T3 avec un enfant';
 // globale `lower(email)` ; la préférence cascade au `delete` du parent).
 const ETAT_FOYER_AVEC_PREFERENCES =
   'un foyer de référence T3 avec un parent et ses préférences';
+// Création atomique (Lot 2) : purge les e-mails visés (unicité globale
+// `lower(email)`) pour que la création POST du pact réussisse (201, pas 409) même
+// en ré-exécution locale. `svc-foyer` insère foyer + enfant + parents lui-même.
+const ETAT_CREATION_LIBRE =
+  'aucun parent existant ne bloque la création de référence';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-foyer) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
@@ -190,6 +195,13 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
               (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, false, 0, true),
               (${parentLestId}, ${foyerId}, 'Dominique', 'Bernard', ${emailLest}, false, 1, true)
           `;
+        },
+        [ETAT_CREATION_LIBRE]: async (params?: unknown): Promise<void> => {
+          const { emails } = params as { emails: string[] };
+          // Table rase des e-mails visés (unicité globale) → la création réussit.
+          for (const email of emails) {
+            await db`delete from parent where lower(email) = lower(${email})`;
+          }
         },
         [ETAT_FOYER_AVEC_ENFANT]: async (params?: unknown): Promise<void> => {
           const { foyerId, enfantId } = params as {
