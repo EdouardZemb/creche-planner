@@ -87,15 +87,49 @@ function gererAval(req: IncomingMessage, res: ServerResponse): void {
     };
 
     if (methode === 'POST' && url === '/api/foyers') {
-      envoyer(201, FOYER_VUE);
-      return;
-    }
-    if (methode === 'POST' && /^\/api\/foyers\/[^/]+\/enfants$/.test(url)) {
+      // Création atomique (lot 2) : la commande porte enfants/parents/
+      // createurEmail et la réponse est le dossier complet — comme le vrai
+      // svc-foyer (créateur rattaché en fin s'il n'est pas déjà saisi).
+      const enfantsSaisis = (corps['enfants'] ?? []) as {
+        prenom: string;
+        dateNaissance: string;
+      }[];
+      const parentsSaisis = (corps['parents'] ?? []) as {
+        email: string;
+        prenom?: string;
+        nom?: string;
+        principal?: boolean;
+        ordre?: number;
+      }[];
+      const createurEmail = corps['createurEmail'] as string | undefined;
+      const parentsFinal = [...parentsSaisis];
+      if (
+        createurEmail !== undefined &&
+        !parentsSaisis.some(
+          (p) =>
+            p.email.trim().toLowerCase() === createurEmail.trim().toLowerCase(),
+        )
+      ) {
+        parentsFinal.push({ email: createurEmail });
+      }
       envoyer(201, {
-        id: `enfant-${String(corps['prenom'])}`,
-        foyerId: FOYER_ID,
-        prenom: corps['prenom'],
-        dateNaissance: corps['dateNaissance'],
+        foyer: FOYER_VUE,
+        enfants: enfantsSaisis.map((e) => ({
+          id: `enfant-${e.prenom}`,
+          foyerId: FOYER_ID,
+          prenom: e.prenom,
+          dateNaissance: e.dateNaissance,
+        })),
+        parents: parentsFinal.map((p, i) => ({
+          id: `parent-${String(i)}`,
+          foyerId: FOYER_ID,
+          prenom: p.prenom ?? null,
+          nom: p.nom ?? null,
+          email: p.email,
+          principal: p.principal ?? false,
+          ordre: p.ordre ?? i,
+          actif: true,
+        })),
       });
       return;
     }
@@ -145,7 +179,9 @@ function trouverPortLibre(): Promise<number> {
   });
 }
 
-async function attendreReadiness(url: string, delaiMs = 30000): Promise<void> {
+// 90 s : sous vitest, les workers parallèles (suites Pact) peuvent ralentir le
+// boot du bundle bien au-delà des ~8 s d'une machine au repos.
+async function attendreReadiness(url: string, delaiMs = 90000): Promise<void> {
   const echeance = Date.now() + delaiMs;
   for (;;) {
     try {
@@ -191,7 +227,9 @@ describe('E2E API · parcours « créer foyer + contrats → lire le coût »', 
       },
       stdio: 'ignore',
     });
-    const base = `http://127.0.0.1:${port}`;
+    // `localhost` (pas 127.0.0.1) : Nest écoute sur `::` — dual-stack sous
+    // Linux (CI) mais IPv6 SEULEMENT sous Windows, où 127.0.0.1 est refusé.
+    const base = `http://localhost:${port}`;
     await attendreReadiness(`${base}/api/health/live`);
     return { proc, base };
   }
@@ -204,9 +242,10 @@ describe('E2E API · parcours « créer foyer + contrats → lire le coût »', 
     const serveur = createServer(gererAval);
     stub = serveur;
     await new Promise<void>((resoudre) => serveur.listen(portStub, resoudre));
-    stubBase = `http://127.0.0.1:${portStub}`;
+    // `localhost` : même contrainte dual-stack que la gateway (cf. plus haut).
+    stubBase = `http://localhost:${portStub}`;
     gw = await demarrerGateway({}); // GATEWAY_TOKEN absent → auth désactivée
-  }, 45000);
+  }, 120000);
 
   afterAll(async () => {
     gw?.proc.kill('SIGTERM');
@@ -331,7 +370,7 @@ describe('E2E API · parcours « créer foyer + contrats → lire le coût »', 
     } finally {
       securisee.proc.kill('SIGTERM');
     }
-  }, 45000);
+  }, 120000);
 
   // Invariant MBT : un 429 du rate-limit gateway sur `PUT /contrats/:id` doit
   // court-circuiter AVANT le contrôleur → le service aval n'est jamais appelé,
@@ -380,5 +419,5 @@ describe('E2E API · parcours « créer foyer + contrats → lire le coût »', 
     } finally {
       limitee.proc.kill('SIGTERM');
     }
-  }, 45000);
+  }, 120000);
 });
