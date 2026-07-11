@@ -22,6 +22,7 @@ import {
 } from './FoyerScalairesForm';
 import { ParentsSection } from './ParentsSection';
 import { EnfantsSection } from './EnfantsSection';
+import { useContrats } from './useContrats';
 
 /**
  * Valeurs de saisie (chaînes) dérivées d'un foyer chargé : on pré-remplit avec
@@ -94,6 +95,10 @@ function FormulaireEdition({
 }) {
   const navigate = useNavigate();
   const idBase = useId();
+  // Contrats du foyer (cache par foyer, coût quasi nul) : permet à la suppression
+  // d'un enfant d'avertir du nombre de contrats qui lui restent liés. Une lecture
+  // en cours/échouée laisse `contrats` vide ⇒ modale générique (ne bloque pas).
+  const { contrats } = useContrats(foyerId);
 
   const [scalaires, setScalaires] = useState<ValeursScalairesFoyer>(() =>
     valeursDepuisFoyer(foyer),
@@ -194,7 +199,11 @@ function FormulaireEdition({
           groupée), et n'est donc pas emportée par « Enregistrer les
           modifications » (qui ne concerne que les scalaires). */}
       <ParentsSection foyerId={foyerId} parentsInitiaux={parents} />
-      <EnfantsSection foyerId={foyerId} enfantsInitiaux={enfants} />
+      <EnfantsSection
+        foyerId={foyerId}
+        enfantsInitiaux={enfants}
+        contrats={contrats}
+      />
     </div>
   );
 }

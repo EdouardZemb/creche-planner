@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { ParentsSection } from './ParentsSection';
 import type { ParentVue } from '../types/bff';
@@ -102,7 +108,7 @@ describe('ParentsSection', () => {
     );
   });
 
-  it('retire un parent existant de la liste', async () => {
+  it('retire un parent existant APRÈS confirmation dans la modale', async () => {
     mockedApi.retirerParent.mockResolvedValueOnce(undefined);
     render(
       <ParentsSection
@@ -111,8 +117,12 @@ describe('ParentsSection', () => {
       />,
     );
 
+    // Le clic ouvre la modale ; rien n'est retiré tant qu'on n'a pas confirmé.
     fireEvent.click(screen.getByRole('button', { name: /Retirer le parent/i }));
+    const dialog = screen.getByRole('dialog');
+    expect(mockedApi.retirerParent).not.toHaveBeenCalled();
 
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Retirer' }));
     await waitFor(() => {
       expect(mockedApi.retirerParent).toHaveBeenCalledWith(FOYER_ID, 'p1');
     });
@@ -121,6 +131,31 @@ describe('ParentsSection', () => {
         screen.queryByDisplayValue('alex@example.test'),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it('affiche le message « dernier parent » sur un 409 DERNIER_PARENT_ACTIF au retrait', async () => {
+    mockedApi.retirerParent.mockRejectedValueOnce(
+      new ApiError(409, { statusCode: 409, code: 'DERNIER_PARENT_ACTIF' }),
+    );
+    render(
+      <ParentsSection
+        foyerId={FOYER_ID}
+        parentsInitiaux={[parent({ id: 'p1', email: 'alex@example.test' })]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Retirer le parent/i }));
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Retirer',
+      }),
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /Impossible de retirer le dernier parent/i,
+    );
+    // La ligne reste affichée (retrait refusé).
+    expect(screen.getByDisplayValue('alex@example.test')).toBeInTheDocument();
   });
 
   it('édite un parent (envoie email + identité + principal)', async () => {

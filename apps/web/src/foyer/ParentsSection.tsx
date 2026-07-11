@@ -1,7 +1,9 @@
 import { useId, useState } from 'react';
 import { api, ApiError } from '../api/client';
-import { extraireErreurs, messageErreur } from '../utils/erreurs';
-import { retraduireErreurParent } from './parentErreurs';
+import { extraireErreurs } from '../utils/erreurs';
+import { messageErreurParent, retraduireErreurParent } from './parentErreurs';
+import { useMoi } from '../session/MoiContext';
+import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 import type { ErreurChamp } from '../utils/erreurs';
 import type { ParentVue } from '../types/bff';
 
@@ -62,18 +64,15 @@ export function ParentsSection({
   );
 }
 
-/**
- * Message d'erreur d'une écriture parent. Le BFF **masque** le détail amont
- * derrière un corps générique (cf. `relayer`), si bien que le 409 ne distingue
- * pas l'e-mail déjà pris du parent principal déjà existant : on rend les deux
- * causes possibles plutôt qu'un « Conflit » abstrait. Les autres statuts passent
- * par le message standard.
- */
-function messageErreurParent(err: unknown): string {
-  if (err instanceof ApiError && err.status === 409) {
-    return 'Adresse e-mail déjà utilisée, ou un parent principal existe déjà pour ce foyer.';
+/** Compare deux e-mails de façon insensible à la casse et aux espaces. */
+function memeEmail(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  if (a === null || a === undefined || b === null || b === undefined) {
+    return false;
   }
-  return messageErreur(err);
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
 /**
@@ -92,6 +91,7 @@ function LigneParentExistant({
   readonly onRetire: (id: string) => void;
 }) {
   const idBase = useId();
+  const moi = useMoi();
   const [email, setEmail] = useState(parent.email);
   const [prenom, setPrenom] = useState(parent.prenom ?? '');
   const [nom, setNom] = useState(parent.nom ?? '');
@@ -99,6 +99,11 @@ function LigneParentExistant({
   const [occupe, setOccupe] = useState(false);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
+  // Confirmation avant un geste à conséquence : retrait de la ligne, ou
+  // remplacement de sa propre adresse (perte d'accès). `null` = aucune modale.
+  const [confirmation, setConfirmation] = useState<'retirer' | 'email' | null>(
+    null,
+  );
 
   function erreurPour(champ: string): string | undefined {
     return erreursChamps.find((e) => e.champ === champ)?.message;
@@ -159,6 +164,23 @@ function LigneParentExistant({
 
   const nomComplet = `${prenom.trim()} ${nom.trim()}`.trim();
   const designation = nomComplet || email.trim();
+  // La ligne EST mon propre accès si son e-mail d'origine = mon identité (hérité :
+  // `moi.email === null` ⇒ jamais, comportement assumé).
+  const estMonAcces = memeEmail(parent.email, moi.email);
+  // Le PUT change l'adresse à laquelle mon accès est lié.
+  const changeMonEmail = estMonAcces && !memeEmail(email, parent.email);
+
+  /**
+   * Enregistre, mais **confirme d'abord** si l'on remplace sa propre adresse
+   * (l'accès y est lié — le PUT le romprait). Sinon persiste directement.
+   */
+  function demanderEnregistrer() {
+    if (changeMonEmail) {
+      setConfirmation('email');
+      return;
+    }
+    void enregistrer();
+  }
 
   return (
     <div className="carte parent-ligne" style={{ marginBottom: '0.5rem' }}>
@@ -245,7 +267,7 @@ function LigneParentExistant({
           type="button"
           className="btn secondaire"
           disabled={occupe}
-          onClick={() => void enregistrer()}
+          onClick={demanderEnregistrer}
         >
           {occupe ? 'Enregistrement…' : 'Enregistrer'}
         </button>
@@ -253,7 +275,9 @@ function LigneParentExistant({
           type="button"
           className="btn secondaire"
           disabled={occupe}
-          onClick={() => void retirer()}
+          onClick={() => {
+            setConfirmation('retirer');
+          }}
           aria-label={
             designation
               ? `Retirer le parent ${designation}`
@@ -263,6 +287,40 @@ function LigneParentExistant({
           Retirer
         </button>
       </div>
+
+      <ModaleConfirmation
+        ouvert={confirmation === 'retirer'}
+        titre={designation ? `Retirer ${designation}` : 'Retirer ce parent'}
+        message={
+          estMonAcces
+            ? 'C’est votre propre accès : après ce retrait, vous ne pourrez plus consulter ni modifier cette famille.'
+            : `${designation || 'Ce parent'} ne recevra plus les récapitulatifs et n’aura plus accès.`
+        }
+        libelleConfirmer="Retirer"
+        destructif
+        onConfirmer={() => {
+          setConfirmation(null);
+          void retirer();
+        }}
+        onAnnuler={() => {
+          setConfirmation(null);
+        }}
+      />
+
+      <ModaleConfirmation
+        ouvert={confirmation === 'email'}
+        titre="Modifier votre adresse e-mail"
+        message={`Votre accès est lié à l’adresse ${parent.email}. Si vous la remplacez, vous perdrez l’accès avec votre connexion actuelle.`}
+        libelleConfirmer="Modifier quand même"
+        destructif
+        onConfirmer={() => {
+          setConfirmation(null);
+          void enregistrer();
+        }}
+        onAnnuler={() => {
+          setConfirmation(null);
+        }}
+      />
     </div>
   );
 }

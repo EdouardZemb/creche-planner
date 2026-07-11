@@ -1,8 +1,9 @@
 import { useId, useState } from 'react';
 import { api, ApiError } from '../api/client';
 import { extraireErreurs, messageErreur } from '../utils/erreurs';
+import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 import type { ErreurChamp } from '../utils/erreurs';
-import type { EnfantVue } from '../types/bff';
+import type { ContratVue, EnfantVue } from '../types/bff';
 
 /**
  * Gestion des **enfants** d'un foyer dans l'écran d'édition (« cycle de vie du
@@ -11,17 +12,25 @@ import type { EnfantVue } from '../types/bff';
  * (`POST`/`PUT`/`DELETE /v1/foyers/:id/enfants[...]`, gardées `@FoyerScope` →
  * pilotables par le parent du foyer).
  *
- * ⚠ Couplage par prénom (plan §2.5) : les contrats de garde référencent l'enfant
- * par une **chaîne libre**, pas par son identifiant — renommer ou supprimer un
- * enfant ici **n'altère pas** les contrats existants. On le signale à l'écran pour
- * éviter une attente erronée.
+ * ⚠ Lien par `enfantId` (plan §2.5) : les contrats de garde **référencent**
+ * l'enfant par son identifiant ; un **renommage** se propage à leur prénom
+ * dénormalisé (projection `foyer.EnfantModifie`), mais une **suppression**
+ * d'enfant ne supprime PAS ses contrats (ils restent affichés avec le prénom).
+ * On l'énonce à l'écran, et la suppression avertit du nombre de contrats liés.
  */
 export function EnfantsSection({
   foyerId,
   enfantsInitiaux,
+  contrats = [],
 }: {
   readonly foyerId: string;
   readonly enfantsInitiaux: readonly EnfantVue[];
+  /**
+   * Contrats du foyer (chargés par `FoyerModifierPage`, cache par foyer) : sert à
+   * avertir, avant suppression d'un enfant, du nombre de contrats qui lui restent
+   * liés. Défaut `[]` (contrats indisponibles ⇒ variante générique de la modale).
+   */
+  readonly contrats?: readonly ContratVue[];
 }) {
   const [enfants, setEnfants] = useState<EnfantVue[]>(() => [
     ...enfantsInitiaux,
@@ -33,8 +42,8 @@ export function EnfantsSection({
         Enfants
       </legend>
       <p className="muted" style={{ marginTop: 0 }}>
-        Renommer ou supprimer un enfant ici n’affecte pas les contrats de garde
-        déjà créés (ils mémorisent le prénom saisi à leur création).
+        Renommer un enfant met aussi à jour ses contrats de garde. Supprimer un
+        enfant ne supprime pas ses contrats.
       </p>
 
       {enfants.length === 0 && (
@@ -46,6 +55,7 @@ export function EnfantsSection({
           key={enfant.id}
           foyerId={foyerId}
           enfant={enfant}
+          nbContrats={contrats.filter((c) => c.enfantId === enfant.id).length}
           onModifie={(maj) => {
             setEnfants((prev) => prev.map((e) => (e.id === maj.id ? maj : e)));
           }}
@@ -78,11 +88,14 @@ function lecteurErreurs(erreursChamps: ErreurChamp[]) {
 function LigneEnfantExistant({
   foyerId,
   enfant,
+  nbContrats,
   onModifie,
   onRetire,
 }: {
   readonly foyerId: string;
   readonly enfant: EnfantVue;
+  /** Nombre de contrats de garde encore liés à cet enfant (pour l'avertissement). */
+  readonly nbContrats: number;
   readonly onModifie: (enfant: EnfantVue) => void;
   readonly onRetire: (id: string) => void;
 }) {
@@ -92,6 +105,7 @@ function LigneEnfantExistant({
   const [occupe, setOccupe] = useState(false);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
+  const [confirmation, setConfirmation] = useState(false);
 
   const erreurPour = lecteurErreurs(erreursChamps);
   function idErreur(champ: string): string {
@@ -214,12 +228,33 @@ function LigneEnfantExistant({
           type="button"
           className="btn secondaire"
           disabled={occupe}
-          onClick={() => void retirer()}
+          onClick={() => {
+            setConfirmation(true);
+          }}
           aria-label={`Supprimer l’enfant ${designation}`}
         >
           Supprimer
         </button>
       </div>
+
+      <ModaleConfirmation
+        ouvert={confirmation}
+        titre={`Supprimer ${designation}`}
+        message={
+          nbContrats > 0
+            ? `${designation} a ${nbContrats} contrat(s) de garde. Ils ne seront pas supprimés et resteront affichés avec son prénom. Supprimez-les d’abord depuis la page Contrats si nécessaire. Cette suppression est définitive.`
+            : `${designation} sera définitivement retiré(e). Cette action est irréversible.`
+        }
+        libelleConfirmer="Supprimer"
+        destructif
+        onConfirmer={() => {
+          setConfirmation(false);
+          void retirer();
+        }}
+        onAnnuler={() => {
+          setConfirmation(false);
+        }}
+      />
     </div>
   );
 }

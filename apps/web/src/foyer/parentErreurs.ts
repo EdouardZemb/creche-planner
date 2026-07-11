@@ -1,4 +1,47 @@
+import { ApiError } from '../api/client';
+import { messageErreur } from '../utils/erreurs';
 import type { ErreurChamp } from '../utils/erreurs';
+
+/** Lit le `code` machine d'un corps d'erreur amont (`{ code, ... }`), si présent. */
+function codeErreur(err: unknown): string | undefined {
+  if (
+    err instanceof ApiError &&
+    typeof err.corps === 'object' &&
+    err.corps !== null
+  ) {
+    const code = (err.corps as Record<string, unknown>)['code'];
+    if (typeof code === 'string') {
+      return code;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Message d'erreur d'une écriture parent, **précis par code** amont. `svc-foyer`
+ * porte des 409 structurés (`code`) que le BFF relaie tel quel (cf. `relayer` +
+ * `ErreurAmont`) ; on les traduit ici en langage parent. Un 409 **sans** code
+ * (repli, ancien BFF) retombe sur le message fusionné historique ; les autres
+ * statuts passent par le message standard.
+ *
+ * Extrait de `ParentsSection` pour être testable isolément.
+ */
+export function messageErreurParent(err: unknown): string {
+  switch (codeErreur(err)) {
+    case 'EMAIL_DEJA_UTILISE':
+      return 'Cette adresse e-mail est déjà utilisée par un autre parent.';
+    case 'PARENT_PRINCIPAL_EXISTANT':
+      return 'Un contact principal existe déjà. Décochez-le d’abord sur l’autre parent.';
+    case 'DERNIER_PARENT_ACTIF':
+      return 'Impossible de retirer le dernier parent : la famille doit garder au moins un parent pour y accéder.';
+  }
+  if (err instanceof ApiError && err.status === 409) {
+    // 409 sans code (repli) : on rend les deux causes historiques plutôt qu'un
+    // « Conflit » abstrait.
+    return 'Adresse e-mail déjà utilisée, ou un parent principal existe déjà pour ce foyer.';
+  }
+  return messageErreur(err);
+}
 
 /**
  * Le BFF valide un tableau `parents` envoyé en bloc (création de foyer) et renvoie
