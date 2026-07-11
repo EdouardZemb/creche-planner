@@ -111,11 +111,14 @@ test.describe('stack réelle : le parent modifie les ressources de son foyer', (
       .getByRole('button', { name: 'Enregistrer les modifications' })
       .click();
 
-    // Retour au planning au succès.
-    await expect(page).toHaveURL(new RegExp(`/foyers/${foyerId}/planning`));
+    // Lot 4 : au succès on RESTE sur la page d'édition ; le retour visuel est
+    // le statut « Enregistré à HH:MM » (région role="status" à côté du bouton).
+    // NB : `getByRole('status')` seul serait ambigu (la région live d'annonce
+    // de route porte aussi role="status") → on filtre par le libellé.
     await expect(
-      page.getByRole('heading', { name: 'Planning mensuel' }),
+      page.getByRole('status').filter({ hasText: /Enregistré à/ }),
     ).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/foyers/${foyerId}/modifier`));
 
     // Persistance : en rouvrant l'écran, le champ porte la nouvelle valeur.
     await page.goto(urlModifier(foyerId));
