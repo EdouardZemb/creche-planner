@@ -386,13 +386,25 @@ export class FoyerService {
     });
   }
 
-  /** Rattache un parent + émet `ParentAjoute` dans la même transaction. */
+  /**
+   * Rattache un parent + émet `ParentAjoute` dans la même transaction.
+   *
+   * **Réactivation** : si une ligne **inactive** (retirée / soft-delete) du même
+   * foyer porte déjà le même `lower(email)`, on la **réactive** (`actif = true`)
+   * en reprenant l'identité douce / `principal` / `ordre` de la saisie, au lieu
+   * d'insérer une nouvelle ligne — l'unicité e-mail étant désormais **par foyer sur
+   * les actifs** (`parent_email_par_foyer_actif_idx`), sans quoi un retrait
+   * condamnerait l'e-mail à jamais. L'événement `ParentAjoute` porte l'état complet
+   * (les consommateurs upsertent par `id` : la projection `foyer_parent` repasse
+   * `actif = true`), dans la même transaction que l'écriture (patron outbox).
+   */
   async ajouterParent(
     foyerId: string,
     dto: AjouterParentDto,
   ): Promise<ParentVue> {
     const parentId = parentIdSchema.parse(randomUUID());
     const email = dto.email.trim();
+    const emailNormalise = email.toLowerCase();
     try {
       const ligne = await this.db.transaction(async (tx) => {
         const foyers = await tx
@@ -402,26 +414,54 @@ export class FoyerService {
         if (!foyers[0]) {
           throw new NotFoundException(`foyer introuvable : ${foyerId}`);
         }
-        const insere = await tx
-          .insert(parent)
-          .values({
-            id: parentId,
-            foyerId,
-            prenom: dto.prenom ?? null,
-            nom: dto.nom ?? null,
-            email,
-            principal: dto.principal,
-            ordre: dto.ordre,
-          })
-          .returning();
-        const ligneInseree = insere[0];
-        if (!ligneInseree) {
-          throw new Error(`insertion parent échouée pour le foyer ${foyerId}`);
+        // Une ligne INACTIVE du même foyer avec ce lower(email) ? → réactivation.
+        const inactifs = await tx
+          .select()
+          .from(parent)
+          .where(
+            and(
+              eq(parent.foyerId, foyerId),
+              eq(parent.actif, false),
+              sql`lower(${parent.email}) = ${emailNormalise}`,
+            ),
+          );
+        const inactif = inactifs[0];
+        const persistee = inactif
+          ? await tx
+              .update(parent)
+              .set({
+                actif: true,
+                prenom: dto.prenom ?? null,
+                nom: dto.nom ?? null,
+                email,
+                principal: dto.principal,
+                ordre: dto.ordre,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(eq(parent.id, inactif.id), eq(parent.foyerId, foyerId)),
+              )
+              .returning()
+          : await tx
+              .insert(parent)
+              .values({
+                id: parentId,
+                foyerId,
+                prenom: dto.prenom ?? null,
+                nom: dto.nom ?? null,
+                email,
+                principal: dto.principal,
+                ordre: dto.ordre,
+              })
+              .returning();
+        const ligneParent = persistee[0];
+        if (!ligneParent) {
+          throw new Error(`écriture parent échouée pour le foyer ${foyerId}`);
         }
         await tx
           .insert(outbox)
-          .values(this.evenementParentEtat(PARENT_AJOUTE_TYPE, ligneInseree));
-        return ligneInseree;
+          .values(this.evenementParentEtat(PARENT_AJOUTE_TYPE, ligneParent));
+        return ligneParent;
       });
       return this.versParentVue(ligne);
     } catch (erreur) {
@@ -719,10 +759,14 @@ export class FoyerService {
           message: 'un parent principal existe déjà pour ce foyer',
         });
       }
+      // Autre violation d'unicité sur `parent` = index e-mail
+      // `parent_email_par_foyer_actif_idx` : un parent **actif** avec ce
+      // `lower(email)` existe déjà **dans ce foyer** (l'unicité est par foyer,
+      // plus globale — un même e-mail peut être parent d'un autre foyer).
       throw new ConflictException({
         statusCode: 409,
         code: 'EMAIL_DEJA_UTILISE',
-        message: 'adresse e-mail déjà utilisée',
+        message: 'adresse e-mail déjà utilisée dans ce foyer',
       });
     }
     throw erreur;

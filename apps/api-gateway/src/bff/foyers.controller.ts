@@ -27,7 +27,7 @@ import {
   valider,
 } from './bff.dto.js';
 import { loadConfig } from '../config.js';
-import { estAdmin } from '../security/admin.js';
+import { estAdmin, estGatingAdminActif } from '../security/admin.js';
 import { CreationFoyerUnique } from '../security/creation-foyer-unique.decorator.js';
 import { FoyerScope } from '../security/foyer-scope.decorator.js';
 import type { RequeteIdentifiable } from '../security/identite.js';
@@ -87,14 +87,37 @@ export class FoyersController {
   }
 
   /**
-   * Liste les foyers existants (découverte « mode hérité », email inconnu).
-   * **Pas de `@FoyerScope`** : ne porte pas de `foyerId` unique (renvoie tout).
-   * Gap résiduel connu — une fois l'identité câblée, le web borne via `/moi` ;
-   * restreindre cette liste relève d'un suivi (cf. doc 24 §24, PR7).
+   * Liste les foyers. **Scopée à l'identité** (lot 5) :
+   * - **identité absente** (mode hérité, sans Cloudflare) → liste **complète**
+   *   (compatibilité : le web borne alors via `/moi`) ;
+   * - **admin** (∈ `ADMIN_EMAILS`, ou gating admin inactif) → liste **complète**
+   *   (provisioning) ;
+   * - **non-admin identifié** → uniquement **ses** foyers (`foyersParEmail`).
+   *
+   * Le filtrage se fait **côté gateway** (server-to-server) : svc-foyer renvoie
+   * tout, on ne relaie au client que l'intersection. `MesFoyersPage` fonctionne
+   * sans changement (elle reçoit déjà la liste à afficher). **Pas de `@FoyerScope`**
+   * (route sans `foyerId` unique) : le scope est appliqué ici explicitement.
    */
   @Get()
-  lister(): Promise<FoyerVue[]> {
-    return relayer(() => this.foyers.lister());
+  lister(@Req() req?: RequeteIdentifiable): Promise<FoyerVue[]> {
+    const email = req?.identite?.email;
+    const { adminEmails } = loadConfig();
+    // Gating admin inactif (`ADMIN_EMAILS` vide) ⇒ permissif : tout le monde est
+    // « admin » et voit tout (prod actuelle inchangée). Sans identité : mode hérité.
+    const admin = estGatingAdminActif(adminEmails)
+      ? estAdmin(email, adminEmails)
+      : true;
+    if (email === undefined || admin) {
+      return relayer(() => this.foyers.lister());
+    }
+    return relayer(async () => {
+      const [ids, tous] = await Promise.all([
+        this.foyers.foyersParEmail(email),
+        this.foyers.lister(),
+      ]);
+      return tous.filter((f) => ids.includes(f.id));
+    });
   }
 
   /** Lit un foyer, ses enfants et ses parents. */

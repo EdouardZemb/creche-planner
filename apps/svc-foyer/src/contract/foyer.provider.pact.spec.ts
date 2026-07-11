@@ -20,7 +20,7 @@ const ETAT_FOYER_T3 = 'un foyer de référence T3 existe';
 // parents (+ l'e-mail visé) pour qu'un ajout réussisse ; « avec un parent »
 // seede en plus un parent actif d'id connu pour lecture/édition/retrait. Les
 // purges rendent les states **idempotents** (ré-exécution locale sans clash sur
-// l'unicité globale `lower(email)`).
+// l'unicité e-mail par foyer).
 const ETAT_FOYER_SANS_PARENT = 'un foyer de référence T3 sans parent';
 const ETAT_FOYER_AVEC_PARENT = 'un foyer de référence T3 avec un parent';
 // Retrait de parent (Lot 1) : la garde « dernier parent actif » refuse (409) le
@@ -34,14 +34,24 @@ const ETAT_FOYER_AVEC_ENFANT = 'un foyer de référence T3 avec un enfant';
 // Préférences (PR1, consommé en PR2) : seede foyer + parent connu + une
 // préférence stockée (e-mail coupé) pour exercer lecture/écriture des préférences.
 // Idempotent (purge parent par id ET par e-mail avant réinsertion — unicité
-// globale `lower(email)` ; la préférence cascade au `delete` du parent).
+// e-mail par foyer ; la préférence cascade au `delete` du parent).
 const ETAT_FOYER_AVEC_PREFERENCES =
   'un foyer de référence T3 avec un parent et ses préférences';
-// Création atomique (Lot 2) : purge les e-mails visés (unicité globale
-// `lower(email)`) pour que la création POST du pact réussisse (201, pas 409) même
-// en ré-exécution locale. `svc-foyer` insère foyer + enfant + parents lui-même.
+// Création atomique (Lot 2) : purge les e-mails visés (unicité e-mail **par foyer**
+// sur les actifs depuis le lot 5) pour que la création POST du pact réussisse (201,
+// pas 409) même en ré-exécution locale. `svc-foyer` insère foyer + enfant + parents.
 const ETAT_CREATION_LIBRE =
   'aucun parent existant ne bloque la création de référence';
+// Lot 5 — contrats d'erreur.
+// Doublon e-mail (409 EMAIL_DEJA_UTILISE) : seede le foyer + UN parent ACTIF avec
+// l'e-mail visé → un second ajout du même e-mail dans ce foyer est refusé.
+const ETAT_PARENT_ACTIF_DOUBLON =
+  'un parent actif avec cet e-mail existe déjà dans ce foyer';
+// Dernier parent actif (409 DERNIER_PARENT_ACTIF) : seede le foyer + EXACTEMENT un
+// parent actif (celui à retirer) → la garde refuse son retrait (transition 1→0).
+const ETAT_FOYER_UN_SEUL_PARENT = "le foyer n'a qu'un seul parent actif";
+// Foyer inexistant (404) : garantit l'absence du foyer visé (delete cascade).
+const ETAT_AUCUN_FOYER = 'aucun foyer avec cet id';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-foyer) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
@@ -154,7 +164,7 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
           };
           await seedFoyer(db, foyerId);
           // Table rase : aucun parent dans ce foyer, et l'e-mail visé est libre
-          // (unicité globale) → l'ajout du pact réussit (201, pas 409).
+          // (unicité par foyer) → l'ajout du pact réussit (201, pas 409).
           await db`delete from parent where foyer_id = ${foyerId}`;
           await db`delete from parent where lower(email) = lower(${email})`;
         },
@@ -184,7 +194,7 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
               emailLest: string;
             };
           await seedFoyer(db, foyerId);
-          // Table rase (idempotence, unicité globale `lower(email)`), puis DEUX
+          // Table rase (idempotence, unicité e-mail par foyer), puis DEUX
           // parents actifs : celui à retirer + le « lest » qui satisfait la garde.
           await db`delete from parent where foyer_id = ${foyerId}`;
           await db`delete from parent where lower(email) = lower(${email})`;
@@ -198,10 +208,51 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
         },
         [ETAT_CREATION_LIBRE]: async (params?: unknown): Promise<void> => {
           const { emails } = params as { emails: string[] };
-          // Table rase des e-mails visés (unicité globale) → la création réussit.
+          // Table rase des e-mails visés (unicité par foyer) → la création réussit.
           for (const email of emails) {
             await db`delete from parent where lower(email) = lower(${email})`;
           }
+        },
+        [ETAT_PARENT_ACTIF_DOUBLON]: async (
+          params?: unknown,
+        ): Promise<void> => {
+          const { foyerId, parentId, email } = params as {
+            foyerId: string;
+            parentId: string;
+            email: string;
+          };
+          await seedFoyer(db, foyerId);
+          // Table rase puis UN parent ACTIF avec l'e-mail visé : un second ajout du
+          // même e-mail dans ce foyer heurte `parent_email_par_foyer_actif_idx`.
+          await db`delete from parent where foyer_id = ${foyerId}`;
+          await db`delete from parent where lower(email) = lower(${email})`;
+          await db`
+            insert into parent (id, foyer_id, prenom, nom, email, principal, ordre, actif)
+            values (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, false, 0, true)
+          `;
+        },
+        [ETAT_FOYER_UN_SEUL_PARENT]: async (
+          params?: unknown,
+        ): Promise<void> => {
+          const { foyerId, parentId, email } = params as {
+            foyerId: string;
+            parentId: string;
+            email: string;
+          };
+          await seedFoyer(db, foyerId);
+          // EXACTEMENT un parent actif (celui à retirer) : la garde « dernier parent
+          // actif » refuse (409) la transition 1→0.
+          await db`delete from parent where foyer_id = ${foyerId}`;
+          await db`delete from parent where lower(email) = lower(${email})`;
+          await db`
+            insert into parent (id, foyer_id, prenom, nom, email, principal, ordre, actif)
+            values (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, false, 0, true)
+          `;
+        },
+        [ETAT_AUCUN_FOYER]: async (params?: unknown): Promise<void> => {
+          const { id } = params as { id: string };
+          // Garantit l'absence du foyer (enfants/parents cascadent) → 404 en lecture.
+          await db`delete from foyer where id = ${id}`;
         },
         [ETAT_FOYER_AVEC_ENFANT]: async (params?: unknown): Promise<void> => {
           const { foyerId, enfantId } = params as {

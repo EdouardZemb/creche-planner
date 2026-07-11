@@ -4,6 +4,70 @@
   },
   "interactions": [
     {
+      "description": "un ajout de parent à l’e-mail déjà actif dans ce foyer",
+      "providerStates": [
+        {
+          "name": "un parent actif avec cet e-mail existe déjà dans ce foyer",
+          "params": {
+            "email": "doublon.actif@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "parentId": "66666666-6666-4666-8666-666666666666"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "email": "doublon.actif@example.test",
+          "ordre": 0,
+          "principal": false
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "POST",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111/parents"
+      },
+      "response": {
+        "body": {
+          "code": "EMAIL_DEJA_UTILISE",
+          "message": "adresse e-mail déjà utilisée dans ce foyer",
+          "statusCode": 409
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.code": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.statusCode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 409
+      }
+    },
+    {
       "description": "un rattachement d'enfant au foyer de référence",
       "providerStates": [
         {
@@ -226,6 +290,62 @@
       },
       "response": {
         "status": 204
+      }
+    },
+    {
+      "description": "un retrait du dernier parent actif du foyer",
+      "providerStates": [
+        {
+          "name": "le foyer n'a qu'un seul parent actif",
+          "params": {
+            "email": "unique.actif@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "parentId": "77777777-7777-4777-8777-777777777777"
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111/parents/77777777-7777-4777-8777-777777777777"
+      },
+      "response": {
+        "body": {
+          "code": "DERNIER_PARENT_ACTIF",
+          "message": "impossible de retirer le dernier parent actif du foyer",
+          "statusCode": 409
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.code": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.statusCode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 409
       }
     },
     {
@@ -714,6 +834,60 @@
       }
     },
     {
+      "description": "une lecture d’un foyer inexistant",
+      "providerStates": [
+        {
+          "name": "aucun foyer avec cet id",
+          "params": {
+            "id": "99999999-9999-4999-8999-999999999999"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/foyers/99999999-9999-4999-8999-999999999999"
+      },
+      "response": {
+        "body": {
+          "error": "Not Found",
+          "message": "foyer introuvable : 99999999-9999-4999-8999-999999999999",
+          "statusCode": 404
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.error": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.statusCode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 404
+      }
+    },
+    {
       "description": "une liste des foyers existants",
       "providerStates": [
         {
@@ -1041,6 +1215,59 @@
               "matchers": [
                 {
                   "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une résolution des foyers par e-mail parent",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 avec un parent",
+          "params": {
+            "email": "alex.dupont@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "parentId": "33333333-3333-4333-8333-333333333333"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/foyers",
+        "query": {
+          "parentEmail": [
+            "alex.dupont@example.test"
+          ]
+        }
+      },
+      "response": {
+        "body": [
+          "11111111-1111-4111-8111-111111111111"
+        ],
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
                 }
               ]
             }

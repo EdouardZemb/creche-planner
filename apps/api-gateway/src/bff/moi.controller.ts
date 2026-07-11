@@ -191,12 +191,16 @@ export class MoiController {
   }
 
   /**
-   * Résout **la** ligne parent du client à partir de son e-mail vérifié : parmi les
-   * foyers dont il est parent actif, on ne retient que la ligne dont l'e-mail
-   * correspond (insensible à la casse). L'e-mail étant un identifiant **global
-   * unique**, il y a au plus une telle ligne — mais le filtre reste explicite
-   * (défense en profondeur : on n'édite jamais la ligne d'un autre parent du foyer).
-   * `404` si aucune ligne ne correspond (identité sans foyer / sans parent).
+   * Résout **la** ligne parent du client à partir de son e-mail vérifié : on
+   * parcourt ses foyers (dans l'ordre renvoyé par `foyersParEmail`) et on retient
+   * la **première** ligne dont l'e-mail correspond (insensible à la casse). Le
+   * filtre par e-mail reste explicite (défense en profondeur : on n'édite jamais la
+   * ligne d'un autre parent du foyer). Depuis le lot 5, l'e-mail n'est plus
+   * globalement unique (unicité **par foyer** ; un parent peut appartenir à
+   * plusieurs foyers — familles recomposées) : profil / préférences / inbox sont
+   * alors résolus sur son **premier** foyer. C'est une **limitation assumée** (pas
+   * de sélecteur de profil multi-foyers, cf. plan §3). `404` si aucune ligne ne
+   * correspond (identité sans foyer / sans parent).
    */
   private async resoudreParentCourant(
     email: string,

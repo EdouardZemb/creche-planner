@@ -149,7 +149,10 @@ export const PARENT_RETIRE_TYPE = 'foyer.ParentRetire.v1';
 /**
  * État complet d'un parent transporté par `ParentAjoute`/`ParentModifie`.
  * `prenom`/`nom` sont optionnels (identité douce) ; `email` = destinataire et
- * futur identifiant de login (globalement unique côté base, cf. §4bis.6).
+ * futur identifiant de login, unique **par foyer** parmi les parents actifs (plus
+ * global : un même e-mail peut être parent de plusieurs foyers — familles
+ * recomposées — et redevient réutilisable après un retrait). Les consommateurs
+ * upsertent par `parentId` : un `ParentAjoute` de réactivation repasse `actif`.
  */
 export const parentEtatPayloadSchema = z.object({
   foyerId: foyerIdSchema,

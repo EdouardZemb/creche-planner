@@ -2,6 +2,7 @@ import {
   ConflictException,
   type ExecutionContext,
   Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { type Reflector } from '@nestjs/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -39,6 +40,7 @@ describe('CreationFoyerUniqueGuard (P5, besoin B)', () => {
   beforeEach(() => {
     envInitial = { ...process.env };
     delete process.env['ADMIN_EMAILS'];
+    delete process.env['FOYER_AUTHZ_ENFORCE'];
   });
 
   afterEach(() => {
@@ -103,7 +105,7 @@ describe('CreationFoyerUniqueGuard (P5, besoin B)', () => {
     expect(warn).toHaveBeenCalledOnce();
   });
 
-  it('résolution impossible ⇒ fail-open : laisse passer (incident transitoire)', async () => {
+  it('résolution impossible SANS enforce ⇒ fail-open : laisse passer', async () => {
     const foyersParEmail = vi
       .fn()
       .mockRejectedValue(new Error('svc-foyer down'));
@@ -113,5 +115,20 @@ describe('CreationFoyerUniqueGuard (P5, besoin B)', () => {
     );
     const req = requete({ identite: { email: 'parent@example.test' } });
     await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
+  });
+
+  it('résolution impossible AVEC enforce ⇒ fail-closed : 503', async () => {
+    process.env['FOYER_AUTHZ_ENFORCE'] = '1';
+    const foyersParEmail = vi
+      .fn()
+      .mockRejectedValue(new Error('svc-foyer down'));
+    const guard = new CreationFoyerUniqueGuard(
+      fakeReflector(true),
+      fakeFoyers(foyersParEmail),
+    );
+    const req = requete({ identite: { email: 'parent@example.test' } });
+    await expect(guard.canActivate(fakeContext(req))).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
   });
 });
