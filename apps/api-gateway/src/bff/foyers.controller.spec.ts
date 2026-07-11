@@ -29,21 +29,25 @@ const parent = (p: Partial<ParentVue> & Pick<ParentVue, 'id'>): ParentVue => ({
   ...p,
 });
 
-describe('FoyersController · création orchestrée', () => {
-  it('crée le foyer puis rattache enfants et parents dans l’ordre', async () => {
-    const creerFoyer = vi.fn().mockResolvedValue(FOYER);
-    const ajouterEnfant = vi
-      .fn()
-      .mockResolvedValue({ id: 'e1', foyerId: 'foyer-1' });
-    const ajouterParent = vi
-      .fn()
-      .mockImplementation((_id: string, saisie: { email: string }) =>
-        Promise.resolve(parent({ id: 'p1', email: saisie.email })),
-      );
+describe('FoyersController · création atomique', () => {
+  it('crée le dossier via un seul appel svc-foyer (foyer + enfants + parents)', async () => {
+    const dossier = {
+      foyer: FOYER,
+      enfants: [
+        {
+          id: 'e1',
+          foyerId: 'foyer-1',
+          prenom: 'Mia',
+          dateNaissance: '2024-12-08',
+        },
+      ],
+      parents: [
+        parent({ id: 'p1', email: 'alex@example.test', principal: true }),
+      ],
+    };
+    const creerFoyer = vi.fn().mockResolvedValue(dossier);
     const controller = new FoyersController({
       creerFoyer,
-      ajouterEnfant,
-      ajouterParent,
     } as unknown as FoyerClient);
 
     const vue = await controller.creer({
@@ -55,26 +59,26 @@ describe('FoyersController · création orchestrée', () => {
       parents: [{ email: 'alex@example.test', principal: true }],
     });
 
+    // Un seul appel amont : enfants et parents voyagent dans la commande.
     expect(creerFoyer).toHaveBeenCalledOnce();
-    expect(ajouterEnfant).toHaveBeenCalledWith('foyer-1', {
-      prenom: 'Mia',
-      dateNaissance: '2024-12-08',
-    });
-    expect(ajouterParent).toHaveBeenCalledWith('foyer-1', {
-      email: 'alex@example.test',
-      principal: true,
+    expect(creerFoyer).toHaveBeenCalledWith({
+      ressourcesMensuelles: 6716.92,
+      rfr: 72705,
+      nbEnfantsACharge: 2,
+      nbParts: 3,
+      enfants: [{ prenom: 'Mia', dateNaissance: '2024-12-08' }],
+      parents: [{ email: 'alex@example.test', principal: true }],
     });
     expect(vue.parents).toHaveLength(1);
     expect(vue.parents[0]?.email).toBe('alex@example.test');
   });
 
-  it('accepte une création sans parents (défaut [])', async () => {
-    const creerFoyer = vi.fn().mockResolvedValue(FOYER);
-    const ajouterParent = vi.fn();
+  it('accepte une création sans enfants ni parents (défauts [])', async () => {
+    const creerFoyer = vi
+      .fn()
+      .mockResolvedValue({ foyer: FOYER, enfants: [], parents: [] });
     const controller = new FoyersController({
       creerFoyer,
-      ajouterEnfant: vi.fn(),
-      ajouterParent,
     } as unknown as FoyerClient);
 
     const vue = await controller.creer({
@@ -84,7 +88,14 @@ describe('FoyersController · création orchestrée', () => {
       nbParts: 3,
     });
 
-    expect(ajouterParent).not.toHaveBeenCalled();
+    expect(creerFoyer).toHaveBeenCalledWith({
+      ressourcesMensuelles: 6716.92,
+      rfr: 72705,
+      nbEnfantsACharge: 2,
+      nbParts: 3,
+      enfants: [],
+      parents: [],
+    });
     expect(vue.parents).toEqual([]);
   });
 
@@ -106,69 +117,34 @@ describe('FoyersController · création orchestrée', () => {
     expect(creerFoyer).not.toHaveBeenCalled();
   });
 
-  // P5 — rattachement du créateur : sans identité (mode hérité) on ne rattache
-  // personne d'office ; avec une identité non-admin, le créateur est ajouté à ses
-  // parents s'il n'y figure pas, pour pouvoir éditer ensuite (@FoyerScope).
-  it('mode hérité (sans identité) : n’auto-rattache aucun parent', async () => {
-    const creerFoyer = vi.fn().mockResolvedValue(FOYER);
-    const ajouterParent = vi.fn();
+  // P5 — le rattachement du créateur vit désormais dans `svc-foyer` : la gateway se
+  // borne à transmettre (ou non) `createurEmail`. Sans identité (mode hérité) rien
+  // n'est transmis ; une identité non-admin fournit son e-mail.
+  it('mode hérité (sans identité) : ne transmet aucun createurEmail', async () => {
+    const creerFoyer = vi
+      .fn()
+      .mockResolvedValue({ foyer: FOYER, enfants: [], parents: [] });
     const controller = new FoyersController({
       creerFoyer,
-      ajouterEnfant: vi.fn(),
-      ajouterParent,
     } as unknown as FoyerClient);
 
-    const vue = await controller.creer({
+    await controller.creer({
       ressourcesMensuelles: 6716.92,
       rfr: 72705,
       nbEnfantsACharge: 2,
       nbParts: 3,
     });
 
-    expect(ajouterParent).not.toHaveBeenCalled();
-    expect(vue.parents).toEqual([]);
+    const arg = creerFoyer.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect('createurEmail' in arg).toBe(false);
   });
 
-  it('identité non-admin : rattache le créateur comme parent (auto-ajout)', async () => {
-    const creerFoyer = vi.fn().mockResolvedValue(FOYER);
-    const ajouterParent = vi
+  it('identité non-admin : transmet createurEmail (rattachement svc-foyer)', async () => {
+    const creerFoyer = vi
       .fn()
-      .mockImplementation((_id: string, saisie: { email: string }) =>
-        Promise.resolve(parent({ id: 'p1', email: saisie.email })),
-      );
+      .mockResolvedValue({ foyer: FOYER, enfants: [], parents: [] });
     const controller = new FoyersController({
       creerFoyer,
-      ajouterEnfant: vi.fn(),
-      ajouterParent,
-    } as unknown as FoyerClient);
-
-    const vue = await controller.creer(
-      {
-        ressourcesMensuelles: 6716.92,
-        rfr: 72705,
-        nbEnfantsACharge: 2,
-        nbParts: 3,
-      },
-      { headers: {}, identite: { email: 'createur@example.test' } },
-    );
-
-    expect(ajouterParent).toHaveBeenCalledWith('foyer-1', {
-      email: 'createur@example.test',
-    });
-    expect(vue.parents).toHaveLength(1);
-  });
-
-  it('identité non-admin déjà parmi les parents : pas de doublon (insensible à la casse)', async () => {
-    const creerFoyer = vi.fn().mockResolvedValue(FOYER);
-    const ajouterParent = vi
-      .fn()
-      .mockImplementation((_id: string, saisie: { email: string }) =>
-        Promise.resolve(parent({ id: 'p1', email: saisie.email })),
-      );
-    const controller = new FoyersController({
-      creerFoyer,
-      ajouterEnfant: vi.fn(),
-      ajouterParent,
     } as unknown as FoyerClient);
 
     await controller.creer(
@@ -177,15 +153,13 @@ describe('FoyersController · création orchestrée', () => {
         rfr: 72705,
         nbEnfantsACharge: 2,
         nbParts: 3,
-        parents: [{ email: 'Createur@Example.test' }],
       },
       { headers: {}, identite: { email: 'createur@example.test' } },
     );
 
-    expect(ajouterParent).toHaveBeenCalledTimes(1);
-    expect(ajouterParent).toHaveBeenCalledWith('foyer-1', {
-      email: 'Createur@Example.test',
-    });
+    expect(creerFoyer).toHaveBeenCalledWith(
+      expect.objectContaining({ createurEmail: 'createur@example.test' }),
+    );
   });
 });
 
