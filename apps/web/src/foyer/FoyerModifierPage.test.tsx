@@ -75,7 +75,7 @@ describe('FoyerModifierPage', () => {
     rendu();
 
     expect(
-      await screen.findByRole('heading', { name: 'Modifier le foyer' }),
+      await screen.findByRole('heading', { name: 'Ma famille' }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/Ressources mensuelles/i)).toHaveValue(
       6716.92,
@@ -85,7 +85,7 @@ describe('FoyerModifierPage', () => {
     expect(screen.getByLabelText(/parts fiscales/i)).toHaveValue(2.5);
   });
 
-  it('enregistre les scalaires (euros) puis revient au planning', async () => {
+  it('enregistre les scalaires (euros), reste sur la page et affiche le statut', async () => {
     mockedApi.modifierFoyer.mockResolvedValueOnce(dossierFactice.foyer);
     rendu();
 
@@ -107,8 +107,34 @@ describe('FoyerModifierPage', () => {
       nbParts: 2.5,
     });
 
-    // Redirection vers le planning au succès.
-    expect(await screen.findByText('PAGE_PLANNING')).toBeInTheDocument();
+    // Aucune redirection : on reste sur la page et un statut « Enregistré à … »
+    // confirme l'écriture.
+    expect(await screen.findByText(/Enregistré à/)).toBeInTheDocument();
+    expect(screen.queryByText('PAGE_PLANNING')).not.toBeInTheDocument();
+  });
+
+  it('« Rétablir » restaure les dernières valeurs enregistrées et reste sur la page', async () => {
+    mockedApi.modifierFoyer.mockResolvedValueOnce(dossierFactice.foyer);
+    rendu();
+
+    const champ = await screen.findByLabelText(/Ressources mensuelles/i);
+    // Un premier enregistrement fixe les « dernières valeurs enregistrées ».
+    fireEvent.change(champ, { target: { value: '7000' } });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Enregistrer les modifications' }),
+    );
+    await screen.findByText(/Enregistré à/);
+
+    // Saisie non enregistrée, puis Rétablir : on revient aux valeurs du serveur
+    // (la vue renvoyée par le PUT), pas à une saisie intermédiaire.
+    fireEvent.change(champ, { target: { value: '9999' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Rétablir' }));
+
+    expect(screen.getByLabelText(/Ressources mensuelles/i)).toHaveValue(
+      6716.92,
+    );
+    // Rétablir ne défait pas l'enregistrement réussi : le statut reste affiché.
+    expect(screen.getByText(/Enregistré à/)).toBeInTheDocument();
   });
 
   it('affiche les erreurs champ par champ en cas d’ApiError 400', async () => {

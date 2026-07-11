@@ -138,7 +138,9 @@ describe('PlanningPage', () => {
 
     renderPage();
 
-    expect(screen.getByText(/Chargement du foyer/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Chargement de votre famille/i),
+    ).toBeInTheDocument();
 
     resolve(dossierMock);
 

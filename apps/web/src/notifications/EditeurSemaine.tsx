@@ -94,7 +94,7 @@ export function EditeurSemaine({
 
       {data && groupes.length === 0 && (
         <p className="credit">
-          Aucun contrat actif sur cette semaine pour ce foyer.
+          Aucun contrat actif sur cette semaine pour cette famille.
         </p>
       )}
 

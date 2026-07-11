@@ -38,7 +38,7 @@ export function FoyerScalairesForm({
   return (
     <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
       <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-        Ressources du foyer
+        Ressources de la famille
       </legend>
 
       {/* Onboarding guidé (lot 3) : lever l'inquiétude devant les champs fiscaux

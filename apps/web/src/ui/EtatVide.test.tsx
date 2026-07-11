@@ -45,10 +45,10 @@ describe('EtatVide', () => {
 
   it('rend plusieurs actions', () => {
     rendre({
-      titre: 'Foyer introuvable',
+      titre: 'Famille introuvable',
       actions: [
-        { libelle: 'Créer un nouveau foyer', href: '/foyers/new' },
-        { libelle: 'Revenir à mon foyer', href: '/foyers/f1/planning' },
+        { libelle: 'Créer une nouvelle famille', href: '/foyers/new' },
+        { libelle: 'Revenir à ma famille', href: '/foyers/f1/planning' },
       ],
     });
     expect(screen.getAllByRole('link')).toHaveLength(2);

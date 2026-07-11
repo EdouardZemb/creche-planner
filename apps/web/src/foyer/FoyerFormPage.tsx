@@ -67,7 +67,7 @@ function defautParents(): EtatParent[] {
 }
 
 export function FoyerFormPage() {
-  useTitrePage('Nouveau foyer');
+  useTitrePage('Créer ma famille');
   const navigate = useNavigate();
   const idBase = useId();
   const moi = useMoi();
@@ -198,7 +198,7 @@ export function FoyerFormPage() {
         // (l'écran masque normalement le formulaire en amont ; filet pour une
         // course où `moi.foyers` était encore vide au montage).
         setErreurGlobale(
-          'Vous avez déjà un foyer. Modifiez-le plutôt que d’en créer un nouveau.',
+          'Vous avez déjà une famille. Modifiez-la plutôt que d’en créer une nouvelle.',
         );
       } else if (err instanceof ApiError) {
         const erreurs = extraireErreurs(err.corps).map((e) =>
@@ -225,11 +225,11 @@ export function FoyerFormPage() {
   if (!moi.loading && !moi.admin && premierFoyer !== undefined) {
     return (
       <EtatVide
-        titre="Vous avez déjà un foyer"
-        description="Vous ne pouvez créer qu'un seul foyer. Modifiez le vôtre plutôt que d'en créer un nouveau."
+        titre="Vous avez déjà une famille"
+        description="Vous ne pouvez créer qu'une seule famille. Modifiez la vôtre plutôt que d'en créer une nouvelle."
         actions={[
           {
-            libelle: 'Modifier mon foyer',
+            libelle: 'Voir ma famille',
             href: `/foyers/${premierFoyer}/modifier`,
             primaire: true,
           },
@@ -239,8 +239,8 @@ export function FoyerFormPage() {
   }
 
   return (
-    <div className="carte" style={{ maxWidth: 600 }}>
-      <h1 style={{ marginTop: 0 }}>Nouveau foyer</h1>
+    <div className="carte page-etroite">
+      <h1 style={{ marginTop: 0 }}>Créer ma famille</h1>
 
       {/* Onboarding guidé (lot 3) : dire d'entrée ce qu'on construit, avant les
           champs — le formaire raconte enfants → parents → ressources. */}
@@ -390,13 +390,10 @@ export function FoyerFormPage() {
                 )}
 
                 <div
-                  style={{
-                    display: 'flex',
-                    gap: '0.5rem',
-                    marginTop: '0.5rem',
-                  }}
+                  className="champs-duo"
+                  style={{ marginTop: 'var(--esp-2)' }}
                 >
-                  <div style={{ flex: 1 }}>
+                  <div>
                     <label htmlFor={`parent-prenom-${parent.id}`}>
                       Prénom <span className="muted">(facultatif)</span>
                     </label>
@@ -410,7 +407,7 @@ export function FoyerFormPage() {
                       style={{ width: '100%' }}
                     />
                   </div>
-                  <div style={{ flex: 1 }}>
+                  <div>
                     <label htmlFor={`parent-nom-${parent.id}`}>
                       Nom <span className="muted">(facultatif)</span>
                     </label>
@@ -468,7 +465,7 @@ export function FoyerFormPage() {
 
         <div style={{ marginTop: '1.5rem' }}>
           <button type="submit" className="btn" disabled={chargement}>
-            {chargement ? 'Création en cours…' : 'Créer le foyer'}
+            {chargement ? 'Création en cours…' : 'Créer ma famille'}
           </button>
         </div>
       </form>
