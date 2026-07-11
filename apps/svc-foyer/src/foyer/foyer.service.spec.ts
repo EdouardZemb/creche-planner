@@ -509,23 +509,28 @@ function ligneParent(overrides: Partial<ParentRow> = {}): ParentRow {
 }
 
 /**
- * Faux `db` transactionnel pour les écritures de parent. Le `select` interne
- * (présence du foyer) répond `foyerPresent` ; `insert(parent).returning()` renvoie
- * la ligne reflétant les valeurs insérées (ou rejette `erreurInsert` pour simuler
- * une violation d'unicité 23505) ; `update().set().where().returning()` renvoie
- * `lignesUpdate` (vide ⇒ parent introuvable). `updateSet` espionne le `set`.
+ * Faux `db` transactionnel pour les écritures de parent. Le `select` interne sert
+ * deux usages : sa valeur **awaitée** = présence du foyer (`foyerPresent`,
+ * `ajouterParent`) ; son `.for('update')` = **parents actifs** verrouillés par la
+ * garde « dernier parent » (`parentsActifs`, `retirerParent`/`modifierParent`).
+ * `insert(parent).returning()` renvoie la ligne reflétant les valeurs insérées (ou
+ * rejette `erreurInsert` pour simuler une violation d'unicité 23505) ;
+ * `update().set().where().returning()` renvoie `lignesUpdate` (vide ⇒ parent
+ * introuvable). `updateSet` espionne le `set` ; `forUpdate` espionne le verrou.
  */
 function fakeDbParentTx(
   options: {
     foyerPresent?: boolean;
     lignesUpdate?: ParentRow[];
     erreurInsert?: { code: string; constraint_name?: string };
+    parentsActifs?: { id: string }[];
   } = {},
 ): {
   db: Database;
   transaction: ReturnType<typeof vi.fn>;
   insertValues: ReturnType<typeof vi.fn>;
   updateSet: ReturnType<typeof vi.fn>;
+  forUpdate: ReturnType<typeof vi.fn>;
 } {
   const insertValues = vi.fn((valeurs: Record<string, unknown>) => {
     const estParent = typeof valeurs['email'] === 'string';
@@ -546,8 +551,14 @@ function fakeDbParentTx(
     }),
   }));
   const foyers = options.foyerPresent ? [{ id: FOYER_ID }] : [];
+  const actifs = options.parentsActifs ?? [];
+  const forUpdate = vi.fn((_strength?: string) => Promise.resolve(actifs));
+  // `where()` est à la fois **awaitable** (⇒ présence du foyer) ET porteuse de
+  // `.for('update')` (⇒ parents actifs), pour couvrir les deux appels du service.
+  const selectWhere = () =>
+    Object.assign(Promise.resolve(foyers), { for: forUpdate });
   const tx = {
-    select: () => ({ from: () => ({ where: () => Promise.resolve(foyers) }) }),
+    select: () => ({ from: () => ({ where: selectWhere }) }),
     insert: () => ({ values: insertValues }),
     update: () => ({ set: updateSet }),
   };
@@ -555,7 +566,7 @@ function fakeDbParentTx(
     cb(tx),
   );
   const db = { transaction } as unknown as Database;
-  return { db, transaction, insertValues, updateSet };
+  return { db, transaction, insertValues, updateSet, forUpdate };
 }
 
 /** Faux `db` pour les lectures parent (`select` ou `selectDistinct`). */
@@ -628,7 +639,7 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
     expect(insertValues).not.toHaveBeenCalled();
   });
 
-  it('traduit une violation d’e-mail unique en 409 (adresse déjà utilisée)', async () => {
+  it('traduit une violation d’e-mail unique en 409 structuré (code EMAIL_DEJA_UTILISE)', async () => {
     const { db } = fakeDbParentTx({
       foyerPresent: true,
       erreurInsert: {
@@ -638,16 +649,21 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
     });
     const service = new FoyerService(db);
 
-    await expect(
-      service.ajouterParent(FOYER_ID, {
+    const err = await service
+      .ajouterParent(FOYER_ID, {
         email: 'parent@example.com',
         principal: false,
         ordre: 0,
-      }),
-    ).rejects.toBeInstanceOf(ConflictException);
+      })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      statusCode: 409,
+      code: 'EMAIL_DEJA_UTILISE',
+    });
   });
 
-  it('traduit une violation du principal unique en 409 (message dédié)', async () => {
+  it('traduit une violation du principal unique en 409 structuré (code PARENT_PRINCIPAL_EXISTANT)', async () => {
     const { db } = fakeDbParentTx({
       foyerPresent: true,
       erreurInsert: {
@@ -657,13 +673,18 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
     });
     const service = new FoyerService(db);
 
-    await expect(
-      service.ajouterParent(FOYER_ID, {
+    const err = await service
+      .ajouterParent(FOYER_ID, {
         email: 'parent@example.com',
         principal: true,
         ordre: 0,
-      }),
-    ).rejects.toThrow('un parent principal existe déjà pour ce foyer');
+      })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      code: 'PARENT_PRINCIPAL_EXISTANT',
+      message: 'un parent principal existe déjà pour ce foyer',
+    });
   });
 });
 
@@ -709,11 +730,56 @@ describe('FoyerService.modifierParent', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(insertValues).not.toHaveBeenCalled();
   });
+
+  it('GARDE : modifierParent(actif:false) sur le DERNIER parent actif → 409 DERNIER_PARENT_ACTIF (aucune écriture)', async () => {
+    const { db, updateSet, insertValues, forUpdate } = fakeDbParentTx({
+      parentsActifs: [{ id: PARENT_ID }],
+    });
+    const service = new FoyerService(db);
+
+    const err = await service
+      .modifierParent(FOYER_ID, PARENT_ID, { actif: false })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      code: 'DERNIER_PARENT_ACTIF',
+    });
+    // La garde bloque AVANT l'update/outbox : aucun état ni événement modifié.
+    expect(forUpdate).toHaveBeenCalledWith('update');
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('GARDE : modifierParent(actif:false) avec un AUTRE parent actif → autorisé', async () => {
+    const { db, updateSet } = fakeDbParentTx({
+      parentsActifs: [{ id: PARENT_ID }, { id: 'autre-parent' }],
+      lignesUpdate: [ligneParent({ actif: false })],
+    });
+    const service = new FoyerService(db);
+
+    await service.modifierParent(FOYER_ID, PARENT_ID, { actif: false });
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ actif: false }),
+    );
+  });
+
+  it('GARDE : modifierParent SANS actif:false ne consulte pas les parents actifs', async () => {
+    const { db, forUpdate } = fakeDbParentTx({
+      lignesUpdate: [ligneParent({ email: 'neuf@example.com' })],
+    });
+    const service = new FoyerService(db);
+
+    await service.modifierParent(FOYER_ID, PARENT_ID, {
+      email: 'neuf@example.com',
+    });
+    expect(forUpdate).not.toHaveBeenCalled();
+  });
 });
 
 describe('FoyerService.retirerParent (soft-delete + événement)', () => {
-  it('passe actif=false + émet ParentRetire dans la même transaction', async () => {
+  it('passe actif=false + émet ParentRetire dans la même transaction (≥ 2 parents actifs)', async () => {
     const { db, transaction, updateSet, insertValues } = fakeDbParentTx({
+      parentsActifs: [{ id: PARENT_ID }, { id: 'autre-parent' }],
       lignesUpdate: [ligneParent({ actif: false })],
     });
     const service = new FoyerService(db);
@@ -733,12 +799,39 @@ describe('FoyerService.retirerParent (soft-delete + événement)', () => {
   });
 
   it('lève NotFoundException si le parent est introuvable — aucun événement', async () => {
-    const { db, insertValues } = fakeDbParentTx({ lignesUpdate: [] });
+    const { db, insertValues } = fakeDbParentTx({
+      parentsActifs: [{ id: 'autre-parent' }],
+      lignesUpdate: [],
+    });
     const service = new FoyerService(db);
 
     await expect(
       service.retirerParent(FOYER_ID, PARENT_ID),
     ).rejects.toBeInstanceOf(NotFoundException);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('GARDE : retirer le DERNIER parent actif → 409 DERNIER_PARENT_ACTIF, aucune écriture', async () => {
+    const { db, transaction, updateSet, insertValues, forUpdate } =
+      fakeDbParentTx({
+        parentsActifs: [{ id: PARENT_ID }],
+        lignesUpdate: [ligneParent({ actif: false })],
+      });
+    const service = new FoyerService(db);
+
+    const err = await service
+      .retirerParent(FOYER_ID, PARENT_ID)
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      statusCode: 409,
+      code: 'DERNIER_PARENT_ACTIF',
+    });
+    // Verrou pris DANS la transaction (pas de pré-lecture) puis blocage : aucun
+    // état ni événement modifié (rollback sur une vraie base).
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(forUpdate).toHaveBeenCalledWith('update');
+    expect(updateSet).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();
   });
 });

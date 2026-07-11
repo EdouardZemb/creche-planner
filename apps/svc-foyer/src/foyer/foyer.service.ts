@@ -362,6 +362,11 @@ export class FoyerService {
     if (dto.actif !== undefined) set.actif = dto.actif;
     try {
       const ligne = await this.db.transaction(async (tx) => {
+        // Un passage explicite `actif: false` = retrait : refuser s'il retirerait
+        // le dernier parent actif (même garde que `retirerParent`, DANS la transaction).
+        if (dto.actif === false) {
+          await this.gardeDernierParentActif(tx, foyerId, parentId);
+        }
         const maj = await tx
           .update(parent)
           .set(set)
@@ -385,6 +390,8 @@ export class FoyerService {
   /** Retire un parent (soft-delete `actif = false`) + émet `ParentRetire`. */
   async retirerParent(foyerId: string, parentId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
+      // Refuser le retrait du dernier parent actif (DANS la transaction, verrou).
+      await this.gardeDernierParentActif(tx, foyerId, parentId);
       const maj = await tx
         .update(parent)
         .set({ actif: false, updatedAt: new Date() })
@@ -604,16 +611,57 @@ export class FoyerService {
     };
   }
 
-  /** Traduit une violation d'unicité en 409 explicite ; re-jette sinon. */
+  /**
+   * Traduit une violation d'unicité en **409 structuré** (`{ statusCode, code,
+   * message }`) ; re-jette sinon (dont les 409 déjà structurés — la garde dernier
+   * parent — qui ne sont pas des violations Postgres et retraversent tel quel).
+   * Le `code` machine permet au front de distinguer chaque cause (le BFF relaie le
+   * corps amont via `ErreurAmont`).
+   */
   private traduireUnicite(erreur: unknown): never {
     if (estViolationUnicite(erreur)) {
-      const message =
-        erreur.constraint_name === 'parent_principal_unique_idx'
-          ? 'un parent principal existe déjà pour ce foyer'
-          : 'adresse e-mail déjà utilisée';
-      throw new ConflictException(message);
+      if (erreur.constraint_name === 'parent_principal_unique_idx') {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'PARENT_PRINCIPAL_EXISTANT',
+          message: 'un parent principal existe déjà pour ce foyer',
+        });
+      }
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'EMAIL_DEJA_UTILISE',
+        message: 'adresse e-mail déjà utilisée',
+      });
     }
     throw erreur;
+  }
+
+  /**
+   * Garde **« au moins un parent actif par foyer »** (transition 1→0 interdite).
+   * Dans la transaction courante, verrouille les lignes parents **actives** du
+   * foyer (`SELECT ... FOR UPDATE`) : si le parent visé en est le **dernier**
+   * actif, lève un 409 `DERNIER_PARENT_ACTIF` (aucun événement émis). Le verrou
+   * sérialise deux retraits concurrents — la garde vit dans la transaction, pas en
+   * pré-lecture. Ne s'applique qu'à la transition 1→0 : un foyer déjà sans parent
+   * actif (créé sans parent par un admin) reste possible.
+   */
+  private async gardeDernierParentActif(
+    tx: DbTransaction,
+    foyerId: string,
+    parentId: string,
+  ): Promise<void> {
+    const actifs = await tx
+      .select({ id: parent.id })
+      .from(parent)
+      .where(and(eq(parent.foyerId, foyerId), eq(parent.actif, true)))
+      .for('update');
+    if (actifs.length === 1 && actifs[0]?.id === parentId) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'DERNIER_PARENT_ACTIF',
+        message: 'impossible de retirer le dernier parent actif du foyer',
+      });
+    }
   }
 
   private versParentVue(ligne: ParentRow): ParentVue {
