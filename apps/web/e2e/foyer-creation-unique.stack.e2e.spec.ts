@@ -58,12 +58,12 @@ test.describe('stack réelle : création unique de foyer (P5)', () => {
 
     // UI : l'écran de création oriente vers l'édition (le formulaire est masqué).
     await page.goto('/foyers/new');
-    await expect(page.getByText('Vous avez déjà un foyer')).toBeVisible();
+    await expect(page.getByText('Vous avez déjà une famille')).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Créer le foyer' }),
+      page.getByRole('button', { name: 'Créer ma famille' }),
     ).toHaveCount(0);
     await expect(
-      page.locator('main').getByRole('link', { name: 'Modifier mon foyer' }),
+      page.locator('main').getByRole('link', { name: 'Voir ma famille' }),
     ).toHaveAttribute('href', `/foyers/${foyerId}/modifier`);
   });
 });
@@ -93,7 +93,7 @@ test.describe('stack réelle : session fraîche après création (lot 3)', () =>
     await page.getByLabel(/enfants à charge/i).fill('1');
     await page.getByLabel(/parts fiscales/i).fill('2');
 
-    await page.getByRole('button', { name: 'Créer le foyer' }).click();
+    await page.getByRole('button', { name: 'Créer ma famille' }).click();
 
     // La création aboutit sur la page Contrats du foyer neuf.
     await expect(page).toHaveURL(/\/foyers\/[^/]+\/contrats/);
@@ -104,8 +104,8 @@ test.describe('stack réelle : session fraîche après création (lot 3)', () =>
     // La session est fraîche : l'accueil route vers le dashboard du foyer…
     await expect(page).toHaveURL(/\/foyers\/[^/]+\/dashboard/);
     // …et jamais vers l'écran « pas encore de foyer ».
-    await expect(page.getByText(/Vous n.avez pas encore de foyer/)).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByText(/Vous n.avez pas encore créé votre famille/),
+    ).toHaveCount(0);
   });
 });

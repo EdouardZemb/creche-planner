@@ -2,8 +2,17 @@ import { useId, useState } from 'react';
 import { api, ApiError } from '../api/client';
 import { extraireErreurs, messageErreur } from '../utils/erreurs';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
+import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
 import type { ErreurChamp } from '../utils/erreurs';
 import type { ContratVue, EnfantVue } from '../types/bff';
+
+/** Heure locale « 21:43 » posée dans le statut d'un enregistrement réussi. */
+function heureCourante(): string {
+  return new Date().toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 /**
  * Gestion des **enfants** d'un foyer dans l'écran d'édition (« cycle de vie du
@@ -103,6 +112,8 @@ function LigneEnfantExistant({
   const [prenom, setPrenom] = useState(enfant.prenom);
   const [dateNaissance, setDateNaissance] = useState(enfant.dateNaissance);
   const [occupe, setOccupe] = useState(false);
+  const [etatSauvegarde, setEtatSauvegarde] = useState<EtatSauvegarde>('idle');
+  const [enregistreA, setEnregistreA] = useState<string | null>(null);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
   const [confirmation, setConfirmation] = useState(false);
@@ -113,6 +124,7 @@ function LigneEnfantExistant({
   }
 
   function gererErreur(err: unknown) {
+    setEtatSauvegarde('erreur');
     if (err instanceof ApiError) {
       const erreurs = extraireErreurs(err.corps);
       if (erreurs.length > 0) {
@@ -133,6 +145,8 @@ function LigneEnfantExistant({
         dateNaissance,
       });
       onModifie(maj);
+      setEnregistreA(heureCourante());
+      setEtatSauvegarde('enregistre');
     } catch (err) {
       gererErreur(err);
     } finally {
@@ -148,6 +162,7 @@ function LigneEnfantExistant({
       await api.retirerEnfant(foyerId, enfant.id);
       onRetire(enfant.id);
     } catch (err) {
+      setEtatSauvegarde('erreur');
       setErreurGlobale(messageErreur(err));
     } finally {
       setOccupe(false);
@@ -155,6 +170,9 @@ function LigneEnfantExistant({
   }
 
   const designation = prenom.trim() || enfant.prenom;
+  // Statut affiché près des boutons : « en-cours » pendant une écriture, sinon
+  // le dernier état atteint (persiste après succès/échec).
+  const etatAffiche: EtatSauvegarde = occupe ? 'en-cours' : etatSauvegarde;
 
   return (
     <div className="carte enfant-ligne" style={{ marginBottom: '0.5rem' }}>
@@ -164,8 +182,8 @@ function LigneEnfantExistant({
         </p>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <div style={{ flex: 1 }}>
+      <div className="champs-duo">
+        <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span aria-hidden="true">*</span>
           </label>
@@ -189,7 +207,7 @@ function LigneEnfantExistant({
             </span>
           )}
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <label htmlFor={`${idBase}-naissance`}>
             Date de naissance <span aria-hidden="true">*</span>
           </label>
@@ -215,7 +233,7 @@ function LigneEnfantExistant({
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+      <div className="actions-ligne">
         <button
           type="button"
           className="btn secondaire"
@@ -235,6 +253,7 @@ function LigneEnfantExistant({
         >
           Supprimer
         </button>
+        <StatutSauvegarde etat={etatAffiche} enregistreA={enregistreA} />
       </div>
 
       <ModaleConfirmation
@@ -271,6 +290,8 @@ function FormNouvelEnfant({
   const [prenom, setPrenom] = useState('');
   const [dateNaissance, setDateNaissance] = useState('');
   const [occupe, setOccupe] = useState(false);
+  const [etatSauvegarde, setEtatSauvegarde] = useState<EtatSauvegarde>('idle');
+  const [enregistreA, setEnregistreA] = useState<string | null>(null);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
 
@@ -291,7 +312,10 @@ function FormNouvelEnfant({
       onAjoute(cree);
       setPrenom('');
       setDateNaissance('');
+      setEnregistreA(heureCourante());
+      setEtatSauvegarde('enregistre');
     } catch (err) {
+      setEtatSauvegarde('erreur');
       if (err instanceof ApiError) {
         const erreurs = extraireErreurs(err.corps);
         if (erreurs.length > 0) {
@@ -305,6 +329,8 @@ function FormNouvelEnfant({
     }
   }
 
+  const etatAffiche: EtatSauvegarde = occupe ? 'en-cours' : etatSauvegarde;
+
   return (
     <div className="carte enfant-ligne" style={{ marginBottom: '0.5rem' }}>
       <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Ajouter un enfant</p>
@@ -315,8 +341,8 @@ function FormNouvelEnfant({
         </p>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <div style={{ flex: 1 }}>
+      <div className="champs-duo">
+        <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span aria-hidden="true">*</span>
           </label>
@@ -340,7 +366,7 @@ function FormNouvelEnfant({
             </span>
           )}
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <label htmlFor={`${idBase}-naissance`}>
             Date de naissance <span aria-hidden="true">*</span>
           </label>
@@ -366,15 +392,17 @@ function FormNouvelEnfant({
         </div>
       </div>
 
-      <button
-        type="button"
-        className="btn secondaire"
-        disabled={occupe || prenom.trim() === '' || dateNaissance === ''}
-        onClick={() => void ajouter()}
-        style={{ marginTop: '0.5rem' }}
-      >
-        {occupe ? 'Ajout en cours…' : '+ Ajouter cet enfant'}
-      </button>
+      <div className="actions-ligne">
+        <button
+          type="button"
+          className="btn secondaire"
+          disabled={occupe || prenom.trim() === '' || dateNaissance === ''}
+          onClick={() => void ajouter()}
+        >
+          {occupe ? 'Ajout en cours…' : '+ Ajouter cet enfant'}
+        </button>
+        <StatutSauvegarde etat={etatAffiche} enregistreA={enregistreA} />
+      </div>
     </div>
   );
 }

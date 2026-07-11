@@ -168,7 +168,7 @@ export function PlanningPage() {
   };
 
   if (!id) {
-    return <div className="carte muted">Aucun foyer sélectionné.</div>;
+    return <div className="carte muted">Aucune famille sélectionnée.</div>;
   }
 
   return (
@@ -237,7 +237,9 @@ export function PlanningPage() {
       </div>
 
       {/* États loading / error */}
-      {loading && <div className="carte muted">Chargement du foyer...</div>}
+      {loading && (
+        <div className="carte muted">Chargement de votre famille...</div>
+      )}
       {error !== null && (
         <div className="carte" role="alert" style={{ color: 'var(--rouge)' }}>
           {error}
@@ -265,7 +267,7 @@ export function PlanningPage() {
             {/* EX-07 : état vide orienté action si ni enfant ni contrat */}
             {enfants.length === 0 && contrats.length === 0 && (
               <EtatVide
-                titre="Aucun enfant ni contrat pour ce foyer"
+                titre="Aucun enfant ni contrat pour cette famille"
                 description="Créez un premier contrat pour commencer à planifier."
                 actions={[
                   {
@@ -282,7 +284,7 @@ export function PlanningPage() {
                 <div
                   className="onglets"
                   role="tablist"
-                  aria-label="Enfants du foyer"
+                  aria-label="Enfants de la famille"
                 >
                   {enfants.map((enfant) => {
                     const actif = enfantSelectionne === enfant.prenom;
@@ -447,7 +449,7 @@ export function PlanningPage() {
                 stockés localement. */}
             {enfants.length === 0 && contrats.length > 0 && (
               <div className="carte muted">
-                Les contrats sont enregistrés localement mais le foyer ne
+                Les contrats sont enregistrés localement mais la famille ne
                 contient pas d’enfants chargés.
               </div>
             )}

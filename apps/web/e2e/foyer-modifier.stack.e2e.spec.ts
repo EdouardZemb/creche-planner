@@ -96,7 +96,7 @@ test.describe('stack réelle : le parent modifie les ressources de son foyer', (
   }) => {
     await page.goto(urlModifier(foyerId));
     await expect(
-      page.getByRole('heading', { name: 'Modifier le foyer' }),
+      page.getByRole('heading', { name: 'Ma famille' }),
     ).toBeVisible();
 
     // Le formulaire est pré-rempli avec la valeur courante (euros).
@@ -111,11 +111,14 @@ test.describe('stack réelle : le parent modifie les ressources de son foyer', (
       .getByRole('button', { name: 'Enregistrer les modifications' })
       .click();
 
-    // Retour au planning au succès.
-    await expect(page).toHaveURL(new RegExp(`/foyers/${foyerId}/planning`));
+    // Lot 4 : au succès on RESTE sur la page d'édition ; le retour visuel est
+    // le statut « Enregistré à HH:MM » (région role="status" à côté du bouton).
+    // NB : `getByRole('status')` seul serait ambigu (la région live d'annonce
+    // de route porte aussi role="status") → on filtre par le libellé.
     await expect(
-      page.getByRole('heading', { name: 'Planning mensuel' }),
+      page.getByRole('status').filter({ hasText: /Enregistré à/ }),
     ).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/foyers/${foyerId}/modifier`));
 
     // Persistance : en rouvrant l'écran, le champ porte la nouvelle valeur.
     await page.goto(urlModifier(foyerId));
@@ -141,9 +144,7 @@ test('stack réelle : le parent ajoute puis retire un parent (via modale)', asyn
   const email = `parent-e2e-${Date.now()}@example.test`;
 
   await page.goto(urlModifier(foyerId));
-  await expect(
-    page.getByRole('heading', { name: 'Modifier le foyer' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ma famille' })).toBeVisible();
 
   // Le bloc « Ajouter un parent » porte ses propres champs (l'écran affiche déjà
   // le parent initial) → on s'y limite via son conteneur.
@@ -263,9 +264,7 @@ test('stack réelle : le parent ajoute, édite puis supprime un enfant', async (
   const prenomModifie = `${prenom}-bis`;
 
   await page.goto(urlModifier(foyerId));
-  await expect(
-    page.getByRole('heading', { name: 'Modifier le foyer' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ma famille' })).toBeVisible();
 
   // Ajout via le bloc dédié (l'écran peut déjà afficher des enfants seedés).
   const blocAjout = page.locator('.enfant-ligne', {
@@ -309,21 +308,19 @@ test('stack réelle : le parent ajoute, édite puis supprime un enfant', async (
   await expect(boutonSupprimerModifie).toHaveCount(0);
 });
 
-// Le point d'entrée « Modifier le foyer » est visible dans l'en-tête dès qu'un
+// Le point d'entrée « Ma famille » est visible dans l'en-tête dès qu'un
 // foyer est actif (propriétaire ; non conditionné à un rôle admin) — et mène à
 // l'écran d'édition.
-test('stack réelle : l’en-tête expose « Modifier le foyer » et y mène', async ({
+test('stack réelle : l’en-tête expose « Ma famille » et y mène', async ({
   page,
 }) => {
   const { foyerId } = lireEtatSeed();
 
   await page.goto(urlPlanning(foyerId));
-  const lien = page.getByRole('link', { name: 'Modifier le foyer' });
+  const lien = page.getByRole('link', { name: 'Ma famille' });
   await expect(lien).toBeVisible();
 
   await lien.click();
   await expect(page).toHaveURL(new RegExp(`/foyers/${foyerId}/modifier`));
-  await expect(
-    page.getByRole('heading', { name: 'Modifier le foyer' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ma famille' })).toBeVisible();
 });

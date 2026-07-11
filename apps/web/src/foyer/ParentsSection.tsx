@@ -4,8 +4,17 @@ import { extraireErreurs } from '../utils/erreurs';
 import { messageErreurParent, retraduireErreurParent } from './parentErreurs';
 import { useMoi } from '../session/MoiContext';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
+import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
 import type { ErreurChamp } from '../utils/erreurs';
 import type { ParentVue } from '../types/bff';
+
+/** Heure locale « 21:43 » posée dans le statut d'un enregistrement réussi. */
+function heureCourante(): string {
+  return new Date().toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 /**
  * Gestion des **parents** d'un foyer dans l'écran d'édition (P3 « cycle de vie du
@@ -97,6 +106,8 @@ function LigneParentExistant({
   const [nom, setNom] = useState(parent.nom ?? '');
   const [principal, setPrincipal] = useState(parent.principal);
   const [occupe, setOccupe] = useState(false);
+  const [etatSauvegarde, setEtatSauvegarde] = useState<EtatSauvegarde>('idle');
+  const [enregistreA, setEnregistreA] = useState<string | null>(null);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
   // Confirmation avant un geste à conséquence : retrait de la ligne, ou
@@ -113,6 +124,7 @@ function LigneParentExistant({
   }
 
   function gererErreur(err: unknown) {
+    setEtatSauvegarde('erreur');
     if (err instanceof ApiError) {
       // Écriture unitaire : les erreurs de champ ne sont pas indexées
       // (`email`/`prenom`/`nom`). On passe quand même par `retraduireErreurParent`
@@ -141,6 +153,8 @@ function LigneParentExistant({
         principal,
       });
       onModifie(maj);
+      setEnregistreA(heureCourante());
+      setEtatSauvegarde('enregistre');
     } catch (err) {
       gererErreur(err);
     } finally {
@@ -156,11 +170,16 @@ function LigneParentExistant({
       await api.retirerParent(foyerId, parent.id);
       onRetire(parent.id);
     } catch (err) {
+      setEtatSauvegarde('erreur');
       setErreurGlobale(messageErreurParent(err));
     } finally {
       setOccupe(false);
     }
   }
+
+  // Statut affiché près des boutons : « en-cours » tant qu'une écriture est en
+  // vol (`occupe`), sinon le dernier état atteint (persiste après succès/échec).
+  const etatAffiche: EtatSauvegarde = occupe ? 'en-cours' : etatSauvegarde;
 
   const nomComplet = `${prenom.trim()} ${nom.trim()}`.trim();
   const designation = nomComplet || email.trim();
@@ -213,8 +232,8 @@ function LigneParentExistant({
         </span>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-        <div style={{ flex: 1 }}>
+      <div className="champs-duo" style={{ marginTop: 'var(--esp-2)' }}>
+        <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span className="muted">(facultatif)</span>
           </label>
@@ -228,7 +247,7 @@ function LigneParentExistant({
             style={{ width: '100%' }}
           />
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <label htmlFor={`${idBase}-nom`}>
             Nom <span className="muted">(facultatif)</span>
           </label>
@@ -244,14 +263,7 @@ function LigneParentExistant({
         </div>
       </div>
 
-      <label
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          marginTop: '0.5rem',
-        }}
-      >
+      <label className="case-cochable">
         <input
           type="checkbox"
           checked={principal}
@@ -259,10 +271,10 @@ function LigneParentExistant({
             setPrincipal(e.target.checked);
           }}
         />
-        Parent principal (destinataire « À » par défaut)
+        Contact principal (reçoit les e-mails de la crèche en premier)
       </label>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+      <div className="actions-ligne">
         <button
           type="button"
           className="btn secondaire"
@@ -286,6 +298,7 @@ function LigneParentExistant({
         >
           Retirer
         </button>
+        <StatutSauvegarde etat={etatAffiche} enregistreA={enregistreA} />
       </div>
 
       <ModaleConfirmation
@@ -338,6 +351,8 @@ function FormNouveauParent({
   const [prenom, setPrenom] = useState('');
   const [nom, setNom] = useState('');
   const [occupe, setOccupe] = useState(false);
+  const [etatSauvegarde, setEtatSauvegarde] = useState<EtatSauvegarde>('idle');
+  const [enregistreA, setEnregistreA] = useState<string | null>(null);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
 
@@ -362,7 +377,10 @@ function FormNouveauParent({
       setEmail('');
       setPrenom('');
       setNom('');
+      setEnregistreA(heureCourante());
+      setEtatSauvegarde('enregistre');
     } catch (err) {
+      setEtatSauvegarde('erreur');
       if (err instanceof ApiError) {
         const erreurs = extraireErreurs(err.corps).map((e) =>
           retraduireErreurParent(e, ['nouveau']),
@@ -377,6 +395,8 @@ function FormNouveauParent({
       setOccupe(false);
     }
   }
+
+  const etatAffiche: EtatSauvegarde = occupe ? 'en-cours' : etatSauvegarde;
 
   return (
     <div
@@ -414,8 +434,8 @@ function FormNouveauParent({
         </span>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-        <div style={{ flex: 1 }}>
+      <div className="champs-duo" style={{ marginTop: 'var(--esp-2)' }}>
+        <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span className="muted">(facultatif)</span>
           </label>
@@ -429,7 +449,7 @@ function FormNouveauParent({
             style={{ width: '100%' }}
           />
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <label htmlFor={`${idBase}-nom`}>
             Nom <span className="muted">(facultatif)</span>
           </label>
@@ -445,15 +465,17 @@ function FormNouveauParent({
         </div>
       </div>
 
-      <button
-        type="button"
-        className="btn secondaire"
-        disabled={occupe}
-        onClick={() => void ajouter()}
-        style={{ marginTop: '0.5rem' }}
-      >
-        {occupe ? 'Ajout en cours…' : '+ Ajouter ce parent'}
-      </button>
+      <div className="actions-ligne">
+        <button
+          type="button"
+          className="btn secondaire"
+          disabled={occupe}
+          onClick={() => void ajouter()}
+        >
+          {occupe ? 'Ajout en cours…' : '+ Ajouter ce parent'}
+        </button>
+        <StatutSauvegarde etat={etatAffiche} enregistreA={enregistreA} />
+      </div>
     </div>
   );
 }

@@ -166,7 +166,7 @@ describe('App — coquille de navigation', () => {
     );
     // Le header (et la 404) exposent toujours « Nouveau foyer ».
     expect(
-      screen.getAllByRole('link', { name: 'Nouveau foyer' }).length,
+      screen.getAllByRole('link', { name: 'Nouvelle famille' }).length,
     ).toBeGreaterThan(0);
   });
 
@@ -197,9 +197,9 @@ describe('App — coquille de navigation', () => {
     mockedApi.lireFoyer.mockRejectedValueOnce(new ApiError(404, undefined));
     rendre(`/foyers/inconnu/planning`);
 
-    expect(await screen.findByText('Foyer introuvable')).toBeInTheDocument();
+    expect(await screen.findByText('Famille introuvable')).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Créer un nouveau foyer' }),
+      screen.getByRole('link', { name: 'Créer une nouvelle famille' }),
     ).toHaveAttribute('href', '/foyers/new');
     expect(screen.queryByText('PAGE_PLANNING')).not.toBeInTheDocument();
   });
@@ -209,9 +209,9 @@ describe('App — coquille de navigation', () => {
     mockedApi.lireFoyer.mockRejectedValueOnce(new ApiError(404, undefined));
     rendre(`/foyers/inconnu/planning`);
 
-    await screen.findByText('Foyer introuvable');
+    await screen.findByText('Famille introuvable');
     expect(
-      screen.getByRole('link', { name: 'Revenir à mon foyer' }),
+      screen.getByRole('link', { name: 'Revenir à ma famille' }),
     ).toHaveAttribute('href', `/foyers/${FOYER_ID}/dashboard`);
   });
 
@@ -225,7 +225,7 @@ describe('App — coquille de navigation', () => {
     ).toBeInTheDocument();
     // On ne propose pas « créer un foyer » sur une simple indisponibilité.
     expect(
-      screen.queryByRole('link', { name: 'Créer un nouveau foyer' }),
+      screen.queryByRole('link', { name: 'Créer une nouvelle famille' }),
     ).not.toBeInTheDocument();
   });
 
@@ -244,7 +244,7 @@ describe('App — coquille de navigation', () => {
       screen.queryByRole('button', { name: 'Réessayer' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: 'Créer un nouveau foyer' }),
+      screen.queryByRole('link', { name: 'Créer une nouvelle famille' }),
     ).not.toBeInTheDocument();
   });
 
@@ -329,7 +329,7 @@ describe('App — coquille de navigation', () => {
       within(panneau).getByRole('link', { name: 'Établissements' }),
     ).toBeInTheDocument();
     expect(
-      within(panneau).getByRole('link', { name: 'Modifier le foyer' }),
+      within(panneau).getByRole('link', { name: 'Ma famille' }),
     ).toBeInTheDocument();
     // … pas les destinations quotidiennes (elles forment la barre d'onglets).
     expect(
@@ -424,10 +424,10 @@ describe('App — mode borné par identité (PR6)', () => {
     rendre('/');
 
     expect(
-      await screen.findByText('Vous n’avez pas encore de foyer'),
+      await screen.findByText('Vous n’avez pas encore créé votre famille'),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Créer mon foyer' }),
+      screen.getByRole('link', { name: 'Créer ma famille' }),
     ).toHaveAttribute('href', '/foyers/new');
     // La page de création n'est pas rendue d'office : elle suit un clic.
     expect(screen.queryByText('PAGE_NOUVEAU_FOYER')).not.toBeInTheDocument();
@@ -441,8 +441,10 @@ describe('App — mode borné par identité (PR6)', () => {
     });
     rendre('/');
 
-    expect(await screen.findByText('Choisir un foyer')).toBeInTheDocument();
-    const ouvertures = screen.getAllByRole('link', { name: /Ouvrir le foyer/ });
+    expect(await screen.findByText('Choisir une famille')).toBeInTheDocument();
+    const ouvertures = screen.getAllByRole('link', {
+      name: /Ouvrir la famille/,
+    });
     expect(ouvertures).toHaveLength(2);
     expect(ouvertures[0]).toHaveAttribute(
       'href',
@@ -483,7 +485,7 @@ describe('App — mode borné par identité (PR6)', () => {
     await screen.findByText('PAGE_PLANNING');
 
     expect(
-      screen.queryByRole('link', { name: 'Nouveau foyer' }),
+      screen.queryByRole('link', { name: 'Nouvelle famille' }),
     ).not.toBeInTheDocument();
   });
 
@@ -497,7 +499,7 @@ describe('App — mode borné par identité (PR6)', () => {
     await screen.findByText('PAGE_PLANNING');
 
     expect(
-      screen.getByRole('link', { name: 'Nouveau foyer' }),
+      screen.getByRole('link', { name: 'Nouvelle famille' }),
     ).toBeInTheDocument();
   });
 
@@ -512,7 +514,7 @@ describe('App — mode borné par identité (PR6)', () => {
     await screen.findByText('PAGE_PLANNING');
 
     expect(
-      screen.getByRole('link', { name: 'Nouveau foyer' }),
+      screen.getByRole('link', { name: 'Nouvelle famille' }),
     ).toBeInTheDocument();
   });
 
@@ -529,11 +531,11 @@ describe('App — mode borné par identité (PR6)', () => {
     const nav = await screen.findByRole('navigation', {
       name: 'Navigation principale',
     });
-    const lien = within(nav).getByRole('link', { name: 'Modifier mon foyer' });
+    const lien = within(nav).getByRole('link', { name: 'Voir ma famille' });
     expect(lien).toHaveAttribute('href', `/foyers/${FOYER_ID}/modifier`);
     // Dans l'en-tête, « Nouveau foyer » est masqué (create-once, non-admin).
     expect(
-      within(nav).queryByRole('link', { name: 'Nouveau foyer' }),
+      within(nav).queryByRole('link', { name: 'Nouvelle famille' }),
     ).not.toBeInTheDocument();
   });
 });

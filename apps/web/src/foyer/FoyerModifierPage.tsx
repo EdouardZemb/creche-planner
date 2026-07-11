@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { useTitrePage } from '../hooks/useTitrePage';
 import { useAsync } from '../hooks/useAsync';
@@ -23,6 +23,7 @@ import {
 import { ParentsSection } from './ParentsSection';
 import { EnfantsSection } from './EnfantsSection';
 import { useContrats } from './useContrats';
+import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
 
 /**
  * Valeurs de saisie (chaînes) dérivées d'un foyer chargé : on pré-remplit avec
@@ -47,7 +48,7 @@ function valeursDepuisFoyer(foyer: FoyerVue): ValeursScalairesFoyer {
  * suppression).
  */
 export function FoyerModifierPage() {
-  useTitrePage('Modifier le foyer');
+  useTitrePage('Ma famille');
   const { foyerId } = useParams<{ foyerId: string }>();
   const id = foyerId ?? '';
   const { data, loading, error } = useAsync<DossierFoyerVue>(
@@ -56,7 +57,7 @@ export function FoyerModifierPage() {
   );
 
   if (loading) {
-    return <p className="muted">Chargement du foyer…</p>;
+    return <p className="muted">Chargement de votre famille…</p>;
   }
   // `GardeFoyer` traite déjà 404 / 5xx / session expirée en amont (l'`<Outlet/>`
   // n'est rendu qu'après un chargement réussi). Ce repli ne couvre donc que
@@ -65,7 +66,7 @@ export function FoyerModifierPage() {
   if (error || !data) {
     return (
       <p className="debit" role="alert">
-        {error ?? 'Foyer indisponible.'}
+        {error ?? 'Famille indisponible.'}
       </p>
     );
   }
@@ -93,17 +94,21 @@ function FormulaireEdition({
   readonly parents: readonly ParentVue[];
   readonly enfants: readonly EnfantVue[];
 }) {
-  const navigate = useNavigate();
   const idBase = useId();
   // Contrats du foyer (cache par foyer, coût quasi nul) : permet à la suppression
   // d'un enfant d'avertir du nombre de contrats qui lui restent liés. Une lecture
   // en cours/échouée laisse `contrats` vide ⇒ modale générique (ne bloque pas).
   const { contrats } = useContrats(foyerId);
 
+  // Dernières valeurs **enregistrées** : au montage, celles du foyer chargé ;
+  // après un PUT réussi, la vue renvoyée par le serveur. « Rétablir » repart de
+  // là (jamais des valeurs de montage) pour ne pas défaire un enregistrement.
+  const [foyerEnregistre, setFoyerEnregistre] = useState<FoyerVue>(foyer);
   const [scalaires, setScalaires] = useState<ValeursScalairesFoyer>(() =>
     valeursDepuisFoyer(foyer),
   );
-  const [chargement, setChargement] = useState(false);
+  const [etatSauvegarde, setEtatSauvegarde] = useState<EtatSauvegarde>('idle');
+  const [enregistreA, setEnregistreA] = useState<string | null>(null);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
   const refErreurGlobale = useRef<HTMLParagraphElement>(null);
@@ -130,21 +135,31 @@ function FormulaireEdition({
 
   async function soumettre(ev: FormEvent) {
     ev.preventDefault();
-    setChargement(true);
+    setEtatSauvegarde('en-cours');
     setErreurGlobale(null);
     setErreursChamps([]);
 
     try {
-      await api.modifierFoyer(foyerId, {
+      const vue = await api.modifierFoyer(foyerId, {
         ressourcesMensuelles: parseFloat(scalaires.ressourcesMensuelles),
         rfr: parseFloat(scalaires.rfr),
         nbEnfantsACharge: parseInt(scalaires.nbEnfantsACharge, 10),
         nbParts: parseFloat(scalaires.nbParts),
       });
-      // react-router v7 : `navigate` renvoie une Promise ; navigation
-      // fire-and-forget (on n'attend pas la transition), d'où le `void`.
-      void navigate(`/foyers/${foyerId}/planning`);
+      // Le PUT renvoie la vue à jour : elle devient la base de « Rétablir » et
+      // les valeurs affichées (montants normalisés côté serveur). On RESTE sur
+      // la page ; le statut d'enregistrement fait le retour visuel.
+      setFoyerEnregistre(vue);
+      setScalaires(valeursDepuisFoyer(vue));
+      setEnregistreA(
+        new Date().toLocaleTimeString('fr-FR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      );
+      setEtatSauvegarde('enregistre');
     } catch (err) {
+      setEtatSauvegarde('erreur');
       if (err instanceof ApiError) {
         const erreurs = extraireErreurs(err.corps);
         if (erreurs.length > 0) {
@@ -155,20 +170,43 @@ function FormulaireEdition({
       } else {
         setErreurGlobale(messageErreur(err));
       }
-    } finally {
-      setChargement(false);
     }
   }
 
+  /**
+   * « Rétablir » : restaure les **dernières valeurs enregistrées** (celles du
+   * dernier PUT réussi, ou du foyer chargé si aucun PUT), efface les erreurs et
+   * reste sur la page. On ne touche pas à `etatSauvegarde` : un
+   * « Enregistré à HH:MM » déjà affiché reste vrai (on ne défait pas un
+   * enregistrement réussi).
+   */
+  function retablir() {
+    setScalaires(valeursDepuisFoyer(foyerEnregistre));
+    setErreurGlobale(null);
+    setErreursChamps([]);
+  }
+
   return (
-    <div className="carte" style={{ maxWidth: 600 }}>
-      <h1 style={{ marginTop: 0 }}>Modifier le foyer</h1>
+    <div className="carte page-etroite">
+      <h1 style={{ marginTop: 0 }}>Ma famille</h1>
 
       {erreurGlobale && (
         <p className="debit" role="alert" tabIndex={-1} ref={refErreurGlobale}>
           {erreurGlobale}
         </p>
       )}
+
+      {/* Ordre calqué sur la création : enfants, parents, puis ressources.
+          Parents et enfants se gèrent hors du formulaire de scalaires : chaque
+          écriture est unitaire et persiste immédiatement (pas de soumission
+          groupée), et n'est donc pas emportée par « Enregistrer les
+          modifications » (qui ne concerne que les scalaires). */}
+      <EnfantsSection
+        foyerId={foyerId}
+        enfantsInitiaux={enfants}
+        contrats={contrats}
+      />
+      <ParentsSection foyerId={foyerId} parentsInitiaux={parents} />
 
       <form onSubmit={(ev) => void soumettre(ev)}>
         <FoyerScalairesForm
@@ -178,32 +216,27 @@ function FormulaireEdition({
           idErreur={idErreur}
         />
 
-        <div style={{ marginTop: '1.5rem', display: 'flex', gap: '0.5rem' }}>
-          <button type="submit" className="btn" disabled={chargement}>
-            {chargement ? 'Enregistrement…' : 'Enregistrer les modifications'}
+        <div className="actions-ligne" style={{ marginTop: 'var(--esp-5)' }}>
+          <button
+            type="submit"
+            className="btn"
+            disabled={etatSauvegarde === 'en-cours'}
+          >
+            {etatSauvegarde === 'en-cours'
+              ? 'Enregistrement…'
+              : 'Enregistrer les modifications'}
           </button>
           <button
             type="button"
             className="btn secondaire"
-            onClick={() => {
-              void navigate(`/foyers/${foyerId}/planning`);
-            }}
+            onClick={retablir}
+            disabled={etatSauvegarde === 'en-cours'}
           >
-            Annuler
+            Rétablir
           </button>
+          <StatutSauvegarde etat={etatSauvegarde} enregistreA={enregistreA} />
         </div>
       </form>
-
-      {/* Parents et enfants se gèrent hors du formulaire de scalaires : chaque
-          écriture est unitaire et persiste immédiatement (pas de soumission
-          groupée), et n'est donc pas emportée par « Enregistrer les
-          modifications » (qui ne concerne que les scalaires). */}
-      <ParentsSection foyerId={foyerId} parentsInitiaux={parents} />
-      <EnfantsSection
-        foyerId={foyerId}
-        enfantsInitiaux={enfants}
-        contrats={contrats}
-      />
     </div>
   );
 }
