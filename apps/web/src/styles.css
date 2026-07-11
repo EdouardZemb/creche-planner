@@ -712,6 +712,56 @@ h3 {
   align-items: stretch;
 }
 
+/* ---- Écrans « Ma famille » (création / édition) : layout mobile-first ---- */
+/* Colonne étroite lisible sur desktop, pleine largeur sur mobile. */
+.page-etroite {
+  max-width: 600px;
+}
+
+/* Paire de champs (prénom/nom, prénom/date) : empilée sous ~480px, en ligne
+   au-delà pour ne pas écraser les saisies. */
+.champs-duo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-2);
+}
+
+@media (min-width: 480px) {
+  .champs-duo {
+    flex-direction: row;
+  }
+  .champs-duo > * {
+    flex: 1;
+  }
+}
+
+/* Case à cocher « Contact principal » : cible tactile confortable (≥ 44px). */
+.case-cochable {
+  display: flex;
+  align-items: center;
+  gap: var(--esp-2);
+  min-height: 2.75rem;
+}
+
+.case-cochable input[type='checkbox'] {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Rangée d'actions d'une ligne (boutons + statut d'enregistrement) : empilée
+   sous 480px. */
+.actions-ligne {
+  display: flex;
+  gap: var(--esp-2);
+  margin-top: var(--esp-2);
+}
+
+@media (max-width: 479px) {
+  .actions-ligne {
+    flex-wrap: wrap;
+  }
+}
+
 /* ---- Panneau coût (sticky le long du planning) --------------------------- */
 .panneau-cout {
   position: sticky;

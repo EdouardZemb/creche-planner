@@ -182,8 +182,8 @@ function LigneEnfantExistant({
         </p>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <div style={{ flex: 1 }}>
+      <div className="champs-duo">
+        <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span aria-hidden="true">*</span>
           </label>
@@ -207,7 +207,7 @@ function LigneEnfantExistant({
             </span>
           )}
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <label htmlFor={`${idBase}-naissance`}>
             Date de naissance <span aria-hidden="true">*</span>
           </label>
@@ -233,7 +233,7 @@ function LigneEnfantExistant({
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+      <div className="actions-ligne">
         <button
           type="button"
           className="btn secondaire"
@@ -341,8 +341,8 @@ function FormNouvelEnfant({
         </p>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <div style={{ flex: 1 }}>
+      <div className="champs-duo">
+        <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span aria-hidden="true">*</span>
           </label>
@@ -366,7 +366,7 @@ function FormNouvelEnfant({
             </span>
           )}
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <label htmlFor={`${idBase}-naissance`}>
             Date de naissance <span aria-hidden="true">*</span>
           </label>
@@ -392,14 +392,7 @@ function FormNouvelEnfant({
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          gap: '0.5rem',
-          alignItems: 'center',
-          marginTop: '0.5rem',
-        }}
-      >
+      <div className="actions-ligne">
         <button
           type="button"
           className="btn secondaire"

@@ -187,7 +187,7 @@ function FormulaireEdition({
   }
 
   return (
-    <div className="carte" style={{ maxWidth: 600 }}>
+    <div className="carte page-etroite">
       <h1 style={{ marginTop: 0 }}>Ma famille</h1>
 
       {erreurGlobale && (
@@ -216,14 +216,7 @@ function FormulaireEdition({
           idErreur={idErreur}
         />
 
-        <div
-          style={{
-            marginTop: '1.5rem',
-            display: 'flex',
-            gap: '0.5rem',
-            alignItems: 'center',
-          }}
-        >
+        <div className="actions-ligne" style={{ marginTop: 'var(--esp-5)' }}>
           <button
             type="submit"
             className="btn"

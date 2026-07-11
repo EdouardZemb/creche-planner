@@ -239,7 +239,7 @@ export function FoyerFormPage() {
   }
 
   return (
-    <div className="carte" style={{ maxWidth: 600 }}>
+    <div className="carte page-etroite">
       <h1 style={{ marginTop: 0 }}>Créer ma famille</h1>
 
       {/* Onboarding guidé (lot 3) : dire d'entrée ce qu'on construit, avant les
@@ -390,13 +390,10 @@ export function FoyerFormPage() {
                 )}
 
                 <div
-                  style={{
-                    display: 'flex',
-                    gap: '0.5rem',
-                    marginTop: '0.5rem',
-                  }}
+                  className="champs-duo"
+                  style={{ marginTop: 'var(--esp-2)' }}
                 >
-                  <div style={{ flex: 1 }}>
+                  <div>
                     <label htmlFor={`parent-prenom-${parent.id}`}>
                       Prénom <span className="muted">(facultatif)</span>
                     </label>
@@ -410,7 +407,7 @@ export function FoyerFormPage() {
                       style={{ width: '100%' }}
                     />
                   </div>
-                  <div style={{ flex: 1 }}>
+                  <div>
                     <label htmlFor={`parent-nom-${parent.id}`}>
                       Nom <span className="muted">(facultatif)</span>
                     </label>

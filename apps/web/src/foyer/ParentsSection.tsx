@@ -232,8 +232,8 @@ function LigneParentExistant({
         </span>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-        <div style={{ flex: 1 }}>
+      <div className="champs-duo" style={{ marginTop: 'var(--esp-2)' }}>
+        <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span className="muted">(facultatif)</span>
           </label>
@@ -247,7 +247,7 @@ function LigneParentExistant({
             style={{ width: '100%' }}
           />
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <label htmlFor={`${idBase}-nom`}>
             Nom <span className="muted">(facultatif)</span>
           </label>
@@ -263,14 +263,7 @@ function LigneParentExistant({
         </div>
       </div>
 
-      <label
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          marginTop: '0.5rem',
-        }}
-      >
+      <label className="case-cochable">
         <input
           type="checkbox"
           checked={principal}
@@ -281,7 +274,7 @@ function LigneParentExistant({
         Contact principal (reçoit les e-mails de la crèche en premier)
       </label>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+      <div className="actions-ligne">
         <button
           type="button"
           className="btn secondaire"
@@ -441,8 +434,8 @@ function FormNouveauParent({
         </span>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-        <div style={{ flex: 1 }}>
+      <div className="champs-duo" style={{ marginTop: 'var(--esp-2)' }}>
+        <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span className="muted">(facultatif)</span>
           </label>
@@ -456,7 +449,7 @@ function FormNouveauParent({
             style={{ width: '100%' }}
           />
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <label htmlFor={`${idBase}-nom`}>
             Nom <span className="muted">(facultatif)</span>
           </label>
@@ -472,14 +465,7 @@ function FormNouveauParent({
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'flex',
-          gap: '0.5rem',
-          alignItems: 'center',
-          marginTop: '0.5rem',
-        }}
-      >
+      <div className="actions-ligne">
         <button
           type="button"
           className="btn secondaire"
