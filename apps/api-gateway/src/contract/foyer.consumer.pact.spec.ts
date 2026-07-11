@@ -16,7 +16,8 @@ const ETAT_FOYER_T3 = 'un foyer de référence T3 existe';
 
 // Parents (PR2) : un foyer « sans parent » (cible d'un ajout) et un foyer
 // « avec un parent » (cible des lecture/édition/retrait). Les e-mails diffèrent
-// pour ne pas heurter l'unicité **globale** `lower(email)` entre interactions.
+// entre interactions par prudence ; l'unicité e-mail est **par foyer** (lot 5,
+// parents actifs) et les states provider font table rase → idempotence garantie.
 const PARENT_REFERENCE_ID = '33333333-3333-4333-8333-333333333333';
 const EMAIL_PARENT_NOUVEAU = 'camille.martin@example.test';
 const EMAIL_PARENT_EXISTANT = 'alex.dupont@example.test';
@@ -40,20 +41,39 @@ const ETAT_FOYER_AVEC_ENFANT = 'un foyer de référence T3 avec un enfant';
 
 // Préférences (PR2) : un foyer « avec un parent et ses préférences » — le
 // stateHandler provider (PR1) seede le parent + une préférence EMAIL coupée pour
-// exercer lecture/écriture. E-mail dédié (unicité globale `lower(email)`).
+// exercer lecture/écriture. E-mail dédié (unicité e-mail par foyer).
 const EMAIL_PARENT_PREFERENCES = 'sacha.leroy@example.test';
 const ETAT_FOYER_AVEC_PREFERENCES =
   'un foyer de référence T3 avec un parent et ses préférences';
 
 // Création atomique (Lot 2) : le dossier complet (foyer + enfant + parents) est
 // créé en une seule commande transactionnelle. Le provider purge d'abord les
-// e-mails visés (unicité globale `lower(email)`) pour rendre l'état idempotent.
+// e-mails visés (unicité e-mail par foyer) pour rendre l'état idempotent.
 // `createurEmail` (créateur non-admin) est rattaché EN FIN par `svc-foyer`.
 const CREATEUR_ID_CREATION = '44444444-4444-4444-8444-444444444444';
 const EMAIL_PARENT_CREATION = 'camille.creation@example.test';
 const EMAIL_CREATEUR_CREATION = 'createur.creation@example.test';
 const ETAT_CREATION_LIBRE =
   'aucun parent existant ne bloque la création de référence';
+
+// Lot 5 — intégrité du modèle parent & contrats d'erreur.
+// 1) Résolution identité→foyers (`?parentEmail=`) : réutilise l'état « avec un
+//    parent » (parent actif d'e-mail connu dans le foyer de référence).
+// 2) Doublon e-mail (409 EMAIL_DEJA_UTILISE) : un parent ACTIF porte déjà cet
+//    e-mail dans le foyer → un second ajout du même e-mail est refusé. Depuis le
+//    lot 5, l'unicité e-mail est **par foyer sur les actifs**.
+const PARENT_DOUBLON_ID = '66666666-6666-4666-8666-666666666666';
+const EMAIL_PARENT_DOUBLON = 'doublon.actif@example.test';
+const ETAT_PARENT_ACTIF_DOUBLON =
+  'un parent actif avec cet e-mail existe déjà dans ce foyer';
+// 3) Dernier parent actif (409 DERNIER_PARENT_ACTIF) : le foyer n'a qu'UN parent
+//    actif → son retrait est refusé (la famille doit garder ≥ 1 parent).
+const PARENT_UNIQUE_ID = '77777777-7777-4777-8777-777777777777';
+const EMAIL_PARENT_UNIQUE = 'unique.actif@example.test';
+const ETAT_FOYER_UN_SEUL_PARENT = "le foyer n'a qu'un seul parent actif";
+// 4) Foyer inexistant (404) : un id d'UUID valide mais absent en base.
+const FOYER_INEXISTANT_ID = '99999999-9999-4999-8999-999999999999';
+const ETAT_AUCUN_FOYER = 'aucun foyer avec cet id';
 
 // nx lance vitest avec cwd = racine du projet (apps/api-gateway) → racine du dépôt à ../../.
 const PACTS_DIR = resolve(process.cwd(), '../../pacts');
@@ -702,6 +722,148 @@ describe('Pact consumer · api-gateway → svc-foyer', () => {
       expect(reponse.status).toBe(200);
       const corps = (await reponse.json()) as { actif: boolean }[];
       expect(corps.length).toBe(2);
+    });
+  });
+
+  // --- Lot 5 : résolution identité→foyers + contrats d'erreur -----------------
+
+  it('résout les foyers d’un e-mail parent (?parentEmail=…) → liste d’ids', async () => {
+    provider
+      .given(ETAT_FOYER_AVEC_PARENT, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_REFERENCE_ID,
+        email: EMAIL_PARENT_EXISTANT,
+      })
+      .uponReceiving('une résolution des foyers par e-mail parent')
+      .withRequest({
+        method: 'GET',
+        path: '/api/foyers',
+        query: { parentEmail: EMAIL_PARENT_EXISTANT },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        // Forme réelle renvoyée par `FoyerClient.foyersParEmail` : un tableau de
+        // `foyerId` (chaînes uuid), au moins celui de référence.
+        body: eachLike(uuid(FOYER_REFERENCE_ID)),
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers?parentEmail=${encodeURIComponent(
+          EMAIL_PARENT_EXISTANT,
+        )}`,
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as string[];
+      expect(Array.isArray(corps)).toBe(true);
+      expect(corps).toContain(FOYER_REFERENCE_ID);
+    });
+  });
+
+  it('refuse un parent à l’e-mail déjà utilisé dans le foyer (409 EMAIL_DEJA_UTILISE)', async () => {
+    provider
+      .given(ETAT_PARENT_ACTIF_DOUBLON, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_DOUBLON_ID,
+        email: EMAIL_PARENT_DOUBLON,
+      })
+      .uponReceiving('un ajout de parent à l’e-mail déjà actif dans ce foyer')
+      .withRequest({
+        method: 'POST',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/parents`,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: { email: EMAIL_PARENT_DOUBLON, principal: false, ordre: 0 },
+      })
+      .willRespondWith({
+        status: 409,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        // Corps 409 structuré (lot 1) : le `code` machine distingue la cause côté
+        // front (le BFF relaie le corps amont tel quel via `ErreurAmont`).
+        body: {
+          statusCode: integer(409),
+          code: string('EMAIL_DEJA_UTILISE'),
+          message: string('adresse e-mail déjà utilisée dans ce foyer'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/parents`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({
+            email: EMAIL_PARENT_DOUBLON,
+            principal: false,
+            ordre: 0,
+          }),
+        },
+      );
+      expect(reponse.status).toBe(409);
+      const corps = (await reponse.json()) as { code: string };
+      expect(corps.code).toBe('EMAIL_DEJA_UTILISE');
+    });
+  });
+
+  it('refuse le retrait du dernier parent actif (409 DERNIER_PARENT_ACTIF)', async () => {
+    provider
+      .given(ETAT_FOYER_UN_SEUL_PARENT, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_UNIQUE_ID,
+        email: EMAIL_PARENT_UNIQUE,
+      })
+      .uponReceiving('un retrait du dernier parent actif du foyer')
+      .withRequest({
+        method: 'DELETE',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_UNIQUE_ID}`,
+      })
+      .willRespondWith({
+        status: 409,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          statusCode: integer(409),
+          code: string('DERNIER_PARENT_ACTIF'),
+          message: string(
+            'impossible de retirer le dernier parent actif du foyer',
+          ),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_UNIQUE_ID}`,
+        { method: 'DELETE' },
+      );
+      expect(reponse.status).toBe(409);
+      const corps = (await reponse.json()) as { code: string };
+      expect(corps.code).toBe('DERNIER_PARENT_ACTIF');
+    });
+  });
+
+  it('renvoie 404 pour un foyer inexistant', async () => {
+    provider
+      .given(ETAT_AUCUN_FOYER, { id: FOYER_INEXISTANT_ID })
+      .uponReceiving('une lecture d’un foyer inexistant')
+      .withRequest({
+        method: 'GET',
+        path: `/api/foyers/${FOYER_INEXISTANT_ID}`,
+      })
+      .willRespondWith({
+        status: 404,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          statusCode: integer(404),
+          message: string(`foyer introuvable : ${FOYER_INEXISTANT_ID}`),
+          error: string('Not Found'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_INEXISTANT_ID}`,
+      );
+      expect(reponse.status).toBe(404);
     });
   });
 });

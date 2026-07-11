@@ -174,6 +174,49 @@ test('stack réelle : le parent ajoute puis retire un parent (via modale)', asyn
   await expect(boutonRetirer).toHaveCount(0);
 });
 
+// Réactivation d'un parent retiré (Lot 5) : l'unicité e-mail est désormais **par
+// foyer sur les actifs** → ré-ajouter le MÊME e-mail après retrait réactive la
+// ligne au lieu d'un 409. On n'a plus besoin de rendre l'e-mail unique par run :
+// un e-mail fixe suffit (le foyer dédié est neuf à chaque exécution).
+test('stack réelle : retirer puis ré-ajouter le même e-mail réactive le parent', async ({
+  page,
+  request,
+}) => {
+  const foyerId = await creerFoyerAvecParent(
+    request,
+    `parent-init-reactiv-${Date.now()}@example.test`,
+  );
+  const email = 'reactivation-lot5@example.test';
+
+  await page.goto(urlModifier(foyerId));
+  await expect(page.getByRole('heading', { name: 'Ma famille' })).toBeVisible();
+
+  const blocAjout = page.locator('.parent-ligne', {
+    hasText: 'Ajouter un parent',
+  });
+
+  // Ajout initial du parent, puis retrait via la modale (geste destructif Lot 1).
+  await blocAjout.getByLabel(/Adresse e-mail/).fill(email);
+  await blocAjout.getByRole('button', { name: '+ Ajouter ce parent' }).click();
+  const boutonRetirer = page.getByRole('button', {
+    name: `Retirer le parent ${email}`,
+  });
+  await expect(boutonRetirer).toBeVisible();
+  await boutonRetirer.click();
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Retirer', exact: true })
+    .click();
+  await expect(boutonRetirer).toHaveCount(0);
+
+  // Ré-ajout du MÊME e-mail : réactivation (pas de 409) → la ligne réapparaît.
+  await blocAjout.getByLabel(/Adresse e-mail/).fill(email);
+  await blocAjout.getByRole('button', { name: '+ Ajouter ce parent' }).click();
+  await expect(
+    page.getByRole('button', { name: `Retirer le parent ${email}` }),
+  ).toBeVisible();
+});
+
 // Garde « dernier parent actif » (Lot 1) : sur un foyer à un seul parent, tenter
 // de le retirer est REFUSÉ par svc-foyer (409 DERNIER_PARENT_ACTIF) → message
 // explicite et la ligne demeure. La garde ne modifie rien → sûr sur la pile.

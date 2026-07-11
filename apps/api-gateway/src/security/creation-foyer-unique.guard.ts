@@ -4,6 +4,7 @@ import {
   type ExecutionContext,
   Injectable,
   Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { FoyerClient } from '../clients/foyer.client.js';
@@ -26,11 +27,15 @@ import type { RequeteIdentifiable } from './identite.js';
  * - **non-admin sans foyer** → passe (première création autorisée).
  *
  * Ce n'est pas une frontière de sécurité (l'appartenance relève d'`@FoyerScope`)
- * mais une garde d'unicité. **Fail-open** : si la résolution `foyersParEmail`
- * échoue (svc-foyer indisponible), on **laisse passer** plutôt que de bloquer une
- * première création légitime sur un incident transitoire — un doublon éventuel
- * est moins grave qu'un parent empêché de créer son foyer (esprit tolérant de
- * {@link MoiController}). L'admin bypass et l'isolation par foyer restent intacts.
+ * mais une garde d'unicité. **Résolution impossible** (svc-foyer indisponible) —
+ * comportement aligné sur l'`AppartenanceGuard`, même lecture d'env
+ * (`FOYER_AUTHZ_ENFORCE`) :
+ * - **enforce actif** → **fail-closed 503** : on refuse plutôt que de risquer un
+ *   doublon quand l'isolation par foyer est censée être garantie ;
+ * - **enforce inactif (défaut, dev/hérité)** → **fail-open** : on laisse passer
+ *   plutôt que de bloquer une 1ʳᵉ création légitime sur un incident transitoire
+ *   (un doublon éventuel est moins grave qu'un parent empêché de créer son foyer).
+ * L'admin bypass et l'isolation par foyer restent intacts.
  */
 @Injectable()
 export class CreationFoyerUniqueGuard implements CanActivate {
@@ -56,7 +61,7 @@ export class CreationFoyerUniqueGuard implements CanActivate {
       return true; // mode hérité : aucune identité établie → création libre
     }
 
-    const { adminEmails } = loadConfig();
+    const { adminEmails, foyerAuthzEnforce } = loadConfig();
     if (estAdmin(email, adminEmails)) {
       return true; // provisioning admin : création illimitée
     }
@@ -65,13 +70,23 @@ export class CreationFoyerUniqueGuard implements CanActivate {
     try {
       existants = await this.foyers.foyersParEmail(email);
     } catch (erreur) {
-      // Résolution impossible : ne pas bloquer une 1ʳᵉ création légitime sur un
-      // incident transitoire (fail-open, garde d'unicité ≠ frontière de sécurité).
+      const msg = erreur instanceof Error ? erreur.message : String(erreur);
+      // Fail-closed en enforce : refuser (503) plutôt que risquer un doublon quand
+      // l'isolation par foyer est censée être garantie (même env que l'appartenance).
+      if (foyerAuthzEnforce) {
+        this.logger.error(
+          `création unique : résolution foyers impossible pour ${email}, ` +
+            `refus par sécurité (fail-closed, enforce) : ${msg}`,
+        );
+        throw new ServiceUnavailableException(
+          'vérification de création de foyer momentanément impossible',
+        );
+      }
+      // Sans enforce : ne pas bloquer une 1ʳᵉ création légitime sur un incident
+      // transitoire (fail-open, garde d'unicité ≠ frontière de sécurité).
       this.logger.warn(
         `création unique : résolution foyers impossible pour ${email}, ` +
-          `création laissée passer : ${
-            erreur instanceof Error ? erreur.message : String(erreur)
-          }`,
+          `création laissée passer (fail-open) : ${msg}`,
       );
       return true;
     }

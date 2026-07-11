@@ -145,7 +145,7 @@ function fakeDbCreationRollback(): {
       if (parentInserts === 2) {
         const erreur = Object.assign(new Error('violation unicité'), {
           code: '23505',
-          constraint_name: 'parent_email_unique_idx',
+          constraint_name: 'parent_email_par_foyer_actif_idx',
         });
         return Object.assign(Promise.resolve(), {
           returning: () => Promise.reject(erreur),
@@ -654,7 +654,14 @@ function fakeDbParentTx(
     foyerPresent?: boolean;
     lignesUpdate?: ParentRow[];
     erreurInsert?: { code: string; constraint_name?: string };
+    /**
+     * Rejette l'erreur d'insert ENVELOPPÉE (forme réelle drizzle-orm ≥ 0.45 :
+     * `DrizzleQueryError` avec la `PostgresError` en `cause`, plus au 1er niveau).
+     */
+    envelopperErreurInsert?: boolean;
     parentsActifs?: { id: string }[];
+    /** Ligne(s) inactive(s) même e-mail renvoyée(s) par le 2ᵉ select d'`ajouterParent`. */
+    parentInactif?: ParentRow[];
   } = {},
 ): {
   db: Database;
@@ -665,10 +672,16 @@ function fakeDbParentTx(
 } {
   const insertValues = vi.fn((valeurs: Record<string, unknown>) => {
     const estParent = typeof valeurs['email'] === 'string';
-    const erreur =
+    const erreurPg =
       options.erreurInsert && estParent
         ? Object.assign(new Error('violation unicité'), options.erreurInsert)
         : undefined;
+    const erreur =
+      erreurPg && options.envelopperErreurInsert
+        ? Object.assign(new Error('Failed query: insert into "parent" …'), {
+            cause: erreurPg,
+          })
+        : erreurPg;
     return Object.assign(Promise.resolve(), {
       returning: () =>
         erreur
@@ -684,10 +697,15 @@ function fakeDbParentTx(
   const foyers = options.foyerPresent ? [{ id: FOYER_ID }] : [];
   const actifs = options.parentsActifs ?? [];
   const forUpdate = vi.fn((_strength?: string) => Promise.resolve(actifs));
-  // `where()` est à la fois **awaitable** (⇒ présence du foyer) ET porteuse de
-  // `.for('update')` (⇒ parents actifs), pour couvrir les deux appels du service.
-  const selectWhere = () =>
-    Object.assign(Promise.resolve(foyers), { for: forUpdate });
+  // `where()` est à la fois **awaitable** ET porteuse de `.for('update')`.
+  // Séquence des `select` : dans `ajouterParent`, #0 = présence du foyer, #1 =
+  // ligne inactive à réactiver (même e-mail) ; dans `retirerParent`/`modifierParent`
+  // le select unique sert la garde via `.for('update')` (valeur awaitée inutilisée).
+  let selectIndex = 0;
+  const selectWhere = () => {
+    const valeur = selectIndex++ === 0 ? foyers : (options.parentInactif ?? []);
+    return Object.assign(Promise.resolve(valeur), { for: forUpdate });
+  };
   const tx = {
     select: () => ({ from: () => ({ where: selectWhere }) }),
     insert: () => ({ values: insertValues }),
@@ -775,7 +793,7 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
       foyerPresent: true,
       erreurInsert: {
         code: '23505',
-        constraint_name: 'parent_email_unique_idx',
+        constraint_name: 'parent_email_par_foyer_actif_idx',
       },
     });
     const service = new FoyerService(db);
@@ -791,7 +809,102 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
     expect((err as ConflictException).getResponse()).toMatchObject({
       statusCode: 409,
       code: 'EMAIL_DEJA_UTILISE',
+      message: 'adresse e-mail déjà utilisée dans ce foyer',
     });
+  });
+
+  it('traduit la violation ENVELOPPÉE par drizzle (PostgresError en cause) en 409 EMAIL_DEJA_UTILISE', async () => {
+    // Forme réelle en base : drizzle-orm ≥ 0.45 enveloppe la PostgresError dans un
+    // `DrizzleQueryError` — `code`/`constraint_name` sont dans `cause`, plus au
+    // 1er niveau. Sans le déballage, l'erreur retraversait en 500 générique
+    // (échec provider pact observé en CI).
+    const { db } = fakeDbParentTx({
+      foyerPresent: true,
+      erreurInsert: {
+        code: '23505',
+        constraint_name: 'parent_email_par_foyer_actif_idx',
+      },
+      envelopperErreurInsert: true,
+    });
+    const service = new FoyerService(db);
+
+    const err = await service
+      .ajouterParent(FOYER_ID, {
+        email: 'parent@example.com',
+        principal: false,
+        ordre: 0,
+      })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      statusCode: 409,
+      code: 'EMAIL_DEJA_UTILISE',
+      message: 'adresse e-mail déjà utilisée dans ce foyer',
+    });
+  });
+
+  it('traduit la violation ENVELOPPÉE du principal unique en 409 PARENT_PRINCIPAL_EXISTANT', async () => {
+    const { db } = fakeDbParentTx({
+      foyerPresent: true,
+      erreurInsert: {
+        code: '23505',
+        constraint_name: 'parent_principal_unique_idx',
+      },
+      envelopperErreurInsert: true,
+    });
+    const service = new FoyerService(db);
+
+    const err = await service
+      .ajouterParent(FOYER_ID, {
+        email: 'parent@example.com',
+        principal: true,
+        ordre: 0,
+      })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      statusCode: 409,
+      code: 'PARENT_PRINCIPAL_EXISTANT',
+    });
+  });
+
+  it('réactive une ligne inactive au lieu d’insérer (même e-mail, même foyer)', async () => {
+    // Un parent retiré (soft-delete) porte déjà ce lower(email) : le ré-ajout
+    // RÉACTIVE la ligne existante (update actif=true) plutôt que d'insérer.
+    const inactif = ligneParent({ actif: false, prenom: 'Ancien' });
+    const { db, updateSet, insertValues } = fakeDbParentTx({
+      foyerPresent: true,
+      parentInactif: [inactif],
+      lignesUpdate: [
+        ligneParent({ actif: true, prenom: 'Alex', principal: true }),
+      ],
+    });
+    const service = new FoyerService(db);
+
+    const vue = await service.ajouterParent(FOYER_ID, {
+      email: 'PARENT@example.com', // casse différente : match insensible à la casse
+      prenom: 'Alex',
+      principal: true,
+      ordre: 0,
+    });
+
+    // Réactivation via UPDATE (actif=true + valeurs de la saisie), pas d'insert parent.
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actif: true,
+        prenom: 'Alex',
+        principal: true,
+      }),
+    );
+    // Le seul insert restant est l'événement outbox ParentAjoute (état complet).
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: PARENT_AJOUTE_TYPE,
+        payload: expect.objectContaining({ actif: true, principal: true }),
+      }),
+    );
+    expect(vue).toMatchObject({ actif: true, principal: true });
   });
 
   it('traduit une violation du principal unique en 409 structuré (code PARENT_PRINCIPAL_EXISTANT)', async () => {

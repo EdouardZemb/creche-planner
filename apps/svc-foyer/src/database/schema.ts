@@ -57,8 +57,11 @@ export const enfant = pgTable('enfant', {
  * optionnelle ; `actif = false` = soft-delete (on conserve l'historique).
  *
  * Deux index d'unicité :
- * - `parent_email_unique_idx` : `lower(email)` **global** — l'e-mail est
- *   l'identifiant de login (option B), unique à l'échelle du système.
+ * - `parent_email_par_foyer_actif_idx` : `(foyer_id, lower(email))` **partiel sur
+ *   les parents actifs** (`WHERE actif`). L'e-mail n'est plus unique à l'échelle du
+ *   système mais **par foyer** : un même e-mail peut être parent de 0..n foyers
+ *   (familles recomposées, multi-clients) et redevient **réutilisable après un
+ *   retrait** (soft-delete `actif = false`) — la réactivation ré-ajoute la ligne.
  * - `parent_principal_unique_idx` : index partiel garantissant **au plus un**
  *   parent `principal` par foyer (destinataire « À » par défaut).
  */
@@ -83,7 +86,9 @@ export const parent = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex('parent_email_unique_idx').on(sql`lower(${table.email})`),
+    uniqueIndex('parent_email_par_foyer_actif_idx')
+      .on(table.foyerId, sql`lower(${table.email})`)
+      .where(sql`${table.actif}`),
     uniqueIndex('parent_principal_unique_idx')
       .on(table.foyerId)
       .where(sql`${table.principal}`),

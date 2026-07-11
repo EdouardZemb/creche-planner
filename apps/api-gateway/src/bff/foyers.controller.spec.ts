@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import type {
   FoyerClient,
@@ -305,6 +305,87 @@ describe('FoyersController · lecture agrégée', () => {
     expect(vue.foyer).toEqual(FOYER);
     expect(vue.enfants).toHaveLength(1);
     expect(vue.parents).toHaveLength(1);
+  });
+});
+
+describe('FoyersController · liste scopée à l’identité (lot 5)', () => {
+  const AUTRE_FOYER: FoyerVue = { ...FOYER, id: 'foyer-2' };
+  let envInitial: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    envInitial = { ...process.env };
+    delete process.env['ADMIN_EMAILS'];
+  });
+  afterEach(() => {
+    process.env = envInitial;
+  });
+
+  it('mode hérité (sans identité) : renvoie la liste complète', async () => {
+    const lister = vi.fn().mockResolvedValue([FOYER, AUTRE_FOYER]);
+    const foyersParEmail = vi.fn();
+    const controller = new FoyersController({
+      lister,
+      foyersParEmail,
+    } as unknown as FoyerClient);
+
+    const vue = await controller.lister();
+
+    expect(vue).toHaveLength(2);
+    expect(foyersParEmail).not.toHaveBeenCalled();
+  });
+
+  it('admin identifié : renvoie la liste complète (provisioning)', async () => {
+    process.env['ADMIN_EMAILS'] = 'admin@example.test';
+    const lister = vi.fn().mockResolvedValue([FOYER, AUTRE_FOYER]);
+    const foyersParEmail = vi.fn();
+    const controller = new FoyersController({
+      lister,
+      foyersParEmail,
+    } as unknown as FoyerClient);
+
+    const vue = await controller.lister({
+      headers: {},
+      identite: { email: 'admin@example.test' },
+    });
+
+    expect(vue).toHaveLength(2);
+    expect(foyersParEmail).not.toHaveBeenCalled();
+  });
+
+  it('non-admin identifié : ne renvoie que ses foyers', async () => {
+    // ADMIN_EMAILS non vide ⇒ gating actif ⇒ le non-admin est bien scopé.
+    process.env['ADMIN_EMAILS'] = 'admin@example.test';
+    const lister = vi.fn().mockResolvedValue([FOYER, AUTRE_FOYER]);
+    const foyersParEmail = vi.fn().mockResolvedValue(['foyer-2']);
+    const controller = new FoyersController({
+      lister,
+      foyersParEmail,
+    } as unknown as FoyerClient);
+
+    const vue = await controller.lister({
+      headers: {},
+      identite: { email: 'parent@example.test' },
+    });
+
+    expect(foyersParEmail).toHaveBeenCalledWith('parent@example.test');
+    expect(vue).toEqual([AUTRE_FOYER]);
+  });
+
+  it('gating admin inactif (ADMIN_EMAILS vide) : permissif ⇒ liste complète', async () => {
+    const lister = vi.fn().mockResolvedValue([FOYER, AUTRE_FOYER]);
+    const foyersParEmail = vi.fn();
+    const controller = new FoyersController({
+      lister,
+      foyersParEmail,
+    } as unknown as FoyerClient);
+
+    const vue = await controller.lister({
+      headers: {},
+      identite: { email: 'parent@example.test' },
+    });
+
+    expect(vue).toHaveLength(2);
+    expect(foyersParEmail).not.toHaveBeenCalled();
   });
 });
 
