@@ -65,9 +65,10 @@ function Accueil() {
 }
 
 /**
- * Page « mes foyers » (mode borné) : 0 foyer → écran « contactez l'administrateur »
- * (provisioning admin, option b-ii) ; N foyers → sélecteur borné à l'ensemble
- * autorisé. Atteinte depuis l'accueil ou le lien « Mes foyers » de l'en-tête.
+ * Page « mes foyers » (mode borné) : 0 foyer → `EtatVide` « Créer mon foyer »
+ * (self-service de la 1ʳᵉ création, plus de renvoi vers un administrateur) ;
+ * N foyers → sélecteur borné à l'ensemble autorisé. Atteinte depuis l'accueil ou
+ * le lien « Mes foyers » de l'en-tête.
  */
 function MesFoyersPage() {
   const moi = useMoi();
