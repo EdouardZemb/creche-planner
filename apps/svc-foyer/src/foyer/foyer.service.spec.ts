@@ -21,7 +21,7 @@ import type {
   ParentRow,
   PreferenceNotificationRow,
 } from '../database/schema.js';
-import type { EcrireFoyerDto } from './foyer.dto.js';
+import type { CreerFoyerDto, EcrireFoyerDto } from './foyer.dto.js';
 
 /**
  * Tests unitaires du `FoyerService` SANS infra (Postgres mocké), AQ-08. Même motif
@@ -41,6 +41,9 @@ const DTO_FOYER: EcrireFoyerDto = {
   nbEnfantsACharge: 2,
   nbParts: 3,
 };
+
+/** DTO de création atomique minimal (scalaires seuls, dossier vide). */
+const DTO_CREATION: CreerFoyerDto = { ...DTO_FOYER, enfants: [], parents: [] };
 
 function ligneFoyer(overrides: Partial<FoyerRow> = {}): FoyerRow {
   return {
@@ -124,18 +127,55 @@ function fakeDbLecture(...reponses: unknown[][]): Database {
   return { select } as unknown as Database;
 }
 
+/**
+ * Faux `db` transactionnel pour la création atomique où le **2ᵉ** insert de parent
+ * échoue sur une violation d'unicité (23505). Les inserts précédents (foyer, enfant,
+ * 1er parent, outbox) résolvent ; l'échec se propage hors de la transaction, où
+ * `traduireUnicite` le convertit en 409. Sur une vraie base, tout est annulé.
+ */
+function fakeDbCreationRollback(): {
+  db: Database;
+  transaction: ReturnType<typeof vi.fn>;
+  insertValues: ReturnType<typeof vi.fn>;
+} {
+  let parentInserts = 0;
+  const insertValues = vi.fn((valeurs: Record<string, unknown>) => {
+    if (typeof valeurs['email'] === 'string') {
+      parentInserts += 1;
+      if (parentInserts === 2) {
+        const erreur = Object.assign(new Error('violation unicité'), {
+          code: '23505',
+          constraint_name: 'parent_email_unique_idx',
+        });
+        return Object.assign(Promise.resolve(), {
+          returning: () => Promise.reject(erreur),
+        });
+      }
+    }
+    return Object.assign(Promise.resolve(), {
+      returning: () => Promise.resolve([valeurs]),
+    });
+  });
+  const tx = { insert: () => ({ values: insertValues }) };
+  const transaction = vi.fn(async (cb: (t: unknown) => Promise<unknown>) =>
+    cb(tx),
+  );
+  const db = { transaction } as unknown as Database;
+  return { db, transaction, insertValues };
+}
+
 describe('FoyerService.creer (transactionnalité outbox)', () => {
   it('insère le foyer + l’outbox FoyerMisAJour dans UNE seule transaction (centimes, tranche dérivée)', async () => {
     const { db, transaction, insertValues } = fakeDbTransaction();
     const service = new FoyerService(db);
 
-    const vue = await service.creer(DTO_FOYER);
+    const dossier = await service.creer(DTO_CREATION);
 
     expect(transaction).toHaveBeenCalledTimes(1);
     // L'état : montants convertis en centimes entiers (fidèle à Money).
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: vue.id,
+        id: dossier.foyer.id,
         ressourcesMensuellesCentimes: 350000,
         rfrCentimes: 7270500,
         nbEnfantsACharge: 2,
@@ -147,7 +187,7 @@ describe('FoyerService.creer (transactionnalité outbox)', () => {
       expect.objectContaining({
         type: FOYER_MIS_A_JOUR_TYPE,
         payload: {
-          foyerId: vue.id,
+          foyerId: dossier.foyer.id,
           ressourcesMensuellesCentimes: 350000,
           rfrCentimes: 7270500,
           nbEnfantsACharge: 2,
@@ -156,11 +196,14 @@ describe('FoyerService.creer (transactionnalité outbox)', () => {
         },
       }),
     );
-    expect(vue).toMatchObject({
+    expect(dossier.foyer).toMatchObject({
       ressourcesMensuellesEuros: 3500,
       rfrEuros: 72705,
       tranche: 3,
     });
+    // Dossier vide : ni enfant ni parent (aucun `createurEmail`).
+    expect(dossier.enfants).toEqual([]);
+    expect(dossier.parents).toEqual([]);
   });
 
   it('INVARIANT : un échec de l’insert outbox se propage (rollback) — pas de foyer sans événement', async () => {
@@ -169,7 +212,7 @@ describe('FoyerService.creer (transactionnalité outbox)', () => {
 
     // L'échec survient DANS l'unique transaction : sur une vraie base, l'insert
     // du foyer est annulé avec celui de l'outbox (atomicité, doc 06 §8.4).
-    await expect(service.creer(DTO_FOYER)).rejects.toThrow(
+    await expect(service.creer(DTO_CREATION)).rejects.toThrow(
       'outbox indisponible',
     );
     expect(transaction).toHaveBeenCalledTimes(1);
@@ -179,11 +222,99 @@ describe('FoyerService.creer (transactionnalité outbox)', () => {
     const { db, transaction, insertValues } = fakeDbTransaction();
     const service = new FoyerService(db);
 
-    await expect(service.creer({ ...DTO_FOYER, nbParts: 0 })).rejects.toThrow(
-      'nombre de parts invalide',
-    );
+    await expect(
+      service.creer({ ...DTO_CREATION, nbParts: 0 }),
+    ).rejects.toThrow('nombre de parts invalide');
     expect(transaction).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();
+  });
+});
+
+describe('FoyerService.creer (dossier atomique : enfants + parents + créateur)', () => {
+  it('insère foyer + enfants + parents et rattache le créateur en fin (ordre suivant)', async () => {
+    const { db, transaction, insertValues } = fakeDbTransaction();
+    const service = new FoyerService(db);
+
+    const dossier = await service.creer({
+      ...DTO_CREATION,
+      enfants: [{ prenom: '  Mia ', dateNaissance: '2024-03-15' }],
+      parents: [{ email: 'saisi@example.com', principal: true, ordre: 0 }],
+      createurEmail: 'createur@example.com',
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    // Tous les événements dans la même transaction, dans l'ordre du dossier :
+    // FoyerMisAJour, EnfantAjoute, puis 2×ParentAjoute (saisi + créateur).
+    const typesOutbox = insertValues.mock.calls
+      .map((c) => (c[0] as { type?: unknown }).type)
+      .filter((t): t is string => typeof t === 'string');
+    expect(typesOutbox).toEqual([
+      FOYER_MIS_A_JOUR_TYPE,
+      ENFANT_AJOUTE_TYPE,
+      PARENT_AJOUTE_TYPE,
+      PARENT_AJOUTE_TYPE,
+    ]);
+    expect(dossier.foyer.tranche).toBe(3);
+    // Enfant : prénom normalisé par le domaine (trim).
+    expect(dossier.enfants).toHaveLength(1);
+    expect(dossier.enfants[0]?.prenom).toBe('Mia');
+    // Le créateur est rattaché EN FIN, avec l'ordre suivant (max(0)+1 = 1).
+    expect(dossier.parents.map((p) => p.email)).toEqual([
+      'saisi@example.com',
+      'createur@example.com',
+    ]);
+    expect(dossier.parents[1]?.ordre).toBe(1);
+    expect(dossier.parents[1]?.principal).toBe(false);
+  });
+
+  it('ne duplique pas le créateur déjà saisi (comparaison insensible à la casse)', async () => {
+    const { db, insertValues } = fakeDbTransaction();
+    const service = new FoyerService(db);
+
+    const dossier = await service.creer({
+      ...DTO_CREATION,
+      parents: [{ email: 'Createur@Example.com', principal: false, ordre: 0 }],
+      createurEmail: 'createur@example.com',
+    });
+
+    expect(dossier.parents).toHaveLength(1);
+    expect(dossier.parents[0]?.email).toBe('Createur@Example.com');
+    const inserts = insertValues.mock.calls.filter(
+      (c) => typeof (c[0] as { email?: unknown }).email === 'string',
+    );
+    expect(inserts).toHaveLength(1);
+  });
+
+  it('sans createurEmail (admin / mode hérité) : aucun parent auto-rattaché', async () => {
+    const { db, insertValues } = fakeDbTransaction();
+    const service = new FoyerService(db);
+
+    const dossier = await service.creer(DTO_CREATION);
+
+    expect(dossier.parents).toEqual([]);
+    const aParent = insertValues.mock.calls.some(
+      (c) => typeof (c[0] as { email?: unknown }).email === 'string',
+    );
+    expect(aParent).toBe(false);
+  });
+
+  it('INVARIANT : e-mail du 2ᵉ parent dupliqué → 409 et rollback complet du dossier', async () => {
+    const { db, transaction } = fakeDbCreationRollback();
+    const service = new FoyerService(db);
+
+    // L'échec (23505) survient DANS l'unique transaction : sur une vraie base,
+    // le foyer, l'enfant et le 1er parent sont annulés avec lui (atomicité).
+    await expect(
+      service.creer({
+        ...DTO_CREATION,
+        enfants: [{ prenom: 'Mia', dateNaissance: '2024-03-15' }],
+        parents: [
+          { email: 'a@example.com', principal: false, ordre: 0 },
+          { email: 'b@example.com', principal: false, ordre: 1 },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(transaction).toHaveBeenCalledTimes(1);
   });
 });
 

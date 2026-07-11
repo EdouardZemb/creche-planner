@@ -16,6 +16,18 @@ export interface SaisieFoyer {
   readonly nbParts: number;
 }
 
+/**
+ * Saisie de **création atomique** d'un dossier foyer : les scalaires **plus**,
+ * optionnellement, ses enfants et parents (insérés côté `svc-foyer` dans une seule
+ * transaction). `createurEmail` = e-mail vérifié du créateur non-admin, rattaché
+ * comme parent par `svc-foyer`.
+ */
+export interface SaisieCreationFoyer extends SaisieFoyer {
+  readonly enfants?: readonly SaisieEnfant[] | undefined;
+  readonly parents?: readonly SaisieParent[] | undefined;
+  readonly createurEmail?: string | undefined;
+}
+
 /** Saisie de rattachement d'un enfant à un foyer. */
 export interface SaisieEnfant {
   readonly prenom: string;
@@ -88,6 +100,19 @@ const parentVueSchema = z.object({
 });
 
 export type ParentVue = z.infer<typeof parentVueSchema>;
+
+/**
+ * Vue agrégée d'un **dossier foyer** renvoyée par la création atomique de
+ * `svc-foyer` (`POST /api/foyers` → 201) : le foyer et ses enfants/parents
+ * rattachés en une seule réponse.
+ */
+const dossierFoyerVueSchema = z.object({
+  foyer: foyerVueSchema,
+  enfants: z.array(enfantVueSchema),
+  parents: z.array(parentVueSchema),
+});
+
+export type DossierFoyerVue = z.infer<typeof dossierFoyerVueSchema>;
 
 /**
  * Vue lecture d'une **préférence de notification effective** d'un parent (défaut
@@ -174,13 +199,16 @@ export class FoyerClient {
       : appelResilient({ ...commun, schema: config.schema });
   }
 
-  /** POST `/api/foyers` — crée un foyer. */
-  async creerFoyer(saisie: SaisieFoyer): Promise<FoyerVue> {
+  /**
+   * POST `/api/foyers` — crée un foyer **et son dossier** (enfants + parents)
+   * atomiquement. Réponse 201 = dossier complet.
+   */
+  async creerFoyer(saisie: SaisieCreationFoyer): Promise<DossierFoyerVue> {
     return this.appel({
       methode: 'POST',
       chemin: '/api/foyers',
       corps: saisie,
-      schema: foyerVueSchema,
+      schema: dossierFoyerVueSchema,
     });
   }
 

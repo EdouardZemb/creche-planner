@@ -229,11 +229,38 @@
       }
     },
     {
-      "description": "une création de foyer de référence",
+      "description": "une création atomique de dossier foyer de référence",
+      "providerStates": [
+        {
+          "name": "aucun parent existant ne bloque la création de référence",
+          "params": {
+            "emails": [
+              "camille.creation@example.test",
+              "createur.creation@example.test"
+            ]
+          }
+        }
+      ],
       "request": {
         "body": {
+          "createurEmail": "createur.creation@example.test",
+          "enfants": [
+            {
+              "dateNaissance": "2024-12-08",
+              "prenom": "Mia"
+            }
+          ],
           "nbEnfantsACharge": 2,
           "nbParts": 3,
+          "parents": [
+            {
+              "email": "camille.creation@example.test",
+              "nom": "Martin",
+              "ordre": 0,
+              "prenom": "Camille",
+              "principal": true
+            }
+          ],
           "ressourcesMensuelles": 6716.92,
           "rfr": 72705
         },
@@ -245,21 +272,61 @@
       },
       "response": {
         "body": {
-          "id": "11111111-1111-4111-8111-111111111111",
-          "nbEnfantsACharge": 2,
-          "nbParts": 3,
-          "ressourcesMensuellesCentimes": 671692,
-          "ressourcesMensuellesEuros": 6716.92,
-          "rfrCentimes": 7270500,
-          "rfrEuros": 72705,
-          "tranche": 3
+          "enfants": [
+            {
+              "dateNaissance": "2024-12-08",
+              "foyerId": "11111111-1111-4111-8111-111111111111",
+              "id": "22222222-2222-4222-8222-222222222222",
+              "prenom": "Mia"
+            }
+          ],
+          "foyer": {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "nbEnfantsACharge": 2,
+            "nbParts": 3,
+            "ressourcesMensuellesCentimes": 671692,
+            "ressourcesMensuellesEuros": 6716.92,
+            "rfrCentimes": 7270500,
+            "rfrEuros": 72705,
+            "tranche": 3
+          },
+          "parents": [
+            {
+              "actif": true,
+              "email": "camille.creation@example.test",
+              "foyerId": "11111111-1111-4111-8111-111111111111",
+              "id": "33333333-3333-4333-8333-333333333333",
+              "nom": "Martin",
+              "ordre": 0,
+              "prenom": "Camille",
+              "principal": true
+            },
+            {
+              "actif": true,
+              "email": "createur.creation@example.test",
+              "foyerId": "11111111-1111-4111-8111-111111111111",
+              "id": "44444444-4444-4444-8444-444444444444",
+              "nom": null,
+              "ordre": 1,
+              "prenom": null,
+              "principal": false
+            }
+          ]
         },
         "headers": {
           "Content-Type": "application/json; charset=utf-8"
         },
         "matchingRules": {
           "body": {
-            "$.id": {
+            "$.enfants[0].dateNaissance": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.enfants[0].foyerId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -268,7 +335,33 @@
                 }
               ]
             },
-            "$.nbEnfantsACharge": {
+            "$.enfants[0].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.enfants[0].prenom": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.foyer.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.foyer.nbEnfantsACharge": {
               "combine": "AND",
               "matchers": [
                 {
@@ -276,7 +369,7 @@
                 }
               ]
             },
-            "$.nbParts": {
+            "$.foyer.nbParts": {
               "combine": "AND",
               "matchers": [
                 {
@@ -284,7 +377,7 @@
                 }
               ]
             },
-            "$.ressourcesMensuellesCentimes": {
+            "$.foyer.ressourcesMensuellesCentimes": {
               "combine": "AND",
               "matchers": [
                 {
@@ -292,7 +385,7 @@
                 }
               ]
             },
-            "$.ressourcesMensuellesEuros": {
+            "$.foyer.ressourcesMensuellesEuros": {
               "combine": "AND",
               "matchers": [
                 {
@@ -300,7 +393,7 @@
                 }
               ]
             },
-            "$.rfrCentimes": {
+            "$.foyer.rfrCentimes": {
               "combine": "AND",
               "matchers": [
                 {
@@ -308,11 +401,127 @@
                 }
               ]
             },
-            "$.rfrEuros": {
+            "$.foyer.rfrEuros": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "integer"
+                }
+              ]
+            },
+            "$.parents[0].actif": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.parents[0].email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.parents[0].foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.parents[0].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.parents[0].nom": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.parents[0].ordre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.parents[0].prenom": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.parents[0].principal": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.parents[1].actif": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.parents[1].email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.parents[1].foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.parents[1].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.parents[1].ordre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.parents[1].principal": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }
