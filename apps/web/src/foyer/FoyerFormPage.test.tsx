@@ -94,7 +94,7 @@ describe('FoyerFormPage', () => {
     mockedApi.creerFoyer.mockResolvedValueOnce(dossierFactice);
     rendu();
 
-    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
 
     await waitFor(() => {
       expect(mockedApi.creerFoyer).toHaveBeenCalledTimes(1);
@@ -115,7 +115,7 @@ describe('FoyerFormPage', () => {
     mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(400, erreurs));
     rendu();
 
-    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
 
     await waitFor(() => {
       expect(screen.getByText('RFR invalide')).toBeInTheDocument();
@@ -127,7 +127,7 @@ describe('FoyerFormPage', () => {
     mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(400, erreurs));
     rendu();
 
-    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
 
     const champ = screen.getByLabelText(/Revenu fiscal/i);
     await waitFor(() => {
@@ -143,7 +143,7 @@ describe('FoyerFormPage', () => {
     mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(500, 'Internal'));
     rendu();
 
-    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument();
@@ -178,7 +178,7 @@ describe('FoyerFormPage', () => {
     mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(400, erreurs));
     rendu();
 
-    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
 
     const champ = screen.getByLabelText(/enfants à charge/i);
     await waitFor(() => {
@@ -221,7 +221,7 @@ describe('FoyerFormPage', () => {
     mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(400, undefined));
     rendu();
 
-    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
 
     const alerte = await screen.findByRole('alert');
     expect(alerte).toHaveTextContent(/vérifiez les champs marqués/i);
@@ -275,7 +275,7 @@ describe('FoyerFormPage', () => {
     mockedApi.creerFoyer.mockResolvedValueOnce(dossierFactice);
     rendu();
 
-    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
 
     await waitFor(() => {
       expect(mockedApi.creerFoyer).toHaveBeenCalledTimes(1);
@@ -300,7 +300,7 @@ describe('FoyerFormPage', () => {
 
     // Ajoute une 2e ligne laissée vide : elle ne doit pas partir au BFF.
     fireEvent.click(screen.getByRole('button', { name: /Ajouter un parent/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
 
     await waitFor(() => {
       expect(mockedApi.creerFoyer).toHaveBeenCalledTimes(1);
@@ -319,7 +319,7 @@ describe('FoyerFormPage', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Retirer le parent Camille Martin' }),
     );
-    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
 
     await waitFor(() => {
       expect(mockedApi.creerFoyer).toHaveBeenCalledTimes(1);
@@ -338,7 +338,7 @@ describe('FoyerFormPage', () => {
     mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(400, erreurs));
     rendu();
 
-    fireEvent.click(screen.getByRole('button', { name: /Créer le foyer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
 
     const champ = screen.getByLabelText(/Adresse e-mail/i);
     await waitFor(() => {
@@ -372,7 +372,7 @@ describe('FoyerFormPage — accès self-service (P5, besoin B)', () => {
     );
 
     expect(
-      await screen.findByRole('button', { name: 'Créer le foyer' }),
+      await screen.findByRole('button', { name: 'Créer ma famille' }),
     ).toBeInTheDocument();
   });
 
@@ -391,13 +391,13 @@ describe('FoyerFormPage — accès self-service (P5, besoin B)', () => {
     );
 
     expect(
-      await screen.findByText('Vous avez déjà un foyer'),
+      await screen.findByText('Vous avez déjà une famille'),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('button', { name: 'Créer le foyer' }),
+      screen.queryByRole('button', { name: 'Créer ma famille' }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole('link', { name: 'Modifier mon foyer' }),
+      screen.getByRole('link', { name: 'Voir ma famille' }),
     ).toHaveAttribute('href', '/foyers/foyer-9/modifier');
   });
 
@@ -425,7 +425,7 @@ describe('FoyerFormPage — accès self-service (P5, besoin B)', () => {
     );
 
     fireEvent.click(
-      await screen.findByRole('button', { name: /Créer le foyer/i }),
+      await screen.findByRole('button', { name: /Créer ma famille/i }),
     );
 
     await waitFor(() => {
@@ -454,7 +454,7 @@ describe('FoyerFormPage — accès self-service (P5, besoin B)', () => {
     );
 
     expect(
-      await screen.findByRole('button', { name: 'Créer le foyer' }),
+      await screen.findByRole('button', { name: 'Créer ma famille' }),
     ).toBeInTheDocument();
   });
 
@@ -474,11 +474,11 @@ describe('FoyerFormPage — accès self-service (P5, besoin B)', () => {
     );
 
     fireEvent.click(
-      await screen.findByRole('button', { name: /Créer le foyer/i }),
+      await screen.findByRole('button', { name: /Créer ma famille/i }),
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      /vous avez déjà un foyer/i,
+      /vous avez déjà une famille/i,
     );
   });
 });

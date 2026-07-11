@@ -162,16 +162,16 @@ export function ContratsPage() {
           d'onglets mobile + en-tête desktop) : l'en-tête ne garde que le titre. */}
       <h1 style={{ marginTop: 0, marginBottom: '1rem' }}>Contrats</h1>
 
-      {loading && <p className="muted">Chargement du foyer…</p>}
+      {loading && <p className="muted">Chargement de votre famille…</p>}
       {error && (
         <p className="debit" role="alert">
-          Impossible de charger les données du foyer : {error}
+          Impossible de charger les données de la famille : {error}
         </p>
       )}
 
       {data && (
         <div className="carte" style={{ marginBottom: '1.5rem' }}>
-          <strong>Foyer</strong>{' '}
+          <strong>Famille</strong>{' '}
           <span className="muted">
             {data.enfants.length} enfant{data.enfants.length !== 1 ? 's' : ''} —{' '}
             tranche de revenus {data.foyer.tranche}

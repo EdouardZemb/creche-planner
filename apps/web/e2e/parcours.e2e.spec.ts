@@ -100,7 +100,7 @@ test('parcours : créer foyer → contrat cantine → planning → coût du mois
 
   // 1. Création du foyer (formulaire pré-rempli) → /contrats.
   await page.goto('/foyers/new');
-  await page.getByRole('button', { name: /Créer le foyer/i }).click();
+  await page.getByRole('button', { name: /Créer ma famille/i }).click();
   await expect(page).toHaveURL(/\/foyers\/foyer-e2e\/contrats/);
 
   // 2. Création d'un contrat cantine pour Mia.

@@ -75,7 +75,7 @@ describe('FoyerModifierPage', () => {
     rendu();
 
     expect(
-      await screen.findByRole('heading', { name: 'Modifier le foyer' }),
+      await screen.findByRole('heading', { name: 'Ma famille' }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/Ressources mensuelles/i)).toHaveValue(
       6716.92,

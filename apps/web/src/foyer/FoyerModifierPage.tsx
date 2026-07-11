@@ -48,7 +48,7 @@ function valeursDepuisFoyer(foyer: FoyerVue): ValeursScalairesFoyer {
  * suppression).
  */
 export function FoyerModifierPage() {
-  useTitrePage('Modifier le foyer');
+  useTitrePage('Ma famille');
   const { foyerId } = useParams<{ foyerId: string }>();
   const id = foyerId ?? '';
   const { data, loading, error } = useAsync<DossierFoyerVue>(
@@ -57,7 +57,7 @@ export function FoyerModifierPage() {
   );
 
   if (loading) {
-    return <p className="muted">Chargement du foyer…</p>;
+    return <p className="muted">Chargement de votre famille…</p>;
   }
   // `GardeFoyer` traite déjà 404 / 5xx / session expirée en amont (l'`<Outlet/>`
   // n'est rendu qu'après un chargement réussi). Ce repli ne couvre donc que
@@ -66,7 +66,7 @@ export function FoyerModifierPage() {
   if (error || !data) {
     return (
       <p className="debit" role="alert">
-        {error ?? 'Foyer indisponible.'}
+        {error ?? 'Famille indisponible.'}
       </p>
     );
   }
@@ -188,7 +188,7 @@ function FormulaireEdition({
 
   return (
     <div className="carte" style={{ maxWidth: 600 }}>
-      <h1 style={{ marginTop: 0 }}>Modifier le foyer</h1>
+      <h1 style={{ marginTop: 0 }}>Ma famille</h1>
 
       {erreurGlobale && (
         <p className="debit" role="alert" tabIndex={-1} ref={refErreurGlobale}>

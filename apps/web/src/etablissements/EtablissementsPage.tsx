@@ -594,7 +594,7 @@ export function EtablissementsPage() {
           marginBottom: '1rem',
         }}
       >
-        <h1 style={{ margin: 0 }}>Établissements du foyer</h1>
+        <h1 style={{ margin: 0 }}>Établissements de la famille</h1>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
           <Link to={`/foyers/${id}/contrats`} className="btn secondaire">
             Contrats

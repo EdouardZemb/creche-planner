@@ -237,7 +237,7 @@ test.describe("Audit d'accessibilité automatisé (axe-core, WCAG 2.1 AA)", () =
   test('formulaire foyer (/foyers/new) — 0 violation AA', async ({ page }) => {
     await page.goto('/foyers/new');
     await expect(
-      page.getByRole('heading', { name: /Nouveau foyer/i }),
+      page.getByRole('heading', { name: /Créer ma famille/i }),
     ).toBeVisible();
     const r = await auditer(page, 'foyers/new');
     expect(r.violations).toEqual([]);

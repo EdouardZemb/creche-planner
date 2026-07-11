@@ -278,7 +278,7 @@ function LigneParentExistant({
             setPrincipal(e.target.checked);
           }}
         />
-        Parent principal (destinataire « À » par défaut)
+        Contact principal (reçoit les e-mails de la crèche en premier)
       </label>
 
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>

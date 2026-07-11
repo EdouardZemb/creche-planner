@@ -72,7 +72,7 @@ function Accueil() {
  */
 function MesFoyersPage() {
   const moi = useMoi();
-  useTitrePage('Mes foyers');
+  useTitrePage('Mes familles');
   if (moi.loading) {
     return <p className="muted">Chargement de votre session…</p>;
   }
@@ -81,20 +81,20 @@ function MesFoyersPage() {
     // propose de créer le sien plutôt que de renvoyer vers un administrateur.
     return (
       <EtatVide
-        titre="Vous n’avez pas encore de foyer"
-        description="Créez votre foyer pour commencer à planifier la garde de vos enfants."
+        titre="Vous n’avez pas encore créé votre famille"
+        description="Créez votre famille pour commencer à planifier la garde de vos enfants."
         actions={[
-          { libelle: 'Créer mon foyer', href: '/foyers/new', primaire: true },
+          { libelle: 'Créer ma famille', href: '/foyers/new', primaire: true },
         ]}
       />
     );
   }
   return (
     <EtatVide
-      titre="Choisir un foyer"
-      description="Plusieurs foyers vous sont rattachés. Choisissez celui à ouvrir."
+      titre="Choisir une famille"
+      description="Plusieurs familles vous sont rattachées. Choisissez celle à ouvrir."
       actions={moi.foyers.map((id, i) => ({
-        libelle: `Ouvrir le foyer ${i + 1}`,
+        libelle: `Ouvrir la famille ${i + 1}`,
         href: `/foyers/${id}/dashboard`,
         primaire: i === 0,
       }))}
@@ -117,7 +117,7 @@ function AccueilDecouverte() {
     [],
   );
   if (loading) {
-    return <p className="muted">Recherche d’un foyer existant…</p>;
+    return <p className="muted">Recherche d’une famille existante…</p>;
   }
   const premier = data?.[0];
   return (
@@ -235,12 +235,12 @@ function Entete() {
                   qu'un foyer est actif, NON conditionnée à `moi.admin` (le BFF
                   borne l'écriture via `@FoyerScope`). */}
               <NavLink to={`/foyers/${id}/modifier`} onClick={fermerPlus}>
-                Modifier le foyer
+                Ma famille
               </NavLink>
               {/* Mode borné, familles multi-foyers : accès au sélecteur. */}
               {moi.foyers.length > 1 && (
                 <NavLink to="/mes-foyers" onClick={fermerPlus}>
-                  Mes foyers
+                  Mes familles
                 </NavLink>
               )}
               {/* « Mon profil » (A1) : édition de sa ligne parent + préférences de
@@ -257,7 +257,7 @@ function Entete() {
                   permissif) reste inchangé. */}
               {peutCreerFoyer && (
                 <NavLink to="/foyers/new" onClick={fermerPlus}>
-                  Nouveau foyer
+                  Nouvelle famille
                 </NavLink>
               )}
             </div>
@@ -268,7 +268,7 @@ function Entete() {
             {/* Hors contexte foyer, peu de liens : ils restent dans l'en-tête
                 (pas de barre d'onglets sans destinations quotidiennes). */}
             {moi.foyers.length > 1 && (
-              <NavLink to="/mes-foyers">Mes foyers</NavLink>
+              <NavLink to="/mes-foyers">Mes familles</NavLink>
             )}
             {moi.email !== null && (
               <NavLink to="/mon-profil">Mon profil</NavLink>
@@ -278,11 +278,11 @@ function Entete() {
                 qu'au moins un foyer est rattaché. */}
             {premierFoyer && (
               <NavLink to={`/foyers/${premierFoyer}/modifier`}>
-                Modifier mon foyer
+                Voir ma famille
               </NavLink>
             )}
             {peutCreerFoyer && (
-              <NavLink to="/foyers/new">Nouveau foyer</NavLink>
+              <NavLink to="/foyers/new">Nouvelle famille</NavLink>
             )}
           </>
         )}
@@ -357,21 +357,25 @@ function SessionExpiree() {
 }
 
 function FoyerIntrouvable() {
-  useTitrePage('Foyer introuvable');
+  useTitrePage('Famille introuvable');
   const memorise = getFoyerId();
   const actions: ActionEtatVide[] = [
-    { libelle: 'Créer un nouveau foyer', href: '/foyers/new', primaire: true },
+    {
+      libelle: 'Créer une nouvelle famille',
+      href: '/foyers/new',
+      primaire: true,
+    },
   ];
   if (memorise) {
     actions.push({
-      libelle: 'Revenir à mon foyer',
+      libelle: 'Revenir à ma famille',
       href: `/foyers/${memorise}/dashboard`,
     });
   }
   return (
     <EtatVide
-      titre="Foyer introuvable"
-      description="Ce foyer n'existe pas ou a été supprimé."
+      titre="Famille introuvable"
+      description="Cette famille n'existe pas ou a été supprimée."
       actions={actions}
     />
   );
@@ -382,7 +386,7 @@ function FoyerIndisponible({ onReessayer }: { onReessayer: () => void }) {
   return (
     <EtatVide
       titre="Service indisponible"
-      description="Impossible de charger ce foyer pour le moment. Réessayez dans un instant."
+      description="Impossible de charger cette famille pour le moment. Réessayez dans un instant."
       actions={[{ libelle: 'Réessayer', onClick: onReessayer, primaire: true }]}
     />
   );
@@ -397,7 +401,7 @@ function PageIntrouvable() {
       description="La page demandée n'existe pas ou l'adresse est incorrecte."
       actions={[
         { libelle: 'Accueil', href: '/', primaire: true },
-        { libelle: 'Nouveau foyer', href: '/foyers/new' },
+        { libelle: 'Nouvelle famille', href: '/foyers/new' },
       ]}
     />
   );
@@ -409,8 +413,8 @@ function PageIntrouvable() {
  * (région live) — `useAnnonceRoute` ne le (re)publie qu'au changement de route.
  */
 function titreDepuisPathname(pathname: string): string {
-  if (pathname === '/foyers/new') return 'Nouveau foyer';
-  if (pathname === '/mes-foyers') return 'Mes foyers';
+  if (pathname === '/foyers/new') return 'Créer ma famille';
+  if (pathname === '/mes-foyers') return 'Mes familles';
   if (pathname === '/mon-profil') return 'Mon profil';
   if (pathname === '/desabonnement') return 'Désabonnement';
   const foyer =
@@ -423,7 +427,7 @@ function titreDepuisPathname(pathname: string): string {
     if (segment === 'contrats') return 'Contrats';
     if (segment === 'planning') return 'Planning';
     if (segment === 'etablissements') return 'Établissements';
-    if (segment === 'modifier') return 'Modifier le foyer';
+    if (segment === 'modifier') return 'Ma famille';
     return 'Coûts annuels';
   }
   // Pages de récupération / 404 et redirection racine : annonce neutre.
