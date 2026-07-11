@@ -189,9 +189,7 @@ test('stack réelle : retirer puis ré-ajouter le même e-mail réactive le pare
   const email = 'reactivation-lot5@example.test';
 
   await page.goto(urlModifier(foyerId));
-  await expect(
-    page.getByRole('heading', { name: 'Modifier le foyer' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ma famille' })).toBeVisible();
 
   const blocAjout = page.locator('.parent-ligne', {
     hasText: 'Ajouter un parent',
