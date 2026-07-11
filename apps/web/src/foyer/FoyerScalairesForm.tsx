@@ -41,6 +41,14 @@ export function FoyerScalairesForm({
         Ressources du foyer
       </legend>
 
+      {/* Onboarding guidé (lot 3) : lever l'inquiétude devant les champs fiscaux
+          — à quoi ils servent et qu'ils restent modifiables. Partagé avec
+          l'édition, qui en bénéficie aussi. */}
+      <p className="muted" style={{ marginTop: 0 }}>
+        Ces informations servent uniquement à estimer le coût de la garde
+        (barème CAF). Vous pourrez les modifier à tout moment.
+      </p>
+
       <label htmlFor="ressourcesMensuelles">
         Ressources mensuelles (€) <span aria-hidden="true">*</span>
       </label>
