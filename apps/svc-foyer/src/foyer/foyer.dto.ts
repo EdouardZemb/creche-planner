@@ -48,6 +48,22 @@ export const ajouterParentSchema = z.object({
 export type AjouterParentDto = z.infer<typeof ajouterParentSchema>;
 
 /**
+ * Création **atomique** d'un foyer et de son dossier (`POST /api/foyers`) : les
+ * scalaires du foyer **plus**, optionnellement, ses enfants et parents, insérés
+ * dans une **seule transaction**. Les champs de dossier sont facultatifs — le
+ * corps scalaire seul reste accepté (rétrocompatible). Bornes défensives :
+ * ≤ 20 enfants, ≤ 10 parents. `createurEmail` = e-mail vérifié du **créateur
+ * non-admin** (fourni par la gateway) ; `FoyerService.creer` le rattache comme
+ * parent s'il n'est pas déjà saisi (dédoublonnage insensible à la casse).
+ */
+export const creerFoyerSchema = ecrireFoyerSchema.extend({
+  enfants: z.array(ajouterEnfantSchema).max(20).default([]),
+  parents: z.array(ajouterParentSchema).max(10).default([]),
+  createurEmail: z.email('adresse e-mail invalide').optional(),
+});
+export type CreerFoyerDto = z.infer<typeof creerFoyerSchema>;
+
+/**
  * Édition d'un parent (`PUT`). Tous les champs sont optionnels : seuls ceux
  * fournis sont modifiés (sémantique d'upsert partiel, cf. établissements).
  * `prenom`/`nom` acceptent `null` pour effacer l'identité douce ; `actif`
