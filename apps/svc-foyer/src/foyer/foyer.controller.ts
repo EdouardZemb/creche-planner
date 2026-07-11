@@ -15,6 +15,7 @@ import type { FoyerId } from '@creche-planner/contracts-foyer';
 import {
   ajouterEnfantSchema,
   ajouterParentSchema,
+  creerFoyerSchema,
   ecrireFoyerSchema,
   majPreferencesSchema,
   modifierEnfantSchema,
@@ -22,6 +23,7 @@ import {
   ZodValidationPipe,
   type AjouterEnfantDto,
   type AjouterParentDto,
+  type CreerFoyerDto,
   type EcrireFoyerDto,
   type MajPreferencesDto,
   type ModifierEnfantDto,
@@ -29,6 +31,7 @@ import {
 } from './foyer.dto.js';
 import {
   FoyerService,
+  type DossierFoyerVue,
   type EnfantVue,
   type FoyerVue,
   type ParentVue,
@@ -39,10 +42,15 @@ import {
 export class FoyerController {
   constructor(private readonly foyers: FoyerService) {}
 
+  /**
+   * Crée un foyer **et son dossier** (enfants + parents) en une seule commande
+   * transactionnelle (réponse 201 = dossier complet). Corps étendu rétrocompatible :
+   * `enfants`/`parents`/`createurEmail` sont facultatifs.
+   */
   @Post()
   creer(
-    @Body(new ZodValidationPipe(ecrireFoyerSchema)) dto: EcrireFoyerDto,
-  ): Promise<FoyerVue> {
+    @Body(new ZodValidationPipe(creerFoyerSchema)) dto: CreerFoyerDto,
+  ): Promise<DossierFoyerVue> {
     return this.foyers.creer(dto);
   }
 

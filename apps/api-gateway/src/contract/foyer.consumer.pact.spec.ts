@@ -45,6 +45,16 @@ const EMAIL_PARENT_PREFERENCES = 'sacha.leroy@example.test';
 const ETAT_FOYER_AVEC_PREFERENCES =
   'un foyer de référence T3 avec un parent et ses préférences';
 
+// Création atomique (Lot 2) : le dossier complet (foyer + enfant + parents) est
+// créé en une seule commande transactionnelle. Le provider purge d'abord les
+// e-mails visés (unicité globale `lower(email)`) pour rendre l'état idempotent.
+// `createurEmail` (créateur non-admin) est rattaché EN FIN par `svc-foyer`.
+const CREATEUR_ID_CREATION = '44444444-4444-4444-8444-444444444444';
+const EMAIL_PARENT_CREATION = 'camille.creation@example.test';
+const EMAIL_CREATEUR_CREATION = 'createur.creation@example.test';
+const ETAT_CREATION_LIBRE =
+  'aucun parent existant ne bloque la création de référence';
+
 // nx lance vitest avec cwd = racine du projet (apps/api-gateway) → racine du dépôt à ../../.
 const PACTS_DIR = resolve(process.cwd(), '../../pacts');
 
@@ -137,19 +147,34 @@ describe('Pact consumer · api-gateway → svc-foyer', () => {
     });
   });
 
-  it('crée le foyer de référence et reçoit sa tranche T3 figée', async () => {
+  it('crée un dossier foyer complet (foyer + enfant + parents dont le créateur)', async () => {
     provider
-      .uponReceiving('une création de foyer de référence')
+      .given(ETAT_CREATION_LIBRE, {
+        emails: [EMAIL_PARENT_CREATION, EMAIL_CREATEUR_CREATION],
+      })
+      .uponReceiving('une création atomique de dossier foyer de référence')
       .withRequest({
         method: 'POST',
         path: '/api/foyers',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        // Foyer de référence (doc 02 §0), montants saisis en euros.
+        // Foyer de référence (doc 02 §0) + son dossier : enfant, parent saisi et
+        // e-mail du créateur (rattaché en fin par `svc-foyer`).
         body: {
           ressourcesMensuelles: 6716.92,
           rfr: 72705,
           nbEnfantsACharge: 2,
           nbParts: 3,
+          enfants: [{ prenom: 'Mia', dateNaissance: '2024-12-08' }],
+          parents: [
+            {
+              email: EMAIL_PARENT_CREATION,
+              prenom: 'Camille',
+              nom: 'Martin',
+              principal: true,
+              ordre: 0,
+            },
+          ],
+          createurEmail: EMAIL_CREATEUR_CREATION,
         },
       })
       .willRespondWith({
@@ -157,17 +182,51 @@ describe('Pact consumer · api-gateway → svc-foyer', () => {
         headers: {
           'Content-Type': 'application/json; charset=utf-8',
         },
+        // Réponse = dossier complet. Les ids (foyer, enfant, parents) sont générés
+        // par `svc-foyer` → matchés en type (`uuid`). La tranche T3 est figée.
         body: {
-          id: uuid(FOYER_REFERENCE_ID),
-          ressourcesMensuellesCentimes: integer(671692),
-          ressourcesMensuellesEuros: decimal(6716.92),
-          rfrCentimes: integer(7270500),
-          // Entiers (cf. lecture ci-dessus) → `integer()` et non `decimal()`.
-          rfrEuros: integer(72705),
-          nbEnfantsACharge: integer(2),
-          nbParts: integer(3),
-          // Valeur exacte (pas un matcher de type) : le contrat fige T3 pour ce foyer.
-          tranche: 3,
+          foyer: {
+            id: uuid(FOYER_REFERENCE_ID),
+            ressourcesMensuellesCentimes: integer(671692),
+            ressourcesMensuellesEuros: decimal(6716.92),
+            rfrCentimes: integer(7270500),
+            rfrEuros: integer(72705),
+            nbEnfantsACharge: integer(2),
+            nbParts: integer(3),
+            tranche: 3,
+          },
+          enfants: [
+            {
+              id: uuid(ENFANT_REFERENCE_ID),
+              foyerId: uuid(FOYER_REFERENCE_ID),
+              prenom: string('Mia'),
+              dateNaissance: string('2024-12-08'),
+            },
+          ],
+          // Deux parents dans l'ordre d'insertion : le saisi (ordre 0), puis le
+          // créateur ajouté en fin (ordre 1, identité douce nulle).
+          parents: [
+            {
+              id: uuid(PARENT_REFERENCE_ID),
+              foyerId: uuid(FOYER_REFERENCE_ID),
+              prenom: string('Camille'),
+              nom: string('Martin'),
+              email: string(EMAIL_PARENT_CREATION),
+              principal: boolean(true),
+              ordre: integer(0),
+              actif: boolean(true),
+            },
+            {
+              id: uuid(CREATEUR_ID_CREATION),
+              foyerId: uuid(FOYER_REFERENCE_ID),
+              prenom: null,
+              nom: null,
+              email: string(EMAIL_CREATEUR_CREATION),
+              principal: boolean(false),
+              ordre: integer(1),
+              actif: boolean(true),
+            },
+          ],
         },
       });
 
@@ -180,11 +239,28 @@ describe('Pact consumer · api-gateway → svc-foyer', () => {
           rfr: 72705,
           nbEnfantsACharge: 2,
           nbParts: 3,
+          enfants: [{ prenom: 'Mia', dateNaissance: '2024-12-08' }],
+          parents: [
+            {
+              email: EMAIL_PARENT_CREATION,
+              prenom: 'Camille',
+              nom: 'Martin',
+              principal: true,
+              ordre: 0,
+            },
+          ],
+          createurEmail: EMAIL_CREATEUR_CREATION,
         }),
       });
       expect(reponse.status).toBe(201);
-      const corps = (await reponse.json()) as { tranche: number };
-      expect(corps.tranche).toBe(3);
+      const corps = (await reponse.json()) as {
+        foyer: { tranche: number };
+        enfants: unknown[];
+        parents: unknown[];
+      };
+      expect(corps.foyer.tranche).toBe(3);
+      expect(corps.enfants).toHaveLength(1);
+      expect(corps.parents).toHaveLength(2);
     });
   });
 
