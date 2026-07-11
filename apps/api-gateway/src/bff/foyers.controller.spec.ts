@@ -161,6 +161,50 @@ describe('FoyersController · création atomique', () => {
       expect.objectContaining({ createurEmail: 'createur@example.test' }),
     );
   });
+
+  it('identité admin : ne transmet pas createurEmail (provisioning pour autrui)', async () => {
+    const envInitial = { ...process.env };
+    process.env['ADMIN_EMAILS'] = 'admin@example.test';
+    try {
+      const creerFoyer = vi
+        .fn()
+        .mockResolvedValue({ foyer: FOYER, enfants: [], parents: [] });
+      const controller = new FoyersController({
+        creerFoyer,
+      } as unknown as FoyerClient);
+
+      await controller.creer(
+        {
+          ressourcesMensuelles: 6716.92,
+          rfr: 72705,
+          nbEnfantsACharge: 2,
+          nbParts: 3,
+        },
+        { headers: {}, identite: { email: 'admin@example.test' } },
+      );
+
+      const arg = creerFoyer.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect('createurEmail' in arg).toBe(false);
+    } finally {
+      process.env = envInitial;
+    }
+  });
+
+  it('propage un 409 amont en HttpException (relais, dossier annulé côté svc-foyer)', async () => {
+    const creerFoyer = vi.fn().mockRejectedValue(new Error('HTTP 409'));
+    const controller = new FoyersController({
+      creerFoyer,
+    } as unknown as FoyerClient);
+
+    await expect(
+      controller.creer({
+        ressourcesMensuelles: 6716.92,
+        rfr: 72705,
+        nbEnfantsACharge: 2,
+        nbParts: 3,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
 });
 
 describe('FoyersController · édition des scalaires', () => {
