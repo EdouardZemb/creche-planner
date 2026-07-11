@@ -10,6 +10,34 @@ import {
 /** Méthodes HTTP émises par les clients REST du BFF. */
 export type MethodeHttp = 'GET' | 'POST' | 'PUT' | 'DELETE';
 
+/**
+ * Erreur d'un service amont dont on a **capturé le corps JSON** (opt-in par
+ * client, cf. `capturerCorpsErreur`). Porte le `status` HTTP et le `corps` parsé
+ * afin que `relayer` puisse **réémettre le corps amont tel quel** (ex. un 409
+ * `{ statusCode, code, message }` de `svc-foyer` → le front lit `code`), au lieu
+ * du fourre-tout `Error('HTTP <code>')`. `message` reste `HTTP <code>` pour que le
+ * repli `statutDepuisErreur` (5xx) fonctionne à l'identique si le corps n'est pas
+ * relayé.
+ */
+export class ErreurAmont extends Error {
+  constructor(
+    readonly status: number,
+    readonly corps: unknown,
+  ) {
+    super(`HTTP ${status}`);
+    this.name = 'ErreurAmont';
+  }
+}
+
+/** Lit le corps d'une réponse en JSON ; `undefined` si le corps n'est pas parseable. */
+async function lireCorpsJson(reponse: Response): Promise<unknown> {
+  try {
+    return await reponse.json();
+  } catch {
+    return undefined;
+  }
+}
+
 /** Configuration d'un appel REST résilient (un endpoint d'un client du BFF). */
 export interface ConfigAppelResilient<T> {
   /** Nom du service amont (étiquette du disjoncteur et des erreurs). */
@@ -25,6 +53,13 @@ export interface ConfigAppelResilient<T> {
   readonly corps?: unknown;
   /** Schéma Zod de la réponse ; absent = réponse sans corps attendue (204). */
   readonly schema?: ZodType<T> | undefined;
+  /**
+   * **Opt-in** (un seul client aujourd'hui, `FoyerClient`) : sur réponse non-2xx
+   * au corps JSON parseable, lever `ErreurAmont(status, corps)` au lieu de
+   * `Error('HTTP <code>')`, pour que `relayer` puisse réémettre le corps amont.
+   * Absent/`false` ⇒ comportement inchangé (aucun autre client n'est affecté).
+   */
+  readonly capturerCorpsErreur?: boolean;
 }
 
 /**
@@ -60,6 +95,12 @@ export async function appelResilient<T>(
             : { method: methode };
       const reponse = await fetchAvecTimeout(url, options.timeoutMs, init);
       if (!reponse.ok) {
+        if (config.capturerCorpsErreur) {
+          const corps = await lireCorpsJson(reponse);
+          if (corps !== undefined) {
+            throw new ErreurAmont(reponse.status, corps);
+          }
+        }
         throw new Error('HTTP ' + String(reponse.status));
       }
       if (schema === undefined) {

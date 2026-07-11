@@ -1,4 +1,5 @@
 import { HttpException } from '@nestjs/common';
+import { ErreurAmont } from '../clients/appel-resilient.js';
 
 /**
  * Déduit un statut HTTP à propager depuis l'erreur d'un client résilient. Les
@@ -22,6 +23,15 @@ export async function relayer<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
   } catch (erreur) {
+    // Erreur amont **4xx** au corps capturé (opt-in `FoyerClient`) : on réémet le
+    // corps amont TEL QUEL (ex. 409 `{ statusCode, code, message }` → le front lit
+    // `code`). On préserve les sémantiques 5xx / réseau / circuit ci-dessous.
+    if (erreur instanceof ErreurAmont && erreur.status < 500) {
+      throw new HttpException(
+        erreur.corps as string | Record<string, unknown>,
+        erreur.status,
+      );
+    }
     const statut = statutDepuisErreur(erreur);
     throw new HttpException(
       {

@@ -165,6 +165,9 @@ export class FoyerClient {
       methode: config.methode,
       url: `${loadConfig().foyerUrl}${config.chemin}`,
       corps: config.corps,
+      // svc-foyer porte des 409 structurés (`code`) que le front doit distinguer :
+      // on capture le corps d'erreur amont pour que `relayer` le réémette tel quel.
+      capturerCorpsErreur: true,
     };
     return config.schema === undefined
       ? appelResilient(commun)
