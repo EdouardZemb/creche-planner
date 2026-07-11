@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { EnfantsSection } from './EnfantsSection';
 import type { EnfantVue } from '../types/bff';
@@ -55,10 +61,10 @@ describe('EnfantsSection', () => {
     expect(screen.getByDisplayValue('2024-12-08')).toBeInTheDocument();
   });
 
-  it('prévient que renommer/supprimer n’affecte pas les contrats existants', () => {
+  it('énonce que renommer propage aux contrats et que supprimer ne les supprime pas', () => {
     render(<EnfantsSection foyerId={FOYER_ID} enfantsInitiaux={[]} />);
     expect(
-      screen.getByText(/n’affecte pas les contrats de garde déjà créés/),
+      screen.getByText(/Supprimer un enfant ne supprime pas ses contrats/),
     ).toBeInTheDocument();
   });
 
@@ -122,8 +128,34 @@ describe('EnfantsSection', () => {
     expect(screen.getByDisplayValue('Mia-Rose')).toBeInTheDocument();
   });
 
-  it('supprime un enfant et le retire de la liste', async () => {
+  it('supprime un enfant APRÈS confirmation dans la modale (variante générique)', async () => {
     mockedApi.retirerEnfant.mockResolvedValueOnce(undefined);
+    render(
+      <EnfantsSection
+        foyerId={FOYER_ID}
+        enfantsInitiaux={[enfant({ id: 'e1', prenom: 'Mia' })]}
+      />,
+    );
+
+    // Le clic ouvre la modale de confirmation ; RIEN n'est encore supprimé.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Supprimer l’enfant Mia' }),
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(mockedApi.retirerEnfant).not.toHaveBeenCalled();
+    expect(
+      within(dialog).getByText(/sera définitivement retiré/),
+    ).toBeInTheDocument();
+
+    // Confirmer déclenche la suppression et retire la ligne.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Supprimer' }));
+    await waitFor(() => {
+      expect(mockedApi.retirerEnfant).toHaveBeenCalledWith(FOYER_ID, 'e1');
+    });
+    expect(screen.queryByDisplayValue('Mia')).not.toBeInTheDocument();
+  });
+
+  it('Annuler dans la modale ne supprime pas l’enfant', () => {
     render(
       <EnfantsSection
         foyerId={FOYER_ID}
@@ -134,10 +166,36 @@ describe('EnfantsSection', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Supprimer l’enfant Mia' }),
     );
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Annuler',
+      }),
+    );
 
-    await waitFor(() => {
-      expect(mockedApi.retirerEnfant).toHaveBeenCalledWith(FOYER_ID, 'e1');
-    });
-    expect(screen.queryByDisplayValue('Mia')).not.toBeInTheDocument();
+    expect(mockedApi.retirerEnfant).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue('Mia')).toBeInTheDocument();
+  });
+
+  it('avertit du nombre de contrats liés dans la modale (variante contrats)', () => {
+    render(
+      <EnfantsSection
+        foyerId={FOYER_ID}
+        enfantsInitiaux={[enfant({ id: 'e1', prenom: 'Mia' })]}
+        contrats={[
+          { enfantId: 'e1' } as never,
+          { enfantId: 'e1' } as never,
+          { enfantId: 'autre' } as never,
+        ]}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Supprimer l’enfant Mia' }),
+    );
+    expect(
+      within(screen.getByRole('dialog')).getByText(
+        /Mia a 2 contrat\(s\) de garde/,
+      ),
+    ).toBeInTheDocument();
   });
 });

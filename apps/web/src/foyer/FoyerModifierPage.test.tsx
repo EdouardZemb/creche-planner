@@ -8,6 +8,8 @@ vi.mock('../api/client', () => ({
   api: {
     lireFoyer: vi.fn(),
     modifierFoyer: vi.fn(),
+    // Chargé par `useContrats` (avertissement de suppression d'enfant).
+    listerContrats: vi.fn(() => Promise.resolve([])),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -26,6 +28,7 @@ import { api, ApiError } from '../api/client';
 const mockedApi = api as unknown as {
   lireFoyer: ReturnType<typeof vi.fn>;
   modifierFoyer: ReturnType<typeof vi.fn>;
+  listerContrats: ReturnType<typeof vi.fn>;
 };
 
 const FOYER_ID = 'foyer-123';

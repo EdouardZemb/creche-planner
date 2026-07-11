@@ -23,6 +23,11 @@ const ETAT_FOYER_T3 = 'un foyer de référence T3 existe';
 // l'unicité globale `lower(email)`).
 const ETAT_FOYER_SANS_PARENT = 'un foyer de référence T3 sans parent';
 const ETAT_FOYER_AVEC_PARENT = 'un foyer de référence T3 avec un parent';
+// Retrait de parent (Lot 1) : la garde « dernier parent actif » refuse (409) le
+// retrait de l'unique parent → l'interaction 204 exige DEUX parents actifs (le
+// parent de référence à retirer + un second « lest » qui reste dans le foyer).
+const ETAT_FOYER_AVEC_DEUX_PARENTS =
+  'un foyer de référence T3 avec deux parents';
 // Enfant (P4) : seede le foyer puis (table rase) un enfant actif d'id connu pour
 // l'édition/le retrait. Idempotent (ré-exécution locale sans clash sur l'id).
 const ETAT_FOYER_AVEC_ENFANT = 'un foyer de référence T3 avec un enfant';
@@ -160,6 +165,30 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
           await db`
             insert into parent (id, foyer_id, prenom, nom, email, principal, ordre, actif)
             values (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, false, 0, true)
+          `;
+        },
+        [ETAT_FOYER_AVEC_DEUX_PARENTS]: async (
+          params?: unknown,
+        ): Promise<void> => {
+          const { foyerId, parentId, email, parentLestId, emailLest } =
+            params as {
+              foyerId: string;
+              parentId: string;
+              email: string;
+              parentLestId: string;
+              emailLest: string;
+            };
+          await seedFoyer(db, foyerId);
+          // Table rase (idempotence, unicité globale `lower(email)`), puis DEUX
+          // parents actifs : celui à retirer + le « lest » qui satisfait la garde.
+          await db`delete from parent where foyer_id = ${foyerId}`;
+          await db`delete from parent where lower(email) = lower(${email})`;
+          await db`delete from parent where lower(email) = lower(${emailLest})`;
+          await db`
+            insert into parent (id, foyer_id, prenom, nom, email, principal, ordre, actif)
+            values
+              (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, false, 0, true),
+              (${parentLestId}, ${foyerId}, 'Dominique', 'Bernard', ${emailLest}, false, 1, true)
           `;
         },
         [ETAT_FOYER_AVEC_ENFANT]: async (params?: unknown): Promise<void> => {

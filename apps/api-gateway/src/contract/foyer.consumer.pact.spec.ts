@@ -23,6 +23,16 @@ const EMAIL_PARENT_EXISTANT = 'alex.dupont@example.test';
 const ETAT_FOYER_SANS_PARENT = 'un foyer de référence T3 sans parent';
 const ETAT_FOYER_AVEC_PARENT = 'un foyer de référence T3 avec un parent';
 
+// Retrait de parent (Lot 1 « gestes destructifs ») : état DÉDIÉ à DEUX parents
+// actifs — la garde « dernier parent actif » de svc-foyer refuse (409) le retrait
+// du dernier parent, donc le 204 nominal exige un second parent « lest ». Les
+// autres interactions (liste, édition) gardent l'état « avec un parent » (leurs
+// corps de réponse attendent un seul parent).
+const PARENT_LEST_ID = '44444444-4444-4444-8444-444444444444';
+const EMAIL_PARENT_LEST = 'dominique.bernard@example.test';
+const ETAT_FOYER_AVEC_DEUX_PARENTS =
+  'un foyer de référence T3 avec deux parents';
+
 // Enfant (P4) : un foyer « avec un enfant » d'id connu, cible de l'édition et du
 // retrait (le foyer est seedé puis l'enfant inséré par le stateHandler provider).
 const ENFANT_REFERENCE_ID = '22222222-2222-4222-8222-222222222222';
@@ -479,10 +489,15 @@ describe('Pact consumer · api-gateway → svc-foyer', () => {
 
   it('retire un parent du foyer de référence (204)', async () => {
     provider
-      .given(ETAT_FOYER_AVEC_PARENT, {
+      // État à DEUX parents actifs : la garde « dernier parent actif » (Lot 1)
+      // refuserait (409) le retrait de l'unique parent — le 204 nominal exige un
+      // second parent « lest » qui reste dans le foyer.
+      .given(ETAT_FOYER_AVEC_DEUX_PARENTS, {
         foyerId: FOYER_REFERENCE_ID,
         parentId: PARENT_REFERENCE_ID,
         email: EMAIL_PARENT_EXISTANT,
+        parentLestId: PARENT_LEST_ID,
+        emailLest: EMAIL_PARENT_LEST,
       })
       .uponReceiving('un retrait de parent du foyer de référence')
       .withRequest({
