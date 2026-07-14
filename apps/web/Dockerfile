@@ -20,7 +20,10 @@ FROM --platform=linux/amd64 nginx:alpine AS runtime
 # repassée ; l'incrémenter à la prochaine occurrence. 2026-07-08 : libexpat 2.8.2-r0
 # corrige CVE-2026-56131/56407/56408 (repo Alpine v3.23 main, build 2026-06-29).
 # 2026-07-10 : c-ares 1.34.8-r0 corrige CVE-2026-33630 (use-after-free, HIGH).
-ARG OS_PATCH=2026-07-10
+# 2026-07-14 : curl/libcurl 8.20.0-r0 corrige CVE-2026-5773 (mauvais transfert
+# de fichier via réutilisation de connexion SMB) et CVE-2026-6276 (fuite de
+# cookie en réutilisation de connexion), tous deux HIGH.
+ARG OS_PATCH=2026-07-14
 RUN echo "os-patch ${OS_PATCH}" && apk upgrade --no-cache
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist/apps/web /usr/share/nginx/html
