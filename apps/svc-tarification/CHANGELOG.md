@@ -1,3 +1,18 @@
+## 0.11.0 (2026-07-14)
+
+### 🚀 Features
+
+- **tarification:** premiere annee ABCM portee par le contrat (couts lot 4b) ([#192](https://github.com/EdouardZemb/creche-planner/pull/192))
+
+### 🩹 Fixes
+
+- **tarification:** 503 explicite quand un repli echoue - plus de montant faux silencieux (lot 3) ([#188](https://github.com/EdouardZemb/creche-planner/pull/188))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.10.0 (2026-07-09)
 
 This was a version bump only for svc-tarification to align it with other projects, there were no code changes.

@@ -1,3 +1,20 @@
+## 0.11.0 (2026-07-14)
+
+### 🚀 Features
+
+- **foyer:** intégrité du modèle parent et contrats d'erreur (« Ma famille » lot 5) ([#198](https://github.com/EdouardZemb/creche-planner/pull/198))
+- **foyer:** écran d'édition cohérent + langage « ma famille » (qualité lot 4) ([#197](https://github.com/EdouardZemb/creche-planner/pull/197))
+- **foyer:** Lot 1 — gestes destructifs sûrs et erreurs compréhensibles ([#195](https://github.com/EdouardZemb/creche-planner/pull/195))
+- **foyer:** onboarding guidé et session fraîche (qualité « Ma famille » lot 3) ([#196](https://github.com/EdouardZemb/creche-planner/pull/196))
+- **couts:** simulation atteignable + langage parent (lot 2) ([#191](https://github.com/EdouardZemb/creche-planner/pull/191))
+- **planification:** le contrat porte la première inscription ABCM (coûts lot 4a) ([#190](https://github.com/EdouardZemb/creche-planner/pull/190), [#167](https://github.com/EdouardZemb/creche-planner/issues/167))
+- **couts:** tableau annuel mobile-first + navigation d'annee par URL (lot 1) ([#187](https://github.com/EdouardZemb/creche-planner/pull/187))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.10.0 (2026-07-09)
 
 ### 🚀 Features

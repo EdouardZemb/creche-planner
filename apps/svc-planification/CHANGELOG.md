@@ -1,3 +1,14 @@
+## 0.11.0 (2026-07-14)
+
+### 🚀 Features
+
+- **planification:** le contrat porte la première inscription ABCM (coûts lot 4a) ([#190](https://github.com/EdouardZemb/creche-planner/pull/190), [#167](https://github.com/EdouardZemb/creche-planner/issues/167))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.10.0 (2026-07-09)
 
 ### 🚀 Features

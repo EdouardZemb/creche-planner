@@ -1,3 +1,16 @@
+## 0.11.0 (2026-07-14)
+
+### 🚀 Features
+
+- **foyer:** intégrité du modèle parent et contrats d'erreur (« Ma famille » lot 5) ([#198](https://github.com/EdouardZemb/creche-planner/pull/198))
+- **foyer:** création de foyer atomique — la commande au bon endroit (qualité « ma famille » lot 2) ([#194](https://github.com/EdouardZemb/creche-planner/pull/194))
+- **foyer:** Lot 1 — gestes destructifs sûrs et erreurs compréhensibles ([#195](https://github.com/EdouardZemb/creche-planner/pull/195))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.10.0 (2026-07-09)
 
 This was a version bump only for svc-foyer to align it with other projects, there were no code changes.

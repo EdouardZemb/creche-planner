@@ -1,3 +1,7 @@
+## 0.11.0 (2026-07-14)
+
+This was a version bump only for svc-notifications to align it with other projects, there were no code changes.
+
 ## 0.10.0 (2026-07-09)
 
 ### 🚀 Features
