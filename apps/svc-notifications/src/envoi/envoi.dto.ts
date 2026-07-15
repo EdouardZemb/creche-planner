@@ -40,17 +40,17 @@ export interface BrouillonEtablissementVue {
   /** Enfants concernés (vide ⇒ rien à envoyer pour cet établissement). */
   readonly enfants: readonly EnfantBrouillon[];
   /**
-   * Vrai si l'établissement est **joignable** (a une adresse de service) : le récap peut
-   * être envoyé. Faux ⇒ **aucun** envoi possible (le front affiche un avertissement au
-   * lieu du bouton, et `envoyer()` refuse côté serveur). (Un lot ultérieur étendra la
-   * condition à « ET actif ».)
+   * Vrai si l'établissement est **joignable** : il a une adresse de service **ET** il est
+   * **actif** (non archivé). Faux ⇒ **aucun** envoi possible (le front affiche un
+   * avertissement au lieu du bouton, et `envoyer()` refuse côté serveur).
    */
   readonly routable: boolean;
   /**
-   * Raison de non-routabilité quand `routable === false`, sinon `null`. Union tenue
-   * **exacte** (un lot ultérieur y ajoutera `'ARCHIVE'`).
+   * Raison de non-routabilité quand `routable === false`, sinon `null`. `'ARCHIVE'` a la
+   * **priorité** sur `'SANS_EMAIL'` : une crèche archivée est signalée « archivée » (geste
+   * de réactivation) même si elle n'a par ailleurs pas d'e-mail.
    */
-  readonly raisonNonRoutable: 'SANS_EMAIL' | null;
+  readonly raisonNonRoutable: 'SANS_EMAIL' | 'ARCHIVE' | null;
   /** Vrai si un envoi réel serait neutralisé (dry-run global ou hors allowlist). */
   readonly dryRun: boolean;
 }

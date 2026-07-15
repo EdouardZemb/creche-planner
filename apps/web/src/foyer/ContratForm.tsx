@@ -805,14 +805,20 @@ export function ContratForm({
         style={{ width: '100%' }}
       >
         <option value="">— Sélectionner un établissement —</option>
-        {etablissements.map((e) => (
-          <option key={e.id} value={e.id}>
-            {e.nom}
-            {e.actif ? '' : ' (archivé)'}
-          </option>
-        ))}
+        {/* Archivage réel (Lot 3) : on ne propose que les établissements ACTIFS pour
+            un nouveau rattachement. À l'édition d'un contrat déjà rattaché à un
+            archivé, on garde CETTE option (suffixe « (archivé) ») pour qu'elle reste
+            sélectionnée/affichée ; les autres archivés n'apparaissent pas. */}
+        {etablissements
+          .filter((e) => e.actif || e.id === contrat?.etablissementId)
+          .map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.nom}
+              {e.actif ? '' : ' (archivé)'}
+            </option>
+          ))}
         <option value={NOUVEL_ETABLISSEMENT}>
-          ➕ Créer un nouvel établissement
+          ➕ Créer une nouvelle crèche / école
         </option>
       </select>
       {erreurPour('etablissementId') && (

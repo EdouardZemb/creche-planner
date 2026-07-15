@@ -19,6 +19,8 @@ const ETAT_BROUILLON =
   'un brouillon de mail agrégé par établissement est disponible';
 const ETAT_BROUILLON_SANS_EMAIL =
   'un brouillon agrégé pour un établissement sans e-mail est disponible';
+const ETAT_BROUILLON_ARCHIVE =
+  'un brouillon agrégé pour un établissement archivé est disponible';
 const ETAT_ENVOI =
   'un récap agrégé par établissement est prêt à envoyer au service';
 
@@ -30,15 +32,19 @@ const ETAT_ENVOI =
 const ETABLISSEMENT_ID = '99999999-9999-4999-8999-999999999999';
 // Établissement du même foyer **sans e-mail** → brouillon non routable (partagé consumer).
 const ETABLISSEMENT_SANS_EMAIL_ID = '99999999-9999-4999-8999-999999999998';
+// Établissement du même foyer **archivé** (avec e-mail) → non routable, raison ARCHIVE.
+const ETABLISSEMENT_ARCHIVE_ID = '99999999-9999-4999-8999-999999999997';
 
 /** Identifiants figés des semaines à valider seedées (partagés avec le consumer). */
 const NOTIF_ID = '88888888-8888-4888-8888-888888888888';
 const NOTIF_ID_2 = '88888888-8888-4888-8888-888888888889';
 const NOTIF_ID_SANS_EMAIL = '88888888-8888-4888-8888-888888888890';
+const NOTIF_ID_ARCHIVE = '88888888-8888-4888-8888-888888888891';
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
 const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
 const CONTRAT_ID_2 = '55555555-0000-4000-8000-000000000001';
 const CONTRAT_ID_SANS_EMAIL = '55555555-0000-4000-8000-000000000002';
+const CONTRAT_ID_ARCHIVE = '55555555-0000-4000-8000-000000000003';
 const SEMAINE = '2026-W10';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-notifications) → racine du dépôt à ../../.
@@ -153,6 +159,7 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
       id: string = ETABLISSEMENT_ID,
       nom = 'Crèche Les Hirondelles',
       emailService: string | null = 'contact-creche@example.org',
+      actif = true,
     ): Promise<void> => {
       await db`
         insert into etablissement (
@@ -161,7 +168,7 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
           ${id}, ${FOYER_ID}, ${nom},
           ${emailService},
           ${JSON.stringify({ type: 'JOURS_OUVRES', valeur: 2 })}::jsonb,
-          '[]'::jsonb, true
+          '[]'::jsonb, ${actif}
         )
         on conflict (id) do update set
           foyer_id = excluded.foyer_id,
@@ -244,6 +251,24 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
         ETABLISSEMENT_SANS_EMAIL_ID,
       );
     };
+    // Brouillon **non routable** (archivé) : un établissement du même foyer **archivé**
+    // (`actif=false`) mais **avec** e-mail → prouve la priorité `ARCHIVE` > `SANS_EMAIL`
+    // (routable=false, raison ARCHIVE bien que l'adresse existe).
+    const seedBrouillonArchive = async (): Promise<void> => {
+      await seedEtablissementProjete(
+        ETABLISSEMENT_ARCHIVE_ID,
+        'Crèche Les Coccinelles',
+        'contact-archive@example.org',
+        false,
+      );
+      await seedContratValide(
+        NOTIF_ID_ARCHIVE,
+        CONTRAT_ID_ARCHIVE,
+        'Nina',
+        '2026-03-04',
+        ETABLISSEMENT_ARCHIVE_ID,
+      );
+    };
     const seedEnvoi = async (): Promise<void> => {
       await seedBrouillon();
       await db`
@@ -262,6 +287,7 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
         [ETAT_SEMAINE_VALIDABLE]: seedSemaineAValider,
         [ETAT_BROUILLON]: seedBrouillon,
         [ETAT_BROUILLON_SANS_EMAIL]: seedBrouillonSansEmail,
+        [ETAT_BROUILLON_ARCHIVE]: seedBrouillonArchive,
         [ETAT_ENVOI]: seedEnvoi,
       },
     }).verifyProvider();
