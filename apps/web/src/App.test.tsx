@@ -326,7 +326,7 @@ describe('App — coquille de navigation', () => {
       within(panneau).getByRole('link', { name: 'Contrats' }),
     ).toBeInTheDocument();
     expect(
-      within(panneau).getByRole('link', { name: 'Établissements' }),
+      within(panneau).getByRole('link', { name: 'Crèches & écoles' }),
     ).toBeInTheDocument();
     expect(
       within(panneau).getByRole('link', { name: 'Ma famille' }),

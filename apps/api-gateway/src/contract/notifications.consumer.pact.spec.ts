@@ -16,6 +16,8 @@ const ETAT_SEMAINE_A_VALIDER = 'une semaine est à valider pour un foyer';
 const ETAT_SEMAINE_VALIDABLE = 'une semaine A_VALIDER existe pour validation';
 const ETAT_BROUILLON =
   'un brouillon de mail agrégé par établissement est disponible';
+const ETAT_BROUILLON_SANS_EMAIL =
+  'un brouillon agrégé pour un établissement sans e-mail est disponible';
 const ETAT_ENVOI =
   'un récap agrégé par établissement est prêt à envoyer au service';
 
@@ -25,6 +27,8 @@ const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
 // Établissement réel destinataire du récap agrégé (read model `etablissement`, P3),
 // rattaché au contrat par le lien explicite `contrat.etablissement_id`.
 const ETABLISSEMENT_ID = '99999999-9999-4999-8999-999999999999';
+// Établissement du même foyer **sans e-mail de service** → brouillon non routable.
+const ETABLISSEMENT_SANS_EMAIL_ID = '99999999-9999-4999-8999-999999999998';
 // Semaine entièrement dans un mois (mars) : une seule relecture amont côté provider.
 const SEMAINE = '2026-W10';
 
@@ -132,6 +136,9 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
               jours: MatchersV3.eachLike({ date: string('2026-03-04') }),
             },
           }),
+          // Établissement joignable → routable, aucune raison de non-routabilité.
+          routable: boolean(true),
+          raisonNonRoutable: null,
           // Provider en dry-run par défaut (aucun SMTP réel pendant la vérif).
           dryRun: boolean(true),
         },
@@ -144,6 +151,60 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
       expect(reponse.status).toBe(200);
       const corps = (await reponse.json()) as { destinataire: string };
       expect(corps.destinataire).toBe('contact-creche@example.org');
+    });
+  });
+
+  it('régénère un brouillon NON routable pour un établissement sans e-mail (routable=false)', async () => {
+    provider
+      .given(ETAT_BROUILLON_SANS_EMAIL)
+      .uponReceiving(
+        'une régénération du brouillon agrégé d’un établissement sans e-mail',
+      )
+      .withRequest({
+        method: 'GET',
+        path: `/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_SANS_EMAIL_ID}/brouillon`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          foyerId: string(FOYER_ID),
+          semaineIso: string(SEMAINE),
+          etablissementId: string(ETABLISSEMENT_SANS_EMAIL_ID),
+          etablissementLibelle: string('Halte-garderie du Parc'),
+          // Non routable : destinataire vide, jamais lu par le front dans ce cas.
+          destinataire: '',
+          sujet: string('Plannings modifiés — semaine 2026-W10'),
+          corps: string('<p>Bonjour Halte-garderie du Parc,</p>'),
+          texte: string('Bonjour Halte-garderie du Parc,'),
+          // Le calcul des enfants ne dépend pas de l'e-mail : il y a bien des modifs.
+          enfants: MatchersV3.eachLike({
+            contratId: string('55555555-0000-4000-8000-000000000002'),
+            enfant: string('Zoé'),
+            deltaModifs: {
+              jours: MatchersV3.eachLike({ date: string('2026-03-04') }),
+            },
+          }),
+          routable: boolean(false),
+          raisonNonRoutable: string('SANS_EMAIL'),
+          // dryRun neutralisé (aucun envoi possible).
+          dryRun: boolean(false),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_SANS_EMAIL_ID}/brouillon`,
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as {
+        routable: boolean;
+        raisonNonRoutable: string | null;
+        destinataire: string;
+      };
+      expect(corps.routable).toBe(false);
+      expect(corps.raisonNonRoutable).toBe('SANS_EMAIL');
+      expect(corps.destinataire).toBe('');
     });
   });
 

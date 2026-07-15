@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EditeurSemaine } from './EditeurSemaine';
@@ -118,6 +119,8 @@ function brouillonPour(etablissementId: string): BrouillonEtablissement {
           },
         ]
       : [],
+    routable: true,
+    raisonNonRoutable: null,
     dryRun: true,
   };
 }
@@ -134,12 +137,15 @@ describe('EditeurSemaine', () => {
   });
 
   function rendre() {
+    // RelectureEnvoi (rendu après validation avec modifs) utilise <Link> → Router requis.
     return render(
-      <EditeurSemaine
-        foyerId="foyer-1"
-        semaineIso="2026-W27"
-        onFermer={vi.fn()}
-      />,
+      <MemoryRouter>
+        <EditeurSemaine
+          foyerId="foyer-1"
+          semaineIso="2026-W27"
+          onFermer={vi.fn()}
+        />
+      </MemoryRouter>,
     );
   }
 

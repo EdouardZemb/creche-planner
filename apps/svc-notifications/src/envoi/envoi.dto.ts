@@ -26,7 +26,11 @@ export interface BrouillonEtablissementVue {
   readonly etablissementId: string;
   /** Libellé lisible de l'établissement (en-tête du mail). */
   readonly etablissementLibelle: string;
-  /** Adresse e-mail réellement visée (mise en évidence côté front). */
+  /**
+   * Adresse e-mail réellement visée (mise en évidence côté front). **Chaîne vide** `''`
+   * quand l'établissement n'est pas joignable (`routable === false`) : le front ne lit
+   * `destinataire` que lorsque `routable === true`.
+   */
   readonly destinataire: string;
   readonly sujet: string;
   /** Corps rendu (HTML) — exactement ce qui serait figé/envoyé. */
@@ -35,6 +39,18 @@ export interface BrouillonEtablissementVue {
   readonly texte: string;
   /** Enfants concernés (vide ⇒ rien à envoyer pour cet établissement). */
   readonly enfants: readonly EnfantBrouillon[];
+  /**
+   * Vrai si l'établissement est **joignable** (a une adresse de service) : le récap peut
+   * être envoyé. Faux ⇒ **aucun** envoi possible (le front affiche un avertissement au
+   * lieu du bouton, et `envoyer()` refuse côté serveur). (Un lot ultérieur étendra la
+   * condition à « ET actif ».)
+   */
+  readonly routable: boolean;
+  /**
+   * Raison de non-routabilité quand `routable === false`, sinon `null`. Union tenue
+   * **exacte** (un lot ultérieur y ajoutera `'ARCHIVE'`).
+   */
+  readonly raisonNonRoutable: 'SANS_EMAIL' | null;
   /** Vrai si un envoi réel serait neutralisé (dry-run global ou hors allowlist). */
   readonly dryRun: boolean;
 }

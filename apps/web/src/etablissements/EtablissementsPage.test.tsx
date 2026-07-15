@@ -72,7 +72,7 @@ describe('EtablissementsPage (per-foyer)', () => {
     vi.clearAllMocks();
   });
 
-  it('liste les établissements du foyer avec préavis et types', async () => {
+  it('liste les crèches / écoles du foyer avec leur délai pour prévenir', async () => {
     vi.mocked(api.listerEtablissements).mockResolvedValue(ETABLISSEMENTS);
     rendre();
 
@@ -81,12 +81,39 @@ describe('EtablissementsPage (per-foyer)', () => {
     expect(api.listerEtablissements).toHaveBeenCalledWith(FOYER, {
       signal: expect.anything(),
     });
-    expect(screen.getByText(/2 jours ouvrés/)).toBeInTheDocument();
-    expect(screen.getByText(/Jeudi avant 12:00/)).toBeInTheDocument();
-    expect(screen.getByText(/Cantine, Périscolaire/)).toBeInTheDocument();
+    // Le délai est reformulé en langage parent (plus de « préavis » visible).
+    expect(
+      screen.getByText(/Délai pour prévenir : 2 jours ouvrés/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/avant jeudi 12 h/)).toBeInTheDocument();
+    // Le bloc « Types proposés » a été retiré de l'écran.
+    expect(screen.queryByText(/Types :/)).not.toBeInTheDocument();
   });
 
-  it('crée un nouvel établissement', async () => {
+  it('avertit qu’une crèche active sans e-mail ne recevra pas les récaps', async () => {
+    vi.mocked(api.listerEtablissements).mockResolvedValue([
+      { ...ETABLISSEMENTS[0]!, emailService: null },
+    ]);
+    rendre();
+
+    await screen.findByText('Crèche du Centre');
+    const avertissement = screen.getByRole('note');
+    expect(avertissement).toHaveTextContent(
+      /Sans e-mail, cette crèche ne recevra pas les récapitulatifs/i,
+    );
+  });
+
+  it('n’affiche pas l’avertissement « sans e-mail » pour une crèche archivée', async () => {
+    vi.mocked(api.listerEtablissements).mockResolvedValue([
+      { ...ETABLISSEMENTS[0]!, emailService: null, actif: false },
+    ]);
+    rendre();
+
+    await screen.findByText('Crèche du Centre');
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
+  it('crée une nouvelle crèche / école (sans envoyer `types`)', async () => {
     vi.mocked(api.listerEtablissements).mockResolvedValue([]);
     vi.mocked(api.creerEtablissement).mockResolvedValue({
       ...ETABLISSEMENTS[0]!,
@@ -94,17 +121,16 @@ describe('EtablissementsPage (per-foyer)', () => {
     });
     rendre();
 
-    await screen.findByText('Aucun établissement configuré.');
+    // État vide : l'accueil oriente vers l'ajout d'une première crèche.
+    await screen.findByText('Ajoutez votre première crèche ou école');
     fireEvent.click(
-      screen.getByRole('button', { name: /Nouvel établissement/i }),
+      screen.getByRole('button', { name: /Ajouter une crèche . école/i }),
     );
 
-    fireEvent.change(screen.getByLabelText(/Nom de l’établissement/i), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nom' }), {
       target: { value: 'Nouvelle crèche' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: /Créer l’établissement/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter' }));
 
     await waitFor(() => {
       expect(api.creerEtablissement).toHaveBeenCalledTimes(1);
@@ -113,8 +139,10 @@ describe('EtablissementsPage (per-foyer)', () => {
     expect(foyerArg).toBe(FOYER);
     expect(corps.nom).toBe('Nouvelle crèche');
     expect(corps.preavisRegle).toBeNull();
+    // `types` n'est plus renseigné à l'écran → absent du payload.
+    expect(corps).not.toHaveProperty('types');
     expect(
-      await screen.findByText(/« Nouvelle crèche » créé/),
+      await screen.findByText(/« Nouvelle crèche » ajoutée/),
     ).toBeInTheDocument();
   });
 
@@ -131,7 +159,7 @@ describe('EtablissementsPage (per-foyer)', () => {
     );
     // Confirme dans la modale.
     fireEvent.click(
-      screen.getByRole('button', { name: /Supprimer l’établissement/i }),
+      screen.getByRole('button', { name: /Supprimer la crèche . école/i }),
     );
 
     expect(
@@ -139,12 +167,12 @@ describe('EtablissementsPage (per-foyer)', () => {
     ).toBeInTheDocument();
   });
 
-  it('affiche l’état vide quand le foyer n’a aucun établissement', async () => {
+  it('affiche l’état vide quand le foyer n’a aucune crèche / école', async () => {
     vi.mocked(api.listerEtablissements).mockResolvedValue([]);
     rendre();
 
     expect(
-      await screen.findByText('Aucun établissement configuré.'),
+      await screen.findByText('Ajoutez votre première crèche ou école'),
     ).toBeInTheDocument();
   });
 
@@ -175,34 +203,30 @@ describe('EtablissementsPage (per-foyer)', () => {
     );
     rendre();
 
-    await screen.findByText('Aucun établissement configuré.');
+    await screen.findByText('Ajoutez votre première crèche ou école');
     fireEvent.click(
-      screen.getByRole('button', { name: /Nouvel établissement/i }),
+      screen.getByRole('button', { name: /Ajouter une crèche . école/i }),
     );
-    fireEvent.change(screen.getByLabelText(/Nom de l’établissement/i), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nom' }), {
       target: { value: 'Crèche du Centre' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: /Créer l’établissement/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter' }));
 
     expect(
       await screen.findByText('Ce nom est déjà utilisé.'),
     ).toBeInTheDocument();
     expect(screen.getByText('Adresse e-mail invalide.')).toBeInTheDocument();
     // Les champs fautifs sont marqués pour les technologies d'assistance.
-    expect(screen.getByLabelText(/Nom de l’établissement/i)).toHaveAttribute(
+    expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveAttribute(
       'aria-invalid',
       'true',
     );
-    expect(screen.getByLabelText(/Adresse e-mail du service/i)).toHaveAttribute(
+    expect(screen.getByLabelText(/E-mail de la crèche/i)).toHaveAttribute(
       'aria-invalid',
       'true',
     );
     // Le formulaire reste ouvert pour corriger.
-    expect(
-      screen.getByRole('button', { name: /Créer l’établissement/i }),
-    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Ajouter' })).toBeEnabled();
   });
 
   it('affiche un message global quand le serveur rejette la création (500)', async () => {
@@ -212,16 +236,14 @@ describe('EtablissementsPage (per-foyer)', () => {
     );
     rendre();
 
-    await screen.findByText('Aucun établissement configuré.');
+    await screen.findByText('Ajoutez votre première crèche ou école');
     fireEvent.click(
-      screen.getByRole('button', { name: /Nouvel établissement/i }),
+      screen.getByRole('button', { name: /Ajouter une crèche . école/i }),
     );
-    fireEvent.change(screen.getByLabelText(/Nom de l’établissement/i), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nom' }), {
       target: { value: 'Crèche du Centre' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: /Créer l’établissement/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter' }));
 
     expect(
       await screen.findByText(
@@ -230,7 +252,7 @@ describe('EtablissementsPage (per-foyer)', () => {
     ).toBeInTheDocument();
   });
 
-  it('modifie un établissement depuis le formulaire prérempli', async () => {
+  it('modifie une crèche / école depuis le formulaire prérempli', async () => {
     vi.mocked(api.listerEtablissements).mockResolvedValue(ETABLISSEMENTS);
     vi.mocked(api.modifierEtablissement).mockResolvedValue({
       ...ETABLISSEMENTS[0]!,
@@ -243,15 +265,16 @@ describe('EtablissementsPage (per-foyer)', () => {
       screen.getByRole('button', { name: /Modifier Crèche du Centre/i }),
     );
 
-    // Formulaire prérempli depuis l'établissement existant.
-    expect(screen.getByText('Modifier l’établissement')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Nom de l’établissement/i)).toHaveValue(
+    // Formulaire prérempli depuis la crèche existante.
+    expect(
+      screen.getByRole('heading', { name: 'Modifier' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Nom' })).toHaveValue(
       'Crèche du Centre',
     );
-    expect(screen.getByLabelText('En jours ouvrés')).toBeChecked();
-    expect(screen.getByLabelText('Crèche')).toBeChecked();
+    expect(screen.getByLabelText('Un nombre de jours ouvrés')).toBeChecked();
 
-    fireEvent.change(screen.getByLabelText(/Nom de l’établissement/i), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Nom' }), {
       target: { value: 'Crèche rebaptisée' },
     });
     fireEvent.click(
@@ -269,15 +292,16 @@ describe('EtablissementsPage (per-foyer)', () => {
       nom: 'Crèche rebaptisée',
       emailService: 'creche@example.org',
       preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
-      types: ['CRECHE_PSU'],
       adresse: '1 rue des Lilas',
     });
+    // `types` n'est plus renseigné à l'écran → absent du payload d'édition.
+    expect(corps).not.toHaveProperty('types');
     expect(
-      await screen.findByText(/« Crèche rebaptisée » modifié/),
+      await screen.findByText(/« Crèche rebaptisée » modifiée/),
     ).toBeInTheDocument();
   });
 
-  it('supprime un établissement après confirmation dans la modale', async () => {
+  it('supprime une crèche / école après confirmation dans la modale', async () => {
     vi.mocked(api.listerEtablissements).mockResolvedValue(ETABLISSEMENTS);
     vi.mocked(api.supprimerEtablissement).mockResolvedValue(undefined);
     rendre();
@@ -289,17 +313,17 @@ describe('EtablissementsPage (per-foyer)', () => {
 
     // La modale de confirmation explique la conséquence avant d'agir.
     expect(
-      screen.getByText(/sera définitivement supprimé/i),
+      screen.getByText(/sera définitivement supprimée/i),
     ).toBeInTheDocument();
     fireEvent.click(
-      screen.getByRole('button', { name: /Supprimer l’établissement/i }),
+      screen.getByRole('button', { name: /Supprimer la crèche . école/i }),
     );
 
     await waitFor(() => {
       expect(api.supprimerEtablissement).toHaveBeenCalledWith(FOYER, 'et-1');
     });
     expect(
-      await screen.findByText(/« Crèche du Centre » supprimé/),
+      await screen.findByText(/« Crèche du Centre » supprimée/),
     ).toBeInTheDocument();
     // La liste est rechargée après suppression.
     expect(api.listerEtablissements).toHaveBeenCalledTimes(2);
@@ -317,7 +341,7 @@ describe('EtablissementsPage (per-foyer)', () => {
 
     expect(api.supprimerEtablissement).not.toHaveBeenCalled();
     expect(
-      screen.queryByText(/sera définitivement supprimé/i),
+      screen.queryByText(/sera définitivement supprimée/i),
     ).not.toBeInTheDocument();
   });
 
@@ -340,7 +364,7 @@ describe('EtablissementsPage (per-foyer)', () => {
     ).toBeInTheDocument();
   });
 
-  it('archive un établissement (PUT actif: false)', async () => {
+  it('archive une crèche / école (PUT actif: false)', async () => {
     vi.mocked(api.listerEtablissements).mockResolvedValue(ETABLISSEMENTS);
     vi.mocked(api.modifierEtablissement).mockResolvedValue({
       ...ETABLISSEMENTS[0]!,
@@ -358,6 +382,6 @@ describe('EtablissementsPage (per-foyer)', () => {
         actif: false,
       });
     });
-    expect(await screen.findByText(/archivé/)).toBeInTheDocument();
+    expect(await screen.findByText(/archivée/)).toBeInTheDocument();
   });
 });

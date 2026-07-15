@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import {
   DRIZZLE,
@@ -36,11 +42,16 @@ interface BrouillonConstruit {
   readonly semaineIso: string;
   readonly etablissementId: string;
   readonly etablissementLibelle: string;
+  /** Adresse visée ; **chaîne vide** `''` quand l'établissement n'est pas joignable. */
   readonly destinataire: string;
   readonly sujet: string;
   readonly corps: string;
   readonly texte: string;
   readonly enfants: readonly EnfantBrouillon[];
+  /** Vrai si l'établissement a une adresse de service (envoi possible). */
+  readonly routable: boolean;
+  /** Raison de non-routabilité (`'SANS_EMAIL'`) quand `routable === false`, sinon `null`. */
+  readonly raisonNonRoutable: 'SANS_EMAIL' | null;
 }
 
 /**
@@ -89,7 +100,10 @@ export class EnvoiService {
       corps: b.corps,
       texte: b.texte,
       enfants: b.enfants,
-      dryRun: this.dryRunEffectif(b.destinataire),
+      routable: b.routable,
+      raisonNonRoutable: b.raisonNonRoutable,
+      // `dryRun` n'a de sens que pour un envoi possible : neutralisé (`false`) sinon.
+      dryRun: b.routable ? this.dryRunEffectif(b.destinataire) : false,
     };
   }
 
@@ -105,6 +119,19 @@ export class EnvoiService {
     etablissementId: string,
   ): Promise<EnvoiEtablissementResultat> {
     const b = await this.construire(foyerId, semaineIso, etablissementId);
+
+    // Ceinture et bretelles côté serveur : un brouillon non routable (ex. crèche sans
+    // e-mail) est refusé **avant** toute réservation de slot ou sollicitation du mailer —
+    // on n'envoie jamais à vide, même si le front laissait passer le clic.
+    if (!b.routable) {
+      throw new BadRequestException([
+        {
+          champ: 'etablissement',
+          message:
+            "crèche sans e-mail : ajoutez une adresse avant d'envoyer le récapitulatif",
+        },
+      ]);
+    }
 
     const id = randomUUID();
     const insere = await this.db
@@ -196,8 +223,12 @@ export class EnvoiService {
    * Construit le brouillon agrégé : résout la fiche établissement destinataire (read
    * model projeté), rassemble les contrats du foyer **rattachés à cet établissement**
    * (lien explicite `contrat.etablissement_id`) dont la semaine est `VALIDEE_AVEC_MODIFS`
-   * (deltas non vides), et rend un corps multi-enfant. `404` si l'établissement est
-   * inconnu, hors du foyer ou sans adresse de service (récap non routable). Une liste
+   * (deltas non vides), et rend un corps multi-enfant. `404` **uniquement** si
+   * l'établissement est inconnu ou hors du foyer. Un établissement **connu, du bon foyer,
+   * mais sans adresse de service** ne 404 plus : le brouillon est construit normalement
+   * (le calcul des enfants ne dépend pas de l'e-mail) et marqué **non routable**
+   * (`destinataire = ''`, `routable = false`, `raisonNonRoutable = 'SANS_EMAIL'`) afin que
+   * le front l'affiche en avertissement au lieu de l'écarter silencieusement. Une liste
    * d'enfants vide rend un récap « aucune modification » (le front ne propose pas
    * l'envoi dans ce cas).
    */
@@ -207,14 +238,20 @@ export class EnvoiService {
     etablissementId: string,
   ): Promise<BrouillonConstruit> {
     const etab = await this.etablissements.parId(etablissementId);
-    if (etab?.foyerId !== foyerId || etab.emailService === null) {
+    // 404 réservé à l'établissement inconnu ou hors du foyer : un établissement sans
+    // e-mail reste un cas nominal (récap non routable), pas une ressource introuvable.
+    if (etab === undefined || etab.foyerId !== foyerId) {
       throw new NotFoundException([
         {
           champ: 'etablissement',
-          message: `établissement destinataire ${etablissementId} inconnu ou sans adresse de service`,
+          message: `établissement destinataire ${etablissementId} inconnu`,
         },
       ]);
     }
+
+    const routable = etab.emailService !== null;
+    const raisonNonRoutable = routable ? null : 'SANS_EMAIL';
+    const destinataire = etab.emailService ?? '';
 
     const enfants = await this.enfantsConcernes(
       foyerId,
@@ -224,12 +261,10 @@ export class EnvoiService {
     const rendu = brouillonServiceAgrege({
       semaineIso,
       etablissementLibelle: etab.nom,
-      enfants: enfants.map(
-        (e): EnfantModifie => ({
-          enfant: e.enfant,
-          deltaModifs: e.deltaModifs,
-        }),
-      ),
+      enfants: enfants.map((e): EnfantModifie => ({
+        enfant: e.enfant,
+        deltaModifs: e.deltaModifs,
+      })),
     });
 
     return {
@@ -237,11 +272,13 @@ export class EnvoiService {
       semaineIso,
       etablissementId,
       etablissementLibelle: etab.nom,
-      destinataire: etab.emailService,
+      destinataire,
       sujet: rendu.subject,
       corps: rendu.html,
       texte: rendu.text,
       enfants,
+      routable,
+      raisonNonRoutable,
     };
   }
 
