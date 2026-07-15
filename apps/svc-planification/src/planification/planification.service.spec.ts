@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   CONTRAT_CREE_TYPE,
   CONTRAT_MODIFIE_TYPE,
@@ -332,7 +336,9 @@ function fakeDbTransaction(contratPresent: boolean): {
 } {
   const insertValues = vi.fn();
   const onConflictDoUpdate = vi.fn(() => Promise.resolve());
-  const lignes = contratPresent ? [ligneCreche()] : [];
+  // `actif: true` : ce fake sert aussi la résolution d'établissement de `creerContrat`
+  // (Lot 3 lit `actif` sur la ligne établissement) — un actif ne déclenche pas le rejet.
+  const lignes = contratPresent ? [{ ...ligneCreche(), actif: true }] : [];
   const tx = {
     select: () => ({ from: () => ({ where: () => Promise.resolve(lignes) }) }),
     insert: () => ({
@@ -676,7 +682,10 @@ const DTO_CRECHE_BASE = {
  * et chaque `insert().values()` est capturé. L'insert établissement (création à la
  * volée) expose `.returning()` renvoyant la ligne reflétant les valeurs insérées.
  */
-function fakeCreerAvecEtab(etabExistant: boolean): {
+function fakeCreerAvecEtab(
+  etabExistant: boolean,
+  etabActif = true,
+): {
   db: Database;
   inserts: Record<string, unknown>[];
 } {
@@ -686,7 +695,9 @@ function fakeCreerAvecEtab(etabExistant: boolean): {
       from: () => ({
         where: () =>
           Promise.resolve(
-            etabExistant ? [{ id: ETAB_ID, foyerId: FOYER_ID }] : [],
+            etabExistant
+              ? [{ id: ETAB_ID, foyerId: FOYER_ID, actif: etabActif }]
+              : [],
           ),
       }),
     }),
@@ -752,6 +763,18 @@ describe('PlanificationService.creerContrat (lien établissement, P2)', () => {
     await expect(
       service.creerContrat({ ...DTO_CRECHE_BASE, etablissementId: ETAB_ID }),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(inserts.find((i) => i['mode'] === 'CRECHE_PSU')).toBeUndefined();
+  });
+
+  it('etablissementId ARCHIVÉ : 409, aucun contrat inséré (archivage réel, Lot 3)', async () => {
+    // Établissement existant/du bon foyer mais archivé (actif=false) → refus à la
+    // création (il n'y a pas de lien « actuel » à tolérer).
+    const { db, inserts } = fakeCreerAvecEtab(true, false);
+    const service = new PlanificationService(db, referentielVide);
+
+    await expect(
+      service.creerContrat({ ...DTO_CRECHE_BASE, etablissementId: ETAB_ID }),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(inserts.find((i) => i['mode'] === 'CRECHE_PSU')).toBeUndefined();
   });
 
@@ -1050,6 +1073,90 @@ describe('PlanificationService.modifierContrat (atomicité / invariant contrat)'
 });
 
 /**
+ * Faux `db` transactionnel pour `modifierContrat` avec **résolution d'établissement**
+ * (Lot 3) : deux `select` successifs — 1ᵉʳ = contrat actuel (porte le lien courant,
+ * `etablissementActuel`), 2ᵉ = établissement CIBLE résolu (`etabActif`). Permet de
+ * vérifier la tolérance « lien inchangé » vs le rejet d'un **changement** vers un archivé.
+ */
+function fakeDbModifAvecEtab(options: {
+  etablissementActuel: string;
+  etabActif: boolean;
+}): {
+  db: Database;
+  updateSet: ReturnType<typeof vi.fn>;
+  insertValues: ReturnType<typeof vi.fn>;
+} {
+  const updateSet = vi.fn(() => ({ where: () => Promise.resolve() }));
+  const deleteWhere = vi.fn(() => Promise.resolve());
+  const insertValues = vi.fn(() => Promise.resolve());
+  let selectCall = 0;
+  const tx = {
+    select: () => ({
+      from: () => ({
+        where: () => {
+          selectCall += 1;
+          if (selectCall === 1) {
+            return Promise.resolve([
+              ligneCreche({ etablissementId: options.etablissementActuel }),
+            ]);
+          }
+          return Promise.resolve([
+            { id: ETAB_ID, foyerId: FOYER_ID, actif: options.etabActif },
+          ]);
+        },
+      }),
+    }),
+    update: () => ({ set: updateSet }),
+    delete: () => ({ where: deleteWhere }),
+    insert: () => ({ values: insertValues }),
+  };
+  const db = {
+    transaction: vi.fn(async (cb: (t: unknown) => Promise<void>) => {
+      await cb(tx);
+    }),
+  } as unknown as Database;
+  return { db, updateSet, insertValues };
+}
+
+describe('PlanificationService.modifierContrat (archivage réel, Lot 3)', () => {
+  it('tolère un archivé INCHANGÉ : le contrat pointait déjà dessus → update OK (édition d’autres champs)', async () => {
+    // Lien actuel = ETAB_ID (archivé) ; DTO_MODIF_VALIDE re-pointe sur ETAB_ID (même) :
+    // lien inchangé → toléré malgré l'archivage (on ne casse pas un contrat existant).
+    const { db, updateSet, insertValues } = fakeDbModifAvecEtab({
+      etablissementActuel: ETAB_ID,
+      etabActif: false,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    await service.modifierContrat(CONTRAT_ID, DTO_MODIF_VALIDE);
+
+    expect(updateSet).toHaveBeenCalledTimes(1);
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ etablissementId: ETAB_ID }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ type: CONTRAT_MODIFIE_TYPE }),
+    );
+  });
+
+  it('refuse un CHANGEMENT vers un archivé (409) : le contrat pointait ailleurs → rien n’est écrit', async () => {
+    // Lien actuel = AUTRE_ETAB_ID ; DTO_MODIF_VALIDE pointe sur ETAB_ID (archivé) :
+    // c'est un changement vers un archivé → refusé, aucune écriture.
+    const { db, updateSet, insertValues } = fakeDbModifAvecEtab({
+      etablissementActuel: AUTRE_ETAB_ID,
+      etabActif: false,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    await expect(
+      service.modifierContrat(CONTRAT_ID, DTO_MODIF_VALIDE),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+});
+
+/**
  * Faux `db` transactionnel pour `rattacherEtablissement` : deux `select` successifs
  * (1ᵉʳ = contrat, 2ᵉ = établissement). `contratLigne` pilote le garde 404 ;
  * `etabPresent` pilote l'appartenance au foyer (2ᵉ select vide = inconnu/hors foyer).
@@ -1059,6 +1166,7 @@ describe('PlanificationService.modifierContrat (atomicité / invariant contrat)'
 function fakeDbRattacher(options: {
   contratLigne: ContratRow | null;
   etabPresent: boolean;
+  etabActif?: boolean;
 }): {
   db: Database;
   transaction: ReturnType<typeof vi.fn>;
@@ -1081,7 +1189,15 @@ function fakeDbRattacher(options: {
             );
           }
           return Promise.resolve(
-            options.etabPresent ? [{ id: ETAB_ID, foyerId: FOYER_ID }] : [],
+            options.etabPresent
+              ? [
+                  {
+                    id: ETAB_ID,
+                    foyerId: FOYER_ID,
+                    actif: options.etabActif ?? true,
+                  },
+                ]
+              : [],
           );
         },
       }),
@@ -1148,6 +1264,23 @@ describe('PlanificationService.rattacherEtablissement (back-fill P5)', () => {
     await expect(
       service.rattacherEtablissement(CONTRAT_ID, ETAB_ID),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('409 si l’établissement cible est ARCHIVÉ (changement de lien) : rien n’est écrit', async () => {
+    // Le contrat pointe sur un AUTRE établissement → repointer vers un archivé est un
+    // changement, donc refusé (l'idempotence « lien inchangé » ne s'applique pas ici).
+    const { db, updateSet, insertValues } = fakeDbRattacher({
+      contratLigne: ligneCreche({ etablissementId: AUTRE_ETAB_ID }),
+      etabPresent: true,
+      etabActif: false,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    await expect(
+      service.rattacherEtablissement(CONTRAT_ID, ETAB_ID),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(updateSet).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();
   });
