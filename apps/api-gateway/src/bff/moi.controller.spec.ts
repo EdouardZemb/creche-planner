@@ -184,6 +184,44 @@ describe('MoiController · /moi/profil + /moi/preferences (PR2)', () => {
     expect(foyers.preferences).toHaveBeenCalledWith('f-1', 'p-moi');
   });
 
+  it('profil : préférences en échec → profil rendu avec préférences vides', async () => {
+    // Dégradation gracieuse (L5) : la ligne parent est résolue, mais la lecture
+    // des préférences échoue → « Mon profil » s'affiche quand même (identité +
+    // prénom/nom conservés), préférences vides plutôt qu'une erreur générique.
+    const moi = parent({
+      id: 'p-moi',
+      email: 'Moi@Example.test',
+      prenom: 'Moi',
+      nom: 'Test',
+      principal: true,
+    });
+    const foyers = {
+      foyersParEmail: vi.fn(async () => ['f-1']),
+      parents: vi.fn(async () => [moi]),
+      preferences: vi
+        .fn()
+        .mockRejectedValue(new Error('svc-foyer indisponible')),
+    } as unknown as FoyerClient;
+
+    const vue = await new MoiController(foyers, fakeNotifs()).profil(
+      req({ email: 'moi@example.test' }),
+    );
+
+    expect(vue.preferences).toEqual([]);
+    // Identité et champs prénom/nom conservés malgré l'échec des préférences.
+    expect(vue).toEqual({
+      parentId: 'p-moi',
+      foyerId: 'f-1',
+      email: 'Moi@Example.test',
+      prenom: 'Moi',
+      nom: 'Test',
+      principal: true,
+      preferences: [],
+    });
+    // On a bien tenté de lire MES préférences avant de dégrader.
+    expect(foyers.preferences).toHaveBeenCalledWith('f-1', 'p-moi');
+  });
+
   it('profil : identité sans ligne parent correspondante → 404', async () => {
     const foyers = {
       foyersParEmail: vi.fn(async () => ['f-1']),
