@@ -204,10 +204,12 @@ function BlocEnvoiEtablissement({
 }
 
 /**
- * Carte d'avertissement pour un établissement **concerné mais non joignable** (angle
- * mort « crèche sans e-mail »). Plus d'échec silencieux : la crèche apparaît
- * explicitement, sans bouton d'envoi, avec le rappel de ce qui ne sera pas transmis et
- * un raccourci pour compléter la fiche (« Ajouter un e-mail »).
+ * Carte d'avertissement pour un établissement **concerné mais non joignable** (angles
+ * morts « crèche sans e-mail », Lot 2, et « crèche archivée », Lot 3). Plus d'échec
+ * silencieux : la crèche apparaît explicitement, sans bouton d'envoi, avec le rappel de
+ * ce qui ne sera pas transmis et un raccourci pour lever l'obstacle. Le message et le
+ * raccourci dépendent de la raison : « Ajouter un e-mail » (sans e-mail) ou
+ * « Réactiver » (archivée). Les deux pointent vers l'écran « Crèches & écoles ».
  */
 function CarteNonRoutable({
   foyerId,
@@ -216,6 +218,11 @@ function CarteNonRoutable({
   foyerId: string;
   brouillon: BrouillonEtablissement;
 }) {
+  const archive = brouillon.raisonNonRoutable === 'ARCHIVE';
+  const alerte = archive
+    ? `« ${brouillon.etablissementLibelle} » est archivée : réactivez-la pour la prévenir.`
+    : `« ${brouillon.etablissementLibelle} » n’a pas d’e-mail : cette crèche ne sera pas prévenue de vos changements.`;
+  const libelleLien = archive ? 'Réactiver' : 'Ajouter un e-mail';
   return (
     <div className="bloc-etablissement">
       <h4 className="bloc-etablissement-titre">
@@ -224,15 +231,14 @@ function CarteNonRoutable({
 
       <div role="note" className="carte-non-routable">
         <p className="carte-non-routable-alerte">
-          <span aria-hidden="true">⚠️ </span>« {brouillon.etablissementLibelle}{' '}
-          » n’a pas d’e-mail : cette crèche ne sera pas prévenue de vos
-          changements.
+          <span aria-hidden="true">⚠️ </span>
+          {alerte}
         </p>
         <Link
           to={`/foyers/${foyerId}/etablissements`}
           className="btn secondaire"
         >
-          Ajouter un e-mail
+          {libelleLien}
         </Link>
       </div>
 
