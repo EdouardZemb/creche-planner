@@ -349,6 +349,159 @@
       }
     },
     {
+      "description": "une consommation de jeton coupant le dernier canal",
+      "providerStates": [
+        {
+          "name": "un jeton de désabonnement couperait le dernier canal actif",
+          "params": {
+            "email": "desabo.actif@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "jti": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "parentId": "55555555-5555-4555-8555-555555555555"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "token": "eyJqdGkiOiJiYmJiYmJiYi1iYmJiLTRiYmItOGJiYi1iYmJiYmJiYmJiYmIiLCJleHAiOjQxMDI0NDQ4MDB9.F625DIhnGrlT2Ouc7kMvy7awhcL6ra3UZc7_vyTxzQI"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "POST",
+        "path": "/api/desabonnement"
+      },
+      "response": {
+        "body": {
+          "error": "Conflict",
+          "message": "ce canal ne peut pas être coupé : au moins un canal doit rester actif",
+          "statusCode": 409
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.error": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.statusCode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 409
+      }
+    },
+    {
+      "description": "une consommation de jeton de désabonnement (canal non critique)",
+      "providerStates": [
+        {
+          "name": "un jeton de désabonnement valide coupe un canal non critique",
+          "params": {
+            "email": "desabo.actif@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "jti": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "parentId": "55555555-5555-4555-8555-555555555555"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "token": "eyJqdGkiOiJhYWFhYWFhYS1hYWFhLTRhYWEtOGFhYS1hYWFhYWFhYWFhYWEiLCJleHAiOjQxMDI0NDQ4MDB9.D-js2K9n0S_ZLb-aXQpkZibQtYbn9ZNFGRKYWII002A"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "POST",
+        "path": "/api/desabonnement"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
+      "description": "une consommation de jeton de désabonnement invalide",
+      "providerStates": [
+        {
+          "name": "un jeton de désabonnement valide coupe un canal non critique",
+          "params": {
+            "email": "desabo.actif@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "jti": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "parentId": "55555555-5555-4555-8555-555555555555"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "token": "jeton.invalide"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "POST",
+        "path": "/api/desabonnement"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "message": "lien de désabonnement invalide ou expiré",
+          "statusCode": 400
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.error": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.statusCode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 400
+      }
+    },
+    {
       "description": "une création atomique de dossier foyer de référence",
       "providerStates": [
         {
@@ -1113,6 +1266,74 @@
       }
     },
     {
+      "description": "une mise à jour des préférences coupant le dernier canal",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 avec un parent et ses préférences",
+          "params": {
+            "email": "sacha.leroy@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "parentId": "33333333-3333-4333-8333-333333333333"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "preferences": [
+            {
+              "actif": false,
+              "canal": "IN_APP",
+              "typeNotification": "VALIDATION_HEBDO"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "PUT",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111/parents/33333333-3333-4333-8333-333333333333/preferences"
+      },
+      "response": {
+        "body": {
+          "error": "Bad Request",
+          "message": "au moins un canal doit rester actif pour VALIDATION_HEBDO",
+          "statusCode": 400
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.error": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.statusCode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 400
+      }
+    },
+    {
       "description": "une mise à jour des préférences du parent de référence",
       "providerStates": [
         {
@@ -1457,6 +1678,70 @@
           }
         },
         "status": 200
+      }
+    },
+    {
+      "description": "une édition de parent vers un e-mail déjà actif du foyer",
+      "providerStates": [
+        {
+          "name": "un foyer de référence T3 avec deux parents",
+          "params": {
+            "email": "alex.dupont@example.test",
+            "emailLest": "dominique.bernard@example.test",
+            "foyerId": "11111111-1111-4111-8111-111111111111",
+            "parentId": "33333333-3333-4333-8333-333333333333",
+            "parentLestId": "44444444-4444-4444-8444-444444444444"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "email": "dominique.bernard@example.test"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "PUT",
+        "path": "/api/foyers/11111111-1111-4111-8111-111111111111/parents/33333333-3333-4333-8333-333333333333"
+      },
+      "response": {
+        "body": {
+          "code": "EMAIL_DEJA_UTILISE",
+          "message": "adresse e-mail déjà utilisée dans ce foyer",
+          "statusCode": 409
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.code": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.statusCode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 409
       }
     },
     {

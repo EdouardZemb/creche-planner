@@ -23,6 +23,8 @@ const ETAT_BROUILLON_ARCHIVE =
   'un brouillon agrégé pour un établissement archivé est disponible';
 const ETAT_ENVOI =
   'un récap agrégé par établissement est prêt à envoyer au service';
+// Inbox in-app (PR6, §5.6) : un parent possède UNE notification in-app non lue.
+const ETAT_INBOX = 'un parent a une notification in-app non lue';
 
 /**
  * Id figé de la **fiche établissement projetée** (read model `etablissement`, P3) —
@@ -277,6 +279,25 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
           and etablissement_id = ${ETABLISSEMENT_ID}
       `;
     };
+    // Inbox in-app : (ré)insère UNE notification non lue (`lu_le = null`) possédée
+    // par `parentId`, d'id `id`. Delete-then-insert = idempotent (l'accusé de
+    // lecture d'une interaction précédente a pu poser `lu_le`). L'interaction 404
+    // requête la MÊME notif au nom d'un autre parent → le prédicat `parent_id` de
+    // `inbox.service.ts` la masque (404 `notification inconnue`).
+    const seedInbox = async (parentId: string, id: string): Promise<void> => {
+      await db`delete from notification where id = ${id}`;
+      await db`
+        insert into notification (
+          id, parent_id, type, sujet, corps, lien, cree_le, lu_le
+        ) values (
+          ${id}, ${parentId}, 'VALIDATION_HEBDO',
+          'Planning de la semaine à valider',
+          'Votre planning de la semaine est prêt à être validé.',
+          '/foyers/22222222-2222-4222-8222-222222222222/planning',
+          now(), null
+        )
+      `;
+    };
     await new Verifier({
       provider: 'svc-notifications',
       providerBaseUrl: `http://localhost:${PORT}`,
@@ -289,6 +310,10 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
         [ETAT_BROUILLON_SANS_EMAIL]: seedBrouillonSansEmail,
         [ETAT_BROUILLON_ARCHIVE]: seedBrouillonArchive,
         [ETAT_ENVOI]: seedEnvoi,
+        [ETAT_INBOX]: async (params?: unknown): Promise<void> => {
+          const { parentId, id } = params as { parentId: string; id: string };
+          await seedInbox(parentId, id);
+        },
       },
     }).verifyProvider();
   });
