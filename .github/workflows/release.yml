@@ -61,7 +61,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Release : projet=$PROJECT version=$VERSION"
 
-      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       # GHCR exige un nom d'image en MINUSCULES (le propriétaire peut être casé).
       - name: Référence d'image (minuscules)
