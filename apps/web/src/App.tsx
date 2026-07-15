@@ -229,7 +229,7 @@ function Entete() {
                 Contrats
               </NavLink>
               <NavLink to={`/foyers/${id}/etablissements`} onClick={fermerPlus}>
-                Établissements
+                Crèches & écoles
               </NavLink>
               {/* Édition du foyer par son **propriétaire** (parent) : visible dès
                   qu'un foyer est actif, NON conditionnée à `moi.admin` (le BFF
@@ -426,7 +426,7 @@ function titreDepuisPathname(pathname: string): string {
     if (segment === 'dashboard') return 'Aujourd’hui';
     if (segment === 'contrats') return 'Contrats';
     if (segment === 'planning') return 'Planning';
-    if (segment === 'etablissements') return 'Établissements';
+    if (segment === 'etablissements') return 'Crèches & écoles';
     if (segment === 'modifier') return 'Ma famille';
     return 'Coûts annuels';
   }

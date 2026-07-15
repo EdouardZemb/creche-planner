@@ -4,7 +4,6 @@ import { api, ApiError } from '../api/client';
 import type {
   CreerEtablissement,
   EtablissementFoyerVue,
-  Mode,
   PreavisRegle,
 } from '../types/bff';
 import {
@@ -12,8 +11,8 @@ import {
   messageErreur,
   type ErreurChamp,
 } from '../utils/erreurs';
-import { LIBELLES_MODE } from '../utils/libelles';
 import { useTitrePage } from '../hooks/useTitrePage';
+import { EtatVide } from '../ui/EtatVide';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 import { useEtablissements } from './useEtablissements';
 
@@ -30,43 +29,41 @@ const JOURS = [
 
 type Jour = (typeof JOURS)[number];
 
-/** Modes de garde proposables par un établissement (champ informatif `types`). */
-const MODES: Mode[] = ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'];
-
-/** Forme du préavis pilotée par les radios (« Aucune » → préavis null). */
+/** Forme du délai pilotée par les radios (« Aucun » → règle null). */
 type FormePreavis = 'AUCUN' | 'JOURS_OUVRES' | 'JOUR_HEURE';
 
-/** Rend une règle de préavis en phrase lisible (récap de la carte). */
-function decrirePreavis(regle: PreavisRegle | null): string {
-  if (regle === null) return 'aucune règle de préavis';
+/** Heure « 12:00 » → « 12 h » ; « 09:30 » → « 9 h 30 » (langage parent). */
+function formaterHeure(heure: string): string {
+  const [h, m] = heure.split(':');
+  const heures = Number(h ?? '0');
+  if (m == null || Number(m) === 0) return `${heures} h`;
+  return `${heures} h ${m}`;
+}
+
+/** Rend une règle de délai en phrase lisible (récap de la carte). */
+function decrireDelai(regle: PreavisRegle): string {
   if (regle.type === 'JOURS_OUVRES') {
     return `${regle.valeur} jour${regle.valeur > 1 ? 's' : ''} ouvré${
       regle.valeur > 1 ? 's' : ''
     }`;
   }
-  const jour = regle.jour.charAt(0) + regle.jour.slice(1).toLowerCase();
-  return `${jour} avant ${regle.heure}`;
-}
-
-/** Libellé accentué d'un mode (repli sur la valeur brute si inconnue). */
-function libelleType(t: string): string {
-  return t in LIBELLES_MODE ? LIBELLES_MODE[t as Mode] : t;
+  return `avant ${regle.jour.toLowerCase()} ${formaterHeure(regle.heure)}`;
 }
 
 // ---- Formulaire création / édition -----------------------------------------
 
 interface EtablissementFormProps {
   foyerId: string;
-  /** Établissement à éditer ; absent ⇒ mode création. */
+  /** Crèche / école à éditer ; absent ⇒ mode création. */
   etablissement?: EtablissementFoyerVue;
   onEnregistre: (e: EtablissementFoyerVue) => void;
   onAnnuler: () => void;
 }
 
 /**
- * Formulaire d'un établissement (création ou édition) : nom (requis), e-mail de
- * service, règle de préavis (aucune / jours ouvrés / jour + heure), types proposés
- * (multi) et coordonnées. Les erreurs par champ remontées par le BFF sont liées en
+ * Formulaire d'une crèche / école (création ou édition) : nom (requis), e-mail de
+ * la structure, délai pour prévenir (aucun / jours ouvrés / jour + heure) et
+ * coordonnées. Les erreurs par champ remontées par le BFF sont liées en
  * `aria-describedby`.
  */
 function EtablissementForm({
@@ -78,7 +75,7 @@ function EtablissementForm({
   const edition = etablissement !== undefined;
   const idBase = useId();
 
-  // Règle de préavis existante, narrow une fois pour dériver les valeurs initiales.
+  // Règle de délai existante, narrow une fois pour dériver les valeurs initiales.
   const preavis = etablissement?.preavisRegle ?? null;
 
   const [nom, setNom] = useState(etablissement?.nom ?? '');
@@ -99,9 +96,6 @@ function EtablissementForm({
   const [heure, setHeure] = useState(
     preavis?.type === 'JOUR_HEURE' ? preavis.heure : '12:00',
   );
-  const [types, setTypes] = useState<Mode[]>(
-    (etablissement?.types ?? []).filter((t): t is Mode => t in LIBELLES_MODE),
-  );
   const [adresse, setAdresse] = useState(etablissement?.adresse ?? '');
   const [telephone, setTelephone] = useState(etablissement?.telephone ?? '');
   const [contact, setContact] = useState(etablissement?.contact ?? '');
@@ -110,17 +104,20 @@ function EtablissementForm({
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
 
+  const idAideEmail = `${idBase}-email-aide`;
+  const idAideDelai = `${idBase}-delai-aide`;
+
   function erreurPour(champ: string): string | undefined {
     return erreursChamps.find((e) => e.champ === champ)?.message;
   }
   function idErreur(champ: string): string {
     return `${idBase}-${champ}-err`;
   }
-
-  function basculerType(mode: Mode, coche: boolean) {
-    setTypes((prev) =>
-      coche ? [...prev, mode] : prev.filter((m) => m !== mode),
-    );
+  /** `aria-describedby` de l'e-mail : aide toujours liée + erreur si présente. */
+  function descriptionEmail(): string {
+    const ids = [idAideEmail];
+    if (erreurPour('emailService')) ids.push(idErreur('emailService'));
+    return ids.join(' ');
   }
 
   /** `''` → `null` (champ vidé), sinon la valeur ébarbée. */
@@ -145,11 +142,12 @@ function EtablissementForm({
     setErreurGlobale(null);
     setErreursChamps([]);
 
+    // Le champ `types` (modes proposés) n'est plus renseigné à l'écran ; on ne
+    // l'envoie pas (le BFF le tolère, défaut `[]`).
     const corps: CreerEtablissement = {
       nom: nom.trim(),
       emailService: ouNull(emailService),
       preavisRegle: construirePreavis(),
-      types,
       adresse: ouNull(adresse),
       telephone: ouNull(telephone),
       contact: ouNull(contact),
@@ -178,7 +176,7 @@ function EtablissementForm({
   }
 
   return (
-    <form onSubmit={(ev) => void soumettre(ev)}>
+    <form className="etab-form" onSubmit={(ev) => void soumettre(ev)}>
       {erreurGlobale && (
         <p className="debit" role="alert">
           {erreurGlobale}
@@ -193,20 +191,20 @@ function EtablissementForm({
         ))}
 
       <label htmlFor={`${idBase}-nom`}>
-        Nom de l’établissement <span aria-hidden="true">*</span>
+        Nom <span aria-hidden="true">*</span>
       </label>
       <input
         id={`${idBase}-nom`}
         type="text"
         required
         aria-required="true"
+        placeholder="ex. Crèche du centre, École Jean Jaurès"
         aria-invalid={erreurPour('nom') ? true : undefined}
         {...(erreurPour('nom') ? { 'aria-describedby': idErreur('nom') } : {})}
         value={nom}
         onChange={(e) => {
           setNom(e.target.value);
         }}
-        style={{ width: '100%' }}
       />
       {erreurPour('nom') && (
         <span id={idErreur('nom')} className="debit" role="alert">
@@ -214,31 +212,33 @@ function EtablissementForm({
         </span>
       )}
 
-      <label htmlFor={`${idBase}-email`}>Adresse e-mail du service</label>
+      <label htmlFor={`${idBase}-email`}>E-mail de la crèche / école</label>
       <input
         id={`${idBase}-email`}
         type="email"
         aria-invalid={erreurPour('emailService') ? true : undefined}
-        {...(erreurPour('emailService')
-          ? { 'aria-describedby': idErreur('emailService') }
-          : {})}
+        aria-describedby={descriptionEmail()}
         value={emailService}
         onChange={(e) => {
           setEmailService(e.target.value);
         }}
-        style={{ width: '100%' }}
       />
+      <span id={idAideEmail} className="muted etab-aide">
+        C’est à cette adresse qu’on enverra le récapitulatif.
+      </span>
       {erreurPour('emailService') && (
         <span id={idErreur('emailService')} className="debit" role="alert">
           {erreurPour('emailService')}
         </span>
       )}
 
-      <fieldset style={{ border: 'none', padding: 0, margin: '1rem 0 0' }}>
-        <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-          Règle de préavis
-        </legend>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+      <fieldset className="etab-fieldset" aria-describedby={idAideDelai}>
+        <legend>Délai pour prévenir</legend>
+        <p id={idAideDelai} className="muted etab-aide">
+          Combien de temps à l’avance la structure veut être prévenue d’un
+          changement.
+        </p>
+        <label className="case-cochable">
           <input
             type="radio"
             name={`${idBase}-preavis`}
@@ -247,9 +247,9 @@ function EtablissementForm({
               setFormePreavis('AUCUN');
             }}
           />
-          Aucune règle
+          Pas de délai particulier
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <label className="case-cochable">
           <input
             type="radio"
             name={`${idBase}-preavis`}
@@ -258,9 +258,9 @@ function EtablissementForm({
               setFormePreavis('JOURS_OUVRES');
             }}
           />
-          En jours ouvrés
+          Un nombre de jours ouvrés
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <label className="case-cochable">
           <input
             type="radio"
             name={`${idBase}-preavis`}
@@ -269,11 +269,11 @@ function EtablissementForm({
               setFormePreavis('JOUR_HEURE');
             }}
           />
-          Un jour + une heure butoir
+          Un jour et une heure limite
         </label>
 
         {formePreavis === 'JOURS_OUVRES' && (
-          <div style={{ marginTop: '0.5rem' }}>
+          <div className="etab-sous-champ">
             <label htmlFor={`${idBase}-valeur`}>Nombre de jours ouvrés</label>
             <input
               id={`${idBase}-valeur`}
@@ -286,13 +286,12 @@ function EtablissementForm({
               onChange={(e) => {
                 setValeurJours(e.target.value);
               }}
-              style={{ width: '100%' }}
             />
           </div>
         )}
         {formePreavis === 'JOUR_HEURE' && (
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <div style={{ flex: 1 }}>
+          <div className="champs-duo etab-sous-champ">
+            <div>
               <label htmlFor={`${idBase}-jour`}>Jour</label>
               <select
                 id={`${idBase}-jour`}
@@ -300,7 +299,6 @@ function EtablissementForm({
                 onChange={(e) => {
                   setJour(e.target.value as Jour);
                 }}
-                style={{ width: '100%' }}
               >
                 {JOURS.map((j) => (
                   <option key={j} value={j}>
@@ -309,8 +307,8 @@ function EtablissementForm({
                 ))}
               </select>
             </div>
-            <div style={{ flex: 1 }}>
-              <label htmlFor={`${idBase}-heure`}>Heure butoir</label>
+            <div>
+              <label htmlFor={`${idBase}-heure`}>Heure limite</label>
               <input
                 id={`${idBase}-heure`}
                 type="time"
@@ -319,38 +317,14 @@ function EtablissementForm({
                 onChange={(e) => {
                   setHeure(e.target.value);
                 }}
-                style={{ width: '100%' }}
               />
             </div>
           </div>
         )}
       </fieldset>
 
-      <fieldset style={{ border: 'none', padding: 0, margin: '1rem 0 0' }}>
-        <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-          Types proposés
-        </legend>
-        {MODES.map((m) => (
-          <label
-            key={m}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-          >
-            <input
-              type="checkbox"
-              checked={types.includes(m)}
-              onChange={(e) => {
-                basculerType(m, e.target.checked);
-              }}
-            />
-            {LIBELLES_MODE[m]}
-          </label>
-        ))}
-      </fieldset>
-
-      <fieldset style={{ border: 'none', padding: 0, margin: '1rem 0 0' }}>
-        <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-          Coordonnées
-        </legend>
+      <fieldset className="etab-fieldset">
+        <legend>Coordonnées</legend>
         <label htmlFor={`${idBase}-adresse`}>Adresse</label>
         <input
           id={`${idBase}-adresse`}
@@ -359,7 +333,6 @@ function EtablissementForm({
           onChange={(e) => {
             setAdresse(e.target.value);
           }}
-          style={{ width: '100%' }}
         />
         <label htmlFor={`${idBase}-telephone`}>Téléphone</label>
         <input
@@ -369,7 +342,6 @@ function EtablissementForm({
           onChange={(e) => {
             setTelephone(e.target.value);
           }}
-          style={{ width: '100%' }}
         />
         <label htmlFor={`${idBase}-contact`}>Personne à contacter</label>
         <input
@@ -379,19 +351,18 @@ function EtablissementForm({
           onChange={(e) => {
             setContact(e.target.value);
           }}
-          style={{ width: '100%' }}
         />
       </fieldset>
 
-      <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+      <div className="etab-form-actions">
         <button type="submit" className="btn" disabled={chargement}>
           {chargement
             ? edition
               ? 'Enregistrement…'
-              : 'Création…'
+              : 'Ajout…'
             : edition
               ? 'Enregistrer les modifications'
-              : 'Créer l’établissement'}
+              : 'Ajouter'}
         </button>
         <button type="button" className="btn secondaire" onClick={onAnnuler}>
           Annuler
@@ -401,7 +372,7 @@ function EtablissementForm({
   );
 }
 
-// ---- Carte d'un établissement (affichage + actions) -------------------------
+// ---- Carte d'une crèche / école (affichage + actions) -----------------------
 
 interface CarteEtablissementProps {
   etablissement: EtablissementFoyerVue;
@@ -421,41 +392,43 @@ function CarteEtablissement({
   const coordonnees = [e.adresse, e.telephone, e.contact].filter(
     (v): v is string => v != null && v !== '',
   );
+  const sansEmail = e.emailService == null || e.emailService === '';
   return (
     <section
-      className="carte"
-      style={{
-        maxWidth: 600,
-        marginBottom: '1rem',
-        opacity: e.actif ? 1 : 0.6,
-      }}
+      className={
+        e.actif
+          ? 'carte etab-carte etab-carte-vue'
+          : 'carte etab-carte etab-carte-vue est-archive'
+      }
     >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          gap: '0.5rem',
-        }}
-      >
-        <h2 style={{ margin: 0 }}>{e.nom}</h2>
+      <div className="etab-carte-entete">
+        <h2>{e.nom}</h2>
         {!e.actif && <span className="muted">(archivé)</span>}
       </div>
-      <p className="muted" style={{ margin: '0.25rem 0' }}>
-        {e.emailService ?? 'aucune adresse e-mail'} — préavis :{' '}
-        {decrirePreavis(e.preavisRegle)}
-      </p>
-      {e.types.length > 0 && (
-        <p className="muted" style={{ margin: '0.25rem 0' }}>
-          Types : {e.types.map(libelleType).join(', ')}
+
+      {/* Angle mort « sans e-mail » : une crèche active sans adresse ne recevra
+          jamais les récaps — on l'avertit clairement (aucun appel réseau, donnée
+          déjà chargée). Une crèche archivée n'est de toute façon plus notifiée. */}
+      {!sansEmail ? (
+        <p className="muted">{e.emailService}</p>
+      ) : e.actif ? (
+        <p className="debit" role="note">
+          <span aria-hidden="true">⚠️ </span>
+          Sans e-mail, cette crèche ne recevra pas les récapitulatifs.{' '}
+          <span className="muted">Ajoutez son e-mail via « Modifier ».</span>
+        </p>
+      ) : null}
+
+      {e.preavisRegle != null && (
+        <p className="muted">
+          Délai pour prévenir : {decrireDelai(e.preavisRegle)}
         </p>
       )}
       {coordonnees.length > 0 && (
-        <p className="muted" style={{ margin: '0.25rem 0' }}>
-          {coordonnees.join(' · ')}
-        </p>
+        <p className="muted">{coordonnees.join(' · ')}</p>
       )}
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+
+      <div className="etab-actions">
         <button
           type="button"
           className="btn secondaire"
@@ -475,7 +448,7 @@ function CarteEtablissement({
         </button>
         <button
           type="button"
-          className="btn secondaire"
+          className="btn secondaire danger contour"
           onClick={onSupprimer}
           disabled={actionEnCours}
           aria-label={`Supprimer ${e.nom}`}
@@ -490,13 +463,13 @@ function CarteEtablissement({
 // ---- Page -------------------------------------------------------------------
 
 /**
- * Écran de configuration des **établissements du foyer** (entité libre, P4).
- * Per-foyer (route `/foyers/:foyerId/etablissements`, sous `GardeFoyer`) : liste,
- * création, édition (nom / e-mail / préavis / types / coordonnées), archivage et
- * suppression (bloquée 409 si des contrats y sont rattachés → message dédié).
+ * Écran « Crèches & écoles » du foyer (entité libre, P4). Per-foyer (route
+ * `/foyers/:foyerId/etablissements`, sous `GardeFoyer`) : liste, création,
+ * édition (nom / e-mail / délai / coordonnées), archivage et suppression
+ * (bloquée 409 si des contrats y sont rattachés → message dédié).
  */
 export function EtablissementsPage() {
-  useTitrePage('Établissements');
+  useTitrePage('Crèches & écoles');
   const { foyerId } = useParams<{ foyerId: string }>();
   const id = foyerId ?? '';
   const { data, loading, error, reload } = useEtablissements(id);
@@ -533,8 +506,8 @@ export function EtablissementsPage() {
   function onEnregistre(e: EtablissementFoyerVue) {
     setMessageSucces(
       etablissementEdite
-        ? `Établissement « ${e.nom} » modifié.`
-        : `Établissement « ${e.nom} » créé.`,
+        ? `Crèche / école « ${e.nom} » modifiée.`
+        : `Crèche / école « ${e.nom} » ajoutée.`,
     );
     reload();
     fermerFormulaire();
@@ -548,8 +521,8 @@ export function EtablissementsPage() {
       await api.modifierEtablissement(id, e.id, { actif: !e.actif });
       setMessageSucces(
         e.actif
-          ? `Établissement « ${e.nom} » archivé.`
-          : `Établissement « ${e.nom} » réactivé.`,
+          ? `Crèche / école « ${e.nom} » archivée.`
+          : `Crèche / école « ${e.nom} » réactivée.`,
       );
       reload();
     } catch (err) {
@@ -568,7 +541,7 @@ export function EtablissementsPage() {
     setMessageSucces(null);
     try {
       await api.supprimerEtablissement(id, e.id);
-      setMessageSucces(`Établissement « ${e.nom} » supprimé.`);
+      setMessageSucces(`Crèche / école « ${e.nom} » supprimée.`);
       reload();
     } catch (err) {
       // 409 : des contrats sont rattachés — message explicite (et non technique).
@@ -584,18 +557,13 @@ export function EtablissementsPage() {
     }
   }
 
+  const listeVide = !loading && !error && data?.length === 0;
+
   return (
     <div>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '1rem',
-        }}
-      >
-        <h1 style={{ margin: 0 }}>Établissements de la famille</h1>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+      <div className="etab-entete">
+        <h1>Crèches & écoles</h1>
+        <div className="etab-entete-liens">
           <Link to={`/foyers/${id}/contrats`} className="btn secondaire">
             Contrats
           </Link>
@@ -605,8 +573,8 @@ export function EtablissementsPage() {
         </div>
       </div>
       <p className="muted">
-        Les établissements destinataires des récapitulatifs (crèche, école,
-        périscolaire…). Chaque contrat est rattaché à l’un d’eux.
+        Les lieux d’accueil de vos enfants (crèche, école, périscolaire…). C’est
+        ici qu’on envoie le récapitulatif quand vous modifiez une semaine.
       </p>
 
       {erreurAction && (
@@ -620,13 +588,13 @@ export function EtablissementsPage() {
 
       {loading && !data && (
         <div className="carte muted" aria-live="polite">
-          Chargement des établissements…
+          Chargement des crèches et écoles…
         </div>
       )}
 
       {!loading && error && !data && (
         <div className="carte" role="alert">
-          <p style={{ color: 'var(--rouge)', margin: '0 0 0.5rem' }}>{error}</p>
+          <p className="debit">{error}</p>
           <button type="button" className="btn secondaire" onClick={reload}>
             Réessayer
           </button>
@@ -650,26 +618,28 @@ export function EtablissementsPage() {
         />
       ))}
 
-      {!loading && !error && data?.length === 0 && (
-        <div className="carte muted">Aucun établissement configuré.</div>
+      {/* Foyer sans aucune crèche : accueil orienté action (l'action ouvre le
+          formulaire inline). Masqué dès que le formulaire est ouvert pour ne pas
+          doubler l'appel à l'action. */}
+      {listeVide && !formulaireOuvert && (
+        <EtatVide
+          titre="Ajoutez votre première crèche ou école"
+          description="Renseignez la crèche, l’école ou le périscolaire de vos enfants pour pouvoir les prévenir en un clic quand vous modifiez une semaine."
+          actions={[
+            {
+              libelle: 'Ajouter une crèche / école',
+              primaire: true,
+              onClick: ouvrirCreation,
+            },
+          ]}
+        />
       )}
 
-      <section style={{ marginTop: '1rem' }}>
-        {!formulaireOuvert ? (
-          <button
-            type="button"
-            className="btn"
-            onClick={ouvrirCreation}
-            disabled={!id}
-          >
-            + Nouvel établissement
-          </button>
-        ) : (
-          <div className="carte" style={{ maxWidth: 600 }}>
-            <h2 style={{ marginTop: 0 }}>
-              {etablissementEdite
-                ? 'Modifier l’établissement'
-                : 'Nouvel établissement'}
+      <section className="etab-ajout">
+        {formulaireOuvert ? (
+          <div className="carte etab-carte">
+            <h2 className="etab-form-titre">
+              {etablissementEdite ? 'Modifier' : 'Ajouter une crèche / école'}
             </h2>
             <EtablissementForm
               foyerId={id}
@@ -680,18 +650,30 @@ export function EtablissementsPage() {
               onAnnuler={fermerFormulaire}
             />
           </div>
+        ) : (
+          // L'accueil (EtatVide) porte déjà l'action quand la liste est vide.
+          !listeVide && (
+            <button
+              type="button"
+              className="btn"
+              onClick={ouvrirCreation}
+              disabled={!id}
+            >
+              Ajouter une crèche / école
+            </button>
+          )
         )}
       </section>
 
       <ModaleConfirmation
         ouvert={aSupprimer !== null}
-        titre="Supprimer l’établissement"
+        titre="Supprimer la crèche / école"
         message={
           aSupprimer
-            ? `L’établissement « ${aSupprimer.nom} » sera définitivement supprimé. La suppression est refusée si des contrats y sont encore rattachés.`
+            ? `La crèche / école « ${aSupprimer.nom} » sera définitivement supprimée. La suppression est refusée si un contrat y est encore rattaché.`
             : ''
         }
-        libelleConfirmer="Supprimer l’établissement"
+        libelleConfirmer="Supprimer la crèche / école"
         destructif
         onConfirmer={() => void confirmerSuppression()}
         onAnnuler={() => {
