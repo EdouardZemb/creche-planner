@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type {
   BrouillonEtablissement,
@@ -46,10 +47,42 @@ function libelleResultat(r: EnvoiEtablissementResultat): string {
 }
 
 /**
- * Bloc de relecture + envoi pour **un établissement** : liste les enfants concernés et
- * leurs jours modifiés, affiche le destinataire en évidence, le bandeau « Mode test »
- * (dry-run), puis ne déclenche l'**action sortante réelle** qu'après une confirmation
- * explicite.
+ * Liste « Enfants concernés » (prénom + jours modifiés) d'un établissement. Partagée
+ * par le bloc d'envoi (établissement joignable) et la carte d'avertissement
+ * (non joignable) : dans les deux cas, le parent voit **ce qui** change pour cette
+ * crèche — y compris quand ce ne sera pas transmis.
+ */
+function ListeEnfantsConcernes({
+  enfants,
+}: {
+  enfants: readonly EnfantBrouillon[];
+}) {
+  return (
+    <>
+      <p className="relecture-enfants-titre">Enfants concernés :</p>
+      <ul className="relecture-enfants">
+        {enfants.map((enfant) => (
+          <li key={enfant.contratId}>
+            <strong>{enfant.enfant}</strong>
+            {enfant.deltaModifs.jours.length > 0 && (
+              <ul>
+                {enfant.deltaModifs.jours.map((j) => (
+                  <li key={j.date}>{descriptionJour(j)}</li>
+                ))}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+/**
+ * Bloc de relecture + envoi pour **un établissement joignable** : liste les enfants
+ * concernés et leurs jours modifiés, affiche le destinataire en évidence, le bandeau
+ * « Mode test » (dry-run), puis ne déclenche l'**action sortante réelle** qu'après une
+ * confirmation explicite.
  */
 function BlocEnvoiEtablissement({
   foyerId,
@@ -94,68 +127,30 @@ function BlocEnvoiEtablissement({
   };
 
   return (
-    <div
-      style={{
-        borderTop: '1px solid var(--gris, #ddd)',
-        paddingTop: '0.75rem',
-        marginTop: '0.75rem',
-      }}
-    >
-      <h4 style={{ margin: '0 0 0.25rem' }}>
+    <div className="bloc-etablissement">
+      <h4 className="bloc-etablissement-titre">
         {brouillon.etablissementLibelle}
       </h4>
 
       {brouillon.dryRun && (
-        <p
-          role="status"
-          style={{
-            background: 'var(--jaune-clair, #fff3cd)',
-            border: '1px solid var(--jaune, #e0a800)',
-            borderRadius: '4px',
-            padding: '0.5rem 0.75rem',
-            margin: '0 0 0.75rem',
-          }}
-        >
+        <p role="status" className="bandeau-test">
           <strong>Mode test</strong> — aucun mail ne sera vraiment envoyé ; vous
           pouvez essayer sans risque.
         </p>
       )}
 
-      <p style={{ margin: '0.25rem 0' }}>
+      <p className="relecture-champ">
         Destinataire : <strong>{brouillon.destinataire}</strong>
       </p>
-      <p style={{ margin: '0.25rem 0' }}>
+      <p className="relecture-champ">
         Objet : <em>{brouillon.sujet}</em>
       </p>
 
-      <p style={{ margin: '0.5rem 0 0.25rem' }}>Enfants concernés :</p>
-      <ul style={{ margin: 0 }}>
-        {brouillon.enfants.map((enfant: EnfantBrouillon) => (
-          <li key={enfant.contratId}>
-            <strong>{enfant.enfant}</strong>
-            {enfant.deltaModifs.jours.length > 0 && (
-              <ul style={{ margin: '0.15rem 0' }}>
-                {enfant.deltaModifs.jours.map((j) => (
-                  <li key={j.date}>{descriptionJour(j)}</li>
-                ))}
-              </ul>
-            )}
-          </li>
-        ))}
-      </ul>
+      <ListeEnfantsConcernes enfants={brouillon.enfants} />
 
-      <details style={{ margin: '0.5rem 0' }}>
+      <details className="relecture-apercu">
         <summary>Aperçu du message</summary>
-        <pre
-          style={{
-            whiteSpace: 'pre-wrap',
-            background: 'var(--gris-clair, #f5f5f5)',
-            padding: '0.5rem',
-            borderRadius: '4px',
-          }}
-        >
-          {brouillon.texte}
-        </pre>
+        <pre className="apercu-message">{brouillon.texte}</pre>
       </details>
 
       {message !== null && (
@@ -209,14 +204,53 @@ function BlocEnvoiEtablissement({
 }
 
 /**
+ * Carte d'avertissement pour un établissement **concerné mais non joignable** (angle
+ * mort « crèche sans e-mail »). Plus d'échec silencieux : la crèche apparaît
+ * explicitement, sans bouton d'envoi, avec le rappel de ce qui ne sera pas transmis et
+ * un raccourci pour compléter la fiche (« Ajouter un e-mail »).
+ */
+function CarteNonRoutable({
+  foyerId,
+  brouillon,
+}: {
+  foyerId: string;
+  brouillon: BrouillonEtablissement;
+}) {
+  return (
+    <div className="bloc-etablissement">
+      <h4 className="bloc-etablissement-titre">
+        {brouillon.etablissementLibelle}
+      </h4>
+
+      <div role="note" className="carte-non-routable">
+        <p className="carte-non-routable-alerte">
+          <span aria-hidden="true">⚠️ </span>« {brouillon.etablissementLibelle}{' '}
+          » n’a pas d’e-mail : cette crèche ne sera pas prévenue de vos
+          changements.
+        </p>
+        <Link
+          to={`/foyers/${foyerId}/etablissements`}
+          className="btn secondaire"
+        >
+          Ajouter un e-mail
+        </Link>
+      </div>
+
+      <ListeEnfantsConcernes enfants={brouillon.enfants} />
+    </div>
+  );
+}
+
+/**
  * Relecture humaine **obligatoire** puis envoi des mails **agrégés par établissement**
  * (édition hebdo, Phase 4). Pour le foyer et la semaine, on découvre d'abord les
  * **établissements réels concernés** (entité libre par foyer, lien explicite
  * `contrat.etablissementId`) via la vue `semaine/besoins`, puis on charge le brouillon
- * agrégé de chacun par son `id`. On n'affiche un bloc relecture/envoi que pour ceux qui
- * ont **au moins un enfant** validé avec modifications. Chaque bloc déclenche un **mail
- * unique** regroupant tous les enfants concernés, après confirmation explicite ; un
- * bandeau « Mode test » avertit quand l'envoi serait neutralisé (dry-run).
+ * agrégé de chacun par son `id`. On n'affiche un bloc que pour ceux qui ont **au moins
+ * un enfant** validé avec modifications. Un établissement **joignable** déclenche un
+ * **mail unique** après confirmation explicite ; un établissement **non joignable** (sans
+ * e-mail) est signalé en avertissement — jamais écarté silencieusement, jamais envoyé à
+ * vide. Un bandeau « Mode test » avertit quand l'envoi serait neutralisé (dry-run).
  */
 export function RelectureEnvoi({
   foyerId,
@@ -231,8 +265,9 @@ export function RelectureEnvoi({
         signal,
       });
       // Un brouillon par établissement concerné, routé par son `id`. `allSettled` :
-      // un établissement non routable (sans adresse de service → 404 amont) est
-      // simplement écarté plutôt que de faire échouer toute la relecture.
+      // une erreur réseau/404 (établissement inconnu) sur l'un n'empêche pas de relire
+      // les autres. Un établissement sans e-mail ne 404 **plus** : il revient
+      // `routable:false` et est rendu en avertissement (angle mort fermé, Lot 2).
       const brouillons = await Promise.allSettled(
         semaine.etablissements.map((e) =>
           api.lireBrouillonEtablissement(
@@ -252,7 +287,8 @@ export function RelectureEnvoi({
     [foyerId, semaineIso],
   );
 
-  // On ne propose l'envoi que pour les établissements ayant au moins un enfant concerné.
+  // On n'affiche un établissement que s'il a au moins un enfant concerné — qu'il soit
+  // joignable (bloc d'envoi) ou non (carte d'avertissement).
   const concernes = (data ?? []).filter((b) => b.enfants.length > 0);
 
   // La section apparaît APRÈS que le parent a tapé « Valider » : sans coup de
@@ -268,13 +304,14 @@ export function RelectureEnvoi({
     <section
       ref={refSection}
       tabIndex={-1}
-      className="carte"
+      className="carte relecture-envoi"
       aria-label="Dernière étape : prévenir les services"
-      style={{ borderLeft: '4px solid var(--ambre)', marginTop: '1rem' }}
     >
-      <h3 style={{ marginTop: 0 }}>Dernière étape : prévenir les services</h3>
+      <h3 className="relecture-envoi-titre">
+        Dernière étape : prévenir les services
+      </h3>
       {concernes.length > 0 && (
-        <p style={{ marginTop: 0 }}>
+        <p className="relecture-envoi-intro">
           Votre semaine est validée, mais le service n’a pas encore reçu vos
           changements. Relisez le récapitulatif puis envoyez-le.
         </p>
@@ -293,14 +330,22 @@ export function RelectureEnvoi({
         </p>
       )}
 
-      {concernes.map((brouillon) => (
-        <BlocEnvoiEtablissement
-          key={brouillon.etablissementId}
-          foyerId={foyerId}
-          semaineIso={semaineIso}
-          brouillon={brouillon}
-        />
-      ))}
+      {concernes.map((brouillon) =>
+        brouillon.routable ? (
+          <BlocEnvoiEtablissement
+            key={brouillon.etablissementId}
+            foyerId={foyerId}
+            semaineIso={semaineIso}
+            brouillon={brouillon}
+          />
+        ) : (
+          <CarteNonRoutable
+            key={brouillon.etablissementId}
+            foyerId={foyerId}
+            brouillon={brouillon}
+          />
+        ),
+      )}
     </section>
   );
 }

@@ -17,6 +17,8 @@ const ETAT_SEMAINE_A_VALIDER = 'une semaine est à valider pour un foyer';
 const ETAT_SEMAINE_VALIDABLE = 'une semaine A_VALIDER existe pour validation';
 const ETAT_BROUILLON =
   'un brouillon de mail agrégé par établissement est disponible';
+const ETAT_BROUILLON_SANS_EMAIL =
+  'un brouillon agrégé pour un établissement sans e-mail est disponible';
 const ETAT_ENVOI =
   'un récap agrégé par établissement est prêt à envoyer au service';
 
@@ -26,13 +28,17 @@ const ETAT_ENVOI =
  * Partagé avec le consumer (`ETABLISSEMENT_ID`).
  */
 const ETABLISSEMENT_ID = '99999999-9999-4999-8999-999999999999';
+// Établissement du même foyer **sans e-mail** → brouillon non routable (partagé consumer).
+const ETABLISSEMENT_SANS_EMAIL_ID = '99999999-9999-4999-8999-999999999998';
 
 /** Identifiants figés des semaines à valider seedées (partagés avec le consumer). */
 const NOTIF_ID = '88888888-8888-4888-8888-888888888888';
 const NOTIF_ID_2 = '88888888-8888-4888-8888-888888888889';
+const NOTIF_ID_SANS_EMAIL = '88888888-8888-4888-8888-888888888890';
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
 const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
 const CONTRAT_ID_2 = '55555555-0000-4000-8000-000000000001';
+const CONTRAT_ID_SANS_EMAIL = '55555555-0000-4000-8000-000000000002';
 const SEMAINE = '2026-W10';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-notifications) → racine du dépôt à ../../.
@@ -143,13 +149,17 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
     // Upsert idempotent de la **fiche établissement projetée** (read model
     // `etablissement`, P3) : destinataire réel du récap agrégé, résolu par le lien
     // explicite `contrat.etablissement_id`.
-    const seedEtablissementProjete = async (): Promise<void> => {
+    const seedEtablissementProjete = async (
+      id: string = ETABLISSEMENT_ID,
+      nom = 'Crèche Les Hirondelles',
+      emailService: string | null = 'contact-creche@example.org',
+    ): Promise<void> => {
       await db`
         insert into etablissement (
           id, foyer_id, nom, email_service, preavis_regle, types, actif
         ) values (
-          ${ETABLISSEMENT_ID}, ${FOYER_ID}, 'Crèche Les Hirondelles',
-          'contact-creche@example.org',
+          ${id}, ${FOYER_ID}, ${nom},
+          ${emailService},
           ${JSON.stringify({ type: 'JOURS_OUVRES', valeur: 2 })}::jsonb,
           '[]'::jsonb, true
         )
@@ -186,13 +196,14 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
       contratId: string,
       enfant: string,
       date: string,
+      etablissementId: string = ETABLISSEMENT_ID,
     ): Promise<void> => {
       await db`
         insert into contrat (
           id, foyer_id, enfant, mode, etablissement_id, valide_du, valide_au
         ) values (
           ${contratId}, ${FOYER_ID}, ${enfant}, 'CRECHE_PSU',
-          ${ETABLISSEMENT_ID}, '2026-01-01', null
+          ${etablissementId}, '2026-01-01', null
         )
         on conflict (id) do update set
           enfant = excluded.enfant,
@@ -217,6 +228,22 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
       await seedContratValide(NOTIF_ID, CONTRAT_ID, 'Léa', '2026-03-04');
       await seedContratValide(NOTIF_ID_2, CONTRAT_ID_2, 'Tom', '2026-03-05');
     };
+    // Brouillon **non routable** : un établissement du même foyer **sans e-mail** avec
+    // un contrat validé (le calcul des enfants ne dépend pas de l'adresse).
+    const seedBrouillonSansEmail = async (): Promise<void> => {
+      await seedEtablissementProjete(
+        ETABLISSEMENT_SANS_EMAIL_ID,
+        'Halte-garderie du Parc',
+        null,
+      );
+      await seedContratValide(
+        NOTIF_ID_SANS_EMAIL,
+        CONTRAT_ID_SANS_EMAIL,
+        'Zoé',
+        '2026-03-04',
+        ETABLISSEMENT_SANS_EMAIL_ID,
+      );
+    };
     const seedEnvoi = async (): Promise<void> => {
       await seedBrouillon();
       await db`
@@ -234,6 +261,7 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
         [ETAT_SEMAINE_A_VALIDER]: seedSemaineAValider,
         [ETAT_SEMAINE_VALIDABLE]: seedSemaineAValider,
         [ETAT_BROUILLON]: seedBrouillon,
+        [ETAT_BROUILLON_SANS_EMAIL]: seedBrouillonSansEmail,
         [ETAT_ENVOI]: seedEnvoi,
       },
     }).verifyProvider();

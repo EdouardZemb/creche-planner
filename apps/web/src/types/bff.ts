@@ -457,11 +457,23 @@ export interface BrouillonEtablissement {
   /** Identifiant réel de l'établissement destinataire (read model `etablissement`, P3). */
   etablissementId: string;
   etablissementLibelle: string;
+  /** Adresse visée ; chaîne vide `''` quand non routable (ne lire que si `routable`). */
   destinataire: string;
   sujet: string;
   corps: string; // HTML rendu, figé à l'envoi
   texte: string; // aperçu texte brut
   enfants: EnfantBrouillon[];
+  /**
+   * Faux ⇒ **aucun envoi possible** (ex. crèche sans e-mail) : le front affiche un
+   * avertissement au lieu du bouton d'envoi. (Un lot ultérieur étendra la condition à
+   * « ET actif ».)
+   */
+  routable: boolean;
+  /**
+   * Raison de non-routabilité quand `routable === false`, sinon `null`. Union tenue
+   * **exacte** (un lot ultérieur y ajoutera `'ARCHIVE'`).
+   */
+  raisonNonRoutable: 'SANS_EMAIL' | null;
   dryRun: boolean;
 }
 
