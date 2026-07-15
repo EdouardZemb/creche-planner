@@ -162,6 +162,19 @@ const ETAB: EtabFixture = {
 /** Même fiche, mais **sans** adresse de service → récap non routable. */
 const ETAB_SANS_EMAIL: EtabFixture = { ...ETAB, emailService: null };
 
+/** Fiche **archivée** (avec e-mail) → non routable, raison `ARCHIVE`. */
+const ETAB_ARCHIVE: EtabFixture = { ...ETAB, actif: false };
+
+/**
+ * Fiche **archivée ET sans e-mail** → raison `ARCHIVE` (priorité sur `SANS_EMAIL` :
+ * une crèche archivée est signalée « archivée » même si elle n'a pas d'e-mail).
+ */
+const ETAB_ARCHIVE_SANS_EMAIL: EtabFixture = {
+  ...ETAB,
+  actif: false,
+  emailService: null,
+};
+
 function deltaJour(date: string): DeltaModifs {
   return {
     jours: [
@@ -383,6 +396,41 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     // dryRun neutralisé (pas d'envoi possible).
     expect(brouillon.dryRun).toBe(false);
   });
+
+  it('brouillon NON routable (raison ARCHIVE) quand l’établissement est archivé', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa', date: '2026-06-29' });
+    // Établissement connu, du bon foyer, AVEC e-mail, mais archivé (actif=false).
+    const { service: etablissements } = fakeEtablissements(ETAB_ARCHIVE);
+    const { mailer } = fakeMailer({ messageId: null, dryRun: true });
+    const service = new EnvoiService(db, etablissements, mailer);
+
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
+
+    expect(brouillon.routable).toBe(false);
+    expect(brouillon.raisonNonRoutable).toBe('ARCHIVE');
+    // Non routable ⇒ destinataire vide, même si la fiche a une adresse (jamais lu ici).
+    expect(brouillon.destinataire).toBe('');
+    // Le calcul des enfants ne dépend pas de l'état actif : Léa reste listée.
+    expect(brouillon.enfants.map((e) => e.enfant)).toEqual(['Léa']);
+    expect(brouillon.dryRun).toBe(false);
+  });
+
+  it('priorité ARCHIVE > SANS_EMAIL : archivé ET sans e-mail → raison ARCHIVE', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    const { service: etablissements } = fakeEtablissements(
+      ETAB_ARCHIVE_SANS_EMAIL,
+    );
+    const { mailer } = fakeMailer({ messageId: null, dryRun: true });
+    const service = new EnvoiService(db, etablissements, mailer);
+
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
+
+    expect(brouillon.routable).toBe(false);
+    // Archivé prime : on ne signale PAS « SANS_EMAIL » même sans adresse.
+    expect(brouillon.raisonNonRoutable).toBe('ARCHIVE');
+  });
 });
 
 describe('EnvoiService.envoyer (agrégé par établissement)', () => {
@@ -468,6 +516,22 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     const { db, stores } = fakeBase();
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements(ETAB_SANS_EMAIL);
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
+    const service = new EnvoiService(db, etablissements, mailer);
+
+    await expect(
+      service.envoyer(FOYER_ID, SEMAINE, ETAB_ID),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    // Garde métier : aucune réservation de slot, aucune sollicitation du transport.
+    expect(mock).not.toHaveBeenCalled();
+    expect(stores.get(envoiEtablissement) ?? []).toHaveLength(0);
+  });
+
+  it('refuse un envoi vers un établissement ARCHIVÉ AVANT tout slot ou mailer', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    const { service: etablissements } = fakeEtablissements(ETAB_ARCHIVE);
     const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
     const service = new EnvoiService(db, etablissements, mailer);
 

@@ -72,11 +72,11 @@ const brouillonEtablissementSchema = z.object({
   corps: z.string(),
   texte: z.string(),
   enfants: z.array(enfantBrouillonSchema),
-  // Angle mort « crèche sans e-mail » : un établissement non joignable revient
-  // `routable:false` (au lieu d'un 404 silencieux). Union tenue **exacte** (un lot
-  // ultérieur y ajoutera `'ARCHIVE'`).
+  // Angles morts « crèche sans e-mail » (Lot 2) et « crèche archivée » (Lot 3) : un
+  // établissement non joignable revient `routable:false` (au lieu d'un 404 silencieux).
+  // `'ARCHIVE'` a la priorité sur `'SANS_EMAIL'` côté service.
   routable: z.boolean(),
-  raisonNonRoutable: z.enum(['SANS_EMAIL']).nullable(),
+  raisonNonRoutable: z.enum(['SANS_EMAIL', 'ARCHIVE']).nullable(),
   dryRun: z.boolean(),
 });
 

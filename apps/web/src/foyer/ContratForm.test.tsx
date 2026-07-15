@@ -62,6 +62,20 @@ const etablissementsTest: EtablissementFoyerVue[] = [
   },
 ];
 
+/** Établissement **archivé** (Lot 3) : plus proposable pour un nouveau rattachement. */
+const etablissementArchive: EtablissementFoyerVue = {
+  id: 'et-arch',
+  foyerId: 'f1',
+  nom: 'Crèche Fermée',
+  emailService: null,
+  preavisRegle: null,
+  types: [],
+  adresse: null,
+  telephone: null,
+  contact: null,
+  actif: false,
+};
+
 function rendu(onCree = vi.fn()) {
   return render(
     <ContratForm
@@ -713,5 +727,65 @@ describe('ContratForm', () => {
     expect(
       (screen.getByLabelText(/Établissement/i) as HTMLSelectElement).value,
     ).toBe('et-1');
+  });
+
+  // ---- Archivage réel (Lot 3) : sélecteur d'établissement ------------------
+
+  it('exclut un établissement archivé des options d’un nouveau contrat', () => {
+    render(
+      <ContratForm
+        foyerId="f1"
+        enfants={enfantsTest}
+        etablissements={[...etablissementsTest, etablissementArchive]}
+        onCree={vi.fn()}
+      />,
+    );
+
+    // L'actif reste proposé…
+    expect(
+      screen.getByRole('option', { name: /Crèche du Centre/i }),
+    ).toBeInTheDocument();
+    // …l'archivé n'apparaît pas (plus proposable pour un nouveau rattachement).
+    expect(
+      screen.queryByRole('option', { name: /Crèche Fermée/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('conserve l’option archivée sélectionnée en édition d’un contrat qui la référence', () => {
+    render(
+      <ContratForm
+        foyerId="f1"
+        enfants={enfantsTest}
+        etablissements={[...etablissementsTest, etablissementArchive]}
+        contrat={{ ...contratEditeFactice, etablissementId: 'et-arch' }}
+        onCree={vi.fn()}
+      />,
+    );
+
+    // L'option archivée reste présente (suffixe « (archivé) ») pour rester affichée…
+    expect(
+      screen.getByRole('option', { name: /Crèche Fermée \(archivé\)/i }),
+    ).toBeInTheDocument();
+    // …et sélectionnée (on ne casse pas un contrat existant).
+    expect(
+      (screen.getByLabelText(/Établissement/i) as HTMLSelectElement).value,
+    ).toBe('et-arch');
+  });
+
+  it('renomme l’option de création à la volée (« Créer une nouvelle crèche / école »)', () => {
+    render(
+      <ContratForm
+        foyerId="f1"
+        enfants={enfantsTest}
+        etablissements={etablissementsTest}
+        onCree={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('option', {
+        name: /Créer une nouvelle crèche \/ école/i,
+      }),
+    ).toBeInTheDocument();
   });
 });

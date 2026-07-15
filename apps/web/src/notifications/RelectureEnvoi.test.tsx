@@ -203,6 +203,39 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     expect(lien).toHaveAttribute('href', `/foyers/${FOYER_ID}/etablissements`);
   });
 
+  it('signale une crèche ARCHIVÉE (réactivable) au lieu de l’écarter en silence', async () => {
+    // La crèche est concernée (enfants) mais archivée : brouillon non routable, raison
+    // ARCHIVE (même si elle a un e-mail — l'archivage prime côté service).
+    mockBrouillons((id) =>
+      id === CRECHE_ID
+        ? brouillonPour(id, {
+            routable: false,
+            raisonNonRoutable: 'ARCHIVE',
+            destinataire: '',
+            dryRun: false,
+          })
+        : brouillonPour(id),
+    );
+    renderRelecture();
+
+    // Message dédié « archivée : réactivez-la… » (distinct du cas sans e-mail).
+    expect(
+      await screen.findByText(/est archivée : réactivez-la/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Aucune modification à transmettre/i),
+    ).not.toBeInTheDocument();
+    // Les enfants concernés restent listés (le parent voit ce qui n'est PAS transmis).
+    expect(screen.getByText('Léa')).toBeInTheDocument();
+    // Aucun bouton d'envoi pour une crèche non joignable.
+    expect(
+      screen.queryByRole('button', { name: /Envoyer le récapitulatif/ }),
+    ).not.toBeInTheDocument();
+    // Raccourci « Réactiver » vers l'écran des crèches du foyer.
+    const lien = screen.getByRole('link', { name: /Réactiver/ });
+    expect(lien).toHaveAttribute('href', `/foyers/${FOYER_ID}/etablissements`);
+  });
+
   it('demande confirmation puis envoie (mode test) le récap de l’établissement', async () => {
     mockBrouillons();
     const resultat: EnvoiEtablissementResultat = {

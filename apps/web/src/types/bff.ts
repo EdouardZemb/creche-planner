@@ -464,16 +464,15 @@ export interface BrouillonEtablissement {
   texte: string; // aperçu texte brut
   enfants: EnfantBrouillon[];
   /**
-   * Faux ⇒ **aucun envoi possible** (ex. crèche sans e-mail) : le front affiche un
-   * avertissement au lieu du bouton d'envoi. (Un lot ultérieur étendra la condition à
-   * « ET actif ».)
+   * Faux ⇒ **aucun envoi possible** (crèche sans e-mail ou archivée) : le front affiche
+   * un avertissement au lieu du bouton d'envoi. Routable ⇔ e-mail présent **ET** actif.
    */
   routable: boolean;
   /**
-   * Raison de non-routabilité quand `routable === false`, sinon `null`. Union tenue
-   * **exacte** (un lot ultérieur y ajoutera `'ARCHIVE'`).
+   * Raison de non-routabilité quand `routable === false`, sinon `null`. `'ARCHIVE'` a la
+   * **priorité** sur `'SANS_EMAIL'` (une crèche archivée est signalée « archivée »).
    */
-  raisonNonRoutable: 'SANS_EMAIL' | null;
+  raisonNonRoutable: 'SANS_EMAIL' | 'ARCHIVE' | null;
   dryRun: boolean;
 }
 
