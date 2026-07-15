@@ -419,6 +419,13 @@ fieldset {
   color: var(--gris);
 }
 
+/* Ligne « date limite » (préavis) sous un en-tête d'établissement dans l'éditeur
+   hebdomadaire. La couleur vient de `.muted` (défaut) ou `.debit` (délai dépassé). */
+.delai-preavis {
+  margin: 0 0 var(--esp-2);
+  font-size: 0.85rem;
+}
+
 /* ---- Hiérarchie de titres ------------------------------------------------ */
 h1 {
   font-size: var(--h1);
