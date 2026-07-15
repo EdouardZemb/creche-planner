@@ -748,6 +748,123 @@ h3 {
   height: 1.25rem;
 }
 
+/* ---- Écran « Crèches & écoles » (mobile-first) --------------------------- */
+/* En-tête : titre + liens (Contrats / Planning). `flex-wrap` pour revenir à la
+   ligne plutôt que de déborder la page à 375px. */
+.etab-entete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--esp-2) var(--esp-3);
+  margin-bottom: var(--esp-4);
+}
+
+.etab-entete h1 {
+  margin: 0;
+}
+
+.etab-entete-liens {
+  display: flex;
+  gap: var(--esp-3);
+}
+
+/* Carte d'une crèche / école (vue ou formulaire) : colonne lisible bornée. */
+.etab-carte {
+  max-width: 600px;
+}
+
+/* Un archivé est grisé (il n'est plus notifié — cf. langage « (archivé) »). */
+.etab-carte.est-archive {
+  opacity: 0.6;
+}
+
+.etab-carte-entete {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--esp-2);
+}
+
+.etab-carte-entete h2 {
+  margin: 0;
+}
+
+/* Lignes d'info de la carte de vue (e-mail / délai / coordonnées) resserrées. */
+.etab-carte-vue p {
+  margin: var(--esp-1) 0;
+}
+
+.etab-form-titre {
+  margin-top: 0;
+}
+
+/* Champs de saisie pleine largeur (radios exclues → taille native conservée). */
+.etab-form input:not([type='radio']),
+.etab-form select {
+  width: 100%;
+}
+
+/* Fieldsets de saisie sans bordure (aligné sur le reste des formulaires). */
+.etab-fieldset {
+  border: none;
+  padding: 0;
+  margin: var(--esp-4) 0 0;
+}
+
+.etab-fieldset legend {
+  font-weight: 600;
+  margin-bottom: var(--esp-2);
+}
+
+/* Texte d'aide sous un champ (lié en aria-describedby) : discret. */
+.etab-aide {
+  display: block;
+  font-size: 0.85rem;
+  margin: var(--esp-1) 0 var(--esp-2);
+}
+
+/* Sous-champ conditionnel du délai (nombre de jours, ou jour + heure limite). */
+.etab-sous-champ {
+  margin-top: var(--esp-2);
+}
+
+.etab-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--esp-2);
+  margin-top: var(--esp-4);
+}
+
+/* Rangée d'actions de la carte : empilée pleine largeur < 480px (cibles au
+   pouce), en ligne dès 480px — calquée sur .carte-contrat-actions. */
+.etab-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-2);
+  width: 100%;
+  margin-top: var(--esp-2);
+}
+
+.etab-actions .btn {
+  width: 100%;
+}
+
+@media (min-width: 480px) {
+  .etab-actions {
+    flex-direction: row;
+    width: auto;
+  }
+
+  .etab-actions .btn {
+    width: auto;
+  }
+}
+
+.etab-ajout {
+  margin-top: var(--esp-4);
+}
+
 /* Rangée d'actions d'une ligne (boutons + statut d'enregistrement) : empilée
    sous 480px. */
 .actions-ligne {
