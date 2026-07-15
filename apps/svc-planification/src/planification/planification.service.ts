@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
@@ -263,16 +264,20 @@ export class PlanificationService {
       dto.mode === 'CRECHE_PSU' ? false : (dto.premiereInscription ?? false);
     await this.db.transaction(async (tx) => {
       const lignes = await tx.select().from(contrat).where(eq(contrat.id, id));
-      if (!lignes[0]) {
+      const contratActuel = lignes[0];
+      if (!contratActuel) {
         throw new NotFoundException(`contrat introuvable : ${id}`);
       }
       // Résout le lien établissement dans la même transaction (existant validé /
       // nouvel établissement créé atomiquement). Le DTO étant un remplacement
-      // complet, l'absence des deux champs vaut « pas d'établissement » (null).
+      // complet, l'absence des deux champs vaut « pas d'établissement » (null). On
+      // passe le lien ACTUEL du contrat pour tolérer un archivé **inchangé** (édition
+      // d'autres champs) tout en refusant un **changement** vers un archivé.
       const etablissementId = await this.resoudreEtablissement(
         tx,
         dto.foyerId,
         dto,
+        contratActuel.etablissementId,
       );
       await tx
         .update(contrat)
@@ -380,9 +385,18 @@ export class PlanificationService {
             eq(etablissement.foyerId, ligne.foyerId),
           ),
         );
-      if (!etabs[0]) {
+      const etab = etabs[0];
+      if (!etab) {
         throw new BadRequestException(
           `établissement ${etablissementId} inconnu ou hors du foyer du contrat`,
+        );
+      }
+      // Archivage réel (Lot 3) : ce chemin ne s'exécute qu'en cas de **changement**
+      // de lien (l'idempotence no-op ci-dessus a court-circuité le lien inchangé) →
+      // on refuse de (re)pointer un contrat vers une crèche archivée.
+      if (!etab.actif) {
+        throw new ConflictException(
+          'cette crèche est archivée : réactivez-la ou choisissez-en une autre',
         );
       }
       // Met à jour le SEUL lien (pas de remplacement du contrat, pas de cascade
@@ -518,7 +532,15 @@ export class PlanificationService {
    *   `EtablissementCree` via l'outbox) DANS la même transaction → atomicité : un
    *   rollback du contrat annule aussi l'établissement (pas d'établissement fantôme).
    * - `etablissementId` fourni → **vérifie** qu'il existe ET appartient au
-   *   `foyerId` du contrat (isolation inter-foyers) → 400 sinon.
+   *   `foyerId` du contrat (isolation inter-foyers) → 400 sinon. **Refuse** de
+   *   rattacher un établissement **archivé** (409) — sauf **tolérance « lien
+   *   inchangé »** : si le contrat pointe **déjà** sur cet archivé (`etablissementActuel`
+   *   égal), on tolère (édition d'autres champs) ; on ne rejette que sur un **changement**
+   *   vers un archivé (ou toute création, où `etablissementActuel` est `undefined`).
+   *
+   * `etablissementActuel` = lien actuel du contrat (chemin `modifier`) ; `undefined` à
+   * la création. La **création à la volée** (`nouvelEtablissement`) crée toujours un
+   * `actif` → jamais concernée par le rejet archivé.
    *
    * Le DTO garantit qu'**exactement un** des deux champs est fourni (refine Zod) :
    * la colonne étant `NOT NULL` (P5), un contrat sans établissement est rejeté en
@@ -528,6 +550,7 @@ export class PlanificationService {
     tx: Tx,
     foyerId: string,
     dto: CreerContratDto,
+    etablissementActuel?: string | null,
   ): Promise<string> {
     if (dto.nouvelEtablissement) {
       const nouvel = dto.nouvelEtablissement;
@@ -580,9 +603,19 @@ export class PlanificationService {
             eq(etablissement.foyerId, foyerId),
           ),
         );
-      if (!lignes[0]) {
+      const ligne = lignes[0];
+      if (!ligne) {
         throw new BadRequestException(
           `établissement ${dto.etablissementId} inconnu ou hors du foyer du contrat`,
+        );
+      }
+      // Archivage réel (Lot 3) : on n'accepte pas de rattacher un contrat à une crèche
+      // archivée, SAUF si le lien est **inchangé** (le contrat pointait déjà dessus —
+      // édition d'autres champs). Un changement vers un archivé, ou toute création
+      // (`etablissementActuel` undefined), est refusé.
+      if (!ligne.actif && dto.etablissementId !== etablissementActuel) {
+        throw new ConflictException(
+          'cette crèche est archivée : réactivez-la ou choisissez-en une autre',
         );
       }
       return dto.etablissementId;

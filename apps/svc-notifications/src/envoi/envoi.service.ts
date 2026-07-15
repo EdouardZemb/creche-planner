@@ -48,10 +48,13 @@ interface BrouillonConstruit {
   readonly corps: string;
   readonly texte: string;
   readonly enfants: readonly EnfantBrouillon[];
-  /** Vrai si l'établissement a une adresse de service (envoi possible). */
+  /** Vrai si l'établissement a une adresse de service **ET** est actif (envoi possible). */
   readonly routable: boolean;
-  /** Raison de non-routabilité (`'SANS_EMAIL'`) quand `routable === false`, sinon `null`. */
-  readonly raisonNonRoutable: 'SANS_EMAIL' | null;
+  /**
+   * Raison de non-routabilité quand `routable === false`, sinon `null`. `'ARCHIVE'` a la
+   * priorité sur `'SANS_EMAIL'`.
+   */
+  readonly raisonNonRoutable: 'SANS_EMAIL' | 'ARCHIVE' | null;
 }
 
 /**
@@ -120,15 +123,18 @@ export class EnvoiService {
   ): Promise<EnvoiEtablissementResultat> {
     const b = await this.construire(foyerId, semaineIso, etablissementId);
 
-    // Ceinture et bretelles côté serveur : un brouillon non routable (ex. crèche sans
-    // e-mail) est refusé **avant** toute réservation de slot ou sollicitation du mailer —
-    // on n'envoie jamais à vide, même si le front laissait passer le clic.
+    // Ceinture et bretelles côté serveur : un brouillon non routable (crèche sans e-mail
+    // ou archivée) est refusé **avant** toute réservation de slot ou sollicitation du
+    // mailer — on n'envoie jamais à vide, même si le front laissait passer le clic. Le
+    // message dépend de la raison (priorité `'ARCHIVE'` déjà appliquée par `construire`).
     if (!b.routable) {
       throw new BadRequestException([
         {
           champ: 'etablissement',
           message:
-            "crèche sans e-mail : ajoutez une adresse avant d'envoyer le récapitulatif",
+            b.raisonNonRoutable === 'ARCHIVE'
+              ? 'crèche archivée : réactivez-la avant d’envoyer le récapitulatif'
+              : "crèche sans e-mail : ajoutez une adresse avant d'envoyer le récapitulatif",
         },
       ]);
     }
@@ -225,12 +231,12 @@ export class EnvoiService {
    * (lien explicite `contrat.etablissement_id`) dont la semaine est `VALIDEE_AVEC_MODIFS`
    * (deltas non vides), et rend un corps multi-enfant. `404` **uniquement** si
    * l'établissement est inconnu ou hors du foyer. Un établissement **connu, du bon foyer,
-   * mais sans adresse de service** ne 404 plus : le brouillon est construit normalement
-   * (le calcul des enfants ne dépend pas de l'e-mail) et marqué **non routable**
-   * (`destinataire = ''`, `routable = false`, `raisonNonRoutable = 'SANS_EMAIL'`) afin que
-   * le front l'affiche en avertissement au lieu de l'écarter silencieusement. Une liste
-   * d'enfants vide rend un récap « aucune modification » (le front ne propose pas
-   * l'envoi dans ce cas).
+   * mais sans adresse de service OU archivé** ne 404 pas : le brouillon est construit
+   * normalement (le calcul des enfants ne dépend ni de l'e-mail ni de l'état actif) et
+   * marqué **non routable** (`destinataire = ''`, `routable = false`,
+   * `raisonNonRoutable = 'ARCHIVE'` si archivé, sinon `'SANS_EMAIL'`) afin que le front
+   * l'affiche en avertissement au lieu de l'écarter silencieusement. Une liste d'enfants
+   * vide rend un récap « aucune modification » (le front ne propose pas l'envoi dans ce cas).
    */
   private async construire(
     foyerId: string,
@@ -249,9 +255,17 @@ export class EnvoiService {
       ]);
     }
 
-    const routable = etab.emailService !== null;
-    const raisonNonRoutable = routable ? null : 'SANS_EMAIL';
-    const destinataire = etab.emailService ?? '';
+    // Routable ⇔ e-mail présent ET actif (non archivé). `raisonNonRoutable` avec la
+    // priorité `'ARCHIVE'` > `'SANS_EMAIL'` : une crèche archivée est signalée
+    // « archivée » (réactivable en un geste) même sans e-mail par ailleurs. Le
+    // `destinataire` reste vide quand on n'est pas routable (le front ne le lit qu'alors).
+    const routable = etab.emailService !== null && etab.actif;
+    const raisonNonRoutable: 'SANS_EMAIL' | 'ARCHIVE' | null = !etab.actif
+      ? 'ARCHIVE'
+      : etab.emailService === null
+        ? 'SANS_EMAIL'
+        : null;
+    const destinataire = routable ? (etab.emailService ?? '') : '';
 
     const enfants = await this.enfantsConcernes(
       foyerId,
