@@ -18,6 +18,8 @@ const ETAT_BROUILLON =
   'un brouillon de mail agrégé par établissement est disponible';
 const ETAT_BROUILLON_SANS_EMAIL =
   'un brouillon agrégé pour un établissement sans e-mail est disponible';
+const ETAT_BROUILLON_ARCHIVE =
+  'un brouillon agrégé pour un établissement archivé est disponible';
 const ETAT_ENVOI =
   'un récap agrégé par établissement est prêt à envoyer au service';
 
@@ -29,6 +31,9 @@ const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
 const ETABLISSEMENT_ID = '99999999-9999-4999-8999-999999999999';
 // Établissement du même foyer **sans e-mail de service** → brouillon non routable.
 const ETABLISSEMENT_SANS_EMAIL_ID = '99999999-9999-4999-8999-999999999998';
+// Établissement du même foyer **archivé** (avec e-mail) → non routable, raison ARCHIVE
+// prioritaire sur SANS_EMAIL.
+const ETABLISSEMENT_ARCHIVE_ID = '99999999-9999-4999-8999-999999999997';
 // Semaine entièrement dans un mois (mars) : une seule relecture amont côté provider.
 const SEMAINE = '2026-W10';
 
@@ -204,6 +209,60 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
       };
       expect(corps.routable).toBe(false);
       expect(corps.raisonNonRoutable).toBe('SANS_EMAIL');
+      expect(corps.destinataire).toBe('');
+    });
+  });
+
+  it('régénère un brouillon NON routable pour un établissement archivé (raisonNonRoutable=ARCHIVE prioritaire)', async () => {
+    provider
+      .given(ETAT_BROUILLON_ARCHIVE)
+      .uponReceiving(
+        'une régénération du brouillon agrégé d’un établissement archivé',
+      )
+      .withRequest({
+        method: 'GET',
+        path: `/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ARCHIVE_ID}/brouillon`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          foyerId: string(FOYER_ID),
+          semaineIso: string(SEMAINE),
+          etablissementId: string(ETABLISSEMENT_ARCHIVE_ID),
+          etablissementLibelle: string('Crèche Les Coccinelles'),
+          // Non routable (archivée) : destinataire vide, jamais lu par le front.
+          destinataire: '',
+          sujet: string('Plannings modifiés — semaine 2026-W10'),
+          corps: string('<p>Bonjour Crèche Les Coccinelles,</p>'),
+          texte: string('Bonjour Crèche Les Coccinelles,'),
+          // Le calcul des enfants ne dépend ni de l'e-mail ni de l'état actif.
+          enfants: MatchersV3.eachLike({
+            contratId: string('55555555-0000-4000-8000-000000000003'),
+            enfant: string('Nina'),
+            deltaModifs: {
+              jours: MatchersV3.eachLike({ date: string('2026-03-04') }),
+            },
+          }),
+          routable: boolean(false),
+          // Bien que la fiche ait un e-mail, l'archivage prime : raison ARCHIVE.
+          raisonNonRoutable: string('ARCHIVE'),
+          dryRun: boolean(false),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ARCHIVE_ID}/brouillon`,
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as {
+        routable: boolean;
+        raisonNonRoutable: string | null;
+        destinataire: string;
+      };
+      expect(corps.routable).toBe(false);
+      expect(corps.raisonNonRoutable).toBe('ARCHIVE');
       expect(corps.destinataire).toBe('');
     });
   });
