@@ -207,21 +207,41 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
+      # SCA sur le lock pnpm (v9) via Trivy. L'ancien `pnpm audit` est MORT depuis que
+      # npm a retiré l'endpoint `/-/npm/v1/security/audits` (HTTP 410, 2026-07-15 ;
+      # pnpm <= 10.34 l'utilise encore, cf. pnpm#11265). Trivy lit `pnpm-lock.yaml`
+      # directement (aucune install), scanne sa propre base CVE, et EXCLUT les
+      # devDependencies par défaut (lock v9+) → on garde la sémantique « production,
+      # BLOQUANT ». Mêmes réglages que les autres portes CVE du repo (severity
+      # HIGH,CRITICAL ; `ignore-unfixed` = n'échoue que sur du CORRIGIBLE ; `.trivyignore`
+      # racine = faux positifs assumés).
       - name: Audit SCA — dépendances de production (high/critical, BLOQUANT)
-        run: pnpm audit --audit-level=high --prod
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: pnpm-lock.yaml
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
 
+      # Arbre COMPLET (devDependencies incluses via TRIVY_INCLUDE_DEV_DEPS) en INFORMATIF
+      # non bloquant : les advisories des outils de dev/test (non déployés) restent
+      # visibles dans les logs sans rougir `main`.
       - name: Audit SCA — arbre complet dev inclus (informatif, non bloquant)
         if: always()
-        run: pnpm audit --audit-level=high || true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_INCLUDE_DEV_DEPS: 'true'
+        with:
+          scan-type: fs
+          scan-ref: pnpm-lock.yaml
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '0'
+          format: table
 
   # AUD-09 (doc 25) — SECRET SCANNING. Le flux manipule des secrets réels
   # (`.env.server`, jetons Cloudflare/GHCR) : ce job BLOQUE si un secret est
