@@ -170,6 +170,20 @@ describe('EditeurSemaine', () => {
     expect(screen.getByText(/Tom — Cantine/)).toBeInTheDocument();
   });
 
+  it('affiche la date limite de préavis sous chaque établissement (lot 4)', async () => {
+    rendre();
+    // École ABCM : préavis « jeudi 12:00 » → jeudi de la semaine PRÉCÉDENTE (25/06,
+    // W27 commençant le lundi 29/06). Le texte de base est présent que le délai soit
+    // dépassé ou non (le préfixe éventuel « ⏰ … » ne masque pas la date limite).
+    expect(
+      await screen.findByText(/À valider avant jeudi 12:00 \(le 25\/06\)/),
+    ).toBeInTheDocument();
+    // Crèche : « 2 jours ouvrés » avant le lundi cible.
+    expect(
+      screen.getByText(/À valider au moins 2 jour\(s\) ouvré\(s\)/),
+    ).toBeInTheDocument();
+  });
+
   it('affiche les horaires planifiés (semaine-type) sans ouvrir la saisie', async () => {
     rendre();
     // Le mardi 30/06 n'a aucune exception → l'horaire de base du contrat s'affiche

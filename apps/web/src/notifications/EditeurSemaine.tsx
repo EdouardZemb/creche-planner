@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
+import { jourCourantParis } from '@creche-planner/shared-semaine';
 import { api } from '../api/client';
 import type { ContratBesoinsSemaine, StatutNotification } from '../types/bff';
 import { useAsync } from '../hooks/useAsync';
 import { libelleSemaine } from '../utils/dates';
+import { delaiPreavis } from '../planning/delaiPreavis';
 import { EditeurContratSemaine } from './EditeurContratSemaine';
 import { RelectureEnvoi } from './RelectureEnvoi';
 
@@ -57,10 +59,16 @@ export function EditeurSemaine({
       .map((etab) => ({
         id: etab.etablissementId,
         libelle: etab.libelle,
+        preavisRegle: etab.preavisRegle,
         contrats: parEtablissement.get(etab.etablissementId) ?? [],
       }))
       .filter((g) => g.contrats.length > 0);
   }, [data]);
+
+  // Date du jour normalisée Europe/Paris (convention métier, cf. `jourCourantParis`)
+  // pour signaler un délai de préavis « peut-être dépassé ». Le calcul de la date
+  // limite reste dans le module pur `delaiPreavis` (aucune horloge dans ce dernier).
+  const aujourdhui = jourCourantParis(new Date());
 
   return (
     <section
@@ -99,23 +107,42 @@ export function EditeurSemaine({
       )}
 
       {data &&
-        groupes.map((groupe) => (
-          <div key={groupe.id} style={{ marginTop: '0.75rem' }}>
-            <h4 style={{ fontSize: 'var(--h2)', margin: '0 0 0.25rem' }}>
-              {groupe.libelle}
-            </h4>
-            {groupe.contrats.map((contrat) => (
-              <EditeurContratSemaine
-                key={contrat.contratId}
-                contrat={contrat}
-                jours={data.jours}
-                semaineIso={semaineIso}
-                onValide={surValidation}
-                {...(onEnregistre ? { onEnregistre } : {})}
-              />
-            ))}
-          </div>
-        ))}
+        groupes.map((groupe) => {
+          // Date limite concrète du préavis pour la semaine notifiée (module pur).
+          const delai = delaiPreavis(
+            groupe.preavisRegle,
+            semaineIso,
+            aujourdhui,
+          );
+          return (
+            <div key={groupe.id} style={{ marginTop: '0.75rem' }}>
+              <h4 style={{ fontSize: 'var(--h2)', margin: '0 0 0.25rem' }}>
+                {groupe.libelle}
+              </h4>
+              {delai !== null && (
+                <p
+                  className={`delai-preavis ${delai.depasse ? 'debit' : 'muted'}`}
+                  {...(delai.depasse
+                    ? { role: 'note', 'aria-live': 'polite' as const }
+                    : {})}
+                >
+                  <span aria-hidden="true">🕒 </span>
+                  {delai.texte}
+                </p>
+              )}
+              {groupe.contrats.map((contrat) => (
+                <EditeurContratSemaine
+                  key={contrat.contratId}
+                  contrat={contrat}
+                  jours={data.jours}
+                  semaineIso={semaineIso}
+                  onValide={surValidation}
+                  {...(onEnregistre ? { onEnregistre } : {})}
+                />
+              ))}
+            </div>
+          );
+        })}
 
       {/* Récap au service **agrégé par établissement** (1 mail par établissement
           regroupant tous les enfants concernés du foyer), proposé après une
