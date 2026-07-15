@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Column, getTableColumns, Param, type Table } from 'drizzle-orm';
 import { EnvoiService } from './envoi.service.js';
@@ -140,14 +140,27 @@ const ETAB_ID = '99999999-9999-4999-8999-999999999999';
 // Un autre établissement du foyer, pour vérifier le routage par lien explicite.
 const ETAB_AUTRE_ID = '99999999-9999-4999-8999-999999999998';
 
-const ETAB = {
+/** Forme de fiche établissement projetée utilisée par les tests (e-mail nullable). */
+interface EtabFixture {
+  id: string;
+  foyerId: string;
+  nom: string;
+  emailService: string | null;
+  preavisRegle: { type: 'JOURS_OUVRES'; valeur: number };
+  actif: boolean;
+}
+
+const ETAB: EtabFixture = {
   id: ETAB_ID,
   foyerId: FOYER_ID,
   nom: 'Crèche Les Hirondelles',
   emailService: 'contact-creche@example.org',
-  preavisRegle: { type: 'JOURS_OUVRES' as const, valeur: 2 },
+  preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
   actif: true,
 };
+
+/** Même fiche, mais **sans** adresse de service → récap non routable. */
+const ETAB_SANS_EMAIL: EtabFixture = { ...ETAB, emailService: null };
 
 function deltaJour(date: string): DeltaModifs {
   return {
@@ -209,7 +222,7 @@ function seedContrat(
   });
 }
 
-function fakeEtablissements(etab: typeof ETAB | null = ETAB): {
+function fakeEtablissements(etab: EtabFixture | null = ETAB): {
   service: EtablissementProjeteService;
   mock: ReturnType<typeof vi.fn>;
 } {
@@ -349,6 +362,27 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
       service.brouillon(FOYER_ID, SEMAINE, ETAB_ID),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('brouillon NON routable (pas de 404) quand l’établissement du foyer n’a pas d’e-mail', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa', date: '2026-06-29' });
+    // Établissement connu, du bon foyer, mais sans adresse de service.
+    const { service: etablissements } = fakeEtablissements(ETAB_SANS_EMAIL);
+    const { mailer } = fakeMailer({ messageId: null, dryRun: true });
+    const service = new EnvoiService(db, etablissements, mailer);
+
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
+
+    // Plus de 404 : le brouillon revient, marqué non routable, pour être affiché
+    // en avertissement (et non écarté silencieusement).
+    expect(brouillon.routable).toBe(false);
+    expect(brouillon.raisonNonRoutable).toBe('SANS_EMAIL');
+    expect(brouillon.destinataire).toBe('');
+    // Le calcul des enfants ne dépend pas de l'e-mail : Léa reste listée.
+    expect(brouillon.enfants.map((e) => e.enfant)).toEqual(['Léa']);
+    // dryRun neutralisé (pas d'envoi possible).
+    expect(brouillon.dryRun).toBe(false);
+  });
 });
 
 describe('EnvoiService.envoyer (agrégé par établissement)', () => {
@@ -428,5 +462,21 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     const ligne = (stores.get(envoiEtablissement) ?? [])[0];
     expect(ligne?.['statut']).toBe('ECHEC');
     expect(ligne?.['erreur']).toContain('SMTP 535');
+  });
+
+  it('refuse un envoi NON routable AVANT tout slot ou mailer (crèche sans e-mail)', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    const { service: etablissements } = fakeEtablissements(ETAB_SANS_EMAIL);
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
+    const service = new EnvoiService(db, etablissements, mailer);
+
+    await expect(
+      service.envoyer(FOYER_ID, SEMAINE, ETAB_ID),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    // Garde métier : aucune réservation de slot, aucune sollicitation du transport.
+    expect(mock).not.toHaveBeenCalled();
+    expect(stores.get(envoiEtablissement) ?? []).toHaveLength(0);
   });
 });

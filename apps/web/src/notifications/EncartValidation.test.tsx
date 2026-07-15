@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EncartValidation } from './EncartValidation';
 import type { NotificationAValider, ValidationResultat } from '../types/bff';
@@ -46,6 +47,8 @@ function brouillonPour(etablissementId: string) {
           },
         ]
       : [],
+    routable: true,
+    raisonNonRoutable: null,
     dryRun: true,
   };
 }
@@ -123,7 +126,9 @@ describe('EncartValidation', () => {
 
   it('affiche un placeholder pendant la vérification puis rien s’il n’y a rien à valider', async () => {
     vi.mocked(api.listerAValider).mockResolvedValue([]);
-    const { container } = render(<EncartValidation foyerId="foyer-1" />);
+    const { container } = render(<EncartValidation foyerId="foyer-1" />, {
+      wrapper: MemoryRouter,
+    });
 
     // Pendant le chargement : l'encart est visible avec un placeholder explicite
     // (avant : invisible → impossible de distinguer « rien à valider » de « pas
@@ -150,7 +155,7 @@ describe('EncartValidation', () => {
 
   it('liste les semaines à valider avec un libellé lisible', async () => {
     vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER);
-    render(<EncartValidation foyerId="foyer-1" />);
+    render(<EncartValidation foyerId="foyer-1" />, { wrapper: MemoryRouter });
 
     expect(
       await screen.findByText(/Valider la semaine suivante/i),
@@ -171,7 +176,7 @@ describe('EncartValidation', () => {
     };
     vi.mocked(api.validerSemaine).mockResolvedValue(resultat);
 
-    render(<EncartValidation foyerId="foyer-1" />);
+    render(<EncartValidation foyerId="foyer-1" />, { wrapper: MemoryRouter });
     const bouton = await screen.findByRole('button', { name: 'Valider' });
     fireEvent.click(bouton);
 
@@ -208,7 +213,7 @@ describe('EncartValidation', () => {
       deltaModifs: null,
     });
 
-    render(<EncartValidation foyerId="foyer-1" />);
+    render(<EncartValidation foyerId="foyer-1" />, { wrapper: MemoryRouter });
     fireEvent.click(await screen.findByRole('button', { name: 'Valider' }));
 
     // L'encart ne disparaît PAS : la confirmation reste lisible et l'état final
@@ -233,7 +238,7 @@ describe('EncartValidation', () => {
         deltaModifs: null,
       });
 
-    render(<EncartValidation foyerId="foyer-1" />);
+    render(<EncartValidation foyerId="foyer-1" />, { wrapper: MemoryRouter });
     fireEvent.click(await screen.findByRole('button', { name: 'Valider' }));
 
     // L'échec est annoncé comme une alerte (rouge), pas comme un succès.
@@ -249,7 +254,7 @@ describe('EncartValidation', () => {
 
   it('distingue chaque ligne par enfant + mode quand plusieurs contrats partagent la semaine', async () => {
     vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER_DEUX);
-    render(<EncartValidation foyerId="foyer-1" />);
+    render(<EncartValidation foyerId="foyer-1" />, { wrapper: MemoryRouter });
 
     // Chaque ligne identifie sans ambiguïté l'enfant et le mode (pas deux libellés
     // identiques « Planning de la semaine 28 »).
@@ -281,7 +286,7 @@ describe('EncartValidation', () => {
         resoudre = r;
       }),
     );
-    render(<EncartValidation foyerId="foyer-1" />);
+    render(<EncartValidation foyerId="foyer-1" />, { wrapper: MemoryRouter });
 
     const validerZoe = await screen.findByRole('button', {
       name: 'Valider la semaine du 6 au 12 juillet — Zoé, Crèche',
@@ -311,7 +316,7 @@ describe('EncartValidation', () => {
 
   it('ouvre l’éditeur hebdomadaire consolidé depuis « Éditer la semaine »', async () => {
     vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER);
-    render(<EncartValidation foyerId="foyer-1" />);
+    render(<EncartValidation foyerId="foyer-1" />, { wrapper: MemoryRouter });
 
     const bouton = await screen.findByRole('button', {
       name: 'Éditer la semaine',
@@ -340,7 +345,9 @@ describe('EncartValidation', () => {
 
   it('semaineInitiale (lien profond) : ouvre l’éditeur d’office sans clic', async () => {
     vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER);
-    render(<EncartValidation foyerId="foyer-1" semaineInitiale="2026-W27" />);
+    render(<EncartValidation foyerId="foyer-1" semaineInitiale="2026-W27" />, {
+      wrapper: MemoryRouter,
+    });
 
     // L'éditeur s'ouvre seul dès que la semaine ciblée apparaît dans la liste : le
     // parent arrive directement sur l'éditeur (aucun bouton « Éditer » cliqué).
@@ -360,7 +367,9 @@ describe('EncartValidation', () => {
 
   it('semaineInitiale absente de la liste : ignorée sans erreur (éditeur fermé)', async () => {
     vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER);
-    render(<EncartValidation foyerId="foyer-1" semaineInitiale="2026-W40" />);
+    render(<EncartValidation foyerId="foyer-1" semaineInitiale="2026-W40" />, {
+      wrapper: MemoryRouter,
+    });
 
     // La liste s'affiche normalement…
     expect(

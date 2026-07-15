@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RelectureEnvoi } from './RelectureEnvoi';
 import type {
@@ -73,9 +74,20 @@ function brouillonPour(
           },
         ]
       : [],
+    routable: true,
+    raisonNonRoutable: null,
     dryRun: true,
     ...partiel,
   };
+}
+
+/** `RelectureEnvoi` rend un `<Link>` (crèche sans e-mail) → contexte Router requis. */
+function renderRelecture() {
+  return render(
+    <MemoryRouter>
+      <RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />
+    </MemoryRouter>,
+  );
 }
 
 function mockBrouillons(
@@ -95,7 +107,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
 
   it('n’affiche un bloc que pour les établissements concernés', async () => {
     mockBrouillons();
-    render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
+    renderRelecture();
 
     // La crèche est concernée → bloc + enfant Léa + bandeau « Mode test » (dry-run).
     expect(
@@ -135,7 +147,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
           })
         : brouillonPour(id),
     );
-    render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
+    renderRelecture();
 
     // Dates longues (« mardi 1 juillet ») plutôt que « 2026-W27 » ou « 01/07/2026 ».
     expect(
@@ -151,11 +163,44 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
 
   it('indique l’absence de modification quand aucun établissement n’est concerné', async () => {
     mockBrouillons((id) => brouillonPour(id, { enfants: [] }));
-    render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
+    renderRelecture();
 
     expect(
       await screen.findByText(/Aucune modification à transmettre/i),
     ).toBeInTheDocument();
+  });
+
+  it('signale une crèche NON routable (sans e-mail) au lieu de l’écarter en silence', async () => {
+    // La crèche est concernée (enfants) mais sans e-mail : brouillon non routable.
+    mockBrouillons((id) =>
+      id === CRECHE_ID
+        ? brouillonPour(id, {
+            routable: false,
+            raisonNonRoutable: 'SANS_EMAIL',
+            destinataire: '',
+            dryRun: false,
+          })
+        : brouillonPour(id),
+    );
+    renderRelecture();
+
+    // Avertissement explicite (jamais « rien à transmettre » à tort). Apostrophe
+    // typographique ou droite tolérée (le rendu utilise « ’ »).
+    expect(
+      await screen.findByText(/n['’]a pas d['’]e-mail/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Aucune modification à transmettre/i),
+    ).not.toBeInTheDocument();
+    // Les enfants concernés restent listés (le parent voit ce qui n'est PAS transmis).
+    expect(screen.getByText('Léa')).toBeInTheDocument();
+    // Aucun bouton d'envoi pour une crèche non joignable.
+    expect(
+      screen.queryByRole('button', { name: /Envoyer le récapitulatif/ }),
+    ).not.toBeInTheDocument();
+    // Raccourci « Ajouter un e-mail » vers l'écran des crèches du foyer.
+    const lien = screen.getByRole('link', { name: /Ajouter un e-mail/ });
+    expect(lien).toHaveAttribute('href', `/foyers/${FOYER_ID}/etablissements`);
   });
 
   it('demande confirmation puis envoie (mode test) le récap de l’établissement', async () => {
@@ -172,7 +217,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     };
     vi.mocked(api.envoyerRecapEtablissement).mockResolvedValue(resultat);
 
-    render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
+    renderRelecture();
     const bouton = await screen.findByRole('button', {
       name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
     });
@@ -201,7 +246,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
 
   it('avertit d’une action irréversible quand l’envoi serait réel', async () => {
     mockBrouillons((id) => brouillonPour(id, { dryRun: false }));
-    render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
+    renderRelecture();
 
     const bouton = await screen.findByRole('button', {
       name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
@@ -230,7 +275,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
       envoyeLe: '2026-06-29T08:00:00.000Z',
     });
 
-    render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
+    renderRelecture();
     fireEvent.click(
       await screen.findByRole('button', {
         name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
@@ -254,7 +299,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
 
   it('prend le focus à l’apparition pour guider vers la dernière étape', async () => {
     mockBrouillons();
-    render(<RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />);
+    renderRelecture();
 
     const section = await screen.findByRole('region', {
       name: /Dernière étape : prévenir les services/i,

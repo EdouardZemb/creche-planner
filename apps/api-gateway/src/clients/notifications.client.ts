@@ -65,11 +65,18 @@ const brouillonEtablissementSchema = z.object({
   semaineIso: z.string(),
   etablissementId: z.string(),
   etablissementLibelle: z.string(),
+  // Vide `''` quand non routable (établissement sans e-mail) : le front ne le lit que
+  // si `routable === true`.
   destinataire: z.string(),
   sujet: z.string(),
   corps: z.string(),
   texte: z.string(),
   enfants: z.array(enfantBrouillonSchema),
+  // Angle mort « crèche sans e-mail » : un établissement non joignable revient
+  // `routable:false` (au lieu d'un 404 silencieux). Union tenue **exacte** (un lot
+  // ultérieur y ajoutera `'ARCHIVE'`).
+  routable: z.boolean(),
+  raisonNonRoutable: z.enum(['SANS_EMAIL']).nullable(),
   dryRun: z.boolean(),
 });
 
