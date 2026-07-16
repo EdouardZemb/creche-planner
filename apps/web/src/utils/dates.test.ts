@@ -3,6 +3,7 @@ import {
   dateLongueFr,
   formaterDateFr,
   formaterDateCourtFr,
+  formaterDateHeureFr,
   formaterHeureFr,
   jourSuivant,
   libelleDate,
@@ -45,6 +46,27 @@ describe('formaterDateFr', () => {
 
   it('zéro-pad le jour et le mois', () => {
     expect(formaterDateFr('2026-01-05')).toBe('05/01/2026');
+  });
+});
+
+describe('formaterDateHeureFr', () => {
+  it('rend « jj/mm/aaaa à hh:mm » en UTC', () => {
+    expect(formaterDateHeureFr('2026-06-23T06:01:00.000Z')).toBe(
+      '23/06/2026 à 06:01',
+    );
+  });
+
+  it('zéro-pad l’heure et les minutes (minuit UTC)', () => {
+    expect(formaterDateHeureFr('2026-01-05T00:00:00.000Z')).toBe(
+      '05/01/2026 à 00:00',
+    );
+  });
+
+  it('dérive l’heure en UTC (déterministe, sans fuseau local)', () => {
+    // 09:05 UTC : padStart sur l'heure comme sur les minutes.
+    expect(formaterDateHeureFr('2026-01-05T09:05:00.000Z')).toBe(
+      '05/01/2026 à 09:05',
+    );
   });
 });
 

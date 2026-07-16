@@ -107,6 +107,23 @@ export function formaterHeureFr(d: Date): string {
   return `${hh}:${mm}`;
 }
 
+/**
+ * Horodatage ISO complet « 2026-06-23T06:01:00Z » → « 23/06/2026 à 06:01 ».
+ * Date ET heure dérivées d'un même `new Date(iso)` en **UTC** (`getUTCHours`/
+ * `getUTCMinutes`), comme la date l'est déjà côté cloche : déterministe en test
+ * (aucun fuseau épinglé côté vitest web). Léger décalage possible (+1/+2 h)
+ * assumé sur un journal informationnel (cf. plan H3). Réutilise `formaterDateFr`.
+ */
+export function formaterDateHeureFr(iso: string): string {
+  const d = new Date(iso);
+  const jour = String(d.getUTCDate()).padStart(2, '0');
+  const mois = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const annee = d.getUTCFullYear();
+  const hh = String(d.getUTCHours()).padStart(2, '0');
+  const mm = String(d.getUTCMinutes()).padStart(2, '0');
+  return `${formaterDateFr(`${String(annee)}-${mois}-${jour}`)} à ${hh}:${mm}`;
+}
+
 /** Date « YYYY-MM-DD » → « 15/06 » (jour/mois, sans année — affichage mobile). */
 export function formaterDateCourtFr(iso: string): string {
   const [, m, d] = partsIso(iso);
