@@ -65,15 +65,23 @@ export class ValidationService {
    * Renvoie `true` **uniquement** si la ligne a été créée par cet appel (le
    * `returning` est vide en cas de conflit), ce qui sert au scheduler de signal
    * exactly-once : seul le créateur envoie le mail récap, pas les ticks/réplicas
-   * suivants.
+   * suivants. `false` signifie « non créée » — soit **conflit** (déjà notifiée),
+   * soit **dégradé-différé** (planification indisponible : la création est reportée
+   * au prochain tick mardi plutôt que de figer un snapshot vide).
    */
   async notifier(params: NotifierParams): Promise<boolean> {
     const { contratId, foyerId, semaineIso } = params;
     const plannings = await this.relire(contratId, semaineIso);
-    const snapshot = extraireSemaine(
-      plannings ?? [],
-      joursDeLaSemaine(semaineIso),
-    );
+    if (plannings === null) {
+      // Lecture dégradée (miroir de `calculer`) : ne pas figer un snapshot vide qui
+      // ferait paraître tous les jours « modifiés » à la validation. Un tick mardi
+      // ultérieur (~60 s) retente avec les vraies données (auto-guérison).
+      this.logger.warn(
+        `Semaine ${semaineIso} contrat ${contratId} — planification indisponible, notification différée au prochain tick`,
+      );
+      return false;
+    }
+    const snapshot = extraireSemaine(plannings, joursDeLaSemaine(semaineIso));
     const insere = await this.db
       .insert(notificationHebdo)
       .values({
