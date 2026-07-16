@@ -16,8 +16,12 @@ useDefault = true
 # repo). On allowliste donc ce SEUL chemin. Les critères d'un même bloc [allowlist]
 # sont combinés en OU (défaut gitleaks 8.x) : une trouvaille est ignorée si elle
 # correspond au motif d'accessibilité OU au chemin du fichier chiffré.
+#
+# `pact-desabo-secret` (Lot L4) : secret HMAC de TEST des specs Pact désabonnement
+# (le consumer signe le jeton, le provider épingle le même secret) pour un verify
+# déterministe. Aucune valeur de prod ; motif précis, pas d'exclusion de fichier.
 [allowlist]
-description = "Accessibilite FR (onglets/landmarks) + artefact chiffre sops .env.server.enc"
+description = "Accessibilite FR (onglets/landmarks) + sops .env.server.enc + secret de test pact"
 regexTarget = "match"
-regexes = ['''onglets/landmarks''']
+regexes = ['''onglets/landmarks''', '''pact-desabo-secret''']
 paths = ['''\.env\.server\.enc$''']
