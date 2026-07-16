@@ -38,6 +38,7 @@ import { CLOCK, type Clock } from './clock.js';
 import {
   EnvoiRecapService,
   type IssueEnvoiRecap,
+  type LivraisonParent,
 } from './envoi-recap.service.js';
 import {
   OPTIONS_SCHEDULER,
@@ -49,6 +50,15 @@ const INTERVALLE_MS = 60_000;
 /** Indices de jour `weekday: 'short'` (en-US) du lundi et du mardi. */
 const LUNDI = 'Mon';
 const MARDI = 'Tue';
+
+/**
+ * Plafond de tentatives de livraison **par parent** (Lot L1, H9). Au-delà, une adresse
+ * qui rejette systématiquement (invalide) est **abandonnée** pour la semaine : on cesse
+ * de marteler le SMTP et le slot foyer peut terminaliser. Le parent-facing (livraison
+ * au plus une fois) est déjà garanti par le ledger `envoi_recap_parent` ; ce plafond ne
+ * borne que le gaspillage d'essais vers une adresse définitivement injoignable.
+ */
+export const MAX_ESSAIS_PARENT = 8;
 
 /**
  * Scheduler hebdomadaire du **mardi** (Lot 5, fiabilisé Lot 3). Reprend le pattern
@@ -371,20 +381,34 @@ export class SchedulerHebdo
       TYPE_VALIDATION_HEBDO,
     );
 
-    const issue =
-      destinataires.length === 0
-        ? await this.envoyerRepli(foyerId, semaineIso, enfants, lienApp)
-        : await this.envoyerParParent(
-            foyerId,
-            semaineIso,
-            enfants,
-            lienApp,
-            destinataires,
-          );
+    let issue: IssueEnvoiRecap;
+    if (destinataires.length === 0) {
+      issue = await this.envoyerRepli(foyerId, semaineIso, enfants, lienApp);
+    } else {
+      // Ledger par destinataire (Lot L1) : chargé **une fois** pour sauter les parents
+      // déjà servis et abandonner les adresses ayant atteint le plafond de tentatives.
+      const livraisons = await this.envoiRecap.livraisonsParFoyerSemaine(
+        foyerId,
+        semaineIso,
+      );
+      issue = await this.envoyerParParent(
+        foyerId,
+        semaineIso,
+        enfants,
+        lienApp,
+        destinataires,
+        livraisons,
+      );
+    }
 
     // Volet in-app (PR6) : indépendant de l'e-mail, créé **après** l'envoi abouti (pas
     // au retry). Une entrée d'inbox est créée pour chaque parent dont le canal IN_APP
     // est actif, sans dupliquer l'action « Valider » (journal informationnel).
+    //
+    // Invariant préservé par L1 : si ≥1 destinataire échoue ce passage, `envoyerParParent`
+    // LÈVE avant d'atteindre ce point → le slot bascule `ECHEC` (catch de `traiterEnvois`),
+    // l'in-app n'est pas créé et `marquerAbouti(slot)` n'est pas atteint. L'in-app n'est
+    // donc créé qu'au passage qui **solde** tout le foyer (aucun parent retryable restant).
     await this.creerNotificationsInApp(
       foyerId,
       contratsFoyer.map((c) => c.enfant),
@@ -427,11 +451,23 @@ export class SchedulerHebdo
   }
 
   /**
-   * **Un mail par destinataire** (RFC 8058, PR5) : chaque parent actif reçoit son mail,
-   * avec en-tête `List-Unsubscribe` propre (jeton one-shot ; dégradation propre si la
-   * frappe échoue — le mail part sans en-tête). Le slot est `ENVOYE` dès qu'un transport
-   * réel a répondu (au moins un `dryRun=false`), `DRY_RUN` si tous les envois ont été
-   * neutralisés. `message_id` = celui du premier envoi réel.
+   * **Un mail par destinataire** (RFC 8058, PR5) avec **idempotence de livraison par
+   * parent** (Lot L1). Pour chaque destinataire, la carte des livraisons (`livraisons`)
+   * décide :
+   * - déjà `ENVOYE`/`DRY_RUN` → **sauté** (aucun mail, **aucun jeton émis** — c'est un
+   *   appel réseau one-shot à svc-foyer). Un parent principal servi n'est jamais relivré,
+   *   même si un co-parent fait rejouer le slot toutes les 60 s ;
+   * - plafond `MAX_ESSAIS_PARENT` atteint → **abandonné** (log WARN), non-bloquant pour la
+   *   transition du slot (on ne martèle pas une adresse définitivement invalide) ;
+   * - sinon → jeton + composition + envoi **gardé par try/catch individuel** : succès
+   *   `marquerParentAbouti`, échec `marquerParentEchec` (incrémente `essais`) puis on
+   *   **continue** la boucle (un injoignable n'empêche pas de servir les autres).
+   *
+   * **Après la boucle**, si ≥1 destinataire a échoué **ce passage** (et n'est pas capé),
+   * on **lève** — après avoir persisté les succès, mais **avant** l'in-app et
+   * `marquerAbouti(slot)` : le slot bascule `ECHEC` (retenté), sans relivrer les aboutis.
+   * Sinon, l'issue vaut `ENVOYE` dès qu'un transport réel a répondu (ce passage ou un
+   * précédent parent déjà `ENVOYE`), `DRY_RUN` si tout a été neutralisé/abandonné.
    */
   private async envoyerParParent(
     foyerId: string,
@@ -439,11 +475,35 @@ export class SchedulerHebdo
     enfants: readonly RecapMardiEnfant[],
     lienApp: string,
     destinataires: readonly DestinataireActif[],
+    livraisons: ReadonlyMap<string, LivraisonParent>,
   ): Promise<IssueEnvoiRecap> {
     const emails: string[] = [];
     let messageId: string | null = null;
     let auMoinsUnReel = false;
+    let echecCePassage = false;
     for (const dest of destinataires) {
+      const livraison = livraisons.get(dest.parentId);
+
+      // Skip-si-déjà-livré : parent terminal (ENVOYE/DRY_RUN). Aucun mail, aucun jeton.
+      if (
+        livraison &&
+        (livraison.statut === 'ENVOYE' || livraison.statut === 'DRY_RUN')
+      ) {
+        emails.push(dest.email);
+        if (livraison.statut === 'ENVOYE') {
+          auMoinsUnReel = true;
+        }
+        continue;
+      }
+
+      // Cap : adresse définitivement invalide, abandonnée pour cette semaine.
+      if (livraison && livraison.essais >= MAX_ESSAIS_PARENT) {
+        this.logger.warn(
+          `Récap mardi foyer ${foyerId} → parent ${dest.parentId} (${dest.email}) abandonné après ${String(livraison.essais)} essais — semaine ${semaineIso}`,
+        );
+        continue;
+      }
+
       const token = await this.desabonnement.emettreJeton({
         foyerId,
         parentId: dest.parentId,
@@ -460,22 +520,52 @@ export class SchedulerHebdo
             }
           : {}),
       });
-      const resultat = await this.mailer.envoyer({
-        to: dest.email,
-        subject: message.subject,
-        html: message.html,
-        text: message.text,
-        ...(token ? { headers: this.entetesDesabonnement(token) } : {}),
-      });
-      emails.push(dest.email);
-      if (!resultat.dryRun) {
-        auMoinsUnReel = true;
-        messageId = messageId ?? resultat.messageId;
+      try {
+        const resultat = await this.mailer.envoyer({
+          to: dest.email,
+          subject: message.subject,
+          html: message.html,
+          text: message.text,
+          ...(token ? { headers: this.entetesDesabonnement(token) } : {}),
+        });
+        emails.push(dest.email);
+        const statut = resultat.dryRun ? 'DRY_RUN' : 'ENVOYE';
+        if (!resultat.dryRun) {
+          auMoinsUnReel = true;
+          messageId = messageId ?? resultat.messageId;
+        }
+        await this.envoiRecap.marquerParentAbouti(
+          foyerId,
+          semaineIso,
+          dest.parentId,
+          { statut, email: dest.email, messageId: resultat.messageId },
+        );
+        this.logger.log(
+          `Récap mardi ${resultat.dryRun ? '(dry-run) ' : ''}foyer ${foyerId} → ${dest.email} (${String(enfants.length)} enfant(s)${token ? '' : ', sans désabonnement'}) — semaine ${semaineIso}`,
+        );
+      } catch (erreur) {
+        const motif = (erreur as Error).message;
+        await this.envoiRecap.marquerParentEchec(
+          foyerId,
+          semaineIso,
+          dest.parentId,
+          { email: dest.email, erreur: motif },
+        );
+        echecCePassage = true;
+        this.logger.warn(
+          `Récap mardi foyer ${foyerId} → ${dest.email} en échec : ${motif} — réessai au prochain tick, semaine ${semaineIso}`,
+        );
       }
-      this.logger.log(
-        `Récap mardi ${resultat.dryRun ? '(dry-run) ' : ''}foyer ${foyerId} → ${dest.email} (${String(enfants.length)} enfant(s)${token ? '' : ', sans désabonnement'}) — semaine ${semaineIso}`,
+    }
+
+    // ≥1 destinataire a échoué ce passage : lever APRÈS avoir persisté les succès, mais
+    // AVANT l'in-app / `marquerAbouti(slot)` (invariant : slot soldé en un seul passage).
+    if (echecCePassage) {
+      throw new Error(
+        `Récap mardi foyer ${foyerId} — au moins un destinataire en échec ce passage (semaine ${semaineIso})`,
       );
     }
+
     return {
       statut: auMoinsUnReel ? 'ENVOYE' : 'DRY_RUN',
       messageId,

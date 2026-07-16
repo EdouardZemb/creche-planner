@@ -227,6 +227,81 @@ describe('ValidationService.notifier', () => {
     expect(second).toBe(false);
     expect(lignes).toHaveLength(1);
   });
+
+  it('planification dégradée : ne fige aucun snapshot vide et renvoie false', async () => {
+    const { db, lignes } = fakeBase();
+    // `undefined` explicite sur le 1er mois couvert = relecture dégradée ⇒ `relire`
+    // renvoie `null` (distinct d'un mois absent = pas de saisie = semaine vide légitime).
+    const { client } = fakeClient({
+      '2026-06': undefined,
+      '2026-07': undefined,
+    });
+    const service = new ValidationService(db, client);
+
+    const cree = await service.notifier({
+      contratId: CONTRAT_ID,
+      foyerId: FOYER_ID,
+      semaineIso: SEMAINE,
+    });
+
+    expect(cree).toBe(false);
+    expect(lignes).toHaveLength(0);
+  });
+
+  it('auto-guérison : un tick ultérieur (planif rétablie) fige le vrai snapshot', async () => {
+    const { db, lignes } = fakeBase();
+
+    // Tick mardi n : planification dégradée ⇒ création différée, aucune ligne figée.
+    const degrade = fakeClient({ '2026-06': undefined, '2026-07': undefined });
+    const differe = await new ValidationService(db, degrade.client).notifier({
+      contratId: CONTRAT_ID,
+      foyerId: FOYER_ID,
+      semaineIso: SEMAINE,
+    });
+    expect(differe).toBe(false);
+    expect(lignes).toHaveLength(0);
+
+    // Tick mardi n+1 (~60 s) : planification rétablie ⇒ le vrai snapshot est figé.
+    const sain = fakeClient({
+      '2026-06': { absences: [absence('2026-06-29')] },
+    });
+    const cree = await new ValidationService(db, sain.client).notifier({
+      contratId: CONTRAT_ID,
+      foyerId: FOYER_ID,
+      semaineIso: SEMAINE,
+    });
+
+    expect(cree).toBe(true);
+    expect(lignes).toHaveLength(1);
+    expect(lignes[0]?.['snapshot']).toEqual({
+      '2026-06-29': {
+        joursSupplementaires: [],
+        absences: [absence('2026-06-29')],
+        exceptions: [],
+        joursAlsh: [],
+        ajustements: [],
+      },
+    });
+  });
+
+  it('régression : après un skip dégradé, valider lève NotFoundException (aucune ligne figée)', async () => {
+    const { db } = fakeBase();
+    const { client } = fakeClient({
+      '2026-06': undefined,
+      '2026-07': undefined,
+    });
+    const service = new ValidationService(db, client);
+
+    await service.notifier({
+      contratId: CONTRAT_ID,
+      foyerId: FOYER_ID,
+      semaineIso: SEMAINE,
+    });
+
+    await expect(service.valider(CONTRAT_ID, SEMAINE)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
 });
 
 describe('ValidationService.aValider', () => {

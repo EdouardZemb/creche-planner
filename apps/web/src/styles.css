@@ -97,9 +97,75 @@ a {
   margin-left: auto;
 }
 
-/* Carte de notification tapable (avec lien profond) : affordance discrète au
-   survol / focus clavier pour signaler qu'elle mène à l'éditeur de la semaine. */
+/* Panneau cloche (journal in-app) porté par la Modale : barre d'actions +
+   liste. Le conteneur/overlay/bottom-sheet vient des classes `.modal*`. */
+.cloche-barre {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-2);
+  margin-bottom: var(--esp-3);
+}
+
+/* Indice « N sur M » : discret, au-dessus du bouton « Tout marquer comme lu ». */
+.cloche-indice {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.cloche-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Une notification : séparée de la précédente par un filet. */
+.cloche-item {
+  padding: var(--esp-2) 0;
+  border-top: 1px solid var(--bordure);
+}
+
+/* Notification lue : grisée (comme l'ancien opacity: 0.65). */
+.cloche-item--lu {
+  opacity: 0.65;
+}
+
+.cloche-item-entete {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--esp-2);
+  align-items: baseline;
+}
+
+.cloche-item-sujet {
+  font-weight: 600;
+}
+
+/* Une notification lue n'est plus mise en avant. */
+.cloche-item--lu .cloche-item-sujet {
+  font-weight: 400;
+}
+
+.cloche-item-date {
+  color: var(--gris);
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.cloche-item-corps {
+  margin: var(--esp-1) 0 0;
+}
+
+.cloche-item-action {
+  margin-top: var(--esp-1);
+}
+
+/* Carte de notification tapable (avec lien profond) : cible tactile pleine
+   largeur, couleur héritée + affordance discrète au survol / focus clavier
+   pour signaler qu'elle mène à l'éditeur de la semaine. */
 .cloche-carte-lien {
+  display: block;
+  color: inherit;
+  text-decoration: none;
   border-radius: 4px;
 }
 .cloche-carte-lien:hover,

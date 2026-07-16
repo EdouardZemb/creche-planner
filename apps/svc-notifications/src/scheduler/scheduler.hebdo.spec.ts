@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { libelleSemaineFr } from '@creche-planner/shared-semaine';
 import type { MailerService } from '@creche-planner/nest-commons';
-import { SchedulerHebdo } from './scheduler.hebdo.js';
+import { MAX_ESSAIS_PARENT, SchedulerHebdo } from './scheduler.hebdo.js';
 import type { Clock } from './clock.js';
 import type { OptionsScheduler } from './scheduler.options.js';
-import type { EnvoiRecapService } from './envoi-recap.service.js';
+import type {
+  EnvoiRecapService,
+  LivraisonParent,
+} from './envoi-recap.service.js';
 import type { Database } from '../database/database.types.js';
 import type { ContratRow } from '../database/schema.js';
 import type { ValidationService } from '../validation/validation.service.js';
@@ -121,6 +124,27 @@ function cleEnvoi(foyerId: string, semaineIso: string): string {
   return `${foyerId}|${semaineIso}`;
 }
 
+/** Ligne du ledger de livraison **par parent** (`envoi_recap_parent`, Lot L1). */
+interface EnvoiParentRow {
+  foyerId: string;
+  semaineIso: string;
+  parentId: string;
+  statut: 'ENVOYE' | 'DRY_RUN' | 'ECHEC';
+  essais: number;
+  email: string;
+  messageId: string | null;
+  erreur: string | null;
+}
+
+/** Clé primaire composite `(foyer, semaine, parent)` du ledger `envoi_recap_parent`. */
+function cleParent(
+  foyerId: string,
+  semaineIso: string,
+  parentId: string,
+): string {
+  return `${foyerId}|${semaineIso}|${parentId}`;
+}
+
 /**
  * Double **fidèle** de `EnvoiRecapService` : un journal en mémoire qui reproduit la
  * clé primaire `(foyer, semaine)`, la réservation idempotente, le filtre de reprise et
@@ -130,12 +154,17 @@ function cleEnvoi(foyerId: string, semaineIso: string): string {
 function fakeEnvoiRecap(): {
   service: EnvoiRecapService;
   rows: Map<string, EnvoiRow>;
+  parentRows: Map<string, EnvoiParentRow>;
   reserver: ReturnType<typeof vi.fn>;
   aRetenter: ReturnType<typeof vi.fn>;
   marquerAbouti: ReturnType<typeof vi.fn>;
   marquerEchec: ReturnType<typeof vi.fn>;
+  livraisonsParFoyerSemaine: ReturnType<typeof vi.fn>;
+  marquerParentAbouti: ReturnType<typeof vi.fn>;
+  marquerParentEchec: ReturnType<typeof vi.fn>;
 } {
   const rows = new Map<string, EnvoiRow>();
+  const parentRows = new Map<string, EnvoiParentRow>();
   const reserver = vi.fn((foyerId: string, semaineIso: string) => {
     const cle = cleEnvoi(foyerId, semaineIso);
     if (!rows.has(cle)) {
@@ -189,18 +218,92 @@ function fakeEnvoiRecap(): {
       return Promise.resolve();
     },
   );
+  // --- Ledger par parent (Lot L1) : fidèle au compare-and-set + incrément d'essais. ---
+  const livraisonsParFoyerSemaine = vi.fn(
+    (foyerId: string, semaineIso: string) =>
+      Promise.resolve(
+        new Map<string, LivraisonParent>(
+          [...parentRows.values()]
+            .filter((r) => r.foyerId === foyerId && r.semaineIso === semaineIso)
+            .map((r) => [r.parentId, { statut: r.statut, essais: r.essais }]),
+        ),
+      ),
+  );
+  const marquerParentAbouti = vi.fn(
+    (
+      foyerId: string,
+      semaineIso: string,
+      parentId: string,
+      params: {
+        statut: 'ENVOYE' | 'DRY_RUN';
+        email: string;
+        messageId: string | null;
+      },
+    ) => {
+      const cle = cleParent(foyerId, semaineIso, parentId);
+      const r = parentRows.get(cle);
+      // Compare-and-set : un parent déjà terminal n'est jamais rétrogradé/relivré.
+      if (r && (r.statut === 'ENVOYE' || r.statut === 'DRY_RUN')) {
+        return Promise.resolve();
+      }
+      parentRows.set(cle, {
+        foyerId,
+        semaineIso,
+        parentId,
+        statut: params.statut,
+        essais: r?.essais ?? 0,
+        email: params.email,
+        messageId: params.messageId,
+        erreur: null,
+      });
+      return Promise.resolve();
+    },
+  );
+  const marquerParentEchec = vi.fn(
+    (
+      foyerId: string,
+      semaineIso: string,
+      parentId: string,
+      params: { email: string; erreur: string },
+    ) => {
+      const cle = cleParent(foyerId, semaineIso, parentId);
+      const r = parentRows.get(cle);
+      // Compare-and-set : un ECHEC n'écrase jamais un envoi déjà abouti.
+      if (r && (r.statut === 'ENVOYE' || r.statut === 'DRY_RUN')) {
+        return Promise.resolve();
+      }
+      parentRows.set(cle, {
+        foyerId,
+        semaineIso,
+        parentId,
+        statut: 'ECHEC',
+        essais: (r?.essais ?? 0) + 1,
+        email: params.email,
+        messageId: r?.messageId ?? null,
+        erreur: params.erreur,
+      });
+      return Promise.resolve();
+    },
+  );
   return {
     service: {
       reserver,
       aRetenter,
       marquerAbouti,
       marquerEchec,
+      livraisonsParFoyerSemaine,
+      marquerParentAbouti,
+      marquerParentEchec,
     } as unknown as EnvoiRecapService,
     rows,
+    parentRows,
     reserver,
     aRetenter,
     marquerAbouti,
     marquerEchec,
+    livraisonsParFoyerSemaine,
+    marquerParentAbouti,
+    marquerParentEchec,
   };
 }
 
@@ -219,10 +322,14 @@ interface Doubles {
   envoyer: ReturnType<typeof vi.fn>;
   envoiRecap: EnvoiRecapService;
   envoiRows: Map<string, EnvoiRow>;
+  envoiParentRows: Map<string, EnvoiParentRow>;
   reserver: ReturnType<typeof vi.fn>;
   aRetenter: ReturnType<typeof vi.fn>;
   marquerAbouti: ReturnType<typeof vi.fn>;
   marquerEchec: ReturnType<typeof vi.fn>;
+  livraisonsParFoyerSemaine: ReturnType<typeof vi.fn>;
+  marquerParentAbouti: ReturnType<typeof vi.fn>;
+  marquerParentEchec: ReturnType<typeof vi.fn>;
 }
 
 function doubles(
@@ -264,10 +371,14 @@ function doubles(
     envoyer,
     envoiRecap: recap.service,
     envoiRows: recap.rows,
+    envoiParentRows: recap.parentRows,
     reserver: recap.reserver,
     aRetenter: recap.aRetenter,
     marquerAbouti: recap.marquerAbouti,
     marquerEchec: recap.marquerEchec,
+    livraisonsParFoyerSemaine: recap.livraisonsParFoyerSemaine,
+    marquerParentAbouti: recap.marquerParentAbouti,
+    marquerParentEchec: recap.marquerParentEchec,
   };
 }
 
@@ -736,5 +847,108 @@ describe('SchedulerHebdo.declencher', () => {
     expect(dd.envoiRows.get(cleEnvoi(FOYER_B, SEMAINE_N1))?.statut).toBe(
       'ENVOYE',
     );
+  });
+
+  // ---- Lot L1 : ledger de livraison par parent (anti-tempête + cap) ---------
+
+  /** Nombre d'envois adressés à une adresse donnée sur l'ensemble des ticks. */
+  function envoisVers(dd: Doubles, email: string): number {
+    return dd.envoyer.mock.calls.filter(
+      (c) => (c[0] as { to: string }).to === email,
+    ).length;
+  }
+
+  it('anti-tempête : un co-parent injoignable ne re-livre JAMAIS le parent principal', async () => {
+    const dd = doubles(
+      [ETAB_CRECHE],
+      [
+        { parentId: 'p1', email: 'maman@test' }, // principal, servi une seule fois
+        { parentId: 'p2', email: 'papa@test' }, // adresse qui rejette toujours
+      ],
+      'jeton-abc',
+      ['p1'], // un seul destinataire in-app (assertion creerInApp = 1 au solde)
+    );
+    // p1 (principal, trié en tête) est servi au 1er appel ; p2 rejette à chaque appel suivant.
+    dd.envoyer
+      .mockResolvedValueOnce({ messageId: '<m1@test>', dryRun: false })
+      .mockRejectedValue(new Error('adresse invalide'));
+    const s = scheduler(MARDI_8H01, [contratRow()], dd);
+
+    // 3 ticks : le slot foyer rejoue à cause de p2, mais p1 ne doit partir qu'une fois.
+    await s.declencher();
+    await s.declencher();
+    await s.declencher();
+
+    expect(envoisVers(dd, 'maman@test')).toBe(1); // ← cœur du fix : jamais spammé
+    expect(envoisVers(dd, 'papa@test')).toBe(3); // seul l'injoignable est retenté
+    // Slot foyer en ECHEC (p2 bloque) ; l'in-app n'est PAS créé (foyer non soldé).
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'ECHEC',
+    );
+    expect(dd.creerInApp).not.toHaveBeenCalled();
+    // Ledger : p1 terminal ENVOYE (jamais rétrogradé), p2 en ECHEC avec essais qui montent.
+    expect(
+      dd.envoiParentRows.get(cleParent(FOYER_A, SEMAINE_N1, 'p1'))?.statut,
+    ).toBe('ENVOYE');
+    const p2 = dd.envoiParentRows.get(cleParent(FOYER_A, SEMAINE_N1, 'p2'));
+    expect(p2?.statut).toBe('ECHEC');
+    expect(p2?.essais).toBe(3);
+    // Jeton émis pour p1 UNE fois (skip-si-livré n'émet plus de jeton ensuite).
+    expect(
+      dd.emettreJeton.mock.calls.filter(
+        (c) => (c[0] as { parentId: string }).parentId === 'p1',
+      ),
+    ).toHaveLength(1);
+
+    // p2 finit par répondre → le foyer se solde : slot ENVOYE, in-app créé UNE fois,
+    // et p1 (déjà livré) n'est toujours pas re-sollicité.
+    dd.envoyer.mockResolvedValue({ messageId: '<m2@test>', dryRun: false });
+    await s.declencher();
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'ENVOYE',
+    );
+    expect(dd.creerInApp).toHaveBeenCalledTimes(1);
+    expect(envoisVers(dd, 'maman@test')).toBe(1);
+  });
+
+  it('cap : une adresse définitivement invalide est abandonnée après MAX_ESSAIS_PARENT essais', async () => {
+    const dd = doubles(
+      [ETAB_CRECHE],
+      [
+        { parentId: 'p1', email: 'maman@test' },
+        { parentId: 'p2', email: 'papa@test' },
+      ],
+      'jeton-abc',
+      ['p1'],
+    );
+    // p1 servi au 1er appel ; p2 rejette à chaque tick suivant (adresse définitivement invalide).
+    dd.envoyer
+      .mockResolvedValueOnce({ messageId: '<m@test>', dryRun: false })
+      .mockRejectedValue(new Error('adresse invalide'));
+    const s = scheduler(MARDI_8H01, [contratRow()], dd);
+
+    // MAX_ESSAIS_PARENT ticks : p2 rejette et incrémente son compteur jusqu'au plafond.
+    for (let i = 0; i < MAX_ESSAIS_PARENT; i++) {
+      await s.declencher();
+    }
+    expect(envoisVers(dd, 'papa@test')).toBe(MAX_ESSAIS_PARENT);
+    expect(
+      dd.envoiParentRows.get(cleParent(FOYER_A, SEMAINE_N1, 'p2'))?.essais,
+    ).toBe(MAX_ESSAIS_PARENT);
+    // Toujours en échec : p2 bloque encore la terminalisation du slot.
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'ECHEC',
+    );
+    expect(dd.creerInApp).not.toHaveBeenCalled();
+
+    // Tick suivant : p2 a atteint le plafond → abandonné (plus jamais tenté), slot soldé.
+    await s.declencher();
+    expect(envoisVers(dd, 'papa@test')).toBe(MAX_ESSAIS_PARENT); // pas de tentative de plus
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'ENVOYE',
+    );
+    expect(dd.creerInApp).toHaveBeenCalledTimes(1);
+    // p1 livré une seule fois sur toute la durée (jamais victime du retry de p2).
+    expect(envoisVers(dd, 'maman@test')).toBe(1);
   });
 });
