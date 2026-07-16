@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { EtablissementModule } from '../etablissement/etablissement.module.js';
+import { CLOCK, horlogeSysteme } from '../scheduler/clock.js';
 import { EnvoiController } from './envoi.controller.js';
 import { EnvoiService } from './envoi.service.js';
 
@@ -9,10 +10,12 @@ import { EnvoiService } from './envoi.service.js';
  * dans `AppModule`, garde-fous dry-run/allowlist) et le client Drizzle par
  * `DatabaseModule`. On importe `EtablissementModule` pour résoudre le destinataire via
  * le read model projeté (`EtablissementProjeteService`, routé par `contrat.etablissement_id`).
+ * L'horloge système (`CLOCK`, mockée en test) date la finalisation des envois et mesure
+ * l'âge d'une réservation `EN_COURS` bloquée pour décider d'une reprise (Lot 5).
  */
 @Module({
   imports: [EtablissementModule],
   controllers: [EnvoiController],
-  providers: [EnvoiService],
+  providers: [EnvoiService, { provide: CLOCK, useValue: horlogeSysteme }],
 })
 export class EnvoiModule {}
