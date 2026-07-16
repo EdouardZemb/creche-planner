@@ -28,6 +28,13 @@ export interface EtatVideProps {
   description?: ReactNode;
   /** Une ou plusieurs actions de sortie (lien et/ou bouton). */
   actions?: ActionEtatVide[];
+  /**
+   * Rend le titre en `<h1>` plutôt qu'en `<h2>`. À poser uniquement quand
+   * `EtatVide` est le titre principal d'un écran pleine page (aucun autre
+   * `<h1>` alentour) ; laisser `false` pour les empty-states in-page portés par
+   * une page qui a déjà son propre `<h1>`.
+   */
+  titrePrincipal?: boolean;
 }
 
 function classeAction(primaire: boolean): string {
@@ -38,10 +45,16 @@ function classeAction(primaire: boolean): string {
  * Bloc d'état vide / erreur orienté action : titre + description optionnelle +
  * 0..n actions (liens ou boutons). Évite les impasses (cf. EX-01/03/07).
  */
-export function EtatVide({ titre, description, actions = [] }: EtatVideProps) {
+export function EtatVide({
+  titre,
+  description,
+  actions = [],
+  titrePrincipal = false,
+}: EtatVideProps) {
+  const Titre = titrePrincipal ? 'h1' : 'h2';
   return (
     <div className="etat-vide">
-      <h2 className="etat-vide-titre">{titre}</h2>
+      <Titre className="etat-vide-titre">{titre}</Titre>
       {description != null && (
         <p className="etat-vide-description">{description}</p>
       )}
