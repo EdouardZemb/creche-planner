@@ -1030,6 +1030,60 @@ h3 {
   }
 }
 
+/* ---- Écran « Mon profil » (mobile-first) -------------------------------- */
+/* Titre de carte et paragraphe d'intro collés au haut de leur bloc. */
+.profil-titre,
+.profil-intro {
+  margin-top: 0;
+}
+
+/* Message d'erreur de chargement (rouge via `.debit`) : resserré au-dessus
+   du bouton « Réessayer ». */
+.profil-erreur {
+  margin: 0 0 var(--esp-2);
+}
+
+/* Champs de saisie pleine largeur (calqué sur `.etab-form input`). */
+.profil-form input {
+  width: 100%;
+}
+
+/* Paire prénom/nom : espace au-dessus (`.champs-duo` gère l'empilement < 480px). */
+.profil-form .champs-duo {
+  margin-top: var(--esp-2);
+}
+
+/* Groupe de préférences sans bordure (aligné sur les autres formulaires). */
+.profil-fieldset {
+  border: none;
+  padding: 0;
+  margin: var(--esp-4) 0 0;
+}
+
+.profil-fieldset legend {
+  font-weight: 600;
+  margin-bottom: var(--esp-1);
+}
+
+/* Ligne « moyen d'être prévenu » : case cochable + éventuelle mention dessous. */
+.profil-canal {
+  margin-top: var(--esp-1);
+}
+
+/* Mention discrète sous une case (verrou du dernier moyen, désactivation
+   RGPD) : alignée sous le libellé, au-delà de la case. */
+.profil-canal-aide {
+  display: block;
+  margin-top: var(--esp-1);
+  margin-left: 1.75rem;
+  font-size: 0.85rem;
+}
+
+/* Note contextuelle (parent principal). */
+.profil-note {
+  margin-top: var(--esp-2);
+}
+
 /* ---- Panneau coût (sticky le long du planning) --------------------------- */
 .panneau-cout {
   position: sticky;

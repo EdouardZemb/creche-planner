@@ -15,12 +15,7 @@ import { useTitrePage } from '../hooks/useTitrePage';
  * utilisé (400) — chacune renvoyant vers « Mon profil » pour gérer ses préférences.
  */
 type Etat =
-  | 'saisie'
-  | 'encours'
-  | 'succes'
-  | 'dernier-canal'
-  | 'invalide'
-  | 'erreur';
+  'saisie' | 'encours' | 'succes' | 'dernier-canal' | 'invalide' | 'erreur';
 
 export function DesabonnementPage() {
   useTitrePage('Désabonnement');
@@ -52,11 +47,11 @@ export function DesabonnementPage() {
       <h1>Désabonnement</h1>
 
       {etat === 'saisie' && (
-        <section className="carte" style={{ maxWidth: 600 }}>
-          <p style={{ marginTop: 0 }}>
+        <section className="carte page-etroite">
+          <p className="profil-intro">
             Vous êtes sur le point de ne plus recevoir{' '}
-            <strong>par e-mail</strong> les rappels de validation hebdomadaire
-            du planning.
+            <strong>par e-mail</strong> les rappels du mardi (validation des
+            besoins de la semaine).
           </p>
           <button
             type="button"
@@ -76,11 +71,11 @@ export function DesabonnementPage() {
 
       {etat === 'succes' && (
         <section className="carte" role="status" aria-live="polite">
-          <p className="credit" style={{ marginTop: 0 }}>
+          <p className="credit profil-intro">
             C’est fait : vous ne recevrez plus ces rappels par e-mail.
           </p>
           <p className="muted">
-            Vous pouvez réactiver ce canal à tout moment depuis vos préférences.
+            Vous pouvez réactiver l’e-mail à tout moment depuis vos préférences.
           </p>
           <Link to="/mon-profil">Gérer mes préférences</Link>
         </section>
@@ -88,10 +83,9 @@ export function DesabonnementPage() {
 
       {etat === 'dernier-canal' && (
         <section className="carte" role="alert">
-          <p style={{ marginTop: 0 }}>
-            Ce canal ne peut pas être coupé : au moins un canal doit rester
-            actif pour cette notification de service. Gérez vos préférences pour
-            choisir un autre canal.
+          <p className="profil-intro">
+            Ce rappel doit vous parvenir au moins d’une façon. Activez
+            l’application avant de couper l’e-mail, depuis vos préférences.
           </p>
           <Link to="/mon-profil">Gérer mes préférences</Link>
         </section>
@@ -99,7 +93,7 @@ export function DesabonnementPage() {
 
       {etat === 'invalide' && (
         <section className="carte" role="alert">
-          <p style={{ marginTop: 0 }}>
+          <p className="profil-intro">
             Ce lien de désabonnement est invalide, expiré ou a déjà été utilisé.
           </p>
           <Link to="/mon-profil">Gérer mes préférences</Link>
@@ -108,7 +102,7 @@ export function DesabonnementPage() {
 
       {etat === 'erreur' && (
         <section className="carte" role="alert">
-          <p style={{ marginTop: 0 }}>
+          <p className="profil-intro">
             Une erreur est survenue. Veuillez réessayer dans un instant.
           </p>
           <button

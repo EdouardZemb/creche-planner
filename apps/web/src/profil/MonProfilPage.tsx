@@ -6,6 +6,8 @@ import {
   type ErreurChamp,
 } from '../utils/erreurs';
 import { useTitrePage } from '../hooks/useTitrePage';
+import { useAnnonce } from '../hooks/useAnnonce';
+import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
 import type {
   CanalNotification,
   MonProfilVue,
@@ -28,31 +30,42 @@ interface CanalMeta {
 }
 
 const CANAUX: readonly CanalMeta[] = [
-  { canal: 'EMAIL', libelle: 'E-mail' },
+  { canal: 'EMAIL', libelle: 'Par e-mail' },
   { canal: 'IN_APP', libelle: 'Dans l’application' },
 ];
 
 interface TypeMeta {
   readonly type: TypeNotification;
-  readonly libelle: string;
-  readonly description: string;
   /** Type **de service** : au moins un canal doit rester actif (verrou UI + API). */
   readonly service: boolean;
 }
 
 const TYPES: readonly TypeMeta[] = [
-  {
-    type: 'VALIDATION_HEBDO',
-    libelle: 'Validation hebdomadaire',
-    description:
-      'Le rappel du mardi pour valider les besoins de la semaine suivante.',
-    service: true,
-  },
+  { type: 'VALIDATION_HEBDO', service: true },
 ];
 
 /** Clé stable d'une case type × canal dans l'état local. */
 function cle(type: string, canal: string): string {
   return `${type}:${canal}`;
+}
+
+/** Heure locale « 21:43 » posée dans le statut d'un enregistrement réussi. */
+function heureCourante(): string {
+  return new Date().toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/** Sujet d'annonce (lecteur d'écran) selon le canal basculé. */
+const SUJET_ANNONCE: Record<CanalNotification, string> = {
+  EMAIL: 'E-mail',
+  IN_APP: 'Rappel dans l’application',
+};
+
+/** Message annoncé après resync : « E-mail activé », « … désactivé », etc. */
+function libelleAnnonce(canal: CanalNotification, actif: boolean): string {
+  return `${SUJET_ANNONCE[canal]} ${actif ? 'activé' : 'désactivé'}`;
 }
 
 /**
@@ -81,7 +94,7 @@ function nbCanauxActifs(etat: Record<string, boolean>, type: string): number {
   return CANAUX.filter((c) => etat[cle(type, c.canal)]).length;
 }
 
-// ---- Bloc « Notifications » (tableau type × canal) --------------------------
+// ---- Bloc « Le rappel du mardi » (question parent, e-mail / application) -----
 
 function BlocNotifications({ profil }: { readonly profil: MonProfilVue }) {
   const [etat, setEtat] = useState<Record<string, boolean>>(() =>
@@ -90,8 +103,10 @@ function BlocNotifications({ profil }: { readonly profil: MonProfilVue }) {
   // Case en cours d'écriture (clé type×canal) : désactive la case le temps de l'aller-retour.
   const [enCours, setEnCours] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [succes, setSucces] = useState<string | null>(null);
+  const [etatSauvegarde, setEtatSauvegarde] = useState<EtatSauvegarde>('idle');
+  const [enregistreA, setEnregistreA] = useState<string | null>(null);
   const refErreur = useRef<HTMLParagraphElement>(null);
+  const { annoncer, regionLiveProps } = useAnnonce();
 
   // a11y : porte le focus sur l'erreur globale dès qu'elle apparaît.
   useEffect(() => {
@@ -114,19 +129,21 @@ function BlocNotifications({ profil }: { readonly profil: MonProfilVue }) {
     const precedent = etat;
     setEtat({ ...etat, [k]: nouvelleValeur }); // feedback optimiste
     setErreur(null);
-    setSucces(null);
     setEnCours(k);
     try {
       const maj = await api.majPreferences({
         preferences: [{ typeNotification: type, canal, actif: nouvelleValeur }],
       });
       setEtat(construireEtat(maj)); // resync sur l'état effectif serveur
-      setSucces('Préférences enregistrées.');
+      setEnregistreA(heureCourante());
+      setEtatSauvegarde('enregistre');
+      annoncer(libelleAnnonce(canal, nouvelleValeur));
     } catch (err) {
       setEtat(precedent); // rollback
+      setEtatSauvegarde('erreur');
       if (err instanceof ApiError && err.status === 400) {
         setErreur(
-          'Ce canal ne peut pas être coupé : au moins un canal doit rester actif pour cette notification de service.',
+          'Impossible de tout couper : gardez au moins un moyen d’être prévenu·e (e-mail ou application).',
         );
       } else {
         setErreur(messageErreur(err));
@@ -136,57 +153,47 @@ function BlocNotifications({ profil }: { readonly profil: MonProfilVue }) {
     }
   }
 
+  // Statut affiché : « en-cours » tant qu'une écriture est en vol, sinon le
+  // dernier état atteint (persiste après succès/échec) — cf. `ParentsSection`.
+  const etatAffiche: EtatSauvegarde =
+    enCours !== null ? 'en-cours' : etatSauvegarde;
+
   return (
-    <section
-      className="carte"
-      style={{ maxWidth: 600 }}
-      aria-labelledby="notif-titre"
-    >
-      <h2 id="notif-titre" style={{ marginTop: 0 }}>
-        Notifications
+    <section className="carte page-etroite" aria-labelledby="notif-titre">
+      <h2 id="notif-titre" className="profil-titre">
+        Le rappel du mardi
       </h2>
-      <p className="muted" style={{ marginTop: 0 }}>
-        Choisissez comment vous souhaitez être prévenu. Une notification de
-        service garde toujours au moins un canal actif.
-      </p>
 
       {erreur && (
         <p className="debit" role="alert" tabIndex={-1} ref={refErreur}>
           {erreur}
         </p>
       )}
-      <div role="status" aria-live="polite">
-        {succes && <p className="credit">{succes}</p>}
-      </div>
 
       {TYPES.map((t) => {
         const actifs = nbCanauxActifs(etat, t.type);
+        // Trace RGPD : si l'e-mail a été désactivé par lien one-click, on le
+        // rappelle sous la case « Par e-mail » (`consentementAt` non affiché).
+        const prefEmail = profil.preferences.find(
+          (p) => p.typeNotification === t.type && p.canal === 'EMAIL',
+        );
+        const desabonneLe = prefEmail?.desabonneAt ?? null;
         return (
-          <fieldset
-            key={t.type}
-            style={{ border: 'none', padding: 0, margin: '1rem 0 0' }}
-          >
-            <legend style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
-              {t.libelle}
-            </legend>
-            <p className="muted" style={{ marginTop: 0 }}>
-              {t.description}
+          <fieldset key={t.type} className="profil-fieldset">
+            <legend>Comment souhaitez-vous être prévenu·e ?</legend>
+            <p className="muted profil-intro">
+              Chaque mardi, un rappel vous invite à valider les besoins de la
+              semaine suivante.
             </p>
             {CANAUX.map((c) => {
               const k = cle(t.type, c.canal);
               const actif = etat[k] ?? false;
-              // Dernier canal actif d'un type de service → verrouillé.
+              // Dernier moyen actif d'un type de service → verrouillé.
               const verrou = t.service && actif && actifs <= 1;
               const idAide = `${k}-aide`;
               return (
-                <div key={c.canal} style={{ marginTop: '0.25rem' }}>
-                  <label
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                    }}
-                  >
+                <div key={c.canal} className="profil-canal">
+                  <label className="case-cochable">
                     <input
                       type="checkbox"
                       checked={actif}
@@ -199,17 +206,15 @@ function BlocNotifications({ profil }: { readonly profil: MonProfilVue }) {
                     {c.libelle}
                   </label>
                   {verrou && (
-                    <span
-                      id={idAide}
-                      className="muted"
-                      style={{
-                        display: 'block',
-                        marginLeft: '1.5rem',
-                        fontSize: '0.85em',
-                      }}
-                    >
-                      Dernier canal actif : il ne peut pas être désactivé pour
-                      cette notification de service.
+                    <span id={idAide} className="muted profil-canal-aide">
+                      Gardez au moins un moyen d’être prévenu·e : celui-ci reste
+                      actif.
+                    </span>
+                  )}
+                  {c.canal === 'EMAIL' && desabonneLe !== null && (
+                    <span className="muted profil-canal-aide">
+                      E-mail désactivé le{' '}
+                      {new Date(desabonneLe).toLocaleDateString('fr-FR')}.
                     </span>
                   )}
                 </div>
@@ -218,6 +223,11 @@ function BlocNotifications({ profil }: { readonly profil: MonProfilVue }) {
           </fieldset>
         );
       })}
+
+      <div className="actions-ligne">
+        <StatutSauvegarde etat={etatAffiche} enregistreA={enregistreA} />
+      </div>
+      <p {...regionLiveProps} className="sr-only" />
     </section>
   );
 }
@@ -232,7 +242,8 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
   const [occupe, setOccupe] = useState(false);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);
-  const [succes, setSucces] = useState<string | null>(null);
+  const [etatSauvegarde, setEtatSauvegarde] = useState<EtatSauvegarde>('idle');
+  const [enregistreA, setEnregistreA] = useState<string | null>(null);
   const refErreur = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
@@ -250,7 +261,6 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
     setOccupe(true);
     setErreurGlobale(null);
     setErreursChamps([]);
-    setSucces(null);
     try {
       // Réutilise l'édition parent existante (PUT /foyers/:id/parents/:parentId,
       // gardée @FoyerScope). On conserve le statut `principal` tel quel : ce
@@ -264,8 +274,10 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
       setEmail(maj.email);
       setPrenom(maj.prenom ?? '');
       setNom(maj.nom ?? '');
-      setSucces('Profil enregistré.');
+      setEnregistreA(heureCourante());
+      setEtatSauvegarde('enregistre');
     } catch (err) {
+      setEtatSauvegarde('erreur');
       if (err instanceof ApiError) {
         const erreurs = extraireErreurs(err.corps);
         if (erreurs.length > 0) {
@@ -283,13 +295,14 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
     }
   }
 
+  const etatAffiche: EtatSauvegarde = occupe ? 'en-cours' : etatSauvegarde;
+
   return (
     <section
-      className="carte"
-      style={{ maxWidth: 600 }}
+      className="carte page-etroite profil-form"
       aria-labelledby="identite-titre"
     >
-      <h2 id="identite-titre" style={{ marginTop: 0 }}>
+      <h2 id="identite-titre" className="profil-titre">
         Mes informations
       </h2>
 
@@ -298,9 +311,6 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
           {erreurGlobale}
         </p>
       )}
-      <div role="status" aria-live="polite">
-        {succes && <p className="credit">{succes}</p>}
-      </div>
 
       <label htmlFor={`${idBase}-email`}>
         Adresse e-mail <span aria-hidden="true">*</span>
@@ -317,7 +327,6 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
         onChange={(e) => {
           setEmail(e.target.value);
         }}
-        style={{ width: '100%' }}
       />
       {erreurPour('email') && (
         <span id={idErreur('email')} className="debit" role="alert">
@@ -325,8 +334,8 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
         </span>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-        <div style={{ flex: 1 }}>
+      <div className="champs-duo">
+        <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span className="muted">(facultatif)</span>
           </label>
@@ -337,10 +346,9 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
             onChange={(e) => {
               setPrenom(e.target.value);
             }}
-            style={{ width: '100%' }}
           />
         </div>
-        <div style={{ flex: 1 }}>
+        <div>
           <label htmlFor={`${idBase}-nom`}>
             Nom <span className="muted">(facultatif)</span>
           </label>
@@ -351,18 +359,17 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
             onChange={(e) => {
               setNom(e.target.value);
             }}
-            style={{ width: '100%' }}
           />
         </div>
       </div>
 
       {profil.principal && (
-        <p className="muted" style={{ marginTop: '0.5rem' }}>
+        <p className="muted profil-note">
           Vous êtes le parent principal (destinataire « À » par défaut).
         </p>
       )}
 
-      <div style={{ marginTop: '0.75rem' }}>
+      <div className="actions-ligne">
         <button
           type="button"
           className="btn"
@@ -371,6 +378,7 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
         >
           {occupe ? 'Enregistrement…' : 'Enregistrer'}
         </button>
+        <StatutSauvegarde etat={etatAffiche} enregistreA={enregistreA} />
       </div>
     </section>
   );
@@ -400,7 +408,7 @@ export function MonProfilPage() {
 
       {!loading && error && !data && (
         <div className="carte" role="alert">
-          <p style={{ color: 'var(--rouge)', margin: '0 0 0.5rem' }}>{error}</p>
+          <p className="debit profil-erreur">{error}</p>
           <button type="button" className="btn secondaire" onClick={reload}>
             Réessayer
           </button>
