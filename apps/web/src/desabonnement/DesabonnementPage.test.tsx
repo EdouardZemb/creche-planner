@@ -69,14 +69,14 @@ describe('DesabonnementPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('dernier canal d’un type de service (409) : message dédié « ne peut pas être coupé »', async () => {
+  it('dernier moyen de rappel (409) : message dédié « au moins d’une façon »', async () => {
     mockedApi.desabonner.mockRejectedValue(new ApiError(409, undefined));
     afficher('/desabonnement?token=abc123');
 
     fireEvent.click(screen.getByRole('button', { name: 'Me désabonner' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      /ne peut pas être coupé/i,
+      /au moins d.une façon/i,
     );
   });
 

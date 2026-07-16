@@ -33,13 +33,14 @@ function pref(
   typeNotification: PreferenceVue['typeNotification'],
   canal: PreferenceVue['canal'],
   actif: boolean,
+  desabonneAt: string | null = null,
 ): PreferenceVue {
   return {
     typeNotification,
     canal,
     actif,
     consentementAt: null,
-    desabonneAt: null,
+    desabonneAt,
   };
 }
 
@@ -75,8 +76,8 @@ describe('MonProfilPage', () => {
     expect(screen.getByDisplayValue('Alex')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Dupont')).toBeInTheDocument();
 
-    // Bloc notifications : les deux canaux du type de service, cochés.
-    expect(screen.getByRole('checkbox', { name: 'E-mail' })).toBeChecked();
+    // Bloc « Le rappel du mardi » : les deux moyens du type de service, cochés.
+    expect(screen.getByRole('checkbox', { name: 'Par e-mail' })).toBeChecked();
     expect(
       screen.getByRole('checkbox', { name: /application/i }),
     ).toBeChecked();
@@ -109,7 +110,7 @@ describe('MonProfilPage', () => {
         principal: true,
       });
     });
-    expect(await screen.findByText('Profil enregistré.')).toBeInTheDocument();
+    expect(await screen.findByText(/Enregistré à/i)).toBeInTheDocument();
   });
 
   it('décoche un canal et persiste la préférence', async () => {
@@ -134,9 +135,7 @@ describe('MonProfilPage', () => {
         ],
       });
     });
-    expect(
-      await screen.findByText('Préférences enregistrées.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Enregistré à/i)).toBeInTheDocument();
   });
 
   it('verrouille le dernier canal actif d’un type de service', async () => {
@@ -151,10 +150,10 @@ describe('MonProfilPage', () => {
     );
     render(<MonProfilPage />);
 
-    const email = await screen.findByRole('checkbox', { name: 'E-mail' });
+    const email = await screen.findByRole('checkbox', { name: 'Par e-mail' });
     expect(email).toBeChecked();
     expect(email).toBeDisabled();
-    expect(screen.getByText(/Dernier canal actif/i)).toBeInTheDocument();
+    expect(screen.getByText(/gardez au moins un moyen/i)).toBeInTheDocument();
     // La case décochée reste modifiable.
     expect(
       screen.getByRole('checkbox', { name: /application/i }),
@@ -174,7 +173,7 @@ describe('MonProfilPage', () => {
       expect(inApp).toBeChecked();
     });
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      /au moins un canal doit rester actif/i,
+      /gardez au moins un moyen/i,
     );
   });
 
@@ -210,5 +209,41 @@ describe('MonProfilPage', () => {
     expect(document.getElementById(idDecrit!)).toHaveTextContent(
       'adresse e-mail invalide',
     );
+  });
+
+  it('rappelle la date de désactivation e-mail (RGPD) si désabonné par lien', async () => {
+    // L'e-mail a été coupé par lien one-click → trace datée sous « Par e-mail ».
+    mockedApi.monProfil.mockResolvedValue(
+      profil({
+        preferences: [
+          pref('VALIDATION_HEBDO', 'EMAIL', false, '2026-07-10T09:00:00.000Z'),
+          pref('VALIDATION_HEBDO', 'IN_APP', true),
+        ],
+      }),
+    );
+    render(<MonProfilPage />);
+
+    expect(await screen.findByText(/E-mail désactivé le/i)).toBeInTheDocument();
+  });
+
+  it('annonce au lecteur d’écran l’activation/désactivation du rappel', async () => {
+    mockedApi.monProfil.mockResolvedValue(profil());
+    mockedApi.majPreferences
+      .mockResolvedValueOnce([
+        pref('VALIDATION_HEBDO', 'EMAIL', true),
+        pref('VALIDATION_HEBDO', 'IN_APP', false),
+      ])
+      .mockResolvedValueOnce([
+        pref('VALIDATION_HEBDO', 'EMAIL', true),
+        pref('VALIDATION_HEBDO', 'IN_APP', true),
+      ]);
+    render(<MonProfilPage />);
+
+    const inApp = await screen.findByRole('checkbox', { name: /application/i });
+    fireEvent.click(inApp); // décoche → annonce « … désactivé »
+    expect(await screen.findByText(/désactivé/i)).toBeInTheDocument();
+
+    fireEvent.click(inApp); // recoche → annonce « … activé »
+    expect(await screen.findByText(/application activé/i)).toBeInTheDocument();
   });
 });
