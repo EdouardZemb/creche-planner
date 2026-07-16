@@ -245,10 +245,18 @@ export class EnvoiService {
     // Reprise : une ligne `ECHEC`/`EN_COURS` bloquée repasse `EN_COURS` avant la nouvelle
     // tentative (motif d'échec effacé). Première réservation : la ligne est déjà
     // `EN_COURS` → écriture idempotente. `created_at` n'est pas touché (auto-guérison).
+    // On rafraîchit aussi `destinataire`/`sujet`/`corps` : à la reprise, le brouillon `b`
+    // a pu être régénéré (semaine ré-ajustée, e-mail d'établissement corrigé) et c'est ce
+    // contenu qui part réellement — la ligne d'audit doit prouver ce qui a été adressé,
+    // pas la valeur figée au premier essai. (Sur une première réservation, valeurs
+    // identiques à l'insert → no-op.)
     await this.db
       .update(envoiEtablissement)
       .set({
         statut: 'EN_COURS',
+        destinataire: b.destinataire,
+        sujet: b.sujet,
+        corps: b.corps,
         messageId: null,
         erreur: null,
         envoyeLe: null,

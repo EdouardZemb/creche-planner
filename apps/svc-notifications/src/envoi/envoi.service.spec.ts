@@ -652,6 +652,17 @@ describe('EnvoiService.envoyer — reprise status-aware (GAP A)', () => {
     expect(ligne?.['statut']).toBe('ENVOYE');
     // La reprise efface le motif d'échec précédent (nouvelle tentative propre).
     expect(ligne?.['erreur']).toBeNull();
+    // Fidélité d'audit : la reprise régénère le brouillon et persiste ce qui est
+    // RÉELLEMENT ré-envoyé — plus les valeurs figées au premier essai. La ligne prouve
+    // ce que le mailer a reçu.
+    expect(ligne?.['sujet']).not.toBe('Sujet figé');
+    expect(ligne?.['corps']).not.toBe('<p>corps figé</p>');
+    expect(mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: ligne?.['sujet'],
+        html: ligne?.['corps'],
+      }),
+    );
     // Reprise **sur place** : pas de doublon de ligne.
     expect(stores.get(envoiEtablissement) ?? []).toHaveLength(1);
   });
