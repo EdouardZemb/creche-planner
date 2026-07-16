@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -402,6 +403,77 @@ export const envoiRecapHebdo = pgTable(
   (table) => [primaryKey({ columns: [table.foyerId, table.semaineIso] })],
 );
 
+// --- Ledger de livraison du récap PAR PARENT (idempotence par destinataire) --
+
+/**
+ * Statut de livraison du récap du mardi vers **un parent** d'un foyer pour une
+ * semaine (Lot L1, ledger par destinataire) :
+ * - `ENVOYE` : transport SMTP réel abouti pour ce parent (`message_id` renseigné) ;
+ * - `DRY_RUN` : tentative aboutie mais neutralisée par le garde-fou du mailer
+ *   (bac à sable / hors allowlist) — état **terminal**, jamais relivré ;
+ * - `ECHEC` : le mailer a levé pour ce parent — `erreur` porte le motif, retenté au
+ *   tick suivant tant que `essais < MAX_ESSAIS_PARENT` (au-delà : abandonné).
+ *
+ * `ENVOYE`/`DRY_RUN` sont **terminaux** : la garde compare-and-set
+ * `statut NOT IN ('ENVOYE','DRY_RUN')` empêche qu'un parent déjà servi soit rétrogradé
+ * ou relivré (robustesse aux rejeux multi-réplica).
+ */
+export const STATUTS_ENVOI_RECAP_PARENT = [
+  'ENVOYE',
+  'DRY_RUN',
+  'ECHEC',
+] as const;
+export type StatutEnvoiRecapParent =
+  (typeof STATUTS_ENVOI_RECAP_PARENT)[number];
+
+/**
+ * Ledger de l'**envoi du récap du mardi par parent** (`envoi_recap_parent`, Lot L1),
+ * une ligne par `(foyer, semaine, parent)`. Complète l'agrégat `envoi_recap_hebdo`
+ * (slot par foyer) : ce dernier reste la couche de reprise/diagnostic, mais l'unité
+ * d'idempotence de **livraison** est désormais le **destinataire**. Sans ce ledger, un
+ * co-parent injoignable faisait repartir le slot foyer en `ECHEC`, rejoué toutes les
+ * 60 s, et le parent **principal** (trié en tête) recevait le **même** mail des
+ * centaines de fois. Ici, un parent déjà `ENVOYE`/`DRY_RUN` est **sauté** (aucun mail,
+ * aucun jeton de désabonnement émis) et seul le sous-ensemble en échec est retenté.
+ *
+ * Style « enregistre-après » de `envoi_etablissement` (assumé : une fenêtre de crash
+ * entre `sendMail` réussi et `marquerParentAbouti` peut renvoyer **une** fois ce
+ * parent — dup unique, jamais une tempête). `essais` borne les ré-essais vers une
+ * adresse définitivement invalide (plafond `MAX_ESSAIS_PARENT` côté scheduler) pour
+ * ne pas marteler le SMTP et laisser le slot terminaliser. `email` fige l'adresse
+ * réellement visée (preuve), indépendante d'une édition ultérieure du read model parent.
+ */
+export const envoiRecapParent = pgTable(
+  'envoi_recap_parent',
+  {
+    /** Foyer concerné (regroupe les enfants notifiés). */
+    foyerId: uuid('foyer_id').notNull(),
+    /** Semaine ISO 8601 concernée, format `YYYY-Www`. */
+    semaineIso: varchar('semaine_iso', { length: 8 }).notNull(),
+    /** Parent destinataire (= `parent.id` de svc-foyer, read model `foyer_parent`). */
+    parentId: uuid('parent_id').notNull(),
+    /** Statut de livraison (cf. `STATUTS_ENVOI_RECAP_PARENT`). */
+    statut: varchar('statut', { length: 16 }).notNull(),
+    /** Adresse réellement visée, **figée** à l'insert (preuve, pas une jointure vive). */
+    email: varchar('email', { length: 320 }).notNull(),
+    /** Nombre de tentatives en échec (plafonné par `MAX_ESSAIS_PARENT`). */
+    essais: integer('essais').notNull().default(0),
+    /** Identifiant de message SMTP (`null` en dry-run / avant complétion). */
+    messageId: varchar('message_id', { length: 998 }),
+    /** Motif du dernier échec si `statut = ECHEC` (`null` sinon). */
+    erreur: text('erreur'),
+    /** Horodatage de la livraison aboutie (`null` tant que non livrée). */
+    envoyeLe: timestamp('envoye_le', { withTimezone: true }),
+    creeLe: timestamp('cree_le', { withTimezone: true }).notNull().defaultNow(),
+    majLe: timestamp('maj_le', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.foyerId, table.semaineIso, table.parentId],
+    }),
+  ],
+);
+
 // --- Inbox in-app (journal informationnel du parent) ------------------------
 
 /**
@@ -500,6 +572,8 @@ export type NotificationHebdoRow = typeof notificationHebdo.$inferSelect;
 export type EnvoiEtablissementRow = typeof envoiEtablissement.$inferSelect;
 /** Ligne d'état d'envoi du récap du mardi d'un foyer (statut persisté + reprise, Lot 3). */
 export type EnvoiRecapHebdoRow = typeof envoiRecapHebdo.$inferSelect;
+/** Ligne du ledger de livraison du récap du mardi par parent (idempotence, Lot L1). */
+export type EnvoiRecapParentRow = typeof envoiRecapParent.$inferSelect;
 /** Ligne de l'inbox in-app d'un parent (journal informationnel lu/non-lu, PR6). */
 export type NotificationRow = typeof notification.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;
