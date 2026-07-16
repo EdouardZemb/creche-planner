@@ -2,21 +2,23 @@ import { describe, expect, it } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import { InboxService } from './inbox.service.js';
 import type { Database } from '../database/database.types.js';
+import { notification } from '../database/schema.js';
 import type { NotificationRow } from '../database/schema.js';
 
 /**
  * Tests unitaires de l'inbox in-app, sans Postgres. La base factice honore le
  * sous-ensemble utilisé par le service :
- * - `insert().values()` capture la ligne posée (journal append-only) ;
+ * - `insert().values().onConflictDoNothing()` capture la ligne posée (journal
+ *   append-only, idempotent par clé métier) et la cible du `ON CONFLICT` ;
  * - `select().from().where().orderBy().limit()` (liste, `select()` sans projection)
  *   renvoie `rows`, tandis que `select({...}).from().where()` (compteur, `select` avec
- *   projection) renvoie les non-lus. Le prédicat `WHERE` (parent, `lu_le IS NULL`) n'est
- *   pas évalué — les tests fournissent directement le jeu attendu par parent ;
+ *   projection) renvoie `[{ n }]` (COUNT SQL). Le prédicat `WHERE` (parent, `lu_le IS
+ *   NULL`) n'est pas évalué — les tests fournissent directement le compte attendu ;
  * - `update().set().where().returning()` renvoie `updated` (vide ⇒ 404).
  *
  * On vérifie donc la **logique applicative** : mapping vers la vue (dates ISO 8601),
- * comptage des non-lus, valeurs insérées, et le 404 de `marquerLu` (id inconnu ou d'un
- * autre parent).
+ * comptage des non-lus, valeurs insérées, cible du `onConflictDoNothing`, et le 404 de
+ * `marquerLu` (id inconnu ou d'un autre parent).
  */
 
 const PARENT = '11111111-1111-4111-8111-111111111111';
@@ -30,6 +32,7 @@ function ligne(partiel: Partial<NotificationRow> = {}): NotificationRow {
     corps:
       'Le planning de Léa pour la semaine du 29 juin au 5 juillet 2026 est à valider.',
     lien: '/foyers/22222222-2222-4222-8222-222222222222/planning?semaine=2026-W27',
+    cleIdempotence: 'VALIDATION_HEBDO:2026-W27',
     creeLe: new Date('2026-06-23T06:01:00.000Z'),
     luLe: null,
     ...partiel,
@@ -38,23 +41,30 @@ function ligne(partiel: Partial<NotificationRow> = {}): NotificationRow {
 
 interface Options {
   readonly rows?: NotificationRow[];
-  readonly nonLus?: NotificationRow[];
+  readonly nonLus?: number;
   readonly updated?: NotificationRow[];
 }
 
 function fakeBase(opts: Options = {}): {
   db: Database;
   inserted: Record<string, unknown>[];
+  conflits: unknown[];
 } {
   const inserted: Record<string, unknown>[] = [];
+  const conflits: unknown[] = [];
   const db = {
     insert: () => ({
       values: (valeurs: Record<string, unknown>) => {
         inserted.push(valeurs);
-        return Promise.resolve();
+        return {
+          onConflictDoNothing: (config: unknown) => {
+            conflits.push(config);
+            return Promise.resolve();
+          },
+        };
       },
     }),
-    // `select()` (sans projection) → liste ; `select({...})` → compteur non-lus.
+    // `select()` (sans projection) → liste ; `select({...})` → compteur non-lus (COUNT).
     select: (projection?: unknown) => ({
       from: () => ({
         where: () => {
@@ -66,7 +76,7 @@ function fakeBase(opts: Options = {}): {
             };
             return builder;
           }
-          return Promise.resolve(opts.nonLus ?? []);
+          return Promise.resolve([{ n: opts.nonLus ?? 0 }]);
         },
       }),
     }),
@@ -78,11 +88,11 @@ function fakeBase(opts: Options = {}): {
       }),
     }),
   } as unknown as Database;
-  return { db, inserted };
+  return { db, inserted, conflits };
 }
 
 describe('InboxService.creer', () => {
-  it('archive une ligne avec un id généré, le parent, le type, le sujet, le corps et le lien', async () => {
+  it('archive une ligne avec un id généré, le parent, le type, le sujet, le corps, le lien et la clé', async () => {
     const { db, inserted } = fakeBase();
     const service = new InboxService(db);
 
@@ -92,6 +102,7 @@ describe('InboxService.creer', () => {
       sujet: 'Sujet',
       corps: 'Corps',
       lien: '/foyers/f-1/planning?semaine=2026-W27',
+      cleIdempotence: 'VALIDATION_HEBDO:2026-W27',
     });
 
     expect(inserted).toHaveLength(1);
@@ -101,10 +112,30 @@ describe('InboxService.creer', () => {
     expect(valeurs['sujet']).toBe('Sujet');
     expect(valeurs['corps']).toBe('Corps');
     expect(valeurs['lien']).toBe('/foyers/f-1/planning?semaine=2026-W27');
+    expect(valeurs['cleIdempotence']).toBe('VALIDATION_HEBDO:2026-W27');
     expect(typeof valeurs['id']).toBe('string');
   });
 
-  it('archive un lien nul (entrée sans navigation)', async () => {
+  it('insère en onConflictDoNothing ciblant exactement (parentId, cleIdempotence)', async () => {
+    const { db, conflits } = fakeBase();
+    const service = new InboxService(db);
+
+    await service.creer({
+      parentId: PARENT,
+      type: 'VALIDATION_HEBDO',
+      sujet: 'Sujet',
+      corps: 'Corps',
+      lien: null,
+      cleIdempotence: 'VALIDATION_HEBDO:2026-W27',
+    });
+
+    expect(conflits).toHaveLength(1);
+    const config = conflits[0] as { target: unknown[] };
+    expect(config.target[0]).toBe(notification.parentId);
+    expect(config.target[1]).toBe(notification.cleIdempotence);
+  });
+
+  it('archive un lien nul et une clé nulle (entrée legacy sans navigation ni idempotence)', async () => {
     const { db, inserted } = fakeBase();
     const service = new InboxService(db);
 
@@ -114,9 +145,11 @@ describe('InboxService.creer', () => {
       sujet: 'Sujet',
       corps: 'Corps',
       lien: null,
+      cleIdempotence: null,
     });
 
     expect(inserted[0]!['lien']).toBeNull();
+    expect(inserted[0]!['cleIdempotence']).toBeNull();
   });
 });
 
@@ -130,7 +163,7 @@ describe('InboxService.lister', () => {
           luLe: new Date('2026-06-24T10:00:00.000Z'),
         }),
       ],
-      nonLus: [ligne({ id: 'n1' })], // une seule non-lue
+      nonLus: 1, // une seule non-lue (COUNT SQL)
     });
     const service = new InboxService(db);
 
@@ -149,7 +182,7 @@ describe('InboxService.lister', () => {
   });
 
   it('inbox vide : liste vide et compteur à zéro', async () => {
-    const { db } = fakeBase({ rows: [], nonLus: [] });
+    const { db } = fakeBase({ rows: [], nonLus: 0 });
     const service = new InboxService(db);
     await expect(service.lister(PARENT)).resolves.toEqual({
       notifications: [],

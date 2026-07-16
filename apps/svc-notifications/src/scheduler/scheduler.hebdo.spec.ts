@@ -655,6 +655,7 @@ describe('SchedulerHebdo.declencher', () => {
       sujet: string;
       corps: string;
       lien: string;
+      cleIdempotence: string;
     };
     expect(entree.parentId).toBe('p1');
     expect(entree.type).toBe('VALIDATION_HEBDO');
@@ -666,6 +667,8 @@ describe('SchedulerHebdo.declencher', () => {
     expect(entree.lien).toBe(
       `/foyers/${FOYER_A}/planning?semaine=${SEMAINE_N1}`,
     );
+    // Clé d'idempotence métier (L3) : `${type}:${semaineIso}` — un rejeu ne recrée pas la carte.
+    expect(entree.cleIdempotence).toBe(`VALIDATION_HEBDO:${SEMAINE_N1}`);
   });
 
   it('canal IN_APP coupé (aucun destinataire in-app) : ne crée aucune entrée', async () => {

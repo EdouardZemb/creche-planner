@@ -512,12 +512,28 @@ export const notification = pgTable(
      * « Marquer comme lu » sans navigation.
      */
     lien: varchar('lien', { length: 300 }),
+    /**
+     * Clé d'**idempotence métier** de la création in-app (`${type}:${semaineIso}`,
+     * ex. `VALIDATION_HEBDO:2026-W27`), dérivée par l'appelant (`SchedulerHebdo`) et
+     * insérée en `onConflictDoNothing` sur `(parent_id, cle_idempotence)` : un rejeu du
+     * scheduler (même parent/type/semaine) est un no-op → une seule carte, quel que soit
+     * l'ordre création/`marquerAbouti`. `null` pour les entrées antérieures à cette
+     * colonne (additif, pas de back-fill) : les NULL étant **distincts** dans une UNIQUE
+     * ordinaire Postgres, les lignes legacy coexistent librement (append-only préservé).
+     */
+    cleIdempotence: varchar('cle_idempotence', { length: 120 }),
     /** Horodatage de création (tri antéchronologique du panneau). */
     creeLe: timestamp('cree_le', { withTimezone: true }).notNull().defaultNow(),
     /** Horodatage de lecture par le parent (`null` = non lu, compté par la cloche). */
     luLe: timestamp('lu_le', { withTimezone: true }),
   },
-  (table) => [index('notification_parent_id_idx').on(table.parentId)],
+  (table) => [
+    index('notification_parent_id_idx').on(table.parentId),
+    unique('notification_parent_id_cle_idempotence_unique').on(
+      table.parentId,
+      table.cleIdempotence,
+    ),
+  ],
 );
 
 // --- Idempotence de consommation --------------------------------------------
