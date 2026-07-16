@@ -52,6 +52,15 @@ const ETAT_PARENT_ACTIF_DOUBLON =
 const ETAT_FOYER_UN_SEUL_PARENT = "le foyer n'a qu'un seul parent actif";
 // Foyer inexistant (404) : garantit l'absence du foyer visé (delete cascade).
 const ETAT_AUCUN_FOYER = 'aucun foyer avec cet id';
+// L4 — désabonnement one-click (RFC 8058, PR5). Deux états DÉDIÉS qui seedent
+// parent + ligne `desabonnement_token` (`utilise_le=null`, `expire_le` 2100-01-01).
+// `ETAT_DESABO_OK` : couper EMAIL laisse IN_APP (défaut actif) → 204. `ETAT_DESABO_
+// DERNIER` seede en plus une préférence IN_APP `actif=false` → couper EMAIL ne
+// laisse aucun canal actif → 409, jeton NON consommé (re-seedé à chaque run).
+const ETAT_DESABO_OK =
+  'un jeton de désabonnement valide coupe un canal non critique';
+const ETAT_DESABO_DERNIER =
+  'un jeton de désabonnement couperait le dernier canal actif';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-foyer) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
@@ -129,6 +138,9 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
         PORT: String(PORT),
         DATABASE_URL,
         NATS_URL: process.env['NATS_URL'] ?? 'nats://localhost:4222',
+        // Secret désabo ÉPINGLÉ : doit être byte-identique au `SECRET_DESABO` avec
+        // lequel le consumer signe ses jetons, sinon la signature échoue au verify.
+        DESABONNEMENT_TOKEN_SECRET: 'pact-desabo-secret',
         OTEL_SDK_DISABLED: 'true',
       },
       stdio: 'inherit',
@@ -287,6 +299,53 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
           await db`
             insert into preference_notification (parent_id, type_notification, canal, actif, source_dernier)
             values (${parentId}, 'VALIDATION_HEBDO', 'EMAIL', false, 'ECRAN')
+          `;
+        },
+        [ETAT_DESABO_OK]: async (params?: unknown): Promise<void> => {
+          const { foyerId, parentId, email, jti } = params as {
+            foyerId: string;
+            parentId: string;
+            email: string;
+            jti: string;
+          };
+          await seedFoyer(db, foyerId);
+          // Table rase (idempotence, unicité e-mail par foyer) puis UN parent actif.
+          // Aucune préférence stockée : couper EMAIL laisse IN_APP au défaut (actif).
+          await db`delete from parent where foyer_id = ${foyerId}`;
+          await db`delete from parent where lower(email) = lower(${email})`;
+          await db`
+            insert into parent (id, foyer_id, prenom, nom, email, principal, ordre, actif)
+            values (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, false, 0, true)
+          `;
+          // Jeton one-shot VALIDE (non expiré, non utilisé) ciblant EMAIL.
+          await db`
+            insert into desabonnement_token (jti, parent_id, type_notification, canal, emis_le, expire_le, utilise_le)
+            values (${jti}, ${parentId}, 'VALIDATION_HEBDO', 'EMAIL', now(), '2100-01-01T00:00:00.000Z', null)
+          `;
+        },
+        [ETAT_DESABO_DERNIER]: async (params?: unknown): Promise<void> => {
+          const { foyerId, parentId, email, jti } = params as {
+            foyerId: string;
+            parentId: string;
+            email: string;
+            jti: string;
+          };
+          await seedFoyer(db, foyerId);
+          await db`delete from parent where foyer_id = ${foyerId}`;
+          await db`delete from parent where lower(email) = lower(${email})`;
+          await db`
+            insert into parent (id, foyer_id, prenom, nom, email, principal, ordre, actif)
+            values (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, false, 0, true)
+          `;
+          // IN_APP explicitement coupé : couper EMAIL par le jeton laisserait ZÉRO
+          // canal actif → 409, jeton NON consommé (utilise_le reste null).
+          await db`
+            insert into preference_notification (parent_id, type_notification, canal, actif, source_dernier)
+            values (${parentId}, 'VALIDATION_HEBDO', 'IN_APP', false, 'ECRAN')
+          `;
+          await db`
+            insert into desabonnement_token (jti, parent_id, type_notification, canal, emis_le, expire_le, utilise_le)
+            values (${jti}, ${parentId}, 'VALIDATION_HEBDO', 'EMAIL', now(), '2100-01-01T00:00:00.000Z', null)
           `;
         },
       },

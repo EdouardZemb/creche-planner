@@ -22,6 +22,10 @@ const ETAT_BROUILLON_ARCHIVE =
   'un brouillon agrégé pour un établissement archivé est disponible';
 const ETAT_ENVOI =
   'un récap agrégé par établissement est prêt à envoyer au service';
+// Inbox in-app (PR6, §5.6) : un parent a UNE notification in-app non lue. Le même
+// état sert la liste (200), l'accusé (200) et le 404 cross-parent (la notif reste
+// possédée par `PARENT_INBOX_ID` ; le 404 la requête avec `AUTRE_PARENT_ID`).
+const ETAT_INBOX = 'un parent a une notification in-app non lue';
 
 /** Identifiants figés partagés avec les stateHandlers de la vérification provider. */
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
@@ -37,10 +41,17 @@ const ETABLISSEMENT_ARCHIVE_ID = '99999999-9999-4999-8999-999999999997';
 // Semaine entièrement dans un mois (mars) : une seule relecture amont côté provider.
 const SEMAINE = '2026-W10';
 
+// Inbox in-app : le parent propriétaire de la notification, un AUTRE parent (pour
+// le 404 cross-parent), et l'id de la notification seedée. UUID v4 valides
+// (`ParseUUIDPipe` rejette sinon), partagés avec le stateHandler provider.
+const PARENT_INBOX_ID = '77777777-7777-4777-8777-777777777777';
+const AUTRE_PARENT_ID = '66666666-6666-4666-8666-666666666666';
+const NOTIF_INBOX_ID = '88888888-8888-4888-8888-888888888892';
+
 // nx lance vitest avec cwd = racine du projet (apps/api-gateway) → racine du dépôt à ../../.
 const PACTS_DIR = resolve(process.cwd(), '../../pacts');
 
-const { string, boolean } = MatchersV3;
+const { string, boolean, integer } = MatchersV3;
 
 const provider = new PactV3({
   consumer: 'api-gateway',
@@ -313,6 +324,125 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
       expect(reponse.status).toBe(200);
       const corps = (await reponse.json()) as { statut: string };
       expect(corps.statut).toBe('DRY_RUN');
+    });
+  });
+
+  // --- Inbox in-app (cloche) : liste, accusé de lecture, isolation cross-parent ---
+
+  it('liste l’inbox d’un parent (GET /api/moi/notifications?parent=…)', async () => {
+    provider
+      .given(ETAT_INBOX, { parentId: PARENT_INBOX_ID, id: NOTIF_INBOX_ID })
+      .uponReceiving('une lecture du panneau in-app d’un parent')
+      .withRequest({
+        method: 'GET',
+        path: '/api/moi/notifications',
+        query: { parent: PARENT_INBOX_ID },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          // Au moins une entrée récente, non lue (`luLe: null`). La forme d'une
+          // `NotificationInAppVue` est figée ; le compteur est un entier.
+          notifications: MatchersV3.eachLike({
+            id: string(NOTIF_INBOX_ID),
+            type: string('VALIDATION_HEBDO'),
+            sujet: string('Planning de la semaine à valider'),
+            corps: string(
+              'Votre planning de la semaine est prêt à être validé.',
+            ),
+            lien: string(
+              '/foyers/22222222-2222-4222-8222-222222222222/planning',
+            ),
+            creeLe: string('2026-06-23T06:00:00.000Z'),
+            luLe: null,
+          }),
+          nonLus: integer(1),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/moi/notifications?parent=${PARENT_INBOX_ID}`,
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as {
+        notifications: { luLe: string | null }[];
+        nonLus: number;
+      };
+      expect(corps.notifications[0]?.luLe).toBeNull();
+      expect(typeof corps.nonLus).toBe('number');
+    });
+  });
+
+  it('marque une notification comme lue (POST …/:id/lu?parent=…) → 200 avec luLe', async () => {
+    provider
+      .given(ETAT_INBOX, { parentId: PARENT_INBOX_ID, id: NOTIF_INBOX_ID })
+      .uponReceiving('un accusé de lecture d’une notification du parent')
+      .withRequest({
+        method: 'POST',
+        path: `/api/moi/notifications/${NOTIF_INBOX_ID}/lu`,
+        query: { parent: PARENT_INBOX_ID },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        // `luLe` désormais posé (chaîne ISO, matché en type) : prouve l'accusé.
+        body: {
+          id: string(NOTIF_INBOX_ID),
+          type: string('VALIDATION_HEBDO'),
+          sujet: string('Planning de la semaine à valider'),
+          corps: string('Votre planning de la semaine est prêt à être validé.'),
+          lien: string('/foyers/22222222-2222-4222-8222-222222222222/planning'),
+          creeLe: string('2026-06-23T06:00:00.000Z'),
+          luLe: string('2026-06-23T07:00:00.000Z'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/moi/notifications/${NOTIF_INBOX_ID}/lu?parent=${PARENT_INBOX_ID}`,
+        { method: 'POST' },
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { luLe: string | null };
+      expect(corps.luLe).not.toBeNull();
+    });
+  });
+
+  it('refuse (404) l’accusé de lecture d’un AUTRE parent (isolation cross-parent)', async () => {
+    provider
+      // La notif reste possédée par `PARENT_INBOX_ID` ; on la requête ici au nom
+      // d'un AUTRE parent → 404 (même message, aucune fuite). C'est LE contrat de
+      // sécurité : si le prédicat `parentId` de `inbox.service.ts` saute, le
+      // provider répondrait 200 → la vérification provider échouerait.
+      .given(ETAT_INBOX, { parentId: PARENT_INBOX_ID, id: NOTIF_INBOX_ID })
+      .uponReceiving(
+        'un accusé de lecture d’une notification d’un autre parent',
+      )
+      .withRequest({
+        method: 'POST',
+        path: `/api/moi/notifications/${NOTIF_INBOX_ID}/lu`,
+        query: { parent: AUTRE_PARENT_ID },
+      })
+      .willRespondWith({
+        status: 404,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          statusCode: integer(404),
+          message: string('notification inconnue'),
+          error: string('Not Found'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/moi/notifications/${NOTIF_INBOX_ID}/lu?parent=${AUTRE_PARENT_ID}`,
+        { method: 'POST' },
+      );
+      expect(reponse.status).toBe(404);
+      const corps = (await reponse.json()) as { message: string };
+      expect(corps.message).toBe('notification inconnue');
     });
   });
 });

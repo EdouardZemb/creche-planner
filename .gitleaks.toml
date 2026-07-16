@@ -16,8 +16,15 @@ useDefault = true
 # repo). On allowliste donc ce SEUL chemin. Les critères d'un même bloc [allowlist]
 # sont combinés en OU (défaut gitleaks 8.x) : une trouvaille est ignorée si elle
 # correspond au motif d'accessibilité OU au chemin du fichier chiffré.
+#
+# Lot L4 — specs Pact désabonnement : le consumer signe des jetons HMAC de TEST avec le
+# secret `pact-desabo-secret` (verify déterministe, AUCUNE valeur de prod). Ces jetons
+# signés atterrissent dans la fixture générée `pacts/api-gateway-svc-foyer.json` (champs
+# "token" = blobs base64) où la règle generic-api-key les flague. `--redact` masque la
+# valeur → on ne peut pas allowlister par motif ; on allowliste donc ce SEUL fichier de
+# contrat (fixture de test générée, pas un secret réel).
 [allowlist]
-description = "Accessibilite FR (onglets/landmarks) + artefact chiffre sops .env.server.enc"
+description = "Accessibilite FR + sops .env.server.enc + jetons de test pact (desabo)"
 regexTarget = "match"
-regexes = ['''onglets/landmarks''']
-paths = ['''\.env\.server\.enc$''']
+regexes = ['''onglets/landmarks''', '''pact-desabo-secret''']
+paths = ['''\.env\.server\.enc$''', '''pacts/api-gateway-svc-foyer\.json$''']

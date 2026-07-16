@@ -56,6 +56,162 @@
       }
     },
     {
+      "description": "un accusé de lecture d’une notification du parent",
+      "providerStates": [
+        {
+          "name": "un parent a une notification in-app non lue",
+          "params": {
+            "id": "88888888-8888-4888-8888-888888888892",
+            "parentId": "77777777-7777-4777-8777-777777777777"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/api/moi/notifications/88888888-8888-4888-8888-888888888892/lu",
+        "query": {
+          "parent": [
+            "77777777-7777-4777-8777-777777777777"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "corps": "Votre planning de la semaine est prêt à être validé.",
+          "creeLe": "2026-06-23T06:00:00.000Z",
+          "id": "88888888-8888-4888-8888-888888888892",
+          "lien": "/foyers/22222222-2222-4222-8222-222222222222/planning",
+          "luLe": "2026-06-23T07:00:00.000Z",
+          "sujet": "Planning de la semaine à valider",
+          "type": "VALIDATION_HEBDO"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.corps": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.creeLe": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.lien": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.luLe": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sujet": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.type": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "un accusé de lecture d’une notification d’un autre parent",
+      "providerStates": [
+        {
+          "name": "un parent a une notification in-app non lue",
+          "params": {
+            "id": "88888888-8888-4888-8888-888888888892",
+            "parentId": "77777777-7777-4777-8777-777777777777"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/api/moi/notifications/88888888-8888-4888-8888-888888888892/lu",
+        "query": {
+          "parent": [
+            "66666666-6666-4666-8666-666666666666"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "error": "Not Found",
+          "message": "notification inconnue",
+          "statusCode": 404
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.error": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.statusCode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 404
+      }
+    },
+    {
       "description": "un envoi du récap agrégé par établissement",
       "providerStates": [
         {
@@ -216,6 +372,116 @@
               ]
             },
             "$[*].statut": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une lecture du panneau in-app d’un parent",
+      "providerStates": [
+        {
+          "name": "un parent a une notification in-app non lue",
+          "params": {
+            "id": "88888888-8888-4888-8888-888888888892",
+            "parentId": "77777777-7777-4777-8777-777777777777"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/moi/notifications",
+        "query": {
+          "parent": [
+            "77777777-7777-4777-8777-777777777777"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "nonLus": 1,
+          "notifications": [
+            {
+              "corps": "Votre planning de la semaine est prêt à être validé.",
+              "creeLe": "2026-06-23T06:00:00.000Z",
+              "id": "88888888-8888-4888-8888-888888888892",
+              "lien": "/foyers/22222222-2222-4222-8222-222222222222/planning",
+              "luLe": null,
+              "sujet": "Planning de la semaine à valider",
+              "type": "VALIDATION_HEBDO"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.nonLus": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.notifications": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.notifications[*].corps": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.notifications[*].creeLe": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.notifications[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.notifications[*].lien": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.notifications[*].sujet": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.notifications[*].type": {
               "combine": "AND",
               "matchers": [
                 {

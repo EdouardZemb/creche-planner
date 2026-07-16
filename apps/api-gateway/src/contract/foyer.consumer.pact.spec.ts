@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MatchersV3, PactV3 } from '@pact-foundation/pact';
@@ -74,6 +75,37 @@ const ETAT_FOYER_UN_SEUL_PARENT = "le foyer n'a qu'un seul parent actif";
 // 4) Foyer inexistant (404) : un id d'UUID valide mais absent en base.
 const FOYER_INEXISTANT_ID = '99999999-9999-4999-8999-999999999999';
 const ETAT_AUCUN_FOYER = 'aucun foyer avec cet id';
+
+// L4 — désabonnement one-click (RFC 8058, PR5). On signe les jetons **en inline**
+// avec `node:crypto` (frontière ESLint : le consumer ne DOIT PAS importer
+// `signerJeton` de svc-foyer). `SECRET_DESABO` DOIT être byte-identique au
+// `DESABONNEMENT_TOKEN_SECRET` épinglé dans l'env de spawn du provider, sinon la
+// signature ne vérifie pas. `EXP_LOINTAIN` (2100-01-01) place l'`exp` du jeton ET
+// l'`expire_le` seedé dans le futur au moment du verify.
+const SECRET_DESABO = 'pact-desabo-secret';
+const EXP_LOINTAIN = 4102444800; // 2100-01-01, epoch s
+function signerJetonTest(jti: string, exp: number): string {
+  const p = Buffer.from(JSON.stringify({ jti, exp }), 'utf8').toString(
+    'base64url',
+  );
+  const s = createHmac('sha256', SECRET_DESABO)
+    .update(p)
+    .digest()
+    .toString('base64url');
+  return `${p}.${s}`;
+}
+// Parent + jetons dédiés au désabo (states DÉDIÉS, table rase → idempotents).
+const PARENT_DESABO_ID = '55555555-5555-4555-8555-555555555555';
+const EMAIL_PARENT_DESABO = 'desabo.actif@example.test';
+const JTI_DESABO_OK = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const JTI_DESABO_DERNIER = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+// A (204) : couper un canal non critique (EMAIL) laisse IN_APP (défaut actif).
+const ETAT_DESABO_OK =
+  'un jeton de désabonnement valide coupe un canal non critique';
+// B (409) : couper EMAIL alors qu'IN_APP est déjà coupé → dernier canal → 409,
+// jeton NON consommé.
+const ETAT_DESABO_DERNIER =
+  'un jeton de désabonnement couperait le dernier canal actif';
 
 // nx lance vitest avec cwd = racine du projet (apps/api-gateway) → racine du dépôt à ../../.
 const PACTS_DIR = resolve(process.cwd(), '../../pacts');
@@ -864,6 +896,218 @@ describe('Pact consumer · api-gateway → svc-foyer', () => {
         `${mockServer.url}/api/foyers/${FOYER_INEXISTANT_ID}`,
       );
       expect(reponse.status).toBe(404);
+    });
+  });
+
+  // --- L4 : désabonnement one-click (204 / 409 dernier canal / 400 lien invalide) ---
+
+  it('consomme un jeton de désabonnement valide (204, canal non critique)', async () => {
+    provider
+      .given(ETAT_DESABO_OK, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_DESABO_ID,
+        email: EMAIL_PARENT_DESABO,
+        jti: JTI_DESABO_OK,
+      })
+      .uponReceiving(
+        'une consommation de jeton de désabonnement (canal non critique)',
+      )
+      .withRequest({
+        method: 'POST',
+        path: '/api/desabonnement',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: { token: signerJetonTest(JTI_DESABO_OK, EXP_LOINTAIN) },
+      })
+      .willRespondWith({ status: 204 });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(`${mockServer.url}/api/desabonnement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({
+          token: signerJetonTest(JTI_DESABO_OK, EXP_LOINTAIN),
+        }),
+      });
+      expect(reponse.status).toBe(204);
+    });
+  });
+
+  it('refuse (409) de couper le dernier canal actif via le lien one-click', async () => {
+    provider
+      .given(ETAT_DESABO_DERNIER, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_DESABO_ID,
+        email: EMAIL_PARENT_DESABO,
+        jti: JTI_DESABO_DERNIER,
+      })
+      .uponReceiving('une consommation de jeton coupant le dernier canal')
+      .withRequest({
+        method: 'POST',
+        path: '/api/desabonnement',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: { token: signerJetonTest(JTI_DESABO_DERNIER, EXP_LOINTAIN) },
+      })
+      .willRespondWith({
+        status: 409,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          statusCode: integer(409),
+          message: string(
+            'ce canal ne peut pas être coupé : au moins un canal doit rester actif',
+          ),
+          error: string('Conflict'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(`${mockServer.url}/api/desabonnement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({
+          token: signerJetonTest(JTI_DESABO_DERNIER, EXP_LOINTAIN),
+        }),
+      });
+      expect(reponse.status).toBe(409);
+    });
+  });
+
+  it('refuse (400) un lien de désabonnement invalide', async () => {
+    provider
+      // Réutilise l'état A : le jeton malformé est rejeté par la signature AVANT
+      // tout accès base (400 générique, pas de fuite d'existence de compte).
+      .given(ETAT_DESABO_OK, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_DESABO_ID,
+        email: EMAIL_PARENT_DESABO,
+        jti: JTI_DESABO_OK,
+      })
+      .uponReceiving('une consommation de jeton de désabonnement invalide')
+      .withRequest({
+        method: 'POST',
+        path: '/api/desabonnement',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: { token: 'jeton.invalide' },
+      })
+      .willRespondWith({
+        status: 400,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          statusCode: integer(400),
+          message: string('lien de désabonnement invalide ou expiré'),
+          error: string('Bad Request'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(`${mockServer.url}/api/desabonnement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ token: 'jeton.invalide' }),
+      });
+      expect(reponse.status).toBe(400);
+    });
+  });
+
+  // --- L4 : préférences 400 dernier-canal + édition parent 409 collision e-mail ---
+
+  it('refuse (400) une mise à jour des préférences coupant le dernier canal', async () => {
+    provider
+      // Réutilise l'état existant : EMAIL stocké `actif=false`. Couper AUSSI IN_APP
+      // ne laisse aucun canal actif pour VALIDATION_HEBDO (type de service) → 400.
+      .given(ETAT_FOYER_AVEC_PREFERENCES, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_REFERENCE_ID,
+        email: EMAIL_PARENT_PREFERENCES,
+      })
+      .uponReceiving('une mise à jour des préférences coupant le dernier canal')
+      .withRequest({
+        method: 'PUT',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}/preferences`,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          preferences: [
+            {
+              typeNotification: 'VALIDATION_HEBDO',
+              canal: 'IN_APP',
+              actif: false,
+            },
+          ],
+        },
+      })
+      .willRespondWith({
+        status: 400,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          statusCode: integer(400),
+          message: string(
+            'au moins un canal doit rester actif pour VALIDATION_HEBDO',
+          ),
+          error: string('Bad Request'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}/preferences`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({
+            preferences: [
+              {
+                typeNotification: 'VALIDATION_HEBDO',
+                canal: 'IN_APP',
+                actif: false,
+              },
+            ],
+          }),
+        },
+      );
+      expect(reponse.status).toBe(400);
+    });
+  });
+
+  it('refuse (409) l’édition d’un parent vers un e-mail déjà actif du foyer', async () => {
+    provider
+      // Réutilise l'état à DEUX parents : renommer le parent de référence sur
+      // l'e-mail du « lest » (déjà actif dans ce foyer) heurte l'unicité par foyer
+      // → 409 structuré EMAIL_DEJA_UTILISE (via `traduireUnicite`).
+      .given(ETAT_FOYER_AVEC_DEUX_PARENTS, {
+        foyerId: FOYER_REFERENCE_ID,
+        parentId: PARENT_REFERENCE_ID,
+        email: EMAIL_PARENT_EXISTANT,
+        parentLestId: PARENT_LEST_ID,
+        emailLest: EMAIL_PARENT_LEST,
+      })
+      .uponReceiving('une édition de parent vers un e-mail déjà actif du foyer')
+      .withRequest({
+        method: 'PUT',
+        path: `/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}`,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: { email: EMAIL_PARENT_LEST },
+      })
+      .willRespondWith({
+        status: 409,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          statusCode: integer(409),
+          code: string('EMAIL_DEJA_UTILISE'),
+          message: string('adresse e-mail déjà utilisée dans ce foyer'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/parents/${PARENT_REFERENCE_ID}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ email: EMAIL_PARENT_LEST }),
+        },
+      );
+      expect(reponse.status).toBe(409);
+      const corps = (await reponse.json()) as { code: string };
+      expect(corps.code).toBe('EMAIL_DEJA_UTILISE');
     });
   });
 });
