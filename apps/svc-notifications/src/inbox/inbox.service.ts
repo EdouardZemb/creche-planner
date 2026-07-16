@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import { notification } from '../database/schema.js';
@@ -34,6 +34,14 @@ export interface CreerNotificationInApp {
   readonly corps: string;
   /** Lien profond in-app (chemin relatif `/foyers/…`), `null` si la notification n'en porte pas. */
   readonly lien: string | null;
+  /**
+   * Clé d'idempotence métier (`${type}:${semaineIso}`), ou `null` pour une entrée sans
+   * clé (journal append-only classique). Fournie **explicitement** par l'appelant
+   * (`exactOptionalPropertyTypes` : champ requis, pas optionnel). Insérée en
+   * `onConflictDoNothing` sur `(parent_id, cle_idempotence)` — un rejeu du même
+   * `(parent, type, semaine)` est un no-op ; une clé `null` insère toujours.
+   */
+  readonly cleIdempotence: string | null;
 }
 
 /**
@@ -53,16 +61,28 @@ export interface CreerNotificationInApp {
 export class InboxService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  /** Archive une notification in-app pour un parent (journal append-only). */
+  /**
+   * Archive une notification in-app pour un parent (journal append-only). L'insert est
+   * **idempotent** par clé métier : `onConflictDoNothing` cible **exactement** la
+   * contrainte UNIQUE `(parent_id, cle_idempotence)`, si bien qu'un rejeu du scheduler
+   * (même parent/type/semaine → même `cleIdempotence`) est un no-op. Une entrée sans clé
+   * (`cleIdempotence = null`) insère toujours (NULL distincts dans une UNIQUE Postgres).
+   */
   async creer(entree: CreerNotificationInApp): Promise<void> {
-    await this.db.insert(notification).values({
-      id: randomUUID(),
-      parentId: entree.parentId,
-      type: entree.type,
-      sujet: entree.sujet,
-      corps: entree.corps,
-      lien: entree.lien,
-    });
+    await this.db
+      .insert(notification)
+      .values({
+        id: randomUUID(),
+        parentId: entree.parentId,
+        type: entree.type,
+        sujet: entree.sujet,
+        corps: entree.corps,
+        lien: entree.lien,
+        cleIdempotence: entree.cleIdempotence,
+      })
+      .onConflictDoNothing({
+        target: [notification.parentId, notification.cleIdempotence],
+      });
   }
 
   /**
@@ -100,15 +120,19 @@ export class InboxService {
     return this.versVue(ligne);
   }
 
-  /** Compte les notifications non lues d'un parent (compteur de la cloche). */
+  /**
+   * Compte les notifications non lues d'un parent (compteur de la cloche) via un
+   * `SELECT count()` SQL — le comptage se fait côté base, sans charger les lignes en
+   * mémoire (patron `svc-planification`/`etablissement.service`).
+   */
   private async compterNonLus(parentId: string): Promise<number> {
     const lignes = await this.db
-      .select({ id: notification.id })
+      .select({ n: count() })
       .from(notification)
       .where(
         and(eq(notification.parentId, parentId), isNull(notification.luLe)),
       );
-    return lignes.length;
+    return lignes[0]?.n ?? 0;
   }
 
   /** Projette une ligne base en vue BFF (horodatages sérialisés en ISO 8601). */
