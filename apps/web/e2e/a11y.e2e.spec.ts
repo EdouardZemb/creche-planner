@@ -216,6 +216,54 @@ async function auditer(
   return resultats;
 }
 
+// --- Lot L8 : surfaces « Profil & communication parent » (post-L6/L7) ---------
+// Auditées en MOCKÉ comme le reste du fichier. Les mocks `/moi*` sont LOCAUX à
+// chaque test (enregistrés APRÈS `mockerBff` → priorité au dernier) : on ne monte
+// PAS la cloche sur les 6 audits existants ni ne casse la redirection racine.
+const MON_PROFIL = {
+  parentId: 'parent-a11y',
+  foyerId: FOYER_ID,
+  email: 'parent@test.fr',
+  prenom: 'Camille',
+  nom: 'Martin',
+  principal: true,
+  preferences: [
+    {
+      typeNotification: 'VALIDATION_HEBDO',
+      canal: 'EMAIL',
+      actif: true,
+      consentementAt: null,
+      desabonneAt: null,
+    },
+    {
+      typeNotification: 'VALIDATION_HEBDO',
+      canal: 'IN_APP',
+      actif: true,
+      consentementAt: null,
+      desabonneAt: null,
+    },
+  ],
+};
+
+// `MoiVue` : email non-null ⇒ la cloche se monte (App.tsx `moi.email !== null`).
+const MOI = { email: 'parent@test.fr', admin: false, foyers: [FOYER_ID] };
+
+const INBOX = {
+  notifications: [
+    {
+      id: 'notif-a11y-1',
+      type: 'VALIDATION_HEBDO',
+      sujet: 'Planning de la semaine du 29 juin au 5 juillet 2026 à valider',
+      corps:
+        'Le planning de Mia pour la semaine du 29 juin au 5 juillet 2026 est à valider.',
+      creeLe: '2026-06-23T06:01:00.000Z',
+      luLe: null,
+      lien: `/foyers/${FOYER_ID}/planning?semaine=2026-W27`,
+    },
+  ],
+  nonLus: 1,
+};
+
 test.describe("Audit d'accessibilité automatisé (axe-core, WCAG 2.1 AA)", () => {
   test.beforeEach(async ({ page }) => {
     await amorcerStockage(page);
@@ -346,5 +394,63 @@ test.describe("Audit d'accessibilité automatisé (axe-core, WCAG 2.1 AA)", () =
     await expect(
       page.getByRole('link', { name: /Aller au contenu/i }),
     ).toHaveAttribute('href', '#contenu');
+  });
+
+  test('désabonnement sans jeton (état invalide) — 0 violation AA', async ({
+    page,
+  }) => {
+    // Sans `?token=`, DesabonnementPage passe direct à l'état 'invalide' : rend un
+    // `role="alert"`, ZÉRO appel backend.
+    await page.goto('/desabonnement');
+    await expect(page.getByRole('alert')).toBeVisible();
+    const r = await auditer(page, 'desabonnement (invalide)');
+    expect(r.violations).toEqual([]);
+  });
+
+  test('mon profil (formulaire préférences) — 0 violation AA', async ({
+    page,
+  }) => {
+    // Mock local de `/moi/profil` (prioritaire sur le catch-all) → formulaire réel
+    // rendu. Ancres STABLES qui survivent au reframe L7 : h1 « Mon profil » + au
+    // moins une case à cocher (on n'assert PAS un libellé de section évolutif).
+    await page.route('**/api/v1/moi/profil', (route) =>
+      route.fulfill({ status: 200, json: MON_PROFIL }),
+    );
+    await page.goto('/mon-profil');
+    await expect(
+      page.getByRole('heading', { name: 'Mon profil' }),
+    ).toBeVisible();
+    await expect(page.getByRole('checkbox').first()).toBeVisible();
+    const r = await auditer(page, 'mon-profil');
+    expect(r.violations).toEqual([]);
+  });
+
+  test('cloche ouverte (dialog Modale) — 0 violation AA + fermeture Échap', async ({
+    page,
+  }) => {
+    // Mocks locaux AVANT le goto : `/moi` (email non-null → la cloche se monte) et
+    // `/moi/notifications` (≥1 non-lu, ≥1 avec lien). MoiProvider tire `/moi` au
+    // montage → le mock doit précéder la navigation.
+    await page.route('**/api/v1/moi/notifications', (route) =>
+      route.fulfill({ status: 200, json: INBOX }),
+    );
+    await page.route('**/api/v1/moi', (route) =>
+      route.fulfill({ status: 200, json: MOI }),
+    );
+    await page.goto(`/foyers/${FOYER_ID}/dashboard`);
+
+    // Ouvre le panneau : c'est désormais un dialog (porté par Modale, L6).
+    const cloche = page.getByRole('button', { name: /Notifications/i });
+    await cloche.click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(cloche).toHaveAttribute('aria-expanded', 'true');
+
+    const r = await auditer(page, 'cloche (dialog ouvert)');
+    expect(r.violations).toEqual([]);
+
+    // Fermeture au clavier (Échap, héritée de Modale) → dialog démonté.
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
   });
 });
