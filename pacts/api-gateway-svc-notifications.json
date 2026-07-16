@@ -212,6 +212,96 @@
       }
     },
     {
+      "description": "un envoi du récap agrégé avec un corps édité",
+      "providerStates": [
+        {
+          "name": "un récap agrégé par établissement est prêt à envoyer au service"
+        }
+      ],
+      "request": {
+        "body": {
+          "corps": "Bonjour,\n\nVoici le planning complet de la semaine.\n\nMerci !",
+          "etablissementId": "99999999-9999-4999-8999-999999999999",
+          "foyerId": "22222222-2222-4222-8222-222222222222",
+          "semaineIso": "2026-W10",
+          "sujet": "Planning de la semaine du 2 mars — Léa"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "POST",
+        "path": "/api/envois/etablissement"
+      },
+      "response": {
+        "body": {
+          "destinataire": "contact-creche@example.org",
+          "envoyeLe": "2026-03-09T08:00:00.000Z",
+          "erreur": null,
+          "etablissementId": "99999999-9999-4999-8999-999999999999",
+          "foyerId": "22222222-2222-4222-8222-222222222222",
+          "messageId": null,
+          "semaineIso": "2026-W10",
+          "statut": "DRY_RUN"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.destinataire": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.envoyeLe": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.etablissementId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.semaineIso": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.statut": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "un envoi du récap agrégé par établissement",
       "providerStates": [
         {

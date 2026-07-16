@@ -60,10 +60,17 @@ export class EnvoiController {
     @Body(new ZodValidationPipe(envoiEtablissementSchema))
     dto: EnvoiEtablissementDto,
   ): Promise<EnvoiEtablissementResultat> {
+    // `sujet`/`corps` sont fournis ensemble ou pas du tout (invariant du schéma) : on
+    // ne transmet le corps édité que lorsque les deux sont présents.
+    const corpsEdite =
+      dto.sujet !== undefined && dto.corps !== undefined
+        ? { sujet: dto.sujet, corps: dto.corps }
+        : undefined;
     return this.envois.envoyer(
       dto.foyerId,
       dto.semaineIso,
       dto.etablissementId,
+      corpsEdite,
     );
   }
 }

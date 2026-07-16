@@ -80,12 +80,25 @@ export interface EnvoiEtablissementResultat {
  * (read model `etablissement`) ; le destinataire n'est **pas** au choix du client — il
  * est résolu côté service depuis la fiche projetée, pour qu'on ne puisse pas adresser un
  * récap à une adresse arbitraire.
+ *
+ * `sujet`/`corps` sont **optionnels** (rétro-compatibles) : fournis ensemble, ils
+ * remplacent le brouillon régénéré côté serveur (le parent a relu/édité le texte dans
+ * l'app) ; le corps est du **texte brut** échappé en HTML au moment de l'envoi (jamais
+ * du HTML libre du client). Absents, le comportement historique (régénération depuis le
+ * delta) est conservé. Invariant : les deux ensemble ou aucun (sinon 400).
  */
-export const envoiEtablissementSchema = z.object({
-  foyerId: z.uuid('foyerId doit être un UUID'),
-  semaineIso: z
-    .string()
-    .refine(estSemaineIso, 'semaine ISO invalide (attendu YYYY-Www)'),
-  etablissementId: z.uuid('etablissementId doit être un UUID'),
-});
+export const envoiEtablissementSchema = z
+  .object({
+    foyerId: z.uuid('foyerId doit être un UUID'),
+    semaineIso: z
+      .string()
+      .refine(estSemaineIso, 'semaine ISO invalide (attendu YYYY-Www)'),
+    etablissementId: z.uuid('etablissementId doit être un UUID'),
+    sujet: z.string().min(1).max(300).optional(),
+    corps: z.string().min(1).max(20000).optional(),
+  })
+  .refine((d) => (d.sujet == null) === (d.corps == null), {
+    message: 'objet et corps doivent être fournis ensemble',
+    path: ['corps'],
+  });
 export type EnvoiEtablissementDto = z.infer<typeof envoiEtablissementSchema>;
