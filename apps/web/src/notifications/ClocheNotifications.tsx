@@ -1,14 +1,13 @@
-import { useId, useState } from 'react';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { NotificationInApp } from '../types/bff';
-import { formaterDateFr } from '../utils/dates';
+import { formaterDateHeureFr } from '../utils/dates';
+import { Modale } from '../ui/Modale';
+import { Spinner } from '../ui/Spinner';
+import { EtatVide } from '../ui/EtatVide';
 import { useInbox } from './useInbox';
-
-/** Rend un horodatage ISO (`2026-06-23T…`) en date française « 23/06/2026 ». */
-function libelleDate(creeLe: string): string {
-  return formaterDateFr(creeLe.slice(0, 10));
-}
 
 /**
  * Cloche de notifications de l'entête + compteur de non-lus (volet in-app de N3, PR6).
@@ -19,27 +18,49 @@ function libelleDate(creeLe: string): string {
  * le compteur ne s'affiche qu'au-delà de zéro (comme `PastilleAValider`), et une panne /
  * absence de ligne parent laisse simplement la cloche sans compteur.
  *
+ * Le panneau est porté par la {@link Modale} (bottom-sheet plein-largeur sur mobile,
+ * dialog centré ≥ 768px) : on hérite gratuitement de `role="dialog"`, du piège de focus,
+ * de la restauration du focus sur la cloche, de la fermeture Échap et clic-extérieur.
+ *
  * Rendue dans l'entête dès qu'une identité est établie (cf. `App` / `Entete`).
  */
 export function ClocheNotifications() {
   const [ouvert, setOuvert] = useState(false);
-  const [version, setVersion] = useState(0);
   const [enCours, setEnCours] = useState<string | null>(null);
-  const { data } = useInbox(version);
-  const idPanneau = useId();
+  const [marquageEnCours, setMarquageEnCours] = useState(false);
+  const { data, loading, error, reload } = useInbox();
 
   const notifications: readonly NotificationInApp[] = data?.notifications ?? [];
   const nonLus = data?.nonLus ?? 0;
+  const nonLusVisibles = notifications.filter((n) => n.luLe === null);
 
   async function marquerLue(id: string): Promise<void> {
     setEnCours(id);
     try {
       await api.marquerNotificationLue(id);
-      setVersion((v) => v + 1); // resync compteur + états lus
+      reload(); // resync compteur + états lus
     } catch {
       // Accusé de lecture best-effort : une panne ne doit pas casser l'entête.
     } finally {
       setEnCours(null);
+    }
+  }
+
+  /**
+   * « Tout marquer comme lu » (H4) : pas de nouvel endpoint bulk — on rejoue
+   * l'accusé idempotent existant sur les non-lus **visibles** (les ≤ 50 affichés ;
+   * la pastille garde le reliquat). Best-effort (`Promise.allSettled` : un échec ne
+   * casse pas l'entête), puis `reload()` resynchronise compteur et états lus.
+   */
+  async function toutMarquerLu(): Promise<void> {
+    setMarquageEnCours(true);
+    try {
+      await Promise.allSettled(
+        nonLusVisibles.map((n) => api.marquerNotificationLue(n.id)),
+      );
+      reload();
+    } finally {
+      setMarquageEnCours(false);
     }
   }
 
@@ -61,14 +82,119 @@ export function ClocheNotifications() {
       ? `Notifications, ${nonLus} non lue${nonLus > 1 ? 's' : ''}`
       : 'Notifications';
 
+  // Corps du panneau selon l'état `useInbox`. L'entête (bouton + pastille) reste
+  // insensible à `error` : une panne du compteur laisse la cloche sans chiffre, et
+  // l'erreur n'apparaît QUE dans le dialog ouvert (préserve le dessein discret).
+  let corps: ReactNode;
+  if (loading && data === null) {
+    corps = <Spinner label="Chargement des notifications…" />;
+  } else if (error !== null && data === null) {
+    corps = (
+      <EtatVide
+        titre="Notifications indisponibles"
+        description="Impossible de charger vos notifications pour le moment."
+        actions={[{ libelle: 'Réessayer', onClick: reload }]}
+      />
+    );
+  } else if (notifications.length === 0) {
+    corps = (
+      <EtatVide
+        titre="Aucune notification"
+        description="Vous êtes à jour : rien de nouveau pour le moment."
+      />
+    );
+  } else {
+    corps = (
+      <>
+        {(nonLus > notifications.length || nonLusVisibles.length > 0) && (
+          <div className="cloche-barre">
+            {nonLus > notifications.length && (
+              <p className="muted cloche-indice">
+                {nonLus} non lues au total — les {notifications.length} plus
+                récentes sont affichées ci-dessous.
+              </p>
+            )}
+            {nonLusVisibles.length > 0 && (
+              <button
+                type="button"
+                className="btn secondaire"
+                disabled={marquageEnCours}
+                onClick={() => {
+                  void toutMarquerLu();
+                }}
+              >
+                {marquageEnCours ? 'Enregistrement…' : 'Tout marquer comme lu'}
+              </button>
+            )}
+          </div>
+        )}
+        <ul className="cloche-liste">
+          {notifications.map((n) => {
+            const lue = n.luLe !== null;
+            const lien = n.lien ?? null;
+            // Corps commun (titre + date + texte), tapable ou non selon le lien.
+            const contenu = (
+              <>
+                <div className="cloche-item-entete">
+                  <strong className="cloche-item-sujet">{n.sujet}</strong>
+                  <span className="cloche-item-date">
+                    {formaterDateHeureFr(n.creeLe)}
+                  </span>
+                </div>
+                <p className="cloche-item-corps">{n.corps}</p>
+              </>
+            );
+            return (
+              <li
+                key={n.id}
+                className={lue ? 'cloche-item cloche-item--lu' : 'cloche-item'}
+              >
+                {lien !== null && lien !== '' ? (
+                  // Carte entièrement tapable : mène à l'éditeur concerné et vaut
+                  // accusé de lecture. Cible tactile pleine largeur.
+                  <Link
+                    to={lien}
+                    className="cloche-carte-lien"
+                    onClick={() => {
+                      ouvrirDepuisLien(n);
+                    }}
+                  >
+                    {contenu}
+                  </Link>
+                ) : (
+                  <>
+                    {contenu}
+                    {!lue && (
+                      <button
+                        type="button"
+                        className="btn secondaire cloche-item-action"
+                        disabled={enCours === n.id}
+                        onClick={() => {
+                          void marquerLue(n.id);
+                        }}
+                      >
+                        {enCours === n.id
+                          ? 'Enregistrement…'
+                          : 'Marquer comme lu'}
+                      </button>
+                    )}
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </>
+    );
+  }
+
   return (
-    <div className="cloche" style={{ position: 'relative' }}>
+    <div className="cloche">
       <button
         type="button"
         className="btn secondaire cloche-bouton"
-        aria-haspopup="true"
+        aria-haspopup="dialog"
         aria-expanded={ouvert}
-        aria-controls={idPanneau}
         aria-label={libelleCloche}
         onClick={() => {
           setOuvert((o) => !o);
@@ -83,105 +209,14 @@ export function ClocheNotifications() {
       </button>
 
       {ouvert && (
-        <section
-          id={idPanneau}
-          className="carte cloche-panneau"
-          aria-label="Mes notifications"
-          style={{
-            position: 'absolute',
-            right: 0,
-            zIndex: 10,
-            minWidth: 280,
-            maxWidth: 360,
-            marginTop: '0.25rem',
+        <Modale
+          titre="Notifications"
+          onClose={() => {
+            setOuvert(false);
           }}
         >
-          <h2 style={{ marginTop: 0, fontSize: 'var(--h2)' }}>Notifications</h2>
-          {notifications.length === 0 ? (
-            <p className="muted" style={{ margin: 0 }}>
-              Aucune notification pour le moment.
-            </p>
-          ) : (
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-              {notifications.map((n) => {
-                const lue = n.luLe !== null;
-                const lien = n.lien ?? null;
-                // Corps commun (titre + date + texte), tapable ou non selon le lien.
-                const contenu = (
-                  <>
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        gap: '0.5rem',
-                        alignItems: 'baseline',
-                      }}
-                    >
-                      <strong style={{ fontWeight: lue ? 400 : 600 }}>
-                        {n.sujet}
-                      </strong>
-                      <span
-                        className="muted"
-                        style={{ fontSize: '0.8em', whiteSpace: 'nowrap' }}
-                      >
-                        {libelleDate(n.creeLe)}
-                      </span>
-                    </div>
-                    <p style={{ margin: '0.25rem 0 0' }}>{n.corps}</p>
-                  </>
-                );
-                return (
-                  <li
-                    key={n.id}
-                    style={{
-                      padding: '0.5rem 0',
-                      borderTop: '1px solid var(--bordure, #e5e5e5)',
-                      opacity: lue ? 0.65 : 1,
-                    }}
-                  >
-                    {lien !== null && lien !== '' ? (
-                      // Carte entièrement tapable : mène à l'éditeur concerné et vaut
-                      // accusé de lecture. Cible tactile pleine largeur (≥ 2.75 rem).
-                      <Link
-                        to={lien}
-                        className="cloche-carte-lien"
-                        style={{
-                          display: 'block',
-                          color: 'inherit',
-                          textDecoration: 'none',
-                        }}
-                        onClick={() => {
-                          ouvrirDepuisLien(n);
-                        }}
-                      >
-                        {contenu}
-                      </Link>
-                    ) : (
-                      <>
-                        {contenu}
-                        {!lue && (
-                          <button
-                            type="button"
-                            className="btn secondaire"
-                            disabled={enCours === n.id}
-                            style={{ marginTop: '0.35rem' }}
-                            onClick={() => {
-                              void marquerLue(n.id);
-                            }}
-                          >
-                            {enCours === n.id
-                              ? 'Enregistrement…'
-                              : 'Marquer comme lu'}
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+          {corps}
+        </Modale>
       )}
     </div>
   );

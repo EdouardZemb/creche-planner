@@ -219,4 +219,144 @@ describe('ClocheNotifications', () => {
     // Déjà lue : aucun accusé de lecture superflu (garde `luLe === null`).
     expect(mockedApi.marquerNotificationLue).not.toHaveBeenCalled();
   });
+
+  it('état chargement : le panneau ouvert montre le spinner', async () => {
+    // Requête qui ne résout jamais : le panneau reste en chargement.
+    mockedApi.listerNotifications.mockReturnValue(new Promise(() => undefined));
+    render(<ClocheNotifications />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /notifications/i }),
+    );
+
+    expect(
+      screen.getByText('Chargement des notifications…'),
+    ).toBeInTheDocument();
+  });
+
+  it('état erreur : message + « Réessayer » qui recharge la liste', async () => {
+    mockedApi.listerNotifications
+      .mockRejectedValueOnce(new Error('HTTP 500'))
+      .mockResolvedValue(inbox());
+    render(<ClocheNotifications />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /notifications/i }),
+    );
+
+    // Panneau ouvert sur l'état erreur (data === null).
+    expect(
+      await screen.findByText('Notifications indisponibles'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
+
+    // La relance charge la liste : la notification apparaît.
+    expect(
+      await screen.findByText(
+        'Planning de la semaine du 29 juin au 5 juillet 2026 à valider',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('état vide : message rassurant, aucune notification', async () => {
+    mockedApi.listerNotifications.mockResolvedValue(
+      inbox({ nonLus: 0, notifications: [] }),
+    );
+    render(<ClocheNotifications />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /notifications/i }),
+    );
+
+    expect(await screen.findByText('Aucune notification')).toBeInTheDocument();
+    expect(
+      screen.getByText(/rien de nouveau pour le moment/i),
+    ).toBeInTheDocument();
+  });
+
+  it('horodatage : date ET heure (UTC) de la notification', async () => {
+    mockedApi.listerNotifications.mockResolvedValue(inbox());
+    render(<ClocheNotifications />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /notifications/i }),
+    );
+
+    // creeLe '2026-06-23T06:01:00.000Z' → « 23/06/2026 à 06:01 ».
+    expect(screen.getByText('23/06/2026 à 06:01')).toBeInTheDocument();
+  });
+
+  it('indice « N sur M » quand le total dépasse les notifications affichées', async () => {
+    mockedApi.listerNotifications.mockResolvedValue(
+      inbox({ nonLus: 5, notifications: [notif()] }),
+    );
+    render(<ClocheNotifications />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /notifications/i }),
+    );
+
+    expect(screen.getByText(/5 non lues au total/i)).toBeInTheDocument();
+  });
+
+  it('« Tout marquer comme lu » : rejoue l’accusé sur les non-lus visibles puis resync', async () => {
+    mockedApi.listerNotifications
+      .mockResolvedValueOnce(
+        inbox({
+          nonLus: 2,
+          notifications: [notif({ id: 'n1' }), notif({ id: 'n2' })],
+        }),
+      )
+      .mockResolvedValue(
+        inbox({
+          nonLus: 0,
+          notifications: [
+            notif({ id: 'n1', luLe: '2026-06-24T10:00:00.000Z' }),
+            notif({ id: 'n2', luLe: '2026-06-24T10:00:00.000Z' }),
+          ],
+        }),
+      );
+    mockedApi.marquerNotificationLue.mockResolvedValue(
+      notif({ luLe: '2026-06-24T10:00:00.000Z' }),
+    );
+    render(<ClocheNotifications />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: /notifications/i }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Tout marquer comme lu' }),
+    );
+
+    // Un accusé idempotent par non-lu visible (n1 et n2).
+    await waitFor(() => {
+      expect(mockedApi.marquerNotificationLue).toHaveBeenCalledWith('n1');
+      expect(mockedApi.marquerNotificationLue).toHaveBeenCalledWith('n2');
+    });
+    // Après resync : plus de bouton « Tout marquer comme lu » (tout est lu).
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: 'Tout marquer comme lu' }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('fermeture par Échap : le panneau se ferme et le déclencheur reprend aria-expanded=false', async () => {
+    mockedApi.listerNotifications.mockResolvedValue(inbox());
+    render(<ClocheNotifications />);
+
+    const bouton = await screen.findByRole('button', {
+      name: /notifications/i,
+    });
+    fireEvent.click(bouton);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(bouton).toHaveAttribute('aria-expanded', 'false');
+  });
 });
