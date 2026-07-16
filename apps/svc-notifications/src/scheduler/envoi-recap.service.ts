@@ -1,11 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, eq, inArray, ne, notInArray, sql } from 'drizzle-orm';
 import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   envoiRecapHebdo,
+  envoiRecapParent,
   type EnvoiRecapHebdoRow,
   type StatutEnvoiRecap,
+  type StatutEnvoiRecapParent,
 } from '../database/schema.js';
 
 /**
@@ -18,6 +20,17 @@ export interface IssueEnvoiRecap {
   readonly statut: Extract<StatutEnvoiRecap, 'ENVOYE' | 'DRY_RUN'>;
   readonly messageId: string | null;
   readonly destinataires: readonly string[];
+}
+
+/**
+ * État de livraison d'un parent lu depuis le ledger `envoi_recap_parent` (Lot L1) :
+ * `statut` terminal ou `ECHEC`, et `essais` (compteur d'échecs, borné côté scheduler).
+ * L'appelant s'en sert pour **sauter** un parent déjà servi et **abandonner** une
+ * adresse ayant atteint le plafond de tentatives.
+ */
+export interface LivraisonParent {
+  readonly statut: StatutEnvoiRecapParent;
+  readonly essais: number;
 }
 
 /**
@@ -113,5 +126,127 @@ export class EnvoiRecapService {
           ne(envoiRecapHebdo.statut, 'ENVOYE'),
         ),
       );
+  }
+
+  // --- Ledger de livraison PAR PARENT (Lot L1) ------------------------------
+
+  /**
+   * Carte des livraisons du foyer/semaine indexée par `parentId` : pour chaque parent
+   * déjà journalisé, son `statut` (terminal ou `ECHEC`) et son compteur d'`essais`.
+   * Chargée **une fois** par slot dans le scheduler pour décider, sans lire ligne par
+   * ligne, qui **sauter** (déjà livré) et qui **abandonner** (plafond atteint). Les
+   * parents absents de la carte n'ont encore jamais été tentés.
+   */
+  async livraisonsParFoyerSemaine(
+    foyerId: string,
+    semaineIso: string,
+  ): Promise<Map<string, LivraisonParent>> {
+    const lignes = await this.db
+      .select({
+        parentId: envoiRecapParent.parentId,
+        statut: envoiRecapParent.statut,
+        essais: envoiRecapParent.essais,
+      })
+      .from(envoiRecapParent)
+      .where(
+        and(
+          eq(envoiRecapParent.foyerId, foyerId),
+          eq(envoiRecapParent.semaineIso, semaineIso),
+        ),
+      );
+    return new Map(
+      lignes.map((l) => [
+        l.parentId,
+        { statut: l.statut as StatutEnvoiRecapParent, essais: l.essais },
+      ]),
+    );
+  }
+
+  /**
+   * Journalise la livraison **aboutie** d'un parent (`ENVOYE`/`DRY_RUN`) : fige `email`
+   * (preuve), `message_id`, `envoye_le` et efface l'`erreur` d'un essai précédent.
+   * Upsert gardé par compare-and-set `statut NOT IN ('ENVOYE','DRY_RUN')` : un parent
+   * déjà servi (concurrence multi-réplica) n'est jamais rétrogradé ni relivré. Le
+   * compteur `essais` n'est pas remis à zéro (trace du coût passé).
+   */
+  async marquerParentAbouti(
+    foyerId: string,
+    semaineIso: string,
+    parentId: string,
+    params: {
+      readonly statut: Extract<StatutEnvoiRecapParent, 'ENVOYE' | 'DRY_RUN'>;
+      readonly email: string;
+      readonly messageId: string | null;
+    },
+  ): Promise<void> {
+    const maintenant = new Date();
+    await this.db
+      .insert(envoiRecapParent)
+      .values({
+        foyerId,
+        semaineIso,
+        parentId,
+        statut: params.statut,
+        email: params.email,
+        messageId: params.messageId,
+        erreur: null,
+        envoyeLe: maintenant,
+      })
+      .onConflictDoUpdate({
+        target: [
+          envoiRecapParent.foyerId,
+          envoiRecapParent.semaineIso,
+          envoiRecapParent.parentId,
+        ],
+        set: {
+          statut: params.statut,
+          email: params.email,
+          messageId: params.messageId,
+          erreur: null,
+          envoyeLe: maintenant,
+          majLe: maintenant,
+        },
+        setWhere: notInArray(envoiRecapParent.statut, ['ENVOYE', 'DRY_RUN']),
+      });
+  }
+
+  /**
+   * Journalise un **échec** de livraison d'un parent : bascule `ECHEC`, fige l'`erreur`
+   * et **incrémente** `essais` (borne des ré-essais vers une adresse invalide). Upsert
+   * gardé par le même compare-and-set : un `ECHEC` n'écrase jamais un envoi déjà abouti.
+   * Premier échec ⇒ `essais = 1` ; échecs suivants ⇒ `essais = essais + 1`.
+   */
+  async marquerParentEchec(
+    foyerId: string,
+    semaineIso: string,
+    parentId: string,
+    params: { readonly email: string; readonly erreur: string },
+  ): Promise<void> {
+    await this.db
+      .insert(envoiRecapParent)
+      .values({
+        foyerId,
+        semaineIso,
+        parentId,
+        statut: 'ECHEC',
+        email: params.email,
+        erreur: params.erreur,
+        essais: 1,
+      })
+      .onConflictDoUpdate({
+        target: [
+          envoiRecapParent.foyerId,
+          envoiRecapParent.semaineIso,
+          envoiRecapParent.parentId,
+        ],
+        set: {
+          statut: 'ECHEC',
+          email: params.email,
+          erreur: params.erreur,
+          essais: sql`${envoiRecapParent.essais} + 1`,
+          majLe: new Date(),
+        },
+        setWhere: notInArray(envoiRecapParent.statut, ['ENVOYE', 'DRY_RUN']),
+      });
   }
 }

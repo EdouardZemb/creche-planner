@@ -114,9 +114,22 @@ export class MoiController {
       throw new UnauthorizedException('identité requise');
     }
     const { foyerId, parent } = await this.resoudreParentCourant(email);
-    const preferences = await relayer(() =>
-      this.foyers.preferences(foyerId, parent.id),
-    );
+    // Dégradation gracieuse, en miroir de `lire` (GET /moi) : la ligne parent
+    // (résolue ci-dessus via `relayer`) reste **obligatoire**, mais un simple
+    // hoquet svc-foyer sur la lecture des préférences ne doit pas faire tomber
+    // « Mon profil ». On appelle `preferences()` **directement** (pas via
+    // `relayer`) pour rester cohérent avec le modèle de tolérance de `/moi`, et
+    // on retombe sur une liste vide en cas d'échec.
+    let preferences: readonly PreferenceVue[] = [];
+    try {
+      preferences = await this.foyers.preferences(foyerId, parent.id);
+    } catch (erreur) {
+      this.logger.warn(
+        `préférences indisponibles pour le parent ${parent.id} (foyer ${foyerId}) : ${
+          erreur instanceof Error ? erreur.message : String(erreur)
+        }`,
+      );
+    }
     return {
       parentId: parent.id,
       foyerId,
