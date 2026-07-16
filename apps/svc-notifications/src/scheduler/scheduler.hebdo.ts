@@ -598,6 +598,11 @@ export class SchedulerHebdo
       noms,
       semaineIso,
     });
+    // Clé d'idempotence métier (L3) : `${type}:${semaineIso}` (ex. `VALIDATION_HEBDO:2026-W27`).
+    // L'insert in-app la porte en `onConflictDoNothing` — un rejeu (même parent/type/semaine)
+    // ne recrée pas la carte. La création RESTE avant `marquerAbouti` : l'idempotence vient
+    // désormais de la clé, pas de l'ordre.
+    const cleIdempotence = `${TYPE_VALIDATION_HEBDO}:${semaineIso}`;
     for (const parentId of parents) {
       try {
         await this.inbox.creer({
@@ -606,6 +611,7 @@ export class SchedulerHebdo
           sujet,
           corps,
           lien,
+          cleIdempotence,
         });
       } catch (erreur) {
         this.logger.warn(

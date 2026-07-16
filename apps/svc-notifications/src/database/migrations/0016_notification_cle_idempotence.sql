@@ -1,0 +1,2 @@
+ALTER TABLE "notification" ADD COLUMN "cle_idempotence" varchar(120);--> statement-breakpoint
+ALTER TABLE "notification" ADD CONSTRAINT "notification_parent_id_cle_idempotence_unique" UNIQUE("parent_id","cle_idempotence");
