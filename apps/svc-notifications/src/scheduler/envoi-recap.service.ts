@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, ne, notInArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, lt, ne, notInArray, sql } from 'drizzle-orm';
 import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
@@ -126,6 +126,66 @@ export class EnvoiRecapService {
           ne(envoiRecapHebdo.statut, 'ENVOYE'),
         ),
       );
+  }
+
+  // --- Balayage des rappels périmés (Lot 6, GAP B) --------------------------
+
+  /**
+   * Slots **non terminés** dont la fenêtre d'envoi est **close** : `statut ∈
+   * { A_ENVOYER, ECHEC }` **et** `semaine_iso < semaineCible`. `semaineCible` est la
+   * semaine **encore en fenêtre** (`semaineProchaine(maintenant)` côté scheduler) :
+   * seules les semaines **strictement passées** sont donc remontées — la semaine cible
+   * courante (encore retentée par la phase envoi) est exclue.
+   *
+   * La comparaison `semaine_iso < semaineCible` sur le format `"YYYY-Www"` est
+   * **lexicographique** et correcte, y compris au passage d'année
+   * (`"2026-W52" < "2027-W01"`) : ne **pas** parser en nombres. Les états terminaux
+   * (`ENVOYE`/`DRY_RUN`/`ABANDONNE`) sont exclus — d'où l'idempotence du balayage.
+   */
+  async slotsNonTerminesExpires(
+    semaineCible: string,
+  ): Promise<EnvoiRecapHebdoRow[]> {
+    const nonTermines: StatutEnvoiRecap[] = ['A_ENVOYER', 'ECHEC'];
+    return this.db
+      .select()
+      .from(envoiRecapHebdo)
+      .where(
+        and(
+          inArray(envoiRecapHebdo.statut, nonTermines),
+          lt(envoiRecapHebdo.semaineIso, semaineCible),
+        ),
+      );
+  }
+
+  /**
+   * Transition vers l'état **terminal `ABANDONNE`** (Lot 6) : un rappel dont la fenêtre
+   * est close et qui n'a jamais abouti. Compare-and-set gardé par
+   * `statut IN ('A_ENVOYER','ECHEC')` : ne peut **jamais** écraser un `ENVOYE`/`DRY_RUN`
+   * gagné entre le balayage et l'`update` (course), ni ré-abandonner un slot déjà
+   * `ABANDONNE` (idempotence). `maj_le` prend l'instant de l'horloge injectée fourni par
+   * le scheduler (jamais `new Date()` dans le raisonnement temporel).
+   *
+   * Renvoie les lignes **réellement transitionnées** (`returning`) : vide si la garde
+   * n'a rien matché (course perdue / déjà abandonné). L'appelant n'émet son signal
+   * terminal (log `error` + métrique) que pour une transition effective.
+   */
+  async marquerAbandonne(
+    foyerId: string,
+    semaineIso: string,
+    maintenant: Date,
+  ): Promise<EnvoiRecapHebdoRow[]> {
+    const nonTermines: StatutEnvoiRecap[] = ['A_ENVOYER', 'ECHEC'];
+    return this.db
+      .update(envoiRecapHebdo)
+      .set({ statut: 'ABANDONNE', majLe: maintenant })
+      .where(
+        and(
+          eq(envoiRecapHebdo.foyerId, foyerId),
+          eq(envoiRecapHebdo.semaineIso, semaineIso),
+          inArray(envoiRecapHebdo.statut, nonTermines),
+        ),
+      )
+      .returning();
   }
 
   // --- Ledger de livraison PAR PARENT (Lot L1) ------------------------------
