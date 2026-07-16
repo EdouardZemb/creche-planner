@@ -4,10 +4,14 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
-import { loadConfig } from './config.js';
+import { loadConfig, verifierConfigProduction } from './config.js';
 import { DomainExceptionFilter } from '@creche-planner/nest-commons';
 
 async function bootstrap(): Promise<void> {
+  // Fail-fast AVANT de monter quoi que ce soit : en prod, le secret HMAC de
+  // désabonnement one-click doit être un vrai secret, jamais le fallback de dev.
+  verifierConfigProduction();
+
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
   app.setGlobalPrefix('api');
