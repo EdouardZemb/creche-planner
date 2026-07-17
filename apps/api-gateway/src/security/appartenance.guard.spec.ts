@@ -11,6 +11,21 @@ import { AppartenanceGuard } from './appartenance.guard.js';
 import { type SourceFoyer } from './foyer-scope.js';
 import { type RequeteIdentifiable } from './identite.js';
 
+/**
+ * Lot 2 (fondations, métriques) : chaque refus incrémente le compteur Prometheus
+ * `gateway_authz_refus_total{decision, motif}`. On isole le compteur en mockant
+ * l'API OTel `@opentelemetry/api` (dépendance directe de l'api-gateway) pour vérifier
+ * l'incrément et ses labels sans câbler de MeterProvider. `vi.hoisted` expose le mock
+ * `add` au factory `vi.mock` (hissé au-dessus des imports).
+ */
+const { addRefus } = vi.hoisted(() => ({ addRefus: vi.fn() }));
+
+vi.mock('@opentelemetry/api', () => ({
+  metrics: {
+    getMeter: () => ({ createCounter: () => ({ add: addRefus }) }),
+  },
+}));
+
 /** Faux Reflector renvoyant la source `@FoyerScope` (ou `undefined`). */
 function fakeReflector(source: SourceFoyer | undefined): Reflector {
   return { getAllAndOverride: () => source } as unknown as Reflector;
@@ -49,6 +64,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
     envInitial = { ...process.env };
     delete process.env['ADMIN_EMAILS'];
     delete process.env['FOYER_AUTHZ_ENFORCE'];
+    addRefus.mockClear();
   });
 
   afterEach(() => {
@@ -128,6 +144,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
       });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
       expect(warn).not.toHaveBeenCalled();
+      expect(addRefus).not.toHaveBeenCalled();
     });
 
     it('foyer NON autorisé → journalise « AURAIT REFUSÉ » mais laisse passer', async () => {
@@ -144,6 +161,11 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
       expect(warn).toHaveBeenCalledOnce();
       expect(warn.mock.calls[0]?.[0]).toMatch(/AURAIT REFUSÉ.*f-1/);
+      // Métrique : refus « observe » hors scope.
+      expect(addRefus).toHaveBeenCalledWith(1, {
+        decision: 'aurait_refuse',
+        motif: 'hors_scope',
+      });
     });
 
     it('résolution svc-foyer en échec → journalise, ne lève pas', async () => {
@@ -161,6 +183,11 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
       });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
       expect(warn).toHaveBeenCalledOnce();
+      // Métrique : refus « observe » sur résolution impossible.
+      expect(addRefus).toHaveBeenCalledWith(1, {
+        decision: 'aurait_refuse',
+        motif: 'resolution_impossible',
+      });
     });
   });
 
@@ -195,6 +222,11 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
       await expect(guard.canActivate(fakeContext(req))).rejects.toThrow(
         ForbiddenException,
       );
+      // Métrique : refus réel (403) hors scope.
+      expect(addRefus).toHaveBeenCalledWith(1, {
+        decision: 'refuse',
+        motif: 'hors_scope',
+      });
     });
 
     it('résolution impossible (svc-foyer KO) → fail-closed 403', async () => {
@@ -212,6 +244,11 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
       await expect(guard.canActivate(fakeContext(req))).rejects.toThrow(
         ForbiddenException,
       );
+      // Métrique : refus réel (403) sur résolution impossible (fail-closed).
+      expect(addRefus).toHaveBeenCalledWith(1, {
+        decision: 'refuse',
+        motif: 'resolution_impossible',
+      });
     });
 
     it('contrat:id → résout contrat→foyer ; foyer autorisé → passe', async () => {

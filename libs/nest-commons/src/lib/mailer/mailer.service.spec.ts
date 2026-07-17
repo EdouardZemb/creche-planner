@@ -11,14 +11,27 @@ import type { OptionsMailer } from './mailer.options.js';
  * au-dessus des imports). Le service importe le **nommé** `createTransport`
  * (`import { createTransport } from 'nodemailer'`) → le mock l'expose en nommé.
  */
-const { sendMail, createTransport } = vi.hoisted(() => {
+const { sendMail, createTransport, addEchec } = vi.hoisted(() => {
   const sendMail = vi.fn(() =>
     Promise.resolve({ messageId: '<msg-123@test>' }),
   );
-  return { sendMail, createTransport: vi.fn(() => ({ sendMail })) };
+  return {
+    sendMail,
+    createTransport: vi.fn(() => ({ sendMail })),
+    addEchec: vi.fn(),
+  };
 });
 
 vi.mock('nodemailer', () => ({ createTransport }));
+
+// Lot 2 (fondations, métriques) : un échec du transport SMTP incrémente le compteur
+// `notifications_envoi_echecs_total`. On mocke l'API OTel pour vérifier l'incrément
+// sans câbler de MeterProvider (no-op sinon).
+vi.mock('@opentelemetry/api', () => ({
+  metrics: {
+    getMeter: () => ({ createCounter: () => ({ add: addEchec }) }),
+  },
+}));
 
 function options(partiel: Partial<OptionsMailer> = {}): OptionsMailer {
   return {
@@ -44,6 +57,7 @@ describe('MailerService', () => {
   beforeEach(() => {
     sendMail.mockClear();
     createTransport.mockClear();
+    addEchec.mockClear();
   });
 
   it('dry-run : ne sollicite jamais le transport et retourne dryRun=true', async () => {
@@ -176,5 +190,28 @@ describe('MailerService', () => {
     expect(sendMail).toHaveBeenCalledWith(
       expect.not.objectContaining({ headers: expect.anything() }),
     );
+  });
+
+  it('envoi nominal : n’incrémente PAS le compteur d’échecs', async () => {
+    const service = new MailerService(
+      options({ dryRun: false, allowlist: ['parent@test'] }),
+    );
+
+    await service.envoyer(MESSAGE);
+
+    expect(addEchec).not.toHaveBeenCalled();
+  });
+
+  it('échec du transport SMTP : incrémente notifications_envoi_echecs_total et relaie l’erreur', async () => {
+    sendMail.mockRejectedValueOnce(new Error('535 auth refusée'));
+    const service = new MailerService(
+      options({ dryRun: false, allowlist: ['parent@test'] }),
+    );
+
+    // L'erreur du transport est bien relayée à l'appelant (comportement inchangé :
+    // le scheduler transitionne le slot en ECHEC et retentera).
+    await expect(service.envoyer(MESSAGE)).rejects.toThrow('535 auth refusée');
+    expect(addEchec).toHaveBeenCalledTimes(1);
+    expect(addEchec).toHaveBeenCalledWith(1);
   });
 });
