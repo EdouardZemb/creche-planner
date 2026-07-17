@@ -94,9 +94,16 @@ function fakeDb(selectRows: readonly unknown[] = []): {
         set: (v: Record<string, unknown>) => {
           calls.set.push(v);
           return {
+            // Thenable pour les transitions `void` (`marquerAbouti`/`marquerEchec`),
+            // et porteur de `.returning()` pour `marquerAbandonne` (Lot 6) qui lit les
+            // lignes réellement transitionnées.
             where: (cond: SQL | undefined) => {
               calls.where.push(cond);
-              return Promise.resolve([]);
+              const resultat = Promise.resolve(selectRows) as Promise<
+                readonly unknown[]
+              > & { returning: () => Promise<readonly unknown[]> };
+              resultat.returning = () => Promise.resolve(selectRows);
+              return resultat;
             },
           };
         },
@@ -180,6 +187,63 @@ describe('EnvoiRecapService', () => {
     expect(params).toContain('foyer-1');
     expect(params).toContain('2026-W27');
     expect(params).toContain('ENVOYE');
+  });
+
+  // ---- Balayage terminal des rappels périmés (Lot 6, GAP B) ----------------
+
+  it('slotsNonTerminesExpires : select filtré statuts non-terminaux + semaine < cible', async () => {
+    const rows = [{ foyerId: 'f' } as unknown as EnvoiRecapHebdoRow];
+    const { db, calls } = fakeDb(rows);
+
+    const resultat = await new EnvoiRecapService(db).slotsNonTerminesExpires(
+      '2026-W27',
+    );
+
+    expect(resultat).toBe(rows);
+    expect(calls.selectFrom[0]).toBe(envoiRecapHebdo);
+    const params = parametresWhere(calls.where[0]);
+    expect(params).toContain('A_ENVOYER');
+    expect(params).toContain('ECHEC');
+    // Borne lexicographique : `semaine_iso < semaineCible` (jamais parsée en nombres).
+    expect(params).toContain('2026-W27');
+    // Les états terminaux ne sont jamais balayés (idempotence).
+    expect(params).not.toContain('ENVOYE');
+    expect(params).not.toContain('DRY_RUN');
+    expect(params).not.toContain('ABANDONNE');
+  });
+
+  it('marquerAbandonne : update ABANDONNE + maj_le, compare-and-set A_ENVOYER/ECHEC, returning', async () => {
+    const returning = [
+      {
+        foyerId: 'foyer-1',
+        semaineIso: '2026-W20',
+        statut: 'ABANDONNE',
+      } as unknown as EnvoiRecapHebdoRow,
+    ];
+    const { db, calls } = fakeDb(returning);
+    const maintenant = new Date('2026-06-23T06:01:00.000Z');
+
+    const resultat = await new EnvoiRecapService(db).marquerAbandonne(
+      'foyer-1',
+      '2026-W20',
+      maintenant,
+    );
+
+    // La ligne réellement transitionnée est renvoyée (signal pour l'appelant).
+    expect(resultat).toBe(returning);
+    expect(calls.updateTable[0]).toBe(envoiRecapHebdo);
+    expect(calls.set[0]).toMatchObject({
+      statut: 'ABANDONNE',
+      majLe: maintenant,
+    });
+    const params = parametresWhere(calls.where[0]);
+    expect(params).toContain('foyer-1');
+    expect(params).toContain('2026-W20');
+    // Compare-and-set : ne bascule QUE les statuts non-terminaux.
+    expect(params).toContain('A_ENVOYER');
+    expect(params).toContain('ECHEC');
+    // Ne peut jamais écraser un envoi déjà abouti gagné entre-temps.
+    expect(params).not.toContain('DRY_RUN');
   });
 
   // ---- Ledger de livraison par parent (Lot L1) -----------------------------

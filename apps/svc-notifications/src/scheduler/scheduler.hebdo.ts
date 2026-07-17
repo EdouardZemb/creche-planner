@@ -5,6 +5,7 @@ import {
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@nestjs/common';
+import { metrics } from '@opentelemetry/api';
 import { and, gte, isNull, lte, or } from 'drizzle-orm';
 import { DRIZZLE, MailerService } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
@@ -59,6 +60,23 @@ const MARDI = 'Tue';
  * borne que le gaspillage d'essais vers une adresse définitivement injoignable.
  */
 export const MAX_ESSAIS_PARENT = 8;
+
+/**
+ * Compteur des récaps hebdo du mardi passés en **`ABANDONNE`** (Lot 6, GAP B) : un
+ * rappel dont la fenêtre d'envoi est close et qui n'a **jamais** abouti. Mesuré **sans
+ * label `foyerId`** (cardinalité maîtrisée) — l'identité du foyer reste dans le
+ * `logger.error` dédié, interrogeable. Suit le pattern OTel déjà en place dans le
+ * service (`fallback/planification.client.ts`) : aucune dépendance nouvelle, et si aucun
+ * `MeterProvider` n'est câblé, l'API OTel est un no-op silencieux (tests unitaires).
+ */
+const meterScheduler = metrics.getMeter('svc-notifications.scheduler');
+const compteurRecapAbandonne = meterScheduler.createCounter(
+  'recap_hebdo_abandonne_total',
+  {
+    description:
+      'Récaps hebdo du mardi passés en ABANDONNE (fenêtre close, jamais aboutis).',
+  },
+);
 
 /**
  * Scheduler hebdomadaire du **mardi** (Lot 5, fiabilisé Lot 3). Reprend le pattern
@@ -134,6 +152,9 @@ export class SchedulerHebdo
     this.enCours = true;
     try {
       const maintenant = this.clock.maintenant();
+      // Balayage terminal (Lot 6, GAP B) : signale les rappels périmés **avant** le gate
+      // de fenêtre — un raté doit être visible même le lundi / hors fenêtre d'envoi.
+      await this.abandonnerSlotsExpirees(maintenant);
       if (!this.estFenetreEnvoi(maintenant)) {
         return;
       }
@@ -210,6 +231,47 @@ export class SchedulerHebdo
         );
         await this.envoiRecap.marquerEchec(ligne.foyerId, semaineIso, message);
       }
+    }
+  }
+
+  /**
+   * **Balayage terminal des rappels périmés** (Lot 6, GAP B), exécuté à **chaque tick,
+   * avant le gate de fenêtre**. Tout slot resté `A_ENVOYER`/`ECHEC` pour une semaine
+   * **strictement passée** (fenêtre d'envoi close) est transitionné vers l'état terminal
+   * **`ABANDONNE`** : un rappel « validez la semaine prochaine » livré une fois la
+   * semaine commencée a peu de valeur — la priorité est de **rendre le raté visible**.
+   *
+   * La borne d'exclusion est `semaineProchaine(maintenant)` (la semaine **encore en
+   * fenêtre**, retentée par la phase envoi) : elle **avance** avec le calendrier, ce qui
+   * est précisément ce qui rendait l'ancien créneau inatteignable — on s'en sert ici
+   * comme frontière « ne pas toucher la cible courante ».
+   *
+   * Chaque transition **effective** (compare-and-set qui a matché, `returning` non vide)
+   * émet **un** `logger.error` structuré (foyer, semaine, statut précédent, dernière
+   * erreur) — signal terminal distinct des `WARN` transitoires — et incrémente le
+   * compteur. Rejoué, le balayage ne re-loggue pas : une ligne déjà `ABANDONNE` n'est
+   * plus remontée par `slotsNonTerminesExpires` ni matchée par le compare-and-set.
+   */
+  private async abandonnerSlotsExpirees(maintenant: Date): Promise<void> {
+    const semaineCible = this.semaineProchaine(maintenant);
+    const expires = await this.envoiRecap.slotsNonTerminesExpires(semaineCible);
+    for (const slot of expires) {
+      const transitionnes = await this.envoiRecap.marquerAbandonne(
+        slot.foyerId,
+        slot.semaineIso,
+        maintenant,
+      );
+      if (transitionnes.length === 0) {
+        // Course perdue (slot devenu ENVOYE/DRY_RUN entre le scan et l'update) ou déjà
+        // ABANDONNE : pas de second signal (idempotence).
+        continue;
+      }
+      compteurRecapAbandonne.add(1);
+      this.logger.error(
+        `Récap hebdo abandonné — foyer ${slot.foyerId}, semaine ${slot.semaineIso}, ` +
+          `statut précédent ${slot.statut}, dernière erreur : ${slot.erreur ?? 'aucune'} — ` +
+          `fenêtre d'envoi close, le rappel du mardi n'a jamais abouti (intervention requise)`,
+      );
     }
   }
 
