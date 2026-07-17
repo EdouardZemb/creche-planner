@@ -44,11 +44,16 @@ export default defineConfig(() => ({
       // atteint : stmts 59,7 / br 66,9 / fn 49,0 / lines 59,3 après ajout des
       // tests d'assertion propagée — `entetesAval`, interceptor, config — et
       // exclusion d'app.module de la couverture).
+      // Ratchet relevé au lot 6 « fondations » (couverture des clients BFF
+      // jusqu'ici à 0 % de fonctions couvertes : `planification.client.ts`,
+      // `tarification.client.ts`, `notifications.client.ts` — succès, erreur
+      // HTTP, timeout via `executerResilient`, assertion d'identité) — mesuré
+      // 67,55 / 71,34 / 54,71 / 67,40, marge ~2 pts.
       thresholds: {
-        statements: 57,
-        branches: 64,
-        functions: 47,
-        lines: 57,
+        statements: 65,
+        branches: 69,
+        functions: 52,
+        lines: 65,
       },
     },
   },
