@@ -33,14 +33,15 @@ export default defineConfig(() => ({
       // Bootstrap process (main/tracing) : exécutés au boot du conteneur,
       // couverts par smoke-stack, non testables unitairement.
       exclude: ['src/main.ts', 'src/tracing.ts', '**/*.spec.ts'],
-      // Relevés après le lot 1 « Fondations » (consumer JetStream mutualisé dans
-      // nest-commons) : le plancher atteint monte (79 / 81 / 64 / 80), on laisse
+      // Relevés après le lot 1 « Fondations » : consumer JetStream mutualisé dans
+      // nest-commons + tests ajoutés sur lireContrat/supprimerContrat pour compenser
+      // la couverture partie avec le consumer. Plancher atteint 82 / 83 / 67 / 83,
       // ~2 pts de marge.
       thresholds: {
-        statements: 77,
-        branches: 79,
-        functions: 62,
-        lines: 77,
+        statements: 80,
+        branches: 81,
+        functions: 65,
+        lines: 81,
       },
     },
     testTimeout: 60000,

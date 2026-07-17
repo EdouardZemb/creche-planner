@@ -7,6 +7,7 @@ import {
 import {
   CONTRAT_CREE_TYPE,
   CONTRAT_MODIFIE_TYPE,
+  CONTRAT_SUPPRIME_TYPE,
   ETABLISSEMENT_CREE_TYPE,
   PLANNING_MODIFIE_TYPE,
 } from '@creche-planner/contracts-planification';
@@ -320,6 +321,68 @@ describe('PlanificationService.listerContrats', () => {
       heuresAnnuellesContractualisees: 885.5,
       nbMensualites: 7,
     });
+  });
+});
+
+describe('PlanificationService.lireContrat (résolution contrat → foyer, authz)', () => {
+  it('projette le cœur du contrat (id, foyer, enfant, mode, dates)', async () => {
+    const db = fakeDbLecture([ligneCreche()]);
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.lireContrat(CONTRAT_ID);
+
+    expect(vue).toMatchObject({
+      id: CONTRAT_ID,
+      foyerId: FOYER_ID,
+      enfant: 'Mia',
+      enfantId: ENFANT_ID,
+      mode: 'CRECHE_PSU',
+      premiereInscription: false,
+    });
+  });
+
+  it('lève NotFoundException si le contrat est introuvable', async () => {
+    const db = fakeDbLecture([]);
+    const service = new PlanificationService(db, referentielVide);
+
+    await expect(service.lireContrat(CONTRAT_ID)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+});
+
+describe('PlanificationService.supprimerContrat', () => {
+  it('supprime le contrat + ses plannings (cascade) + émet ContratSupprime dans une seule transaction', async () => {
+    const { db, transaction, deleteWhere, insertValues } = fakeDbModif({
+      contratPresent: true,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    await service.supprimerContrat(CONTRAT_ID);
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    // Cascade explicite : suppression des planning_mois PUIS du contrat.
+    expect(deleteWhere).toHaveBeenCalledTimes(2);
+    // L'outbox porte ContratSupprime avec le contratId, dans la même transaction.
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: CONTRAT_SUPPRIME_TYPE,
+        payload: expect.objectContaining({ contratId: CONTRAT_ID }),
+      }),
+    );
+  });
+
+  it('lève NotFoundException si le contrat est introuvable, sans rien supprimer ni émettre', async () => {
+    const { db, deleteWhere, insertValues } = fakeDbModif({
+      contratPresent: false,
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    await expect(service.supprimerContrat(CONTRAT_ID)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(deleteWhere).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
   });
 });
 
