@@ -27,15 +27,20 @@ import { api } from './api/client';
 import type { FoyerVue } from './types/bff';
 import { useAsync } from './hooks/useAsync';
 import { useFoyer } from './hooks/useFoyer';
-import { useTitrePage } from './hooks/useTitrePage';
+import {
+  useTitrePage,
+  TitrePageContext,
+  titreDocument,
+} from './hooks/useTitrePage';
 import { useAnnonceRoute } from './hooks/useAnnonceRoute';
 import { EtatVide, type ActionEtatVide } from './ui/EtatVide';
+import { ChargementPage } from './ui/ChargementPage';
 import { MoiProvider, useMoi } from './session/MoiContext';
 
 function Accueil() {
   const moi = useMoi();
   if (moi.loading) {
-    return <p className="muted">Chargement de votre session…</p>;
+    return <ChargementPage message="Chargement de votre session…" />;
   }
 
   // Mode BORNÉ : identité connue (Cloudflare Access B1 / en-tête de dev). Le foyer
@@ -74,7 +79,7 @@ function MesFoyersPage() {
   const moi = useMoi();
   useTitrePage('Mes familles');
   if (moi.loading) {
-    return <p className="muted">Chargement de votre session…</p>;
+    return <ChargementPage message="Chargement de votre session…" />;
   }
   if (moi.foyers.length === 0) {
     // P5 : self-service de la 1ʳᵉ création (besoin B). Sans foyer rattaché, on
@@ -119,7 +124,7 @@ function AccueilDecouverte() {
     [],
   );
   if (loading) {
-    return <p className="muted">Recherche d’une famille existante…</p>;
+    return <ChargementPage message="Recherche d’une famille existante…" />;
   }
   const premier = data?.[0];
   return (
@@ -414,9 +419,12 @@ function PageIntrouvable() {
 }
 
 /**
- * UT-02 (WCAG 2.4.3) : titre de la page courante dérivé du `pathname`, en miroir
- * des `useTitrePage` déclarés par chaque page. Sert de texte d'annonce de route
- * (région live) — `useAnnonceRoute` ne le (re)publie qu'au changement de route.
+ * Titre dérivé du `pathname`, en miroir des `useTitrePage` déclarés par chaque page.
+ * Sert UNIQUEMENT de **repli du `document.title`** tant qu'aucune page n'a posé son
+ * titre (redirections `Accueil`/`AccueilDecouverte`, tout premier rendu). L'annonce
+ * de route (UT-02, WCAG 2.4.3), elle, ne lit QUE le titre RÉEL de la page (via le
+ * `TitrePageContext`) — pour qu'un écran de récupération rendu au même chemin (ex.
+ * « Famille introuvable ») soit annoncé correctement.
  */
 function titreDepuisPathname(pathname: string): string {
   if (pathname === '/foyers/new') return 'Créer ma famille';
@@ -445,15 +453,29 @@ function titreDepuisPathname(pathname: string): string {
  * `useAnnonceRoute` (qui dépend de `useLocation`). À chaque navigation, il
  * déplace le focus vers `<main id="contenu" tabindex="-1">` (cible du lien
  * d'évitement) et publie le titre courant dans la région live `aria-live="polite"`.
+ *
+ * Le titre courant est la **source de vérité unique** posée par chaque page via
+ * `useTitrePage` : `Coquille` le détient (`titre`), le fournit aux pages
+ * (`TitrePageContext`) et le passe à l'annonce — l'annonce colle donc à l'écran
+ * réellement affiché (dont les écrans de récupération au même chemin).
  */
 function Coquille() {
   const { pathname } = useLocation();
-  const { refCible, regionLiveProps } = useAnnonceRoute(
-    titreDepuisPathname(pathname),
-  );
+  // Titre réel de la page courante (posé par `useTitrePage` de chaque écran).
+  const [titre, setTitre] = useState('');
+  const { refCible, regionLiveProps } = useAnnonceRoute(titre);
+
+  // Repli du titre d'onglet : tant qu'aucune page n'a posé le sien (redirections,
+  // premier rendu), on le dérive du chemin. Une page montée l'écrase aussitôt via
+  // `useTitrePage`. L'annonce, elle, n'utilise PAS ce repli.
+  useEffect(() => {
+    if (titre === '') {
+      document.title = titreDocument(titreDepuisPathname(pathname));
+    }
+  }, [pathname, titre]);
 
   return (
-    <>
+    <TitrePageContext.Provider value={{ definirTitre: setTitre }}>
       <Entete />
       {/* UT-02 CA2 : annonce de changement de page (titre courant), polie. Le
           testid la distingue des régions live de mutation des calendriers (AQ-05). */}
@@ -481,7 +503,7 @@ function Coquille() {
           <Route path="*" element={<PageIntrouvable />} />
         </Routes>
       </main>
-    </>
+    </TitrePageContext.Provider>
   );
 }
 

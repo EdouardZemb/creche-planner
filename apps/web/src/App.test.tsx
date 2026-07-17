@@ -22,21 +22,64 @@ vi.mock('react-router-dom', async () => {
 });
 
 // Pages métier remplacées par des marqueurs : ce lot ne teste que la coquille.
-vi.mock('./foyer/FoyerFormPage', () => ({
-  FoyerFormPage: () => <div>PAGE_NOUVEAU_FOYER</div>,
-}));
-vi.mock('./foyer/ContratsPage', () => ({
-  ContratsPage: () => <div>PAGE_CONTRATS</div>,
-}));
-vi.mock('./planning/PlanningPage', () => ({
-  PlanningPage: () => <div>PAGE_PLANNING</div>,
-}));
-vi.mock('./dashboard/DashboardJourPage', () => ({
-  DashboardJourPage: () => <div>PAGE_DASHBOARD</div>,
-}));
-vi.mock('./couts/CoutsAnnuelsPage', () => ({
-  CoutsAnnuelsPage: () => <div>PAGE_COUTS</div>,
-}));
+// Chaque marqueur pose son titre via le VRAI `useTitrePage` (comme la page réelle),
+// pour que l'annonce de route — qui lit désormais le titre RÉEL de la page (Lot 2) —
+// reflète l'écran affiché.
+vi.mock('./foyer/FoyerFormPage', async () => {
+  const { useTitrePage } = await vi.importActual<
+    typeof import('./hooks/useTitrePage')
+  >('./hooks/useTitrePage');
+  return {
+    FoyerFormPage: function FoyerFormPage() {
+      useTitrePage('Créer ma famille');
+      return <div>PAGE_NOUVEAU_FOYER</div>;
+    },
+  };
+});
+vi.mock('./foyer/ContratsPage', async () => {
+  const { useTitrePage } = await vi.importActual<
+    typeof import('./hooks/useTitrePage')
+  >('./hooks/useTitrePage');
+  return {
+    ContratsPage: function ContratsPage() {
+      useTitrePage('Contrats');
+      return <div>PAGE_CONTRATS</div>;
+    },
+  };
+});
+vi.mock('./planning/PlanningPage', async () => {
+  const { useTitrePage } = await vi.importActual<
+    typeof import('./hooks/useTitrePage')
+  >('./hooks/useTitrePage');
+  return {
+    PlanningPage: function PlanningPage() {
+      useTitrePage('Planning');
+      return <div>PAGE_PLANNING</div>;
+    },
+  };
+});
+vi.mock('./dashboard/DashboardJourPage', async () => {
+  const { useTitrePage } = await vi.importActual<
+    typeof import('./hooks/useTitrePage')
+  >('./hooks/useTitrePage');
+  return {
+    DashboardJourPage: function DashboardJourPage() {
+      useTitrePage('Aujourd’hui');
+      return <div>PAGE_DASHBOARD</div>;
+    },
+  };
+});
+vi.mock('./couts/CoutsAnnuelsPage', async () => {
+  const { useTitrePage } = await vi.importActual<
+    typeof import('./hooks/useTitrePage')
+  >('./hooks/useTitrePage');
+  return {
+    CoutsAnnuelsPage: function CoutsAnnuelsPage() {
+      useTitrePage('Coûts annuels');
+      return <div>PAGE_COUTS</div>;
+    },
+  };
+});
 
 // Client API mocké : useFoyer (réel) s'appuie dessus pour distinguer 404 vs 5xx.
 // La classe est définie DANS la factory (hoistée) pour éviter l'accès à une
@@ -300,6 +343,21 @@ describe('App — coquille de navigation', () => {
     await waitFor(() => {
       expect(region).toHaveTextContent('Coûts annuels');
     });
+  });
+
+  it('UT-02 (swap tardif) : un foyer 404 à l’URL /dashboard annonce « Famille introuvable » (pas « Aujourd’hui »)', async () => {
+    mockedApi.lireFoyer.mockRejectedValueOnce(new ApiError(404, undefined));
+    rendre(`/foyers/inconnu/dashboard`);
+
+    // L'écran de récupération remplace l'Outlet AU MÊME chemin : l'annonce doit
+    // suivre le titre RÉELLEMENT affiché, pas le titre dérivé du pathname.
+    await screen.findByText('Famille introuvable');
+    const region = screen.getByTestId('annonce-route');
+    await waitFor(() => {
+      expect(region).toHaveTextContent('Famille introuvable');
+    });
+    // document.title et annonce concordent.
+    expect(document.title).toBe('Famille introuvable — Crèche Planner');
   });
 
   it('UT-02 CA3 : le lien d’évitement « Aller au contenu » cible toujours #contenu', () => {

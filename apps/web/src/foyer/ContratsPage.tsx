@@ -10,6 +10,7 @@ import { libelleMode } from '../utils/libelles';
 import { useTitrePage } from '../hooks/useTitrePage';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 import { EtatVide } from '../ui/EtatVide';
+import { ChargementPage } from '../ui/ChargementPage';
 import type { ContratLocal } from '../types/bff';
 
 function formaterDate(iso: string): string {
@@ -162,7 +163,7 @@ export function ContratsPage() {
           d'onglets mobile + en-tête desktop) : l'en-tête ne garde que le titre. */}
       <h1 style={{ marginTop: 0, marginBottom: '1rem' }}>Contrats</h1>
 
-      {loading && <p className="muted">Chargement de votre famille…</p>}
+      {loading && <ChargementPage message="Chargement de votre famille…" />}
       {error && (
         <p className="debit" role="alert">
           Impossible de charger les données de la famille : {error}

@@ -757,6 +757,18 @@ h3 {
   animation: spin 0.7s linear infinite;
 }
 
+/* État de chargement de niveau écran (ui/ChargementPage) : roue + texte centrés. */
+.chargement-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--esp-3);
+  padding: var(--esp-6);
+  color: var(--gris);
+  text-align: center;
+}
+
 /* Texte réservé aux lecteurs d'écran. */
 .sr-only {
   position: absolute;
