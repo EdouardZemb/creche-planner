@@ -1,3 +1,25 @@
+## 0.12.0 (2026-07-17)
+
+### 🚀 Features
+
+- **notifications:** accepter un corps edite a l'envoi au service (pipeline + Pact) ([#217](https://github.com/EdouardZemb/creche-planner/pull/217))
+- **notifications:** reprise status-aware d'un envoi creche bloque ou echoue (GAP A, Lot 5) ([#218](https://github.com/EdouardZemb/creche-planner/pull/218))
+- **notifications:** garde-fou boot URL publique des liens e-mail (Lot 7) ([#216](https://github.com/EdouardZemb/creche-planner/pull/216), [#180](https://github.com/EdouardZemb/creche-planner/issues/180), [#209](https://github.com/EdouardZemb/creche-planner/issues/209))
+- **notifications:** rappel du mardi périmé → état terminal ABANDONNE + alerte (Lot 6) ([#215](https://github.com/EdouardZemb/creche-planner/pull/215))
+- **notifications:** idempotence de création de l'inbox in-app + compteur COUNT SQL ([#211](https://github.com/EdouardZemb/creche-planner/pull/211))
+- **notifications:** ledger de livraison par parent contre la tempête de ré-envoi du récap ([#206](https://github.com/EdouardZemb/creche-planner/pull/206))
+- **etablissements:** archivage réel — plus notifié, plus proposable (qualité lot 3) ([#205](https://github.com/EdouardZemb/creche-planner/pull/205), [#203](https://github.com/EdouardZemb/creche-planner/issues/203))
+- **etablissements:** fermer l'angle mort « crèche sans e-mail » (brouillon routable) ([#202](https://github.com/EdouardZemb/creche-planner/pull/202))
+
+### 🩹 Fixes
+
+- **notifications:** garder la nullité du snapshot mardi (pas de faux planning modifié) ([#207](https://github.com/EdouardZemb/creche-planner/pull/207))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.11.0 (2026-07-14)
 
 This was a version bump only for svc-notifications to align it with other projects, there were no code changes.

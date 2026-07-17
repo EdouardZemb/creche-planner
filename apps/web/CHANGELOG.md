@@ -1,3 +1,28 @@
+## 0.12.0 (2026-07-17)
+
+### 🚀 Features
+
+- **web:** conscience hors-ligne — bannière, cache lecture SW & message d'erreur (Lot 4) ([#222](https://github.com/EdouardZemb/creche-planner/pull/222))
+- **notifications:** brouillon semaine complète éditable avant l'envoi au service (L9) ([#221](https://github.com/EdouardZemb/creche-planner/pull/221))
+- **web:** sélecteur « Mes familles » réel — libellé par enfants (Lot 3) ([#220](https://github.com/EdouardZemb/creche-planner/pull/220))
+- **web:** chargement unifié (ChargementPage) & annonce de route fidèle au titre réel ([#219](https://github.com/EdouardZemb/creche-planner/pull/219))
+- **notifications:** reprise status-aware d'un envoi creche bloque ou echoue (GAP A, Lot 5) ([#218](https://github.com/EdouardZemb/creche-planner/pull/218))
+- **profil:** langage parent « Le rappel du mardi » + feedback unifié + polish désabo ([#212](https://github.com/EdouardZemb/creche-planner/pull/212))
+- **cloche:** panneau Modale, états, horodatage à l'heure, indice N sur M et tout marquer lu ([#210](https://github.com/EdouardZemb/creche-planner/pull/210))
+- **etablissements:** archivage réel — plus notifié, plus proposable (qualité lot 3) ([#205](https://github.com/EdouardZemb/creche-planner/pull/205), [#203](https://github.com/EdouardZemb/creche-planner/issues/203))
+- **etablissements:** surfacer le délai comme date limite dans la validation ([#201](https://github.com/EdouardZemb/creche-planner/pull/201))
+- **etablissements:** langage parent + finition « Crèches & écoles » (qualité lot 1) ([#200](https://github.com/EdouardZemb/creche-planner/pull/200))
+- **etablissements:** fermer l'angle mort « crèche sans e-mail » (brouillon routable) ([#202](https://github.com/EdouardZemb/creche-planner/pull/202))
+
+### 🩹 Fixes
+
+- **web:** coquille PWA safe-area, cibles 44px, h1 pleine page & spinner reduced-motion ([#214](https://github.com/EdouardZemb/creche-planner/pull/214))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.11.0 (2026-07-14)
 
 ### 🚀 Features

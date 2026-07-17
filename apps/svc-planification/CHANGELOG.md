@@ -1,3 +1,14 @@
+## 0.12.0 (2026-07-17)
+
+### 🚀 Features
+
+- **etablissements:** archivage réel — plus notifié, plus proposable (qualité lot 3) ([#205](https://github.com/EdouardZemb/creche-planner/pull/205), [#203](https://github.com/EdouardZemb/creche-planner/issues/203))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.11.0 (2026-07-14)
 
 ### 🚀 Features

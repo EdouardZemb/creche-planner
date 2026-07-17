@@ -1,3 +1,14 @@
+## 0.12.0 (2026-07-17)
+
+### 🚀 Features
+
+- **profil:** dégradation gracieuse GET /moi/profil + garde-fou secret désabo au boot ([#209](https://github.com/EdouardZemb/creche-planner/pull/209))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.11.0 (2026-07-14)
 
 ### 🚀 Features

@@ -1,3 +1,17 @@
+## 0.12.0 (2026-07-17)
+
+### 🚀 Features
+
+- **notifications:** accepter un corps edite a l'envoi au service (pipeline + Pact) ([#217](https://github.com/EdouardZemb/creche-planner/pull/217))
+- **profil:** dégradation gracieuse GET /moi/profil + garde-fou secret désabo au boot ([#209](https://github.com/EdouardZemb/creche-planner/pull/209))
+- **etablissements:** archivage réel — plus notifié, plus proposable (qualité lot 3) ([#205](https://github.com/EdouardZemb/creche-planner/pull/205), [#203](https://github.com/EdouardZemb/creche-planner/issues/203))
+- **etablissements:** fermer l'angle mort « crèche sans e-mail » (brouillon routable) ([#202](https://github.com/EdouardZemb/creche-planner/pull/202))
+
+### ❤️ Thank You
+
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.11.0 (2026-07-14)
 
 ### 🚀 Features

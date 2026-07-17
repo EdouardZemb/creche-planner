@@ -1,3 +1,7 @@
+## 0.12.0 (2026-07-17)
+
+This was a version bump only for svc-tarification to align it with other projects, there were no code changes.
+
 ## 0.11.0 (2026-07-14)
 
 ### 🚀 Features
