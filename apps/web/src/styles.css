@@ -59,7 +59,9 @@ a {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem 1rem;
-  padding: 0.6rem 0.9rem;
+  padding: calc(0.6rem + env(safe-area-inset-top))
+    max(0.9rem, env(safe-area-inset-right)) 0.6rem
+    max(0.9rem, env(safe-area-inset-left));
   background: var(--bleu);
   color: white;
 }
@@ -77,6 +79,9 @@ a {
   color: white;
   text-decoration: none;
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }
 
 .app-header .marque {
@@ -1308,6 +1313,9 @@ h3 {
 /* Animation coupée pour qui demande des interfaces stables (a11y). */
 @media (prefers-reduced-motion: reduce) {
   .squelette-bloc {
+    animation: none;
+  }
+  .spinner-roue {
     animation: none;
   }
 }

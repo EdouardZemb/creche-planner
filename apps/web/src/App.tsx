@@ -81,6 +81,7 @@ function MesFoyersPage() {
     // propose de créer le sien plutôt que de renvoyer vers un administrateur.
     return (
       <EtatVide
+        titrePrincipal
         titre="Vous n’avez pas encore créé votre famille"
         description="Créez votre famille pour commencer à planifier la garde de vos enfants."
         actions={[
@@ -91,6 +92,7 @@ function MesFoyersPage() {
   }
   return (
     <EtatVide
+      titrePrincipal
       titre="Choisir une famille"
       description="Plusieurs familles vous sont rattachées. Choisissez celle à ouvrir."
       actions={moi.foyers.map((id, i) => ({
@@ -343,6 +345,7 @@ function SessionExpiree() {
   useTitrePage('Session expirée');
   return (
     <EtatVide
+      titrePrincipal
       titre="Session expirée"
       description="Votre session de connexion a expiré. Reconnectez-vous pour continuer."
       actions={[
@@ -374,6 +377,7 @@ function FoyerIntrouvable() {
   }
   return (
     <EtatVide
+      titrePrincipal
       titre="Famille introuvable"
       description="Cette famille n'existe pas ou a été supprimée."
       actions={actions}
@@ -385,6 +389,7 @@ function FoyerIndisponible({ onReessayer }: { onReessayer: () => void }) {
   useTitrePage('Service indisponible');
   return (
     <EtatVide
+      titrePrincipal
       titre="Service indisponible"
       description="Impossible de charger cette famille pour le moment. Réessayez dans un instant."
       actions={[{ libelle: 'Réessayer', onClick: onReessayer, primaire: true }]}
@@ -397,6 +402,7 @@ function PageIntrouvable() {
   useTitrePage('Page introuvable');
   return (
     <EtatVide
+      titrePrincipal
       titre="Page introuvable"
       description="La page demandée n'existe pas ou l'adresse est incorrecte."
       actions={[
