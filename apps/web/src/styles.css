@@ -698,8 +698,16 @@ h3 {
   margin: var(--esp-1) 0;
 }
 
-.relecture-apercu {
+/* Éditeur du mail au service (L9) : objet + message pré-remplis avec le récap de
+   la semaine complète, entièrement modifiables avant l'envoi. */
+.relecture-editeur {
   margin: var(--esp-2) 0;
+}
+
+.relecture-editeur input,
+.relecture-editeur textarea {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* Bandeau « Mode test » (dry-run) : même palette ambre que .badge-simulation,
@@ -712,12 +720,17 @@ h3 {
   margin: 0 0 var(--esp-3);
 }
 
-/* Aperçu texte brut du message (dans <details>). */
-.apercu-message {
-  white-space: pre-wrap;
-  background: var(--gris-clair);
-  padding: var(--esp-2);
-  border-radius: 4px;
+/* Zone de saisie du message au service : haute et redimensionnable (le corps
+   fait plusieurs lignes par enfant), 16px min pour éviter le zoom iOS au focus. */
+.relecture-message {
+  font: inherit;
+  font-size: max(1rem, 16px);
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--bordure);
+  border-radius: 6px;
+  min-height: 12rem;
+  resize: vertical;
+  line-height: 1.4;
 }
 
 /* Établissement concerné mais NON joignable (sans e-mail) : avertissement à

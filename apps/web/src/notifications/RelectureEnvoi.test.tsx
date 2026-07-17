@@ -25,15 +25,26 @@ const SEMAINE = '2026-W27';
 const CRECHE_ID = '99999999-9999-4999-8999-999999999991';
 const ABCM_ID = '99999999-9999-4999-8999-999999999992';
 
+// Semaine 2026-W27 : lundi 29 juin → dimanche 5 juillet.
+const JOURS = [
+  '2026-06-29',
+  '2026-06-30',
+  '2026-07-01',
+  '2026-07-02',
+  '2026-07-03',
+  '2026-07-04',
+  '2026-07-05',
+];
+
 /**
- * Vue `semaine/besoins` réduite : deux établissements concernés (crèche + ABCM). Le
- * détail des contrats/besoins n'est pas lu par `RelectureEnvoi` (seule la liste des
- * établissements concernés l'est), on fournit donc le strict nécessaire.
+ * Vue `semaine/besoins` : deux établissements concernés (crèche + ABCM) + les 7
+ * jours et le contrat crèche de Léa, dont le bloc d'envoi compose le brouillon
+ * « semaine complète » pré-rempli (L9).
  */
 function semaineBesoins(): SemaineBesoins {
   return {
     semaineIso: SEMAINE,
-    jours: [],
+    jours: JOURS,
     etablissements: [
       {
         etablissementId: CRECHE_ID,
@@ -42,7 +53,20 @@ function semaineBesoins(): SemaineBesoins {
       },
       { etablissementId: ABCM_ID, libelle: 'École ABCM', preavisRegle: null },
     ],
-    contrats: [],
+    contrats: [
+      {
+        contratId: 'c-lea',
+        enfant: 'Léa',
+        mode: 'CRECHE_PSU',
+        etablissementId: CRECHE_ID,
+        besoins: {},
+        semaineType: {
+          LUNDI: [
+            { debutHeures: 8, debutMinutes: 0, finHeures: 17, finMinutes: 0 },
+          ],
+        },
+      },
+    ],
   };
 }
 
@@ -254,6 +278,14 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     const bouton = await screen.findByRole('button', {
       name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
     });
+
+    // Le parent réécrit entièrement objet + message : c'est SON texte exact qui part.
+    fireEvent.change(screen.getByLabelText('Objet'), {
+      target: { value: 'Objet édité' },
+    });
+    fireEvent.change(screen.getByLabelText('Message au service'), {
+      target: { value: 'Message édité par le parent' },
+    });
     fireEvent.click(bouton);
 
     // Confirmation explicite avant l'action sortante.
@@ -267,6 +299,7 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
         FOYER_ID,
         SEMAINE,
         CRECHE_ID,
+        { sujet: 'Objet édité', corps: 'Message édité par le parent' },
       );
     });
     // Message de résultat (distinct du bandeau « Mode test » toujours affiché).
@@ -275,6 +308,40 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
         /Test réussi : aucun mail n'a vraiment été envoyé/i,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('pré-remplit un objet + un message éditables (semaine complète) et valide la saisie', async () => {
+    mockBrouillons();
+    renderRelecture();
+
+    const objet = await screen.findByLabelText('Objet');
+    const message = screen.getByLabelText(
+      'Message au service',
+    ) as HTMLTextAreaElement;
+    // Brouillon pré-rempli en langage parent, avec la semaine complète.
+    expect(objet).toHaveValue('Planning de la semaine du lundi 29 juin — Léa');
+    expect(message.value).toContain('Bonjour,');
+    expect(message.value).toContain('lundi 29 juin');
+    expect(message.value).toContain('Léa');
+
+    const envoi = screen.getByRole('button', {
+      name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
+    });
+    expect(envoi).not.toBeDisabled();
+
+    // Objet vidé → envoi bloqué + message d'erreur annoncé.
+    fireEvent.change(objet, { target: { value: '   ' } });
+    expect(
+      await screen.findByText(/objet ne peut pas être vide/i),
+    ).toBeInTheDocument();
+    expect(envoi).toBeDisabled();
+
+    // « Rétablir le texte proposé » restaure le brouillon complet → envoi réactivé.
+    fireEvent.click(
+      screen.getByRole('button', { name: /Rétablir le texte proposé/ }),
+    );
+    expect(objet).toHaveValue('Planning de la semaine du lundi 29 juin — Léa');
+    expect(envoi).not.toBeDisabled();
   });
 
   it('avertit d’une action irréversible quand l’envoi serait réel', async () => {
