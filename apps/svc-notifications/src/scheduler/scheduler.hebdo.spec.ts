@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { libelleSemaineFr } from '@creche-planner/shared-semaine';
 import type { MailerService } from '@creche-planner/nest-commons';
 import { MAX_ESSAIS_PARENT, SchedulerHebdo } from './scheduler.hebdo.js';
@@ -48,6 +49,8 @@ const MERCREDI_8H01 = '2026-06-24T06:01:00.000Z';
 const LUNDI_8H01 = '2026-06-22T06:01:00.000Z';
 const MARDI_7H00 = '2026-06-23T05:00:00.000Z';
 const SEMAINE_N1 = '2026-W27';
+// Semaine strictement passée (fenêtre d'envoi close) : `< SEMAINE_N1` lexicographiquement.
+const SEMAINE_PASSEE = '2026-W20';
 const FOYER_A = '22222222-2222-4222-8222-222222222222';
 const FOYER_B = '33333333-3333-4333-8333-333333333333';
 // Établissements réels (read model `etablissement`), reliés aux contrats par `etablissementId`.
@@ -113,7 +116,7 @@ const ETAB_ABCM: EtablissementProjeteVue = {
 interface EnvoiRow {
   foyerId: string;
   semaineIso: string;
-  statut: 'A_ENVOYER' | 'ENVOYE' | 'DRY_RUN' | 'ECHEC';
+  statut: 'A_ENVOYER' | 'ENVOYE' | 'DRY_RUN' | 'ECHEC' | 'ABANDONNE';
   destinataires: string[];
   messageId: string | null;
   erreur: string | null;
@@ -157,6 +160,8 @@ function fakeEnvoiRecap(): {
   parentRows: Map<string, EnvoiParentRow>;
   reserver: ReturnType<typeof vi.fn>;
   aRetenter: ReturnType<typeof vi.fn>;
+  slotsNonTerminesExpires: ReturnType<typeof vi.fn>;
+  marquerAbandonne: ReturnType<typeof vi.fn>;
   marquerAbouti: ReturnType<typeof vi.fn>;
   marquerEchec: ReturnType<typeof vi.fn>;
   livraisonsParFoyerSemaine: ReturnType<typeof vi.fn>;
@@ -188,6 +193,30 @@ function fakeEnvoiRecap(): {
       ),
     ),
   );
+  // --- Balayage terminal (Lot 6) : fidèle au filtre `< semaineCible` + compare-and-set. ---
+  // Renvoie des **copies** (comme la base : le scan fige un instantané), sinon la
+  // transition ci-dessous muterait rétroactivement le `statut` lu par l'appelant.
+  const slotsNonTerminesExpires = vi.fn((semaineCible: string) =>
+    Promise.resolve(
+      [...rows.values()]
+        .filter(
+          (r) =>
+            (r.statut === 'A_ENVOYER' || r.statut === 'ECHEC') &&
+            r.semaineIso < semaineCible,
+        )
+        .map((r) => ({ ...r })),
+    ),
+  );
+  const marquerAbandonne = vi.fn((foyerId: string, semaineIso: string) => {
+    const r = rows.get(cleEnvoi(foyerId, semaineIso));
+    // Compare-and-set : ne transitionne QUE A_ENVOYER/ECHEC ; `returning` non vide
+    // seulement quand une ligne a réellement basculé.
+    if (r && (r.statut === 'A_ENVOYER' || r.statut === 'ECHEC')) {
+      r.statut = 'ABANDONNE';
+      return Promise.resolve([{ ...r }]);
+    }
+    return Promise.resolve([]);
+  });
   const marquerAbouti = vi.fn(
     (
       foyerId: string,
@@ -289,6 +318,8 @@ function fakeEnvoiRecap(): {
     service: {
       reserver,
       aRetenter,
+      slotsNonTerminesExpires,
+      marquerAbandonne,
       marquerAbouti,
       marquerEchec,
       livraisonsParFoyerSemaine,
@@ -299,6 +330,8 @@ function fakeEnvoiRecap(): {
     parentRows,
     reserver,
     aRetenter,
+    slotsNonTerminesExpires,
+    marquerAbandonne,
     marquerAbouti,
     marquerEchec,
     livraisonsParFoyerSemaine,
@@ -325,6 +358,8 @@ interface Doubles {
   envoiParentRows: Map<string, EnvoiParentRow>;
   reserver: ReturnType<typeof vi.fn>;
   aRetenter: ReturnType<typeof vi.fn>;
+  slotsNonTerminesExpires: ReturnType<typeof vi.fn>;
+  marquerAbandonne: ReturnType<typeof vi.fn>;
   marquerAbouti: ReturnType<typeof vi.fn>;
   marquerEchec: ReturnType<typeof vi.fn>;
   livraisonsParFoyerSemaine: ReturnType<typeof vi.fn>;
@@ -374,6 +409,8 @@ function doubles(
     envoiParentRows: recap.parentRows,
     reserver: recap.reserver,
     aRetenter: recap.aRetenter,
+    slotsNonTerminesExpires: recap.slotsNonTerminesExpires,
+    marquerAbandonne: recap.marquerAbandonne,
     marquerAbouti: recap.marquerAbouti,
     marquerEchec: recap.marquerEchec,
     livraisonsParFoyerSemaine: recap.livraisonsParFoyerSemaine,
@@ -400,6 +437,17 @@ function scheduler(
     d.mailer,
     d.envoiRecap,
   );
+}
+
+/**
+ * Espionne le `logger.error` **de cette instance** de scheduler (Lot 6). Cibler
+ * l'instance — et non `Logger.prototype` — isole l'assertion des logs parasites que
+ * d'autres Logger du worker vitest peuvent émettre pendant le test.
+ */
+function espionErreur(s: SchedulerHebdo) {
+  return vi
+    .spyOn((s as unknown as { logger: Logger }).logger, 'error')
+    .mockImplementation(() => undefined);
 }
 
 describe('SchedulerHebdo.declencher', () => {
@@ -953,5 +1001,155 @@ describe('SchedulerHebdo.declencher', () => {
     expect(dd.creerInApp).toHaveBeenCalledTimes(1);
     // p1 livré une seule fois sur toute la durée (jamais victime du retry de p2).
     expect(envoisVers(dd, 'maman@test')).toBe(1);
+  });
+
+  // ---- Lot 6 : balayage terminal des rappels périmés (GAP B) ---------------
+
+  it('slot ECHEC d’une semaine passée (fenêtre close) → ABANDONNE + un logger.error', async () => {
+    // Pas de contrat actif : on isole le balayage du chemin heureux (pas d'envoi bruyant).
+    const dd = doubles();
+    dd.envoiRows.set(cleEnvoi(FOYER_A, SEMAINE_PASSEE), {
+      foyerId: FOYER_A,
+      semaineIso: SEMAINE_PASSEE,
+      statut: 'ECHEC',
+      destinataires: [],
+      messageId: null,
+      erreur: 'SMTP indisponible',
+    });
+    const s = scheduler(MARDI_8H01, [], dd);
+    const erreurSpy = espionErreur(s);
+
+    await s.declencher();
+
+    // Le slot périmé bascule à l'état terminal ABANDONNE.
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_PASSEE))?.statut).toBe(
+      'ABANDONNE',
+    );
+    // UN seul logger.error, structuré (foyer, semaine, statut précédent, erreur).
+    expect(erreurSpy).toHaveBeenCalledTimes(1);
+    const message = erreurSpy.mock.calls[0]?.[0] as string;
+    expect(message).toContain(FOYER_A);
+    expect(message).toContain(SEMAINE_PASSEE);
+    expect(message).toContain('ECHEC');
+    expect(message).toContain('SMTP indisponible');
+  });
+
+  it('balaie même hors fenêtre (lundi) : un raté est signalé avant le gate', async () => {
+    const dd = doubles();
+    dd.envoiRows.set(cleEnvoi(FOYER_A, SEMAINE_PASSEE), {
+      foyerId: FOYER_A,
+      semaineIso: SEMAINE_PASSEE,
+      statut: 'ECHEC',
+      destinataires: [],
+      messageId: null,
+      erreur: 'SMTP down',
+    });
+    const s = scheduler(LUNDI_8H01, [contratRow()], dd);
+    const erreurSpy = espionErreur(s);
+
+    await s.declencher();
+
+    // Le lundi, le gate retourne tôt (pas d'envoi) mais le balayage a bien tourné.
+    expect(dd.aRetenter).not.toHaveBeenCalled();
+    expect(dd.envoyer).not.toHaveBeenCalled();
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_PASSEE))?.statut).toBe(
+      'ABANDONNE',
+    );
+    expect(erreurSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('la semaine cible courante (fenêtre encore ouverte) n’est jamais abandonnée', async () => {
+    const dd = doubles();
+    // Slot ECHEC pour la semaine cible courante (= semaineProchaine) : encore en fenêtre.
+    dd.envoiRows.set(cleEnvoi(FOYER_A, SEMAINE_N1), {
+      foyerId: FOYER_A,
+      semaineIso: SEMAINE_N1,
+      statut: 'ECHEC',
+      destinataires: [],
+      messageId: null,
+      erreur: 'transitoire',
+    });
+    // Un lundi : gate fermé (aucune tentative d'envoi) → on observe le seul balayage.
+    const s = scheduler(LUNDI_8H01, [contratRow()], dd);
+    const erreurSpy = espionErreur(s);
+
+    await s.declencher();
+
+    // La cible courante n'est PAS abandonnée prématurément (borne d'exclusion).
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_N1))?.statut).toBe(
+      'ECHEC',
+    );
+    expect(erreurSpy).not.toHaveBeenCalled();
+  });
+
+  it('un slot ENVOYE d’une semaine passée n’est jamais abandonné (état terminal préservé)', async () => {
+    const dd = doubles();
+    dd.envoiRows.set(cleEnvoi(FOYER_A, SEMAINE_PASSEE), {
+      foyerId: FOYER_A,
+      semaineIso: SEMAINE_PASSEE,
+      statut: 'ENVOYE',
+      destinataires: ['solo@test'],
+      messageId: '<m@test>',
+      erreur: null,
+    });
+    const s = scheduler(MARDI_8H01, [], dd);
+    const erreurSpy = espionErreur(s);
+
+    await s.declencher();
+
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_PASSEE))?.statut).toBe(
+      'ENVOYE',
+    );
+    expect(erreurSpy).not.toHaveBeenCalled();
+  });
+
+  it('idempotence : rejouer le balayage n’émet pas de second logger.error', async () => {
+    const dd = doubles();
+    dd.envoiRows.set(cleEnvoi(FOYER_A, SEMAINE_PASSEE), {
+      foyerId: FOYER_A,
+      semaineIso: SEMAINE_PASSEE,
+      statut: 'ECHEC',
+      destinataires: [],
+      messageId: null,
+      erreur: 'SMTP down',
+    });
+    const s = scheduler(MARDI_8H01, [], dd);
+    const erreurSpy = espionErreur(s);
+
+    await s.declencher();
+    await s.declencher();
+
+    // Une seule transition, un seul signal terminal malgré deux passages.
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_PASSEE))?.statut).toBe(
+      'ABANDONNE',
+    );
+    expect(erreurSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('NOTIF_SCHEDULER_FORCER actif : le balayage terminal tourne quand même', async () => {
+    const dd = doubles();
+    // Slot jamais parti (A_ENVOYER) d'une semaine passée : lui aussi doit terminaliser.
+    dd.envoiRows.set(cleEnvoi(FOYER_A, SEMAINE_PASSEE), {
+      foyerId: FOYER_A,
+      semaineIso: SEMAINE_PASSEE,
+      statut: 'A_ENVOYER',
+      destinataires: [],
+      messageId: null,
+      erreur: null,
+    });
+    const s = scheduler(LUNDI_8H01, [], dd, {
+      ...OPTIONS,
+      forcerFenetre: true,
+    });
+    const erreurSpy = espionErreur(s);
+
+    await s.declencher();
+
+    expect(dd.envoiRows.get(cleEnvoi(FOYER_A, SEMAINE_PASSEE))?.statut).toBe(
+      'ABANDONNE',
+    );
+    expect(erreurSpy).toHaveBeenCalledTimes(1);
+    const message = erreurSpy.mock.calls[0]?.[0] as string;
+    expect(message).toContain('A_ENVOYER');
   });
 });

@@ -352,13 +352,22 @@ export const envoiEtablissement = pgTable(
  * - `DRY_RUN` : tentative aboutie mais neutralisée par le garde-fou du mailer
  *   (bac à sable / hors allowlist) — état **terminal**, jamais retenté ;
  * - `ECHEC` : le mailer a levé — `erreur` porte le motif, **retenté** au tick suivant
- *   tant que la fenêtre (mardi 8h → dimanche précédant la semaine cible) est ouverte.
+ *   tant que la fenêtre (mardi 8h → dimanche précédant la semaine cible) est ouverte ;
+ * - `ABANDONNE` : état **terminal** posé par le balayage (Lot 6) quand un slot resté
+ *   `A_ENVOYER`/`ECHEC` voit sa fenêtre d'envoi **close** (semaine strictement passée) :
+ *   le rappel n'a jamais abouti et ne sera plus retenté (une re-livraison tardive d'un
+ *   rappel périmé a peu de valeur). Le raté devient **visible** (log `error` + métrique)
+ *   au lieu d'être silencieusement inatteignable.
+ *
+ * La colonne `statut` est un `varchar(16)` **sans contrainte CHECK** : ajouter cette
+ * valeur applicative (9 caractères) ne requiert **aucune migration**.
  */
 export const STATUTS_ENVOI_RECAP = [
   'A_ENVOYER',
   'ENVOYE',
   'DRY_RUN',
   'ECHEC',
+  'ABANDONNE',
 ] as const;
 export type StatutEnvoiRecap = (typeof STATUTS_ENVOI_RECAP)[number];
 

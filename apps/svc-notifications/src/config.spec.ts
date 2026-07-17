@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { loadConfig } from './config.js';
+import {
+  estUrlEmailPublique,
+  loadConfig,
+  verifierConfigProduction,
+} from './config.js';
 
 describe('loadConfig (svc-notifications)', () => {
   const cles = [
@@ -101,5 +105,95 @@ describe('loadConfig (svc-notifications)', () => {
 
     process.env['NOTIF_EMAIL_DRY_RUN'] = '0';
     expect(loadConfig().email.dryRun).toBe(true);
+  });
+});
+
+/**
+ * Lot 7 — le lien du mail de rappel doit pointer vers une URL de base publique
+ * (https + domaine), jamais l'IP LAN du serveur (`192.168.1.129`, certificat non
+ * fiable, injoignable hors-LAN) ni `localhost`. `estUrlEmailPublique` est le
+ * critère pur ; `verifierConfigProduction` en fait un garde-fou de démarrage
+ * **prod-only**.
+ */
+describe('estUrlEmailPublique (svc-notifications — URL des liens e-mail)', () => {
+  it('accepte une URL https à nom de domaine public', () => {
+    expect(estUrlEmailPublique('https://creche.testlens.dev')).toBe(true);
+    expect(estUrlEmailPublique('https://creche.testlens.dev/foyers/1')).toBe(
+      true,
+    );
+    expect(estUrlEmailPublique('https://sous.domaine.example.org')).toBe(true);
+  });
+
+  it('refuse une IP littérale (IPv4, dont l’IP LAN du serveur, ou IPv6)', () => {
+    expect(estUrlEmailPublique('https://192.168.1.129')).toBe(false);
+    expect(estUrlEmailPublique('https://192.168.1.129/foyers/1')).toBe(false);
+    expect(estUrlEmailPublique('https://10.0.0.1')).toBe(false);
+    expect(estUrlEmailPublique('https://[2001:db8::1]')).toBe(false);
+  });
+
+  it('refuse http:// (protocole non https)', () => {
+    expect(estUrlEmailPublique('http://creche.testlens.dev')).toBe(false);
+    expect(estUrlEmailPublique('http://localhost:4200')).toBe(false);
+  });
+
+  it('refuse localhost et une URL non parsable', () => {
+    expect(estUrlEmailPublique('https://localhost')).toBe(false);
+    expect(estUrlEmailPublique('https://localhost:4200')).toBe(false);
+    expect(estUrlEmailPublique('pas-une-url')).toBe(false);
+    expect(estUrlEmailPublique('')).toBe(false);
+  });
+});
+
+describe('verifierConfigProduction (svc-notifications — URL des liens e-mail)', () => {
+  const dev = {
+    appUrl: 'http://localhost:4200',
+    publicApiUrl: 'http://localhost:3000',
+  };
+  const prod = {
+    appUrl: 'https://creche.testlens.dev',
+    publicApiUrl: 'https://creche.testlens.dev',
+  };
+
+  it('refuse de démarrer en production sur une IP LAN (NOTIF_APP_URL)', () => {
+    expect(() => {
+      verifierConfigProduction(
+        { appUrl: 'https://192.168.1.129', publicApiUrl: prod.publicApiUrl },
+        { NODE_ENV: 'production' },
+      );
+    }).toThrow(/NOTIF_APP_URL=https:\/\/192\.168\.1\.129/);
+  });
+
+  it('refuse de démarrer en production sur une IP LAN (NOTIF_PUBLIC_API_URL)', () => {
+    expect(() => {
+      verifierConfigProduction(
+        { appUrl: prod.appUrl, publicApiUrl: 'https://192.168.1.129' },
+        { NODE_ENV: 'production' },
+      );
+    }).toThrow(/NOTIF_PUBLIC_API_URL=https:\/\/192\.168\.1\.129/);
+  });
+
+  it('refuse aussi le défaut http://localhost en production', () => {
+    expect(() => {
+      verifierConfigProduction(dev, { NODE_ENV: 'production' });
+    }).toThrow(/URL https à nom de domaine public/);
+  });
+
+  it('démarre en production avec un domaine public https', () => {
+    expect(() => {
+      verifierConfigProduction(prod, { NODE_ENV: 'production' });
+    }).not.toThrow();
+  });
+
+  it("n'exige rien hors production (dev local, test, NODE_ENV absent)", () => {
+    // Le défaut http://localhost:4200 et les stacks e2e restent valides.
+    expect(() => {
+      verifierConfigProduction(dev, {});
+    }).not.toThrow();
+    expect(() => {
+      verifierConfigProduction(dev, { NODE_ENV: 'development' });
+    }).not.toThrow();
+    expect(() => {
+      verifierConfigProduction(dev, { NODE_ENV: 'test' });
+    }).not.toThrow();
   });
 });

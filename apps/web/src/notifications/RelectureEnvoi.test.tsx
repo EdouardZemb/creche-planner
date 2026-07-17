@@ -330,6 +330,44 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     expect(bouton).toHaveTextContent(/Réessayer l'envoi/);
   });
 
+  it('un résultat EN_COURS n’est pas présenté comme un succès (réessayer possible)', async () => {
+    // La reprise côté service peut renvoyer EN_COURS quand un envoi concurrent est
+    // réellement en vol (double-clic) : le front ne doit ni figer « Envoyé ✓ » ni
+    // afficher un message vert — il propose de réessayer.
+    mockBrouillons();
+    vi.mocked(api.envoyerRecapEtablissement).mockResolvedValue({
+      foyerId: FOYER_ID,
+      semaineIso: SEMAINE,
+      etablissementId: CRECHE_ID,
+      destinataire: 'contact-creche@example.org',
+      statut: 'EN_COURS',
+      messageId: null,
+      erreur: null,
+      envoyeLe: null,
+    });
+
+    renderRelecture();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Envoyer \(mode test\)/ }),
+    );
+
+    // Message d'alerte (rouge), jamais un statut de succès discret.
+    const alerte = await screen.findByRole('alert');
+    expect(alerte).toHaveClass('debit');
+    expect(alerte).toHaveTextContent(/déjà en cours/i);
+    // Le bouton reste actif et propose de réessayer (pas de « Envoyé ✓ »).
+    const bouton = screen.getByRole('button', {
+      name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
+    });
+    expect(bouton).not.toBeDisabled();
+    expect(bouton).toHaveTextContent(/Réessayer l'envoi/);
+  });
+
   it('prend le focus à l’apparition pour guider vers la dernière étape', async () => {
     mockBrouillons();
     renderRelecture();

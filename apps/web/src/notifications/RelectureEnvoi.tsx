@@ -32,6 +32,15 @@ function descriptionJour(jour: DeltaJour): string {
   return `${dateLongue} — modifiée`;
 }
 
+/**
+ * Vrai uniquement pour une issue **terminale de succès** (`ENVOYE`/`DRY_RUN`). Un statut
+ * `EN_COURS` (envoi concurrent réellement en vol, renvoyé par la reprise côté service) ou
+ * `ECHEC` n'est **jamais** un succès : ni message vert, ni bouton figé sur « Envoyé ».
+ */
+function estAbouti(r: EnvoiEtablissementResultat): boolean {
+  return r.statut === 'ENVOYE' || r.statut === 'DRY_RUN';
+}
+
 /** Message de résultat selon l'issue réelle de l'envoi. */
 function libelleResultat(r: EnvoiEtablissementResultat): string {
   switch (r.statut) {
@@ -42,7 +51,7 @@ function libelleResultat(r: EnvoiEtablissementResultat): string {
     case 'ECHEC':
       return `Échec de l'envoi : ${r.erreur ?? 'erreur inconnue'}.`;
     default:
-      return `Envoi en cours…`;
+      return `Un envoi est déjà en cours vers ${r.destinataire}. Patientez un instant, puis réessayez si le service n'a pas été prévenu.`;
   }
 }
 
@@ -111,14 +120,15 @@ function BlocEnvoiEtablissement({
         semaineIso,
         brouillon.etablissementId,
       );
-      const echec = resultat.statut === 'ECHEC';
+      const abouti = estAbouti(resultat);
       setMessage({
-        type: echec ? 'erreur' : 'succes',
+        type: abouti ? 'succes' : 'erreur',
         texte: libelleResultat(resultat),
       });
-      // Un statut ECHEC laissait le bouton verrouillé sur « Envoyé » alors que
-      // rien n'était parti : on ne fige l'état qu'après un envoi réellement abouti.
-      setEnvoye(!echec);
+      // Un statut ECHEC — ou EN_COURS (envoi concurrent en vol renvoyé par la reprise) —
+      // laissait le bouton verrouillé sur « Envoyé » alors que rien n'était (encore)
+      // parti : on ne fige l'état qu'après un envoi réellement abouti.
+      setEnvoye(abouti);
     } catch (err) {
       setMessage({ type: 'erreur', texte: messageErreur(err) });
     } finally {

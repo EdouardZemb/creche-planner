@@ -30,11 +30,22 @@ import {
   type EnfantModifie,
 } from '../email/templates/brouillonService.js';
 import { loadConfig } from '../config.js';
+import { CLOCK, type Clock } from '../scheduler/clock.js';
 import type {
   BrouillonEtablissementVue,
   EnfantBrouillon,
   EnvoiEtablissementResultat,
 } from './envoi.dto.js';
+
+/**
+ * Âge minimal d'une ligne `EN_COURS` avant de la considérer **bloquée** (crash entre la
+ * réservation du slot et la finalisation) et donc reprenable à la ré-action du parent.
+ * 2 min : très au-delà d'un timeout SMTP réaliste, si bien qu'une ligne plus ancienne ne
+ * peut plus correspondre à un envoi réellement en vol. Le risque résiduel de double-envoi
+ * concurrent au-delà de ce délai est **négligeable** et cohérent avec la tolérance « au
+ * plus un doublon » déjà documentée côté récap (`schema.ts`, `envoi_recap_parent`).
+ */
+const DELAI_REPRISE_EN_COURS_MS = 2 * 60_000;
 
 /** Brouillon agrégé construit côté service (corps figé + métadonnées de résolution). */
 interface BrouillonConstruit {
@@ -84,6 +95,7 @@ export class EnvoiService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly etablissements: EtablissementProjeteService,
     private readonly mailer: MailerService,
+    @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
   /** Régénère le brouillon agrégé (lecture seule) pour la relecture avant envoi. */
@@ -161,21 +173,96 @@ export class EnvoiService {
       })
       .returning({ id: envoiEtablissement.id });
 
-    // Conflit (slot déjà réservé par un envoi antérieur) : idempotent, on renvoie
-    // l'envoi déjà journalisé — pas de second mail pour le même récap.
+    // Conflit : le slot est déjà réservé (envoi antérieur, ou double-clic). La reprise
+    // est **status-aware** et n'a lieu qu'à cette ré-action du parent — jamais via un
+    // reaper qui ré-enverrait un mail à une vraie crèche hors de la boucle humaine.
     if (insere.length === 0) {
       const existant = await this.envoiExistant(
         b.foyerId,
         b.semaineIso,
         b.etablissementId,
       );
-      this.logger.log(
-        `Envoi déjà journalisé pour ${b.foyerId}/${b.semaineIso} (${b.etablissementId}) — ignoré`,
-      );
-      return this.versResultat(existant);
+      return this.reprendreOuRendre(existant, b);
     }
 
     // Slot réservé par CET appel : on sollicite le transport et on fige l'issue.
+    return this.executerEnvoi(id, b);
+  }
+
+  /**
+   * Décide, sur un slot **déjà réservé**, entre **rendre** la ligne telle quelle
+   * (idempotence, aucun ré-envoi) et **reprendre** l'envoi (ré-invoquer le mailer) :
+   *
+   * - `ENVOYE`/`DRY_RUN` (succès terminal) → rendu tel quel, la crèche n'est jamais
+   *   re-sollicitée pour le même récap.
+   * - `ECHEC` → **repris** : le parent relance après un échec transitoire.
+   * - `EN_COURS` → **bloqué** (crash entre réservation et finalisation) si
+   *   `maintenant - created_at ≥ DELAI_REPRISE_EN_COURS_MS` → repris ; sinon un envoi est
+   *   **réellement en vol** (double-clic quasi simultané) → rendu « en cours » sans
+   *   ré-envoi.
+   */
+  private async reprendreOuRendre(
+    ligne: EnvoiEtablissementRow,
+    b: BrouillonConstruit,
+  ): Promise<EnvoiEtablissementResultat> {
+    const statut = this.statut(ligne.statut);
+    if (statut === 'ENVOYE' || statut === 'DRY_RUN') {
+      this.logger.log(
+        `Envoi déjà journalisé (${statut}) pour ${b.foyerId}/${b.semaineIso} (${b.etablissementId}) — ignoré`,
+      );
+      return this.versResultat(ligne);
+    }
+    if (statut === 'EN_COURS') {
+      const ageMs =
+        this.clock.maintenant().getTime() - ligne.createdAt.getTime();
+      if (ageMs < DELAI_REPRISE_EN_COURS_MS) {
+        // Un envoi est réellement en vol (double-clic) : honnête « en cours », pas de
+        // second mail vers la crèche.
+        this.logger.log(
+          `Envoi en cours pour ${b.foyerId}/${b.semaineIso} (${b.etablissementId}) — pas de ré-envoi`,
+        );
+        return this.versResultat(ligne);
+      }
+    }
+    // `ECHEC`, ou `EN_COURS` bloqué (âge ≥ seuil) : reprise à la ré-action du parent.
+    this.logger.log(
+      `Reprise d'un envoi ${b.foyerId}/${b.semaineIso} (${b.etablissementId}) (statut précédent : ${statut})`,
+    );
+    return this.executerEnvoi(ligne.id, b);
+  }
+
+  /**
+   * Corps d'envoi **partagé** par la première réservation et la reprise : (re)met la
+   * ligne `id` en `EN_COURS` (effaçant un éventuel motif d'échec précédent), sollicite le
+   * mailer, puis fige l'issue (`ENVOYE`/`DRY_RUN`/`ECHEC`). Le slot est supposé **déjà
+   * réservé** (unicité garantie en amont) ; on ne réécrit **jamais** `created_at`, si bien
+   * qu'une nouvelle panne laisse une ligne d'âge ancien → reprenable au prochain clic.
+   */
+  private async executerEnvoi(
+    id: string,
+    b: BrouillonConstruit,
+  ): Promise<EnvoiEtablissementResultat> {
+    // Reprise : une ligne `ECHEC`/`EN_COURS` bloquée repasse `EN_COURS` avant la nouvelle
+    // tentative (motif d'échec effacé). Première réservation : la ligne est déjà
+    // `EN_COURS` → écriture idempotente. `created_at` n'est pas touché (auto-guérison).
+    // On rafraîchit aussi `destinataire`/`sujet`/`corps` : à la reprise, le brouillon `b`
+    // a pu être régénéré (semaine ré-ajustée, e-mail d'établissement corrigé) et c'est ce
+    // contenu qui part réellement — la ligne d'audit doit prouver ce qui a été adressé,
+    // pas la valeur figée au premier essai. (Sur une première réservation, valeurs
+    // identiques à l'insert → no-op.)
+    await this.db
+      .update(envoiEtablissement)
+      .set({
+        statut: 'EN_COURS',
+        destinataire: b.destinataire,
+        sujet: b.sujet,
+        corps: b.corps,
+        messageId: null,
+        erreur: null,
+        envoyeLe: null,
+      })
+      .where(eq(envoiEtablissement.id, id));
+
     try {
       const res = await this.mailer.envoyer({
         to: b.destinataire,
@@ -184,7 +271,7 @@ export class EnvoiService {
         text: b.texte,
       });
       const statut: StatutEnvoi = res.dryRun ? 'DRY_RUN' : 'ENVOYE';
-      const envoyeLe = new Date();
+      const envoyeLe = this.clock.maintenant();
       await this.db
         .update(envoiEtablissement)
         .set({ statut, messageId: res.messageId, envoyeLe })
@@ -204,7 +291,7 @@ export class EnvoiService {
       };
     } catch (erreur) {
       const message = erreur instanceof Error ? erreur.message : String(erreur);
-      const envoyeLe = new Date();
+      const envoyeLe = this.clock.maintenant();
       await this.db
         .update(envoiEtablissement)
         .set({ statut: 'ECHEC', erreur: message, envoyeLe })
