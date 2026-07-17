@@ -26,6 +26,23 @@ describe('EtatVide', () => {
     expect(screen.getByText('Commencez ici.')).toBeInTheDocument();
   });
 
+  it('rend le titre en <h2> par défaut (empty-state in-page)', () => {
+    rendre({ titre: 'Aucun contrat' });
+    const titre = screen.getByRole('heading', { name: 'Aucun contrat' });
+    expect(titre.tagName).toBe('H2');
+    expect(titre).toHaveClass('etat-vide-titre');
+  });
+
+  it('rend le titre en <h1> avec titrePrincipal (écran pleine page)', () => {
+    rendre({ titre: 'Famille introuvable', titrePrincipal: true });
+    const titre = screen.getByRole('heading', {
+      level: 1,
+      name: 'Famille introuvable',
+    });
+    expect(titre.tagName).toBe('H1');
+    expect(titre).toHaveClass('etat-vide-titre');
+  });
+
   it('rend une action lien avec href', () => {
     rendre({
       titre: 'Vide',
