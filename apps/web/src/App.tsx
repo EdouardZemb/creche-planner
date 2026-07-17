@@ -36,6 +36,7 @@ import {
 import { useAnnonceRoute } from './hooks/useAnnonceRoute';
 import { EtatVide, type ActionEtatVide } from './ui/EtatVide';
 import { ChargementPage } from './ui/ChargementPage';
+import { BanniereHorsLigne } from './ui/BanniereHorsLigne';
 import { MoiProvider, useMoi } from './session/MoiContext';
 
 function Accueil() {
@@ -587,6 +588,10 @@ function Coquille() {
   return (
     <TitrePageContext.Provider value={{ definirTitre: setTitre }}>
       <Entete />
+      {/* Conscience hors-ligne : bandeau discret rendu uniquement hors-ligne,
+          collé sous l'en-tête et au-dessus du contenu — jamais dans la barre
+          d'onglets fixe du bas. */}
+      <BanniereHorsLigne />
       {/* UT-02 CA2 : annonce de changement de page (titre courant), polie. Le
           testid la distingue des régions live de mutation des calendriers (AQ-05). */}
       <p {...regionLiveProps} className="sr-only" data-testid="annonce-route" />
