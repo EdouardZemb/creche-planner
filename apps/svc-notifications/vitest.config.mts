@@ -44,13 +44,15 @@ export default defineConfig(() => ({
       // Relevés après le lot 1 « Fondations » (consumer JetStream mutualisé dans
       // nest-commons) : le plancher atteint monte (88 / 88 / 84 / 88), on laisse
       // ~2 pts de marge.
-      // Ratchet relevé au lot 3 (mesuré 91,5/88,5/88,6/91,6 après ajout des specs
-      // fallback planification/desabonnement.client et exclusion d'app.module).
+      // Ratchet relevé au lot 3 (mesuré 91,5/88,5/88,6/91,6).
+      // Ratchet relevé au lot 4 « Fondations » (scoping : résolveur foyer +
+      // décorateurs sur les 3 controllers + specs resolver/intégration enforce) —
+      // mesuré 92,2/89,2/88,8/92,3.
       thresholds: {
-        statements: 89,
-        branches: 86,
+        statements: 90,
+        branches: 87,
         functions: 86,
-        lines: 89,
+        lines: 90,
       },
     },
     testTimeout: 60000,

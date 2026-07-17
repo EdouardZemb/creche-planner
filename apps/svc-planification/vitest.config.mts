@@ -45,13 +45,15 @@ export default defineConfig(() => ({
       // nest-commons + tests ajoutés sur lireContrat/supprimerContrat pour compenser
       // la couverture partie avec le consumer. Plancher atteint 82 / 83 / 67 / 83,
       // ~2 pts de marge.
-      // Ratchet relevé au lot 3 (mesuré 83,5/83,4/69,4/84,5 après exclusion
-      // d'app.module et assertion machine sur referentiel.client).
+      // Ratchet relevé au lot 3 (mesuré 83,5/83,4/69,4/84,5).
+      // Ratchet relevé au lot 4 « Fondations » (scoping : résolveur foyer +
+      // décorateurs sur les 2 controllers + specs resolver/intégration enforce) —
+      // mesuré 85,0/84,8/70,4/86,0.
       thresholds: {
-        statements: 81,
-        branches: 81,
-        functions: 67,
-        lines: 82,
+        statements: 83,
+        branches: 82,
+        functions: 68,
+        lines: 83,
       },
     },
     testTimeout: 60000,

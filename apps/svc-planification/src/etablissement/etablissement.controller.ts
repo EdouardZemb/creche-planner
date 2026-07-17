@@ -11,6 +11,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { ScopeFoyerInterServices } from '@creche-planner/nest-commons';
 import { ZodValidationPipe } from '../planification/planification.dto.js';
 import {
   creerEtablissementSchema,
@@ -28,6 +29,7 @@ export class EtablissementController {
   constructor(private readonly etablissements: EtablissementService) {}
 
   /** Liste les établissements d'un foyer : `?foyer=`. */
+  @ScopeFoyerInterServices({ query: 'foyer' })
   @Get()
   lister(
     @Query('foyer', ParseUUIDPipe) foyerId: string,
@@ -36,6 +38,7 @@ export class EtablissementController {
   }
 
   /** Crée un établissement pour un foyer (`?foyer=`) → émet `EtablissementCree`. */
+  @ScopeFoyerInterServices({ query: 'foyer' })
   @Post()
   @HttpCode(HttpStatus.CREATED)
   creer(
@@ -47,12 +50,14 @@ export class EtablissementController {
   }
 
   /** Lit un établissement par son id. 404 si absent. */
+  @ScopeFoyerInterServices({ resoudre: 'etablissement', param: 'id' })
   @Get(':id')
   parId(@Param('id', ParseUUIDPipe) id: string): Promise<EtablissementVue> {
     return this.etablissements.parId(id);
   }
 
   /** Modifie un établissement (champs fournis) → émet `EtablissementModifie`. */
+  @ScopeFoyerInterServices({ resoudre: 'etablissement', param: 'id' })
   @Put(':id')
   modifier(
     @Param('id', ParseUUIDPipe) id: string,
@@ -63,6 +68,7 @@ export class EtablissementController {
   }
 
   /** Supprime un établissement → émet `EtablissementSupprime`. */
+  @ScopeFoyerInterServices({ resoudre: 'etablissement', param: 'id' })
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async supprimer(@Param('id', ParseUUIDPipe) id: string): Promise<void> {

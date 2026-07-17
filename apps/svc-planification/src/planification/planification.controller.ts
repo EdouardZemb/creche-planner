@@ -12,6 +12,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { ScopeFoyerInterServices } from '@creche-planner/nest-commons';
 import type { PrestationMois } from '@creche-planner/planification-domain';
 import { estSemaineIso } from '@creche-planner/shared-semaine';
 import {
@@ -49,6 +50,7 @@ export class PlanificationController {
   constructor(private readonly planification: PlanificationService) {}
 
   /** Liste les contrats d'un foyer (config mode-spécifique incluse) : `?foyer=`. */
+  @ScopeFoyerInterServices({ query: 'foyer' })
   @Get('contrats')
   listerContrats(
     @Query('foyer', ParseUUIDPipe) foyerId: string,
@@ -60,12 +62,14 @@ export class PlanificationController {
    * Lit le cœur d'un contrat (dont son `foyerId`) — sert la **résolution
    * contrat → foyer** de l'autorisation par foyer côté gateway (PR7). 404 si absent.
    */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
   @Get('contrats/:id')
   lireContrat(@Param('id', ParseUUIDPipe) id: string): Promise<ContratVue> {
     return this.planification.lireContrat(id);
   }
 
   /** Crée un contrat de garde → insère + émet `ContratCree` dans la transaction. */
+  @ScopeFoyerInterServices({ body: 'foyerId' })
   @Post('contrats')
   @HttpCode(HttpStatus.CREATED)
   creerContrat(
@@ -75,6 +79,7 @@ export class PlanificationController {
   }
 
   /** Modifie un contrat de garde → met à jour + émet `ContratModifie`. */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
   @Put('contrats/:id')
   modifierContrat(
     @Param('id', ParseUUIDPipe) id: string,
@@ -90,6 +95,7 @@ export class PlanificationController {
    * back-fill P5 (migration du lien contrat→établissement) → émet `ContratModifie`.
    * 400 si l'établissement est inconnu ou hors du foyer ; 404 si le contrat est absent.
    */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
   @Put('contrats/:id/etablissement')
   rattacherEtablissement(
     @Param('id', ParseUUIDPipe) id: string,
@@ -106,6 +112,7 @@ export class PlanificationController {
    * historiques (`scripts/backfill-enfants.mjs`) → émet `ContratModifie`.
    * 404 si le contrat est absent.
    */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
   @Put('contrats/:id/enfant')
   rattacherEnfant(
     @Param('id', ParseUUIDPipe) id: string,
@@ -116,6 +123,7 @@ export class PlanificationController {
   }
 
   /** Supprime un contrat de garde (+ ses plannings) → émet `ContratSupprime`. */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
   @Delete('contrats/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async supprimerContrat(
@@ -128,6 +136,7 @@ export class PlanificationController {
    * Enregistre le planning d'un mois (réel par défaut, simulé si `?simule=true`)
    * → émet `PlanningModifie` dans la transaction.
    */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
   @Put('contrats/:id/plannings/:mois')
   @HttpCode(HttpStatus.NO_CONTENT)
   async ecrirePlanning(
@@ -145,6 +154,7 @@ export class PlanificationController {
    * reste du/des mois : relit, fusionne la semaine, ré-upsert chaque mois recouvert
    * → émet `PlanningModifie` par mois. Corps = catégories datées de la semaine.
    */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
   @Put('contrats/:id/plannings/semaine/:semaineIso')
   @HttpCode(HttpStatus.NO_CONTENT)
   async ecrireSemaine(
@@ -167,6 +177,7 @@ export class PlanificationController {
    * réhydrater les calendriers de l'app. Renvoie `{ saisie: null }` si aucune
    * saisie n'existe encore pour ce mois.
    */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
   @Get('contrats/:id/plannings/:mois')
   async lirePlanning(
     @Param('id', ParseUUIDPipe) id: string,
@@ -183,6 +194,7 @@ export class PlanificationController {
   }
 
   /** Prestations du mois d'un contrat (cœur DoD) : `?contrat=&mois=&simule=`. */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', query: 'contrat' })
   @Get('prestations')
   async prestations(
     @Query('contrat', ParseUUIDPipe) contratId: string,

@@ -121,6 +121,10 @@ describe('Pact provider · svc-referentiel honore le contrat api-gateway', () =>
         // Secret d'assertion inter-services ÉPINGLÉ (fondations lot 3) : byte-identique
         // à celui dont le requestFilter signe l'en-tête x-assertion-identite ci-dessous.
         ASSERTION_IDENTITE_SECRET: 'pact-assertion-secret',
+        // ENFORCE réel (fondations lot 4) : svc-referentiel n'a aucune donnée foyer (pas
+        // de scoping), mais l'enforce du guard d'identité doit accepter l'assertion machine
+        // du requestFilter → la CI prouve l'absence de régression sur les 5 services.
+        INTERSERVICE_AUTHZ_ENFORCE: '1',
       },
       stdio: 'inherit',
     });

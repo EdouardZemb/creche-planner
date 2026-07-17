@@ -1,4 +1,5 @@
 import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import { ScopeFoyerInterServices } from '@creche-planner/nest-commons';
 import {
   CoutService,
   type CoutAnnuelVue,
@@ -21,6 +22,7 @@ export class CoutController {
   constructor(private readonly couts: CoutService) {}
 
   /** Coût consolidé d'un foyer pour un mois : `?foyer=&mois=YYYY-MM&simule=`. */
+  @ScopeFoyerInterServices({ query: 'foyer' })
   @Get()
   coutMois(
     @Query('foyer') foyerId?: string,
@@ -35,6 +37,7 @@ export class CoutController {
   }
 
   /** Coût annuel d'un foyer : `?foyer=&annee=YYYY&simule=`. */
+  @ScopeFoyerInterServices({ query: 'foyer' })
   @Get('annuel')
   coutAnnuel(
     @Query('foyer') foyerId?: string,

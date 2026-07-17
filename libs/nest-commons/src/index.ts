@@ -23,3 +23,6 @@ export * from './lib/security/assertion-identite.options.js';
 export * from './lib/security/assertion-identite.guard.js';
 export * from './lib/security/assertion-identite.module.js';
 export * from './lib/security/assertion-publique.decorator.js';
+export * from './lib/security/scope-foyer.decorator.js';
+export * from './lib/security/scope-foyer.resolveur.js';
+export * from './lib/security/scope-foyer.guard.js';

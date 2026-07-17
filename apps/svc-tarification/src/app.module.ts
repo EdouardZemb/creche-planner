@@ -35,8 +35,10 @@ import { TarificationModule } from './tarification/tarification.module.js';
     FallbackModule,
     ConsumersModule,
     TarificationModule,
-    // Guard aval d'assertion inter-services (observe-only) — fondations lot 3.
-    AssertionIdentiteModule.forRoot({ chargerConfig: loadConfig }),
+    // Guard aval d'assertion inter-services (observe-only) — fondations lot 3, +
+    // scoping par ressource (lot 4). svc-tarification scope en **direct** (les deux
+    // routes coûts portent `?foyer=`) → aucun résolveur en base (`scoping: {}`).
+    AssertionIdentiteModule.forRoot({ chargerConfig: loadConfig, scoping: {} }),
   ],
 })
 export class AppModule {}

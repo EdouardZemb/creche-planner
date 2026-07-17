@@ -124,6 +124,10 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
         // Secret d'assertion inter-services ÉPINGLÉ (fondations lot 3) : byte-identique
         // à celui dont le requestFilter signe l'en-tête x-assertion-identite ci-dessous.
         ASSERTION_IDENTITE_SECRET: 'pact-assertion-secret',
+        // ENFORCE réel (fondations lot 4) : la CI prouve que le guard enforce ne casse
+        // pas les interactions du pact. L'assertion machine du requestFilter passe la
+        // vérification d'identité ET bypasse le scoping par ressource → aucune 401/403.
+        INTERSERVICE_AUTHZ_ENFORCE: '1',
       },
       stdio: 'inherit',
     });
