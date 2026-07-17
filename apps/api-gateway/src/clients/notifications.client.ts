@@ -272,11 +272,16 @@ export class NotificationsClient {
   /**
    * POST `/api/envois/etablissement` — envoie réellement le récap **agrégé par
    * établissement** au service (idempotent sur `(foyer, semaine, établissement)`).
+   *
+   * `corpsEdite` (optionnel) : objet + corps (texte brut) relus/édités par le parent
+   * dans l'app. Fourni, il est transmis au service qui l'envoie/journalise tel quel
+   * (après échappement HTML) ; absent, le service régénère le corps depuis le delta.
    */
   async envoyerRecapEtablissement(
     foyerId: string,
     semaineIso: string,
     etablissementId: string,
+    corpsEdite?: { sujet: string; corps: string },
   ): Promise<EnvoiEtablissementResultat> {
     const base = loadConfig().notificationsUrl;
     const url = `${base}/api/envois/etablissement`;
@@ -287,7 +292,12 @@ export class NotificationsClient {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ foyerId, semaineIso, etablissementId }),
+          body: JSON.stringify({
+            foyerId,
+            semaineIso,
+            etablissementId,
+            ...corpsEdite,
+          }),
         });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);

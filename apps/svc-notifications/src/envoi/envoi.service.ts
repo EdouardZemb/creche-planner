@@ -29,6 +29,7 @@ import {
   brouillonServiceAgrege,
   type EnfantModifie,
 } from '../email/templates/brouillonService.js';
+import { echapperEnHtml } from '../email/echapperEnHtml.js';
 import { loadConfig } from '../config.js';
 import { CLOCK, type Clock } from '../scheduler/clock.js';
 import type {
@@ -83,9 +84,13 @@ interface BrouillonConstruit {
  *   (`ENVOYE`/`DRY_RUN`/`ECHEC`). **Idempotent** : un second envoi du même récap renvoie
  *   l'envoi déjà journalisé sans ré-émettre de mail — on ne spamme jamais une crèche.
  *
- * Le corps est **régénéré côté service** au moment de l'envoi (jamais repris du client) :
- * ce qui est figé dans `envoi_etablissement.corps` est exactement ce qui part. Seuls les
- * contrats `VALIDEE_AVEC_MODIFS` (deltas non vides) alimentent le récap.
+ * Par défaut, le corps est **régénéré côté service** au moment de l'envoi (depuis les
+ * deltas figés des contrats `VALIDEE_AVEC_MODIFS`). Le parent peut toutefois **relire et
+ * éditer** ce brouillon dans l'app : dans ce cas il fournit `sujet`+`corps` (texte brut),
+ * qui sont **envoyés et journalisés tels quels** après échappement HTML (jamais de HTML
+ * libre du client). Dans les deux cas, ce qui est figé dans `envoi_etablissement.corps`
+ * est exactement ce qui part, et le **destinataire reste résolu côté serveur** (jamais
+ * fourni par le client).
  */
 @Injectable()
 export class EnvoiService {
@@ -127,11 +132,18 @@ export class EnvoiService {
    * slot `envoi_etablissement` (idempotence via la clé d'unicité) : si la ligne existe
    * déjà, renvoie l'envoi journalisé sans rien ré-émettre. Sinon sollicite le mailer et
    * fige l'issue.
+   *
+   * `corpsEdite` (optionnel) : quand le parent a relu/édité le brouillon dans l'app, il
+   * fournit l'objet + le corps en **texte brut**. Ils sont alors envoyés/journalisés tels
+   * quels (le corps est échappé en HTML — jamais de HTML libre du client). Absent, le
+   * corps est régénéré côté serveur (comportement historique). Le **destinataire**, lui,
+   * reste **toujours résolu côté serveur** depuis la fiche établissement.
    */
   async envoyer(
     foyerId: string,
     semaineIso: string,
     etablissementId: string,
+    corpsEdite?: { sujet: string; corps: string },
   ): Promise<EnvoiEtablissementResultat> {
     const b = await this.construire(foyerId, semaineIso, etablissementId);
 
@@ -151,17 +163,33 @@ export class EnvoiService {
       ]);
     }
 
+    // Brouillon **effectif** réellement envoyé : soit le texte édité par le parent (échappé
+    // en HTML — jamais de HTML libre du client), soit la régénération serveur depuis le
+    // delta. Le `corps` est le fragment HTML (preuve exacte de ce qui part) ; le `texte`
+    // est la version brute accessible. Le destinataire reste résolu serveur
+    // (`b.destinataire`), jamais fourni par le client. Ce brouillon effectif alimente
+    // l'insert ET la reprise/exécution (`executerEnvoi`) → cohérence de bout en bout entre
+    // ce qui est envoyé et ce qui est journalisé, y compris à la reprise.
+    const bEffectif: BrouillonConstruit = corpsEdite
+      ? {
+          ...b,
+          sujet: corpsEdite.sujet,
+          corps: echapperEnHtml(corpsEdite.corps),
+          texte: corpsEdite.corps,
+        }
+      : b;
+
     const id = randomUUID();
     const insere = await this.db
       .insert(envoiEtablissement)
       .values({
         id,
-        foyerId: b.foyerId,
-        semaineIso: b.semaineIso,
-        etablissementId: b.etablissementId,
-        destinataire: b.destinataire,
-        sujet: b.sujet,
-        corps: b.corps,
+        foyerId: bEffectif.foyerId,
+        semaineIso: bEffectif.semaineIso,
+        etablissementId: bEffectif.etablissementId,
+        destinataire: bEffectif.destinataire,
+        sujet: bEffectif.sujet,
+        corps: bEffectif.corps,
         statut: 'EN_COURS',
       })
       .onConflictDoNothing({
@@ -182,11 +210,11 @@ export class EnvoiService {
         b.semaineIso,
         b.etablissementId,
       );
-      return this.reprendreOuRendre(existant, b);
+      return this.reprendreOuRendre(existant, bEffectif);
     }
 
     // Slot réservé par CET appel : on sollicite le transport et on fige l'issue.
-    return this.executerEnvoi(id, b);
+    return this.executerEnvoi(id, bEffectif);
   }
 
   /**

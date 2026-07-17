@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Column, getTableColumns, Param, type Table } from 'drizzle-orm';
 import { EnvoiService } from './envoi.service.js';
+import { envoiEtablissementSchema } from './envoi.dto.js';
 import type { EtablissementProjeteService } from '../etablissement/etablissement-projete.service.js';
 import type {
   MailerService,
@@ -593,6 +594,146 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     // Garde métier : aucune réservation de slot, aucune sollicitation du transport.
     expect(mock).not.toHaveBeenCalled();
     expect(stores.get(envoiEtablissement) ?? []).toHaveLength(0);
+  });
+
+  it('corps édité fourni : envoie et journalise le texte du parent (pas la régénération)', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa', date: '2026-06-29' });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
+    const service = creerService(db, etablissements, mailer);
+
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID, {
+      sujet: 'Objet réécrit par le parent',
+      corps: 'Bonjour,\nVoici le planning complet.\nMerci !',
+    });
+
+    expect(resultat.statut).toBe('DRY_RUN');
+    // Le destinataire reste résolu serveur (jamais fourni par le client).
+    expect(resultat.destinataire).toBe('contact-creche@example.org');
+    // Le mailer reçoit l'objet/texte édités et un HTML échappé (pas la régénération).
+    expect(mock).toHaveBeenCalledTimes(1);
+    expect(mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'contact-creche@example.org',
+        subject: 'Objet réécrit par le parent',
+        text: 'Bonjour,\nVoici le planning complet.\nMerci !',
+      }),
+    );
+    const html = (mock.mock.calls[0]?.[0] as { html: string }).html;
+    expect(html).toContain('Voici le planning complet.');
+    // La régénération serveur (date du delta) n'apparaît PAS quand un corps est fourni.
+    expect(html).not.toContain('29/06/2026');
+    // La ligne journalisée fige l'objet/corps réellement envoyés (preuve exacte).
+    const ligne = (stores.get(envoiEtablissement) ?? [])[0];
+    expect(ligne?.['sujet']).toBe('Objet réécrit par le parent');
+    expect(ligne?.['corps']).toBe(html);
+    expect(ligne?.['corps']).not.toContain('29/06/2026');
+  });
+
+  it('corps édité : le texte du parent est échappé (aucune balise brute n’atteint le mail)', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
+    const service = creerService(db, etablissements, mailer);
+
+    await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID, {
+      sujet: 'Objet',
+      corps: 'Attention <b>gras</b> & <script>alert(1)</script>',
+    });
+
+    const html = (mock.mock.calls[0]?.[0] as { html: string }).html;
+    // Les balises client sortent échappées : aucune balise brute injectée.
+    expect(html).not.toContain('<b>');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;b&gt;gras&lt;/b&gt;');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
+
+  it('sans corps édité : régénère le corps serveur (rétro-compatibilité)', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa', date: '2026-06-29' });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
+    const service = creerService(db, etablissements, mailer);
+
+    await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
+
+    // Corps régénéré (date du delta) quand aucun corps client n'est fourni.
+    const html = (mock.mock.calls[0]?.[0] as { html: string }).html;
+    expect(html).toContain('29/06/2026');
+    expect((stores.get(envoiEtablissement) ?? [])[0]?.['corps']).toContain(
+      '29/06/2026',
+    );
+  });
+});
+
+describe('envoiEtablissementSchema (objet + corps optionnels, rétro-compatible)', () => {
+  const BASE = {
+    foyerId: FOYER_ID,
+    semaineIso: SEMAINE,
+    etablissementId: ETAB_ID,
+  };
+
+  it('accepte les 3 ids seuls (rétro-compat)', () => {
+    expect(envoiEtablissementSchema.safeParse(BASE).success).toBe(true);
+  });
+
+  it('accepte objet + corps fournis ensemble', () => {
+    const r = envoiEtablissementSchema.safeParse({
+      ...BASE,
+      sujet: 'Objet',
+      corps: 'Un message.',
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('rejette l’objet seul (les deux ensemble ou aucun)', () => {
+    expect(
+      envoiEtablissementSchema.safeParse({ ...BASE, sujet: 'Objet' }).success,
+    ).toBe(false);
+  });
+
+  it('rejette le corps seul (les deux ensemble ou aucun)', () => {
+    expect(
+      envoiEtablissementSchema.safeParse({ ...BASE, corps: 'Un message.' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('rejette un objet vide ou trop long (> 300)', () => {
+    expect(
+      envoiEtablissementSchema.safeParse({
+        ...BASE,
+        sujet: '',
+        corps: 'Un message.',
+      }).success,
+    ).toBe(false);
+    expect(
+      envoiEtablissementSchema.safeParse({
+        ...BASE,
+        sujet: 'x'.repeat(301),
+        corps: 'Un message.',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejette un corps vide ou trop long (> 20000)', () => {
+    expect(
+      envoiEtablissementSchema.safeParse({
+        ...BASE,
+        sujet: 'Objet',
+        corps: '',
+      }).success,
+    ).toBe(false);
+    expect(
+      envoiEtablissementSchema.safeParse({
+        ...BASE,
+        sujet: 'Objet',
+        corps: 'x'.repeat(20001),
+      }).success,
+    ).toBe(false);
   });
 });
 
