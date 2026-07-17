@@ -62,16 +62,4 @@ describe('ReferentielController — validation calendaire des dates (AQ-04)', ()
       expect(grilleApplicable).toHaveBeenCalledWith(date, 'CANTINE', 3);
     },
   );
-
-  it('applique la même validation sur /frais-fixes/applicable', async () => {
-    const fraisFixesApplicable = vi
-      .fn<ReferentielService['fraisFixesApplicable']>()
-      .mockResolvedValue({} as never);
-    const ctrl = controleur({ fraisFixesApplicable });
-    expect(() => ctrl.fraisFixesApplicable('2026-02-30')).toThrow(
-      BadRequestException,
-    );
-    await ctrl.fraisFixesApplicable('2026-09-01');
-    expect(fraisFixesApplicable).toHaveBeenCalledWith('2026-09-01');
-  });
 });

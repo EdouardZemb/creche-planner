@@ -5,12 +5,10 @@ import {
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@nestjs/common';
-import { Money } from '@creche-planner/shared-kernel';
 import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   baremePsu,
-  fraisFixesAbcm,
   grilleAbcm,
   jourNonFacturable,
 } from '../database/schema.js';
@@ -115,7 +113,6 @@ export class SeedService
     try {
       await this.amorcerGrilles();
       await this.amorcerBaremePsu();
-      await this.amorcerFraisFixes();
       await this.amorcerFermetures();
     } catch (erreur) {
       this.logger.warn(
@@ -149,20 +146,6 @@ export class SeedService
       plafondCentimes: null,
     });
     this.logger.log('Barème PSU 2026 amorcé');
-  }
-
-  private async amorcerFraisFixes(): Promise<void> {
-    const dejaLa = await this.db.select().from(fraisFixesAbcm).limit(1);
-    if (dejaLa.length > 0) {
-      return;
-    }
-    await this.db.insert(fraisFixesAbcm).values({
-      valideDu: '2026-01-01',
-      valideAu: null,
-      cotisation1EnfantCentimes: Money.depuisEuros(286).centimes,
-      premiereInscriptionCentimes: Money.depuisEuros(150).centimes,
-    });
-    this.logger.log('Frais fixes ABCM 2026 amorcés');
   }
 
   private async amorcerFermetures(): Promise<void> {

@@ -62,22 +62,6 @@ export const baremePsu = pgTable('bareme_psu', {
     .defaultNow(),
 });
 
-/** Frais fixes annuels ABCM (cotisation + 1ère inscription), versionnés (doc 02 §4.4). */
-export const fraisFixesAbcm = pgTable('frais_fixes_abcm', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  valideDu: date('valide_du').notNull(),
-  valideAu: date('valide_au'),
-  cotisation1EnfantCentimes: bigint('cotisation_1_enfant_centimes', {
-    mode: 'number',
-  }).notNull(),
-  premiereInscriptionCentimes: bigint('premiere_inscription_centimes', {
-    mode: 'number',
-  }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
-
 /** Jour non facturable : férié, fermeture crèche, vacances (doc 02 §7, INV-04). */
 export const jourNonFacturable = pgTable('jour_non_facturable', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -108,6 +92,5 @@ export const outbox = pgTable('outbox', {
 
 export type GrilleAbcmRow = typeof grilleAbcm.$inferSelect;
 export type BaremePsuRow = typeof baremePsu.$inferSelect;
-export type FraisFixesAbcmRow = typeof fraisFixesAbcm.$inferSelect;
 export type JourNonFacturableRow = typeof jourNonFacturable.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;

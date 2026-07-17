@@ -20,13 +20,12 @@ import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   baremePsu,
-  fraisFixesAbcm,
   grilleAbcm,
   jourNonFacturable,
   outbox,
   type GrilleAbcmRow,
 } from '../database/schema.js';
-import type { PublierGrilleAbcmDto } from './referentiel.dto.js';
+import { publierGrilleAbcmSchema } from './referentiel.dto.js';
 
 /** Vue d'une grille ABCM publiée (montants en centimes, fidèle à `Money`). */
 export interface GrilleAbcmVue {
@@ -79,13 +78,6 @@ export type GrilleApplicable =
       readonly plafondCentimes: number | null;
     };
 
-export interface FraisFixesVue {
-  readonly valideDu: string;
-  readonly valideAu: string | null;
-  readonly cotisation1EnfantCentimes: number;
-  readonly premiereInscriptionCentimes: number;
-}
-
 export interface JourNonFacturableVue {
   readonly jour: string;
   readonly type: string;
@@ -97,12 +89,15 @@ export class ReferentielService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   /**
-   * Publie une grille ABCM versionnée : valide période/tranche via le domaine,
+   * Publie une grille ABCM versionnée : **valide l'entrée via Zod** (le schéma
+   * n'étant plus branché sur un pipe HTTP, la validation vit ici pour couvrir
+   * aussi les grilles seedées au boot), valide période/tranche via le domaine,
    * refuse un chevauchement avec une grille existante de la même tranche, puis
    * insère la grille et émet un `GrillePubliee` **par mode ABCM** dans la même
    * transaction (outbox).
    */
-  async publierGrilleAbcm(dto: PublierGrilleAbcmDto): Promise<GrilleAbcmVue> {
+  async publierGrilleAbcm(entree: unknown): Promise<GrilleAbcmVue> {
+    const dto = publierGrilleAbcmSchema.parse(entree);
     const tranche = trancheDepuisNiveau(dto.tranche);
     const periode = PeriodeValidite.creer(
       dto.valideDu,
@@ -245,24 +240,6 @@ export class ReferentielService {
       taux: sel.row.taux,
       plancherCentimes: sel.row.plancherCentimes,
       plafondCentimes: sel.row.plafondCentimes,
-    };
-  }
-
-  /** Frais fixes ABCM applicables à `date` (doc 02 §4.4). */
-  async fraisFixesApplicable(date: string): Promise<FraisFixesVue> {
-    const rows = await this.db.select().from(fraisFixesAbcm);
-    const sel = selectionnerVersionApplicable(
-      rows.map((row) => ({
-        periode: PeriodeValidite.creer(row.valideDu, row.valideAu ?? undefined),
-        row,
-      })),
-      date,
-    );
-    return {
-      valideDu: sel.row.valideDu,
-      valideAu: sel.row.valideAu,
-      cotisation1EnfantCentimes: sel.row.cotisation1EnfantCentimes,
-      premiereInscriptionCentimes: sel.row.premiereInscriptionCentimes,
     };
   }
 
