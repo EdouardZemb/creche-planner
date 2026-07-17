@@ -44,6 +44,29 @@ export default defineConfig({
         // géré par l'edge — le SW ne doit jamais y répondre avec la coquille
         // en cache, sinon le flux de reconnexion est avalé hors-ligne aussi.
         navigateFallbackDenylist: [/^\/cdn-cgi\//],
+        // Consultation hors-ligne : cache LECTURE des GET de l'API (dashboard,
+        // planning, coûts…). NetworkFirst → en ligne, toujours le réseau
+        // d'abord (frais) ; hors-ligne ou > 4 s, repli sur le cache. On ne met
+        // JAMAIS en cache les écritures (GET only) ni l'`opaqueredirect` d'Access
+        // (status 0) : `statuses: [200]` laisse la session expirée déclencher le
+        // flux « Session expirée » au lieu de l'avaler hors-ligne.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url, request }) =>
+              request.method === 'GET' && url.pathname.startsWith('/api/v1/'),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-lecture-v1',
+              networkTimeoutSeconds: 4,
+              cacheableResponse: { statuses: [200] },
+              expiration: {
+                maxEntries: 64,
+                maxAgeSeconds: 60 * 60 * 24,
+                purgeOnQuotaError: true,
+              },
+            },
+          },
+        ],
       },
       manifest: {
         name: 'Crèche Planner',

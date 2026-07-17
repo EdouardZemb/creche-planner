@@ -9,6 +9,13 @@ const MESSAGE_5XX = 'Service indisponible, réessayez dans un instant.';
 
 /** Convertit une erreur (ApiError ou Error) en message utilisateur en français. */
 export function messageErreur(e: unknown): string {
+  // Hors-ligne : une écriture tentée sans réseau échoue (le fetch rejette). On
+  // court-circuite le mapping technique pour nommer la vraie cause au parent,
+  // plutôt qu'un « Service indisponible » trompeur. La lecture, elle, est
+  // servie par le cache du Service Worker et ne passe pas par ici.
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return 'Vous êtes hors-ligne. Reconnectez-vous pour enregistrer vos changements.';
+  }
   if (e instanceof ApiError) {
     if (e.status >= 500) {
       // 502 (réseau/timeout/circuit ouvert) et autres 5xx → indisponibilité.

@@ -769,6 +769,21 @@ h3 {
   text-align: center;
 }
 
+/* Conscience hors-ligne (ui/BanniereHorsLigne) : bandeau discret collé sous
+   l'en-tête, au-dessus du contenu défilant — jamais sur la barre d'onglets fixe
+   du bas. Contraste #92400e sur #fef3c7 ≈ AA. */
+.banniere-hors-ligne {
+  position: sticky;
+  top: 0;
+  z-index: 30; /* au-dessus du contenu, sous la barre d'onglets (40) et la modale (50) */
+  background: #fef3c7;
+  color: #92400e;
+  border-bottom: 1px solid var(--ambre);
+  padding: var(--esp-2) var(--esp-4);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
 /* Texte réservé aux lecteurs d'écran. */
 .sr-only {
   position: absolute;
