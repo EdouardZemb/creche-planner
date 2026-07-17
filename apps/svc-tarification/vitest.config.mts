@@ -33,13 +33,15 @@ export default defineConfig(() => ({
       // Bootstrap process (main/tracing) : exécutés au boot du conteneur,
       // couverts par smoke-stack, non testables unitairement.
       exclude: ['src/main.ts', 'src/tracing.ts', '**/*.spec.ts'],
+      // Relevés après le lot 1 « Fondations » : le consumer JetStream (0 % couvert)
+      // quitte ce service pour nest-commons, le plancher atteint monte à
+      // 76 / 75 / 73 / 75. On garde une marge volontairement large (~4-5 pts) car
+      // les specs de résilience sont sensibles au timing (cf. historique branches).
       thresholds: {
-        statements: 36,
-        // 48 et non 49 : la mesure branches varie entre local (49,01 %) et
-        // runner CI (48,36 %) — specs de résilience sensibles au timing.
-        branches: 48,
-        functions: 36,
-        lines: 36,
+        statements: 72,
+        branches: 70,
+        functions: 68,
+        lines: 72,
       },
     },
     testTimeout: 60000,

@@ -196,7 +196,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
     const projection = new ProjectionService(db);
     await expect(
       projection.traiter('PLANIFICATION', { foo: 'bar' }),
-    ).resolves.toBe(true);
+    ).resolves.toBe('IGNORE_ENVELOPPE_INVALIDE');
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
@@ -207,7 +207,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
       projection.traiter('PLANIFICATION', {
         type: 'planification.PlanningModifie.v1',
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe('IGNORE_TYPE_INCONNU');
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
@@ -221,7 +221,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         ) as Record<string, unknown>),
         payload: { contratId: 'pas-un-uuid' },
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
   });
 
   it('projette un ContratCree valide (1ʳᵉ réception) et acquitte', async () => {
@@ -232,7 +232,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         'PLANIFICATION',
         evenementContratCree('11111111-1111-4111-8111-111111111111'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -244,7 +244,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         'PLANIFICATION',
         evenementContratCree('11111111-1111-4111-8111-111111111111'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -256,7 +256,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         'PLANIFICATION',
         evenementContratModifie('44444444-4444-4444-8444-444444444444'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -268,7 +268,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         'PLANIFICATION',
         evenementContratSupprime('66666666-6666-4666-8666-666666666666'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -280,7 +280,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         'PLANIFICATION',
         evenementContratSupprime('66666666-6666-4666-8666-666666666666'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -295,7 +295,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
           '11111111-1111-4111-8111-111111111111',
         ),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -310,7 +310,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
           '22222222-2222-4222-8222-aaaaaaaaaaaa',
         ),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -322,7 +322,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         'FOYER',
         evenementParentRetire('33333333-3333-4333-8333-333333333333'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -337,7 +337,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         ) as Record<string, unknown>),
         payload: { foyerId: 'pas-un-uuid' },
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
   });
 
   it('idempotent : un ParentAjoute doublon (marqueur présent) n’upsert pas mais acquitte', async () => {
@@ -351,7 +351,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
           '55555555-5555-4555-8555-555555555555',
         ),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -363,7 +363,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         'FOYER',
         evenementPreferences('77777777-7777-4777-8777-777777777777'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -377,7 +377,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         ) as Record<string, unknown>),
         payload: { parentId: 'pas-un-uuid' },
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
   });
 
   it('idempotent : un PreferencesNotifModifiees doublon (marqueur présent) acquitte sans projeter', async () => {
@@ -388,7 +388,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         'FOYER',
         evenementPreferences('77777777-7777-4777-8777-bbbbbbbbbbbb'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -403,7 +403,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
           '11111111-1111-4111-8111-eeeeeeeeeeee',
         ),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -418,7 +418,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
           '22222222-2222-4222-8222-eeeeeeeeeeee',
         ),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -430,7 +430,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         'PLANIFICATION',
         evenementEtablissementSupprime('33333333-3333-4333-8333-eeeeeeeeeeee'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -445,7 +445,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
         ) as Record<string, unknown>),
         payload: { etablissementId: 'pas-un-uuid' },
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
   });
 
   it('idempotent : un EtablissementCree doublon (marqueur présent) n’upsert pas mais acquitte', async () => {
@@ -459,7 +459,7 @@ describe('ProjectionService.traiter (Notifications)', () => {
           '55555555-5555-4555-8555-eeeeeeeeeeee',
         ),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 });

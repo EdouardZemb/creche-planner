@@ -22,7 +22,7 @@ import {
   CONTRAT_SUPPRIME_TYPE,
   PLANNING_MODIFIE_TYPE,
 } from '@creche-planner/contracts-planification';
-import { DRIZZLE } from '@creche-planner/nest-commons';
+import { DRIZZLE, type ResultatTraitement } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   contrat,
@@ -55,48 +55,49 @@ export class ProjectionService {
   ) {}
 
   /**
-   * Traite un message brut d'un stream. Renvoie `true` si l'événement a été
-   * appliqué (ou ignoré proprement) et peut être acquitté ; `false` si une erreur
-   * transitoire impose un re-livraison (NAK). La forme inconnue d'un type non géré
-   * est acquittée (on ne bloque pas le stream sur un événement étranger).
+   * Traite un message brut d'un stream et renvoie un {@link ResultatTraitement}
+   * qui dit au consommateur quoi en faire : `TRAITE` (appliqué ou ignoré
+   * proprement → ACK), `IGNORE_ENVELOPPE_INVALIDE`/`IGNORE_TYPE_INCONNU`
+   * (dead-letter + ACK), `ECHEC_TRANSITOIRE` (erreur transitoire → NAK, ou
+   * dead-letter au bout des livraisons). Aucun message ne disparaît en silence.
    */
-  async traiter(stream: string, donnees: unknown): Promise<boolean> {
+  async traiter(stream: string, donnees: unknown): Promise<ResultatTraitement> {
     try {
       const type = this.typeDe(donnees);
       if (type === undefined) {
-        return true; // pas une enveloppe reconnue : on acquitte sans projeter
+        return 'IGNORE_ENVELOPPE_INVALIDE'; // pas une enveloppe reconnue
       }
       switch (type) {
         case FOYER_MIS_A_JOUR_TYPE:
         case FOYER_MIS_A_JOUR_V2_TYPE:
           await this.appliquerFoyerMisAJour(stream, donnees);
-          return true;
+          return 'TRAITE';
         case ENFANT_AJOUTE_TYPE:
           await this.appliquerEnfantAjoute(stream, donnees);
-          return true;
+          return 'TRAITE';
         case GRILLE_PUBLIEE_TYPE:
           await this.appliquerGrillePubliee(stream, donnees);
-          return true;
+          return 'TRAITE';
         case CONTRAT_CREE_TYPE:
           await this.appliquerContratCree(stream, donnees);
-          return true;
+          return 'TRAITE';
         case CONTRAT_MODIFIE_TYPE:
           await this.appliquerContratModifie(stream, donnees);
-          return true;
+          return 'TRAITE';
         case CONTRAT_SUPPRIME_TYPE:
           await this.appliquerContratSupprime(stream, donnees);
-          return true;
+          return 'TRAITE';
         case PLANNING_MODIFIE_TYPE:
           await this.appliquerPlanningModifie(stream, donnees);
-          return true;
+          return 'TRAITE';
         default:
-          return true; // type non consommé par Tarification : acquitté
+          return 'IGNORE_TYPE_INCONNU'; // type non consommé par Tarification
       }
     } catch (erreur) {
       this.logger.warn(
         `Projection échouée (${stream}) : ${(erreur as Error).message} — re-livraison`,
       );
-      return false;
+      return 'ECHEC_TRANSITOIRE';
     }
   }
 

@@ -50,6 +50,13 @@
       "when": 1783100000000,
       "tag": "0006_contrat_premiere_inscription",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784310487943,
+      "tag": "0007_dead_letter",
+      "breakpoints": true
     }
   ]
 }

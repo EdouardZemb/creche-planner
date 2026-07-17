@@ -231,7 +231,7 @@ describe('Projection FoyerMisAJour (contenu + idempotence rejouée)', () => {
 
     await expect(
       projection.traiter('FOYER', evenementFoyer(ID_EVT)),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     expect(lignesDe(foyer)).toHaveLength(1);
     expect(lignesDe(foyer)[0]).toMatchObject({
@@ -258,7 +258,7 @@ describe('Projection FoyerMisAJour (contenu + idempotence rejouée)', () => {
         'FOYER',
         evenementFoyer(ID_EVT, { ressourcesMensuellesCentimes: 999999 }),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     expect(lignesDe(foyer)).toHaveLength(1);
     expect(lignesDe(foyer)[0]).toMatchObject({
@@ -303,7 +303,7 @@ describe('Projection FoyerMisAJour (contenu + idempotence rejouée)', () => {
     };
     (evtV2['payload'] as Record<string, unknown>)['anneeRevenus'] = 2024;
 
-    await expect(projection.traiter('FOYER', evtV2)).resolves.toBe(true);
+    await expect(projection.traiter('FOYER', evtV2)).resolves.toBe('TRAITE');
     // Même projection que v1 : le champ optionnel v2 n'altère pas le read model.
     expect(lignesDe(foyer)[0]).toMatchObject({
       id: FOYER_ID,
@@ -322,7 +322,7 @@ describe('Projection FoyerMisAJour (contenu + idempotence rejouée)', () => {
         type: 'autre.Chose.v1',
         payload: {},
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe('IGNORE_TYPE_INCONNU');
     expect(lignesDe(foyer)).toHaveLength(0);
     expect(lignesDe(processedEvent)).toHaveLength(0);
   });
@@ -348,8 +348,12 @@ describe('Projection GrillePubliee (référentiel)', () => {
       },
     };
 
-    await expect(projection.traiter('REFERENTIEL', evt)).resolves.toBe(true);
-    await expect(projection.traiter('REFERENTIEL', evt)).resolves.toBe(true);
+    await expect(projection.traiter('REFERENTIEL', evt)).resolves.toBe(
+      'TRAITE',
+    );
+    await expect(projection.traiter('REFERENTIEL', evt)).resolves.toBe(
+      'TRAITE',
+    );
 
     expect(lignesDe(grilleTarifaire)).toHaveLength(1);
     expect(lignesDe(grilleTarifaire)[0]).toMatchObject({
@@ -383,7 +387,7 @@ describe('Chaîne planification : ContratCree → PlanningModifie → prestation
 
     await expect(
       projection.traiter('PLANIFICATION', evenementContratCree(ID_EVT_CONTRAT)),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(lignesDe(contrat)[0]).toMatchObject({
       id: CONTRAT_ID,
       foyerId: FOYER_ID,
@@ -393,7 +397,7 @@ describe('Chaîne planification : ContratCree → PlanningModifie → prestation
 
     await expect(
       projection.traiter('PLANIFICATION', evenementPlanning(ID_EVT_PLANNING)),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     // La prestation projetée est rattachée à l'identité du contrat (foyer/enfant/mode).
     expect(lignesDe(prestationMois)).toHaveLength(1);
     expect(lignesDe(prestationMois)[0]).toMatchObject({
@@ -411,7 +415,7 @@ describe('Chaîne planification : ContratCree → PlanningModifie → prestation
     // appel au repli planification, read model inchangé.
     await expect(
       projection.traiter('PLANIFICATION', evenementPlanning(ID_EVT_PLANNING)),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(client.prestations).toHaveBeenCalledTimes(1);
     expect(lignesDe(prestationMois)).toHaveLength(1);
     expect(lignesDe(processedEvent)).toHaveLength(2); // contrat + planning
@@ -427,7 +431,7 @@ describe('Chaîne planification : ContratCree → PlanningModifie → prestation
     // Ordre inversé (livraison inter-streams non ordonnée) : contrat inconnu ⇒ NAK.
     await expect(
       projection.traiter('PLANIFICATION', evenementPlanning(ID_EVT_PLANNING)),
-    ).resolves.toBe(false);
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
     expect(lignesDe(prestationMois)).toHaveLength(0);
     // L'événement n'est PAS marqué traité : la re-livraison reste possible.
     expect(lignesDe(processedEvent)).toHaveLength(0);
@@ -439,7 +443,7 @@ describe('Chaîne planification : ContratCree → PlanningModifie → prestation
     );
     await expect(
       projection.traiter('PLANIFICATION', evenementPlanning(ID_EVT_PLANNING)),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(lignesDe(prestationMois)).toHaveLength(1);
   });
 
@@ -456,7 +460,7 @@ describe('Chaîne planification : ContratCree → PlanningModifie → prestation
 
     await expect(
       projection.traiter('PLANIFICATION', evenementPlanning(ID_EVT_PLANNING)),
-    ).resolves.toBe(false);
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
     expect(lignesDe(prestationMois)).toHaveLength(0);
     expect(
       lignesDe(processedEvent).filter((l) => l['id'] === ID_EVT_PLANNING),
@@ -481,7 +485,7 @@ describe('Projection « première inscription » (Coûts lot 4b)', () => {
           premiereInscription: true,
         }),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     expect(lignesDe(contrat)[0]).toMatchObject({
       id: CONTRAT_ID,
@@ -524,7 +528,7 @@ describe('Projection « première inscription » (Coûts lot 4b)', () => {
           premiereInscription: true,
         }),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     expect(lignesDe(contrat)).toHaveLength(1);
     expect(lignesDe(contrat)[0]).toMatchObject({
@@ -549,7 +553,7 @@ describe('Projection « première inscription » (Coûts lot 4b)', () => {
         'PLANIFICATION',
         evenementContratCree(ID_EVT_CONTRAT, { premiereInscription: false }),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     expect(lignesDe(contrat)).toHaveLength(1);
     expect(lignesDe(contrat)[0]).toMatchObject({ premiereInscription: true });

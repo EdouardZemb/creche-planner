@@ -119,7 +119,7 @@ describe('ProjectionService.traiter (svc-planification, stream FOYER)', () => {
     const { db } = fakeDb({ marqueurInsere: true });
     const projection = new ProjectionService(db);
     await expect(projection.traiter('FOYER', { foo: 'bar' })).resolves.toBe(
-      true,
+      'IGNORE_ENVELOPPE_INVALIDE',
     );
     expect(db.transaction).not.toHaveBeenCalled();
   });
@@ -131,7 +131,7 @@ describe('ProjectionService.traiter (svc-planification, stream FOYER)', () => {
       projection.traiter('FOYER', {
         type: ENFANT_AJOUTE_TYPE,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe('IGNORE_TYPE_INCONNU');
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
@@ -145,7 +145,7 @@ describe('ProjectionService.traiter (svc-planification, stream FOYER)', () => {
         ) as Record<string, unknown>),
         payload: { enfantId: 'pas-un-uuid' },
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
   });
 
   it('rafraîchit le prénom des contrats de l’enfant et ré-émet un ContratModifie PAR contrat', async () => {
@@ -163,7 +163,7 @@ describe('ProjectionService.traiter (svc-planification, stream FOYER)', () => {
         'FOYER',
         evenementEnfantModifie('11111111-1111-4111-8111-111111111111', 'Léa'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     // Le prénom dénormalisé est mis à jour (l'update filtre par enfant_id + prénom ≠).
     expect(updateSet).toHaveBeenCalledWith(
@@ -195,7 +195,7 @@ describe('ProjectionService.traiter (svc-planification, stream FOYER)', () => {
         'FOYER',
         evenementEnfantModifie('11111111-1111-4111-8111-111111111111', 'Léa'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     expect(outboxInserts[0]).toMatchObject({
       type: CONTRAT_MODIFIE_TYPE,
@@ -215,7 +215,7 @@ describe('ProjectionService.traiter (svc-planification, stream FOYER)', () => {
         'FOYER',
         evenementEnfantModifie('11111111-1111-4111-8111-111111111111'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(outboxInserts).toHaveLength(0);
   });
 
@@ -233,7 +233,7 @@ describe('ProjectionService.traiter (svc-planification, stream FOYER)', () => {
         'FOYER',
         evenementEnfantModifie('11111111-1111-4111-8111-111111111111'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(updateSet).not.toHaveBeenCalled();
     expect(outboxInserts).toHaveLength(0);
   });

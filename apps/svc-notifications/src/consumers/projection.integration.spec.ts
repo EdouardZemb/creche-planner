@@ -214,7 +214,7 @@ describe('Projection ContratCree (contenu + idempotence rejouée)', () => {
 
     await expect(
       projection.traiter('PLANIFICATION', evenementContratCree(ID_EVT)),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     expect(lignesDe(contrat)).toHaveLength(1);
     expect(lignesDe(contrat)[0]).toMatchObject({
@@ -264,7 +264,7 @@ describe('Projection ContratCree (contenu + idempotence rejouée)', () => {
         'PLANIFICATION',
         evenementContratCree(ID_EVT, { enfant: 'Zoé' }),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     expect(lignesDe(contrat)).toHaveLength(1);
     expect(lignesDe(contrat)[0]).toMatchObject({ enfant: 'Mia' }); // 1ʳᵉ livraison conservée
@@ -299,7 +299,7 @@ describe('Projection ContratCree (contenu + idempotence rejouée)', () => {
         type: 'planification.PlanningModifie.v1',
         payload: {},
       }),
-    ).resolves.toBe(true);
+    ).resolves.toBe('IGNORE_TYPE_INCONNU');
     expect(lignesDe(contrat)).toHaveLength(0);
     expect(lignesDe(processedEvent)).toHaveLength(0);
   });
@@ -323,7 +323,7 @@ describe('Projection ContratSupprime', () => {
         'PLANIFICATION',
         evenementContratSupprime(ID_EVT_SUPPR),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(lignesDe(contrat)).toHaveLength(0);
 
     // Rejeu de la MÊME suppression (même id) : marqueur déjà posé ⇒ no-op.
@@ -332,7 +332,7 @@ describe('Projection ContratSupprime', () => {
         'PLANIFICATION',
         evenementContratSupprime(ID_EVT_SUPPR),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(lignesDe(contrat)).toHaveLength(0);
     expect(
       lignesDe(processedEvent).filter((l) => l['id'] === ID_EVT_SUPPR),
@@ -390,7 +390,7 @@ describe('Projection foyer_parent (parents du foyer, stream FOYER)', () => {
           '11111111-1111-4111-8111-111111111111',
         ),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     expect(lignesDe(foyerParent)).toHaveLength(1);
     expect(lignesDe(foyerParent)[0]).toMatchObject({
@@ -461,14 +461,14 @@ describe('Projection foyer_parent (parents du foyer, stream FOYER)', () => {
 
     await expect(
       projection.traiter('FOYER', evenementParentRetire(ID_RETIRE)),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(lignesDe(foyerParent)).toHaveLength(1);
     expect(lignesDe(foyerParent)[0]).toMatchObject({ actif: false });
 
     // Rejeu de la MÊME enveloppe : marqueur déjà posé ⇒ aucune nouvelle écriture.
     await expect(
       projection.traiter('FOYER', evenementParentRetire(ID_RETIRE)),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(
       lignesDe(processedEvent).filter((l) => l['id'] === ID_RETIRE),
     ).toHaveLength(1);
@@ -553,7 +553,7 @@ describe('Projection preference_notification (préférences, stream FOYER)', () 
           },
         ]),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     expect(lignesDe(preferenceNotification)).toHaveLength(2);
     expect(lignesDe(preferenceNotification)).toContainEqual(
@@ -632,7 +632,7 @@ describe('Projection preference_notification (préférences, stream FOYER)', () 
         ]) as Record<string, unknown>),
         payload: { parentId: 'pas-un-uuid' },
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
     expect(lignesDe(preferenceNotification)).toHaveLength(0);
     expect(lignesDe(processedEvent)).toHaveLength(0);
   });
@@ -651,7 +651,7 @@ describe('Projection établissement (fiche projetée, stream PLANIFICATION)', ()
           '11111111-1111-4111-8111-eeeeeeeeeeee',
         ),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
 
     expect(lignesDe(etablissement)).toHaveLength(1);
     expect(lignesDe(etablissement)[0]).toMatchObject({
@@ -733,7 +733,7 @@ describe('Projection établissement (fiche projetée, stream PLANIFICATION)', ()
         'PLANIFICATION',
         evenementEtablissementSupprime(ID_SUPPR),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(lignesDe(etablissement)).toHaveLength(0);
 
     // Rejeu de la MÊME suppression : marqueur déjà posé ⇒ no-op.
@@ -742,7 +742,7 @@ describe('Projection établissement (fiche projetée, stream PLANIFICATION)', ()
         'PLANIFICATION',
         evenementEtablissementSupprime(ID_SUPPR),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(lignesDe(etablissement)).toHaveLength(0);
     expect(
       lignesDe(processedEvent).filter((l) => l['id'] === ID_SUPPR),
