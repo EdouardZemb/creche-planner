@@ -74,6 +74,87 @@ function parseListe(valeur: string | undefined): string[] {
     .filter((s) => s.length > 0);
 }
 
+/**
+ * Une URL de **base** est acceptable pour les liens d'e-mail (récap du mardi,
+ * désabonnement one-click) seulement si un parent **hors réseau local** peut
+ * l'ouvrir sans avertissement de certificat. Elle doit donc :
+ *
+ * 1. se **parser** proprement (`new URL`),
+ * 2. être en **`https:`** (un lien `http:` casse la cible one-click et n'est pas
+ *    fiable pour un client de messagerie),
+ * 3. viser un **nom de domaine public** — jamais un littéral IP (IPv4 ou IPv6,
+ *    typiquement l'IP LAN `192.168.1.129` du serveur, à certificat non fiable et
+ *    injoignable hors-LAN) ni `localhost`.
+ *
+ * Limite connue et **assumée** : un domaine interne non public (`creche.lan`)
+ * passe ce filtre — c'est l'**action ops** (poser la bonne origine publique dans
+ * `.env.server.enc`) qui garantit le bon domaine ; ce garde-fou est le **filet**,
+ * pas le correctif. Parsing via `URL` natif, aucune dépendance IP.
+ */
+export function estUrlEmailPublique(url: string): boolean {
+  let parsee: URL;
+  try {
+    parsee = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsee.protocol !== 'https:') {
+    return false;
+  }
+  const hote = parsee.hostname;
+  if (hote === 'localhost') {
+    return false;
+  }
+  // IPv6 littéral : `new URL` conserve les crochets, le hostname contient « : ».
+  if (hote.includes(':')) {
+    return false;
+  }
+  // IPv4 littéral : quatre octets pointés (ex. 192.168.1.129).
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hote)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Garde-fou de démarrage (miroir de `verifierConfigProduction` côté api-gateway
+ * et svc-foyer) : en **production**, les URL de base insérées dans les liens des
+ * e-mails de rappel — `NOTIF_APP_URL` (lien « valider mon planning ») et
+ * `NOTIF_PUBLIC_API_URL` (cible one-click `List-Unsubscribe`) — doivent être des
+ * URL **https à nom de domaine public**. Réglées sur l'IP LAN du serveur (défaut
+ * historique via `SERVER_ORIGIN`), les liens sont **injoignables hors-LAN** et
+ * **à certificat invalide** pour le parent : le service **refuse de démarrer**
+ * pour rendre cette mauvaise configuration bruyante plutôt que silencieuse.
+ *
+ * Hors production (dev / test / e2e local avec `http://localhost:*`), le
+ * garde-fou est **inactif** : la validation ne s'applique qu'à `NODE_ENV`
+ * production. Fonction **pure** (ni log ni effet de bord) : le bootstrap
+ * (`main.ts`) journalise avant de propager le `throw`.
+ */
+export function verifierConfigProduction(
+  config: Pick<ServiceConfig, 'appUrl' | 'publicApiUrl'>,
+  env: Record<string, string | undefined> = process.env,
+): void {
+  if (env['NODE_ENV'] !== 'production') {
+    return;
+  }
+  const invalides: string[] = [];
+  if (!estUrlEmailPublique(config.appUrl)) {
+    invalides.push(`NOTIF_APP_URL=${config.appUrl}`);
+  }
+  if (!estUrlEmailPublique(config.publicApiUrl)) {
+    invalides.push(`NOTIF_PUBLIC_API_URL=${config.publicApiUrl}`);
+  }
+  if (invalides.length > 0) {
+    throw new Error(
+      'NOTIF_APP_URL/NOTIF_PUBLIC_API_URL doit être une URL https à nom de ' +
+        'domaine public (pas une IP ni localhost) : sinon les liens des e-mails ' +
+        'de rappel sont injoignables ou à certificat invalide pour les parents. ' +
+        `Valeur(s) reçue(s) : ${invalides.join(', ')}.`,
+    );
+  }
+}
+
 /** Configuration du service depuis l'environnement, avec des défauts de dev local. */
 export function loadConfig(): ServiceConfig {
   return {

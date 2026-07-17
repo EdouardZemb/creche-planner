@@ -362,6 +362,13 @@ services:
       # appelle svc-foyer (agrégat propriétaire du jeton) via DesabonnementClient. URL
       # interne, identique en prod/staging → dans le compose de base (pas dans l'override).
       FOYER_URL: http://svc-foyer:3002
+      # L'image embarque NODE_ENV=production (Dockerfile) → le garde-fou de boot (Lot 7)
+      # exige que les URL de base des liens d'e-mail soient publiques (https + domaine,
+      # ni IP ni localhost). Valeurs SENTINELLES `.invalid` (RFC 2606) pour la pile
+      # locale/CI/staging : l'envoi e-mail est en dry-run, aucun lien n'est ouvert ; la
+      # prod les écrase via docker-compose.server.yml (`${SERVER_ORIGIN:?}` = domaine public).
+      NOTIF_APP_URL: https://web.e2e.invalid
+      NOTIF_PUBLIC_API_URL: https://api.e2e.invalid
       OTEL_SERVICE_NAME: svc-notifications
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:

@@ -14,6 +14,7 @@ import {
   envoiEtablissement,
   notificationHebdo,
 } from '../database/schema.js';
+import { horlogeSysteme, type Clock } from '../scheduler/clock.js';
 import type { DeltaModifs } from '../validation/validation.diff.js';
 
 /**
@@ -262,6 +263,56 @@ function fakeMailer(resultat: ResultatEnvoi | Error): {
   return { mailer: { envoyer: mock } as unknown as MailerService, mock };
 }
 
+/**
+ * Construit le service en injectant une horloge (défaut : `horlogeSysteme`). Les cas de
+ * **reprise** (âge d'une ligne `EN_COURS` bloquée) passent une horloge figée à un instant
+ * précis pour contrôler le franchissement du seuil `DELAI_REPRISE_EN_COURS_MS`.
+ */
+function creerService(
+  db: Database,
+  etablissements: EtablissementProjeteService,
+  mailer: MailerService,
+  clock: Clock = horlogeSysteme,
+): EnvoiService {
+  return new EnvoiService(db, etablissements, mailer, clock);
+}
+
+/** Horloge figée à un instant ISO (contrôle l'âge des lignes `EN_COURS`). */
+function clockFige(iso: string): Clock {
+  return { maintenant: () => new Date(iso) };
+}
+
+/**
+ * Seede une ligne `envoi_etablissement` **déjà réservée** pour `(FOYER, SEMAINE, ETAB)`,
+ * afin que le prochain `envoyer` tombe sur le chemin de conflit (reprise status-aware).
+ * Le `created_at` pilote la distinction « bloquée » vs « en vol » d'une ligne `EN_COURS`.
+ */
+function seedEnvoi(
+  stores: Map<Table, Ligne[]>,
+  options: {
+    statut: string;
+    createdAt?: Date;
+    messageId?: string | null;
+    erreur?: string | null;
+    envoyeLe?: Date | null;
+  },
+): void {
+  stores.get(envoiEtablissement)?.push({
+    id: 'envoi-existant',
+    foyerId: FOYER_ID,
+    semaineIso: SEMAINE,
+    etablissementId: ETAB_ID,
+    destinataire: 'contact-creche@example.org',
+    sujet: 'Sujet figé',
+    corps: '<p>corps figé</p>',
+    statut: options.statut,
+    messageId: options.messageId ?? null,
+    erreur: options.erreur ?? null,
+    envoyeLe: options.envoyeLe ?? null,
+    createdAt: options.createdAt ?? new Date('2026-06-23T06:00:00.000Z'),
+  });
+}
+
 describe('EnvoiService.brouillon (agrégé par établissement)', () => {
   beforeEach(() => {
     delete process.env['NOTIF_EMAIL_DRY_RUN'];
@@ -278,7 +329,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_TOM, enfant: 'Tom', date: '2026-07-01' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
@@ -312,7 +363,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     });
     const { service: etablissements } = fakeEtablissements();
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
@@ -329,7 +380,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     });
     const { service: etablissements } = fakeEtablissements();
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
@@ -344,7 +395,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
@@ -358,7 +409,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
@@ -370,7 +421,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements(null);
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     await expect(
       service.brouillon(FOYER_ID, SEMAINE, ETAB_ID),
@@ -383,7 +434,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     // Établissement connu, du bon foyer, mais sans adresse de service.
     const { service: etablissements } = fakeEtablissements(ETAB_SANS_EMAIL);
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
@@ -404,7 +455,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
     // Établissement connu, du bon foyer, AVEC e-mail, mais archivé (actif=false).
     const { service: etablissements } = fakeEtablissements(ETAB_ARCHIVE);
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
@@ -424,7 +475,7 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
       ETAB_ARCHIVE_SANS_EMAIL,
     );
     const { mailer } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
 
@@ -440,7 +491,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
 
@@ -465,7 +516,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer } = fakeMailer({ messageId: '<msg-1@test>', dryRun: false });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
 
@@ -484,7 +535,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
       messageId: '<msg-1@test>',
       dryRun: false,
     });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const premier = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
     const second = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
@@ -500,7 +551,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer, mock } = fakeMailer(new Error('SMTP 535 auth refusée'));
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
 
@@ -518,7 +569,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements(ETAB_SANS_EMAIL);
     const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     await expect(
       service.envoyer(FOYER_ID, SEMAINE, ETAB_ID),
@@ -534,7 +585,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements(ETAB_ARCHIVE);
     const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     await expect(
       service.envoyer(FOYER_ID, SEMAINE, ETAB_ID),
@@ -683,5 +734,137 @@ describe('envoiEtablissementSchema (objet + corps optionnels, rétro-compatible)
         corps: 'x'.repeat(20001),
       }).success,
     ).toBe(false);
+  });
+});
+
+/**
+ * Reprise **status-aware** d'une ligne déjà réservée (GAP A, Lot 5) : à la ré-action du
+ * parent, un succès terminal reste idempotent, un échec ou une réservation `EN_COURS`
+ * bloquée par un crash est reprise (mailer ré-invoqué), et un envoi réellement en vol
+ * (double-clic) n'est pas ré-envoyé. Toutes les branches sont pilotées par une horloge
+ * contrôlée qui fait franchir (ou non) le seuil de 2 min.
+ */
+describe('EnvoiService.envoyer — reprise status-aware (GAP A)', () => {
+  it('ENVOYE existant : aucun ré-envoi (idempotent), rend la ligne telle quelle', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    seedEnvoi(stores, {
+      statut: 'ENVOYE',
+      messageId: '<deja@test>',
+      envoyeLe: new Date('2026-06-23T06:00:05.000Z'),
+    });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({
+      messageId: '<neuf@test>',
+      dryRun: false,
+    });
+    const service = creerService(db, etablissements, mailer);
+
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
+
+    // Le mailer n'est jamais sollicité : la crèche n'est pas re-spammée.
+    expect(mock).not.toHaveBeenCalled();
+    expect(resultat.statut).toBe('ENVOYE');
+    expect(resultat.messageId).toBe('<deja@test>');
+    expect(stores.get(envoiEtablissement) ?? []).toHaveLength(1);
+  });
+
+  it('ECHEC existant : reprend (mailer ré-appelé) et finalise ENVOYE, motif effacé', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    seedEnvoi(stores, {
+      statut: 'ECHEC',
+      erreur: 'SMTP timeout au premier essai',
+      envoyeLe: new Date('2026-06-23T06:00:01.000Z'),
+    });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({
+      messageId: '<repris@test>',
+      dryRun: false,
+    });
+    const service = creerService(db, etablissements, mailer);
+
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
+
+    expect(mock).toHaveBeenCalledTimes(1);
+    expect(resultat.statut).toBe('ENVOYE');
+    expect(resultat.messageId).toBe('<repris@test>');
+    const ligne = (stores.get(envoiEtablissement) ?? [])[0];
+    expect(ligne?.['statut']).toBe('ENVOYE');
+    // La reprise efface le motif d'échec précédent (nouvelle tentative propre).
+    expect(ligne?.['erreur']).toBeNull();
+    // Fidélité d'audit : la reprise régénère le brouillon et persiste ce qui est
+    // RÉELLEMENT ré-envoyé — plus les valeurs figées au premier essai. La ligne prouve
+    // ce que le mailer a reçu.
+    expect(ligne?.['sujet']).not.toBe('Sujet figé');
+    expect(ligne?.['corps']).not.toBe('<p>corps figé</p>');
+    expect(mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subject: ligne?.['sujet'],
+        html: ligne?.['corps'],
+      }),
+    );
+    // Reprise **sur place** : pas de doublon de ligne.
+    expect(stores.get(envoiEtablissement) ?? []).toHaveLength(1);
+  });
+
+  it('EN_COURS bloquée (âge ≥ 2 min) : reprise (crash présumé)', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    seedEnvoi(stores, {
+      statut: 'EN_COURS',
+      createdAt: new Date('2026-06-23T06:00:00.000Z'),
+    });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({
+      messageId: '<debloque@test>',
+      dryRun: false,
+    });
+    // 3 min plus tard : au-delà du seuil de 2 min → ligne considérée bloquée.
+    const service = creerService(
+      db,
+      etablissements,
+      mailer,
+      clockFige('2026-06-23T06:03:00.000Z'),
+    );
+
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
+
+    expect(mock).toHaveBeenCalledTimes(1);
+    expect(resultat.statut).toBe('ENVOYE');
+    expect(resultat.messageId).toBe('<debloque@test>');
+    expect((stores.get(envoiEtablissement) ?? [])[0]?.['statut']).toBe(
+      'ENVOYE',
+    );
+  });
+
+  it('EN_COURS récente (âge < 2 min) : pas de ré-envoi (envoi réellement en vol)', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    seedEnvoi(stores, {
+      statut: 'EN_COURS',
+      createdAt: new Date('2026-06-23T06:00:00.000Z'),
+    });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({
+      messageId: '<neuf@test>',
+      dryRun: false,
+    });
+    // 30 s plus tard : sous le seuil → double-clic, l'envoi initial est encore en vol.
+    const service = creerService(
+      db,
+      etablissements,
+      mailer,
+      clockFige('2026-06-23T06:00:30.000Z'),
+    );
+
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
+
+    expect(mock).not.toHaveBeenCalled();
+    // Retour honnête « en cours » : jamais présenté comme un succès.
+    expect(resultat.statut).toBe('EN_COURS');
+    expect((stores.get(envoiEtablissement) ?? [])[0]?.['statut']).toBe(
+      'EN_COURS',
+    );
   });
 });
