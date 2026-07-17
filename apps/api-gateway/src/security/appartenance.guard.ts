@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { metrics } from '@opentelemetry/api';
 import { FoyerClient } from '../clients/foyer.client.js';
 import { PlanificationClient } from '../clients/planification.client.js';
 import { loadConfig } from '../config.js';
@@ -13,6 +14,25 @@ import { estAdmin } from './admin.js';
 import { FOYER_SCOPE_KEY } from './foyer-scope.decorator.js';
 import { extraireRefFoyer, type SourceFoyer } from './foyer-scope.js';
 import type { RequeteIdentifiable } from './identite.js';
+
+/**
+ * Compteur OTel des refus d'appartenance foyer, exporté en Prometheus sous
+ * `gateway_authz_refus_total{decision, motif}` (le label `service.name` est ajouté
+ * par le collector). Si aucun `MeterProvider` n'est enregistré, l'API OTel est un
+ * no-op silencieux. Modèle d'émission : `apps/svc-tarification/src/fallback/planification.client.ts`.
+ *
+ * - `decision` : `refuse` (mode enforce, 403 réel) ou `aurait_refuse` (observe-only, laissé passer).
+ * - `motif` : `hors_scope` (foyer hors ensemble autorisé) ou `resolution_impossible`
+ *   (svc-foyer/svc-planification injoignable, contrat introuvable).
+ *
+ * En observe-only (prod actuelle), `aurait_refuse` mesure ce que l'enforce refuserait :
+ * un flux non nul avant bascule signale des faux positifs à investiguer (cf. runbook).
+ */
+const meterAuthz = metrics.getMeter('api-gateway.authz');
+const compteurRefus = meterAuthz.createCounter('gateway_authz_refus_total', {
+  description:
+    "Refus d'appartenance foyer par la gateway (par décision réelle/observe et par motif).",
+});
 
 /**
  * Guard d'**appartenance au foyer** (option B, cœur de l'isolation par foyer, PR7).
@@ -112,6 +132,10 @@ export class AppartenanceGuard implements CanActivate {
     const details =
       `${email} → foyer ${foyerCible} ` +
       `(autorisés : ${autorises.length > 0 ? autorises.join(', ') : 'aucun'})`;
+    compteurRefus.add(1, {
+      decision: enforce ? 'refuse' : 'aurait_refuse',
+      motif: 'hors_scope',
+    });
     if (enforce) {
       this.logger.warn(`appartenance REFUSÉE (403) : ${details}`);
       throw new ForbiddenException('accès à ce foyer non autorisé');
@@ -127,6 +151,10 @@ export class AppartenanceGuard implements CanActivate {
     erreur: unknown,
   ): boolean {
     const msg = erreur instanceof Error ? erreur.message : String(erreur);
+    compteurRefus.add(1, {
+      decision: enforce ? 'refuse' : 'aurait_refuse',
+      motif: 'resolution_impossible',
+    });
     if (enforce) {
       this.logger.error(
         `appartenance : résolution impossible pour ${email}, ` +

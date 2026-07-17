@@ -242,3 +242,101 @@ groups:
             La base {{ $labels.base }} a enregistré {{ $value | humanize }} deadlock(s) sur
             les 5 dernières minutes. Deux transactions se sont mutuellement bloquées : Postgres
             en a annulé une. Vérifiez l'ordre d'acquisition des verrous côté applicatif.
+
+  # ---------------------------------------------------------------------------
+  # Groupe 6 : Fondations backend (chantier n°10, lot 2)
+  # Sources : compteurs/jauges applicatifs émis via OTel Metrics → OTel Collector
+  #           (exporter prometheus :8889) → Prometheus (job otel-metrics).
+  #   • consumer_rejets_total{stream,raison}  — libs/nest-commons (dead-letter, lot 1)
+  #   • outbox_backlog / outbox_publications_echecs_total — libs/nest-commons/outbox
+  #   • notifications_envoi_echecs_total — libs/nest-commons/mailer (svc-notifications)
+  #   • gateway_authz_refus_total{decision,motif} — api-gateway (appartenance.guard)
+  # Toutes routées e-mail via le label `severity` (receiver email-ops par défaut).
+  # ---------------------------------------------------------------------------
+  - name: fondations
+    interval: 30s
+    rules:
+      # Un message JetStream a été mis en dead-letter pour une VRAIE perte : illisible
+      # (PARSE_KO), enveloppe sans `type` (ENVELOPPE_INVALIDE) ou livraisons épuisées
+      # (MAX_LIVRAISONS). On EXCLUT délibérément `raison="TYPE_INCONNU"` : un type connu
+      # de l'écosystème mais non projeté par ce service (ex. un abonné au stream FOYER
+      # complet reçoit des types qu'il n'utilise pas) part aussi en dead-letter (critère
+      # d'acceptation du lot 1), mais c'est un IGNORE DE ROUTINE, pas une perte parent —
+      # l'inclure ferait sonner l'alerte en permanence. La trace reste en base
+      # (`dead_letter`, raison=TYPE_INCONNU) pour audit. Voir runbook.
+      - alert: ConsumerRejetsDetectes
+        expr: >
+          increase(consumer_rejets_total{raison!="TYPE_INCONNU"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Rejet consumer JetStream ({{ $labels.raison }}) sur le stream {{ $labels.stream }}'
+          description: >
+            Un consommateur a mis un message du stream {{ $labels.stream }} en dead-letter
+            (raison {{ $labels.raison }}) : {{ $value | humanize }} sur 15 min. C'est une
+            perte potentielle (message illisible, enveloppe invalide, ou livraisons épuisées),
+            pas un ignore de routine. Inspecter la table `dead_letter` du service concerné :
+            `SELECT raison, sujet, erreur, livraisons, created_at FROM dead_letter
+            WHERE raison <> 'TYPE_INCONNU' ORDER BY created_at DESC LIMIT 20;` puis corréler
+            aux logs (Loki : `{service=~"svc-.*"} |= "Dead-letter"`).
+
+      - alert: OutboxBacklogPersistant
+        expr: outbox_backlog > 25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Backlog outbox persistant ({{ $value }}) — publication en retard'
+          description: >
+            La jauge `outbox_backlog` dépasse 25 événements non publiés depuis 10 min
+            ({{ $value }} en attente). Le relais outbox ne draine plus assez vite : NATS
+            injoignable, boucle d'erreur de publication, ou pic d'écritures. Vérifier la
+            connexion NATS du service, les logs `OutboxRelay` (Loki : `|= "Relais outbox"`)
+            et corréler avec `OutboxPublicationsEchecs` / le lag JetStream (dashboard 3).
+
+      - alert: OutboxPublicationsEchecs
+        expr: >
+          increase(outbox_publications_echecs_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Échecs de publication outbox (relais bloqué)'
+          description: >
+            Le relais outbox a échoué {{ $value | humanize }} cycle(s) de drain sur 15 min
+            (publication NATS ou écriture KO). Les événements restent `published_at IS NULL`
+            et seront republiés — pas de perte, mais un blocage durable retarde la propagation
+            (récap parent, read models). Logs : `{service=~"svc-.*"} |= "Relais outbox interrompu"`.
+
+      - alert: EnvoiEmailEchecs
+        expr: >
+          increase(notifications_envoi_echecs_total[30m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Échec(s) d'envoi e-mail (transport SMTP)"
+          description: >
+            Le transport SMTP a rejeté {{ $value | humanize }} envoi(s) sur 30 min : un récap
+            parent ou un mail au service de garde n'est pas parti. Vérifier les identifiants /
+            la joignabilité du smarthost et les logs `MailerService` du conteneur
+            svc-notifications (Loki : `{service="svc-notifications"} |= "sendMail"`). Un slot
+            en `ECHEC` est retenté au tick suivant ; un échec persistant finit en
+            `recap_hebdo_abandonne_total` (rappel perdu).
+
+      - alert: AuthzGatewayRefus
+        expr: >
+          increase(gateway_authz_refus_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Refus d'autorisation gateway ({{ $labels.decision }} / {{ $labels.motif }})"
+          description: >
+            La gateway a compté {{ $value | humanize }} refus d'appartenance foyer sur 1 h
+            (decision={{ $labels.decision }}, motif={{ $labels.motif }}). `refuse` = 403 réel
+            (tentative d'accès à un foyer non autorisé, ou résolution fail-closed) ; `aurait_refuse`
+            = observe-only (à surveiller AVANT toute bascule enforce : un flux non nul signale
+            des faux positifs, ex. un point d'appel oublié). Corréler aux logs
+            (Loki : `{service="api-gateway"} |= "appartenance"`).

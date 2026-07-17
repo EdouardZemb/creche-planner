@@ -1,6 +1,26 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { metrics } from '@opentelemetry/api';
 import { createTransport } from 'nodemailer';
 import { OPTIONS_MAILER, type OptionsMailer } from './mailer.options.js';
+
+/**
+ * Compteur OTel des échecs d'envoi SMTP réels, exporté en Prometheus sous
+ * `notifications_envoi_echecs_total` (le label `service.name` est ajouté par le
+ * collector — en pratique `svc-notifications`, seul consommateur du mailer). Si
+ * aucun `MeterProvider` n'est enregistré, l'API OTel est un no-op silencieux. Il
+ * mesure les rejets du **transport** (`sendMail` lève) — distinct du compteur
+ * `recap_hebdo_abandonne_total` du scheduler (rappel abandonné, fenêtre close) :
+ * ici on compte chaque tentative SMTP qui échoue, y compris celles qui seront
+ * retentées. Modèle d'émission : `apps/svc-tarification/src/fallback/planification.client.ts`.
+ */
+const meterMailer = metrics.getMeter('nest-commons.mailer');
+const compteurEchecsEnvoi = meterMailer.createCounter(
+  'notifications_envoi_echecs_total',
+  {
+    description:
+      "Échecs d'envoi SMTP (le transport a levé) — arme l'alerte EnvoiEmailEchecs.",
+  },
+);
 
 /**
  * Transport SMTP concret renvoyé par `createTransport({host,...})`. On dérive le
@@ -108,17 +128,25 @@ export class MailerService {
       return { messageId: null, dryRun: true };
     }
 
-    const info = await this.obtenirTransport().sendMail({
-      from: this.options.from,
-      to: autorises.join(', '),
-      subject,
-      html,
-      text,
-      // En-têtes additionnels seulement s'ils sont fournis, pour ne pas modifier
-      // le message émis (et les assertions de test) des envois existants.
-      ...(headers ? { headers } : {}),
-    });
-    return { messageId: info.messageId, dryRun: false };
+    try {
+      const info = await this.obtenirTransport().sendMail({
+        from: this.options.from,
+        to: autorises.join(', '),
+        subject,
+        html,
+        text,
+        // En-têtes additionnels seulement s'ils sont fournis, pour ne pas modifier
+        // le message émis (et les assertions de test) des envois existants.
+        ...(headers ? { headers } : {}),
+      });
+      return { messageId: info.messageId, dryRun: false };
+    } catch (erreur) {
+      // Échec du transport SMTP : on compte l'incident (arme `EnvoiEmailEchecs`) puis
+      // on relaie l'erreur à l'appelant — le scheduler transitionne le slot en `ECHEC`
+      // et retentera, le comportement fonctionnel reste strictement inchangé.
+      compteurEchecsEnvoi.add(1);
+      throw erreur;
+    }
   }
 
   /** Transport créé paresseusement : le mot de passe n'est lu qu'au 1ᵉʳ envoi réel. */
