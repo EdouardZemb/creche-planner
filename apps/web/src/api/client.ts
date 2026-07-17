@@ -29,6 +29,7 @@ import type {
   NotificationAValider,
   ValidationResultat,
   BrouillonEtablissement,
+  CorpsEnvoiEtablissement,
   EnvoiEtablissementResultat,
   SemaineBesoins,
 } from '../types/bff';
@@ -696,12 +697,21 @@ export const api = {
     foyerId: string,
     semaineIso: string,
     etablissementId: string,
+    // Objet + corps édités par le parent (L9). Omis ⇒ le service régénère le corps
+    // depuis le delta (rétro-compat L8). Fournis ⇒ son texte exact part (les deux
+    // ensemble ou aucun, cf. `CorpsEnvoiEtablissement`).
+    corps?: CorpsEnvoiEtablissement,
     opts: RequeteOptions = {},
   ): Promise<EnvoiEtablissementResultat> {
     return requete(`${BASE}/v1/notifications/envois/etablissement`, {
       method: 'POST',
       headers: entetes(true),
-      body: JSON.stringify({ foyerId, semaineIso, etablissementId }),
+      body: JSON.stringify({
+        foyerId,
+        semaineIso,
+        etablissementId,
+        ...(corps ? { sujet: corps.sujet, corps: corps.corps } : {}),
+      }),
       ...(opts.signal ? { signal: opts.signal } : {}),
     }).then((r) => lire<EnvoiEtablissementResultat>(r));
   },
