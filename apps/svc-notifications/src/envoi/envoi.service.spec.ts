@@ -601,7 +601,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa', date: '2026-06-29' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID, {
       sujet: 'Objet réécrit par le parent',
@@ -636,7 +636,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID, {
       sujet: 'Objet',
@@ -656,7 +656,7 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa', date: '2026-06-29' });
     const { service: etablissements } = fakeEtablissements();
     const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
-    const service = new EnvoiService(db, etablissements, mailer);
+    const service = creerService(db, etablissements, mailer);
 
     await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
 

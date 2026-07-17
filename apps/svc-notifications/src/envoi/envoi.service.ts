@@ -163,26 +163,33 @@ export class EnvoiService {
       ]);
     }
 
-    // Contenu réellement envoyé : soit le texte édité par le parent (échappé en HTML —
-    // jamais de HTML libre du client), soit la régénération serveur depuis le delta. Le
-    // `corps` figé/envoyé est le fragment HTML (preuve exacte de ce qui est parti) ; le
-    // `texte` est la version brute (alternative accessible du mail). Le destinataire
-    // reste résolu serveur (`b.destinataire`), jamais fourni par le client.
-    const sujet = corpsEdite ? corpsEdite.sujet : b.sujet;
-    const html = corpsEdite ? echapperEnHtml(corpsEdite.corps) : b.corps;
-    const texte = corpsEdite ? corpsEdite.corps : b.texte;
+    // Brouillon **effectif** réellement envoyé : soit le texte édité par le parent (échappé
+    // en HTML — jamais de HTML libre du client), soit la régénération serveur depuis le
+    // delta. Le `corps` est le fragment HTML (preuve exacte de ce qui part) ; le `texte`
+    // est la version brute accessible. Le destinataire reste résolu serveur
+    // (`b.destinataire`), jamais fourni par le client. Ce brouillon effectif alimente
+    // l'insert ET la reprise/exécution (`executerEnvoi`) → cohérence de bout en bout entre
+    // ce qui est envoyé et ce qui est journalisé, y compris à la reprise.
+    const bEffectif: BrouillonConstruit = corpsEdite
+      ? {
+          ...b,
+          sujet: corpsEdite.sujet,
+          corps: echapperEnHtml(corpsEdite.corps),
+          texte: corpsEdite.corps,
+        }
+      : b;
 
     const id = randomUUID();
     const insere = await this.db
       .insert(envoiEtablissement)
       .values({
         id,
-        foyerId: b.foyerId,
-        semaineIso: b.semaineIso,
-        etablissementId: b.etablissementId,
-        destinataire: b.destinataire,
-        sujet,
-        corps: html,
+        foyerId: bEffectif.foyerId,
+        semaineIso: bEffectif.semaineIso,
+        etablissementId: bEffectif.etablissementId,
+        destinataire: bEffectif.destinataire,
+        sujet: bEffectif.sujet,
+        corps: bEffectif.corps,
         statut: 'EN_COURS',
       })
       .onConflictDoNothing({
@@ -203,11 +210,11 @@ export class EnvoiService {
         b.semaineIso,
         b.etablissementId,
       );
-      return this.reprendreOuRendre(existant, b);
+      return this.reprendreOuRendre(existant, bEffectif);
     }
 
     // Slot réservé par CET appel : on sollicite le transport et on fige l'issue.
-    return this.executerEnvoi(id, b);
+    return this.executerEnvoi(id, bEffectif);
   }
 
   /**
@@ -287,9 +294,9 @@ export class EnvoiService {
     try {
       const res = await this.mailer.envoyer({
         to: b.destinataire,
-        subject: sujet,
-        html,
-        text: texte,
+        subject: b.sujet,
+        html: b.corps,
+        text: b.texte,
       });
       const statut: StatutEnvoi = res.dryRun ? 'DRY_RUN' : 'ENVOYE';
       const envoyeLe = this.clock.maintenant();
