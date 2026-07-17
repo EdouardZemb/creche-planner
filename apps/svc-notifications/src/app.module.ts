@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { buildLoggerParams } from '@creche-planner/observability';
 import {
+  AssertionIdentiteModule,
   DatabaseModule,
   EmailModule,
   HealthModule,
@@ -70,6 +71,8 @@ function optionsMailer(): OptionsMailer {
     EnvoiModule,
     InboxModule,
     SchedulerModule,
+    // Guard aval d'assertion inter-services (observe-only) — fondations lot 3.
+    AssertionIdentiteModule.forRoot({ chargerConfig: loadConfig }),
   ],
 })
 export class AppModule {}

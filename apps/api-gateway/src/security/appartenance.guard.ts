@@ -88,6 +88,8 @@ export class AppartenanceGuard implements CanActivate {
 
     const { adminEmails, foyerAuthzEnforce } = loadConfig();
     if (estAdmin(email, adminEmails)) {
+      // Statut repris par l'interceptor de propagation (assertion parent `admin`).
+      req.estAdmin = true;
       return true; // provisioning admin : bypass de l'appartenance
     }
 
@@ -115,6 +117,10 @@ export class AppartenanceGuard implements CanActivate {
     } catch (erreur) {
       return this.surEchecResolution(email, foyerAuthzEnforce, erreur);
     }
+
+    // Foyers autorisés repris par l'interceptor de propagation (assertion parent
+    // `foyers`), qu'ils couvrent ou non la ressource visée.
+    req.foyersAutorises = autorises;
 
     if (autorises.includes(foyerCible)) {
       return true;

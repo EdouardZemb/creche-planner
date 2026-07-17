@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { Verifier } from '@pact-foundation/pact';
+import { signerAssertion } from '@creche-planner/nest-commons';
 import postgres, { type Sql } from 'postgres';
 
 /**
@@ -120,6 +121,9 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
         // l'annuaire des établissements ne dépend pas du stream.
         NATS_URL: process.env['NATS_URL'] ?? 'nats://localhost:4222',
         OTEL_SDK_DISABLED: 'true',
+        // Secret d'assertion inter-services ÉPINGLÉ (fondations lot 3) : byte-identique
+        // à celui dont le requestFilter signe l'en-tête x-assertion-identite ci-dessous.
+        ASSERTION_IDENTITE_SECRET: 'pact-assertion-secret',
       },
       stdio: 'inherit',
     });
@@ -303,6 +307,16 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
       providerBaseUrl: `http://localhost:${PORT}`,
       pactUrls: [PACT_FILE],
       logLevel: 'warn',
+      // Chaque requête du pact reçoit une assertion machine signée (fondations lot 3) :
+      // en observe rien ne refuse ; au lot 4 (enforce) l'assertion machine bypasse le
+      // scoping. Les en-têtes ne sont pas déclarés côté pact → pacts/*.json inchangés.
+      requestFilter: (req, _res, next) => {
+        req.headers['x-assertion-identite'] = signerAssertion(
+          { machine: 'api-gateway' },
+          'pact-assertion-secret',
+        );
+        next();
+      },
       stateHandlers: {
         [ETAT_SEMAINE_A_VALIDER]: seedSemaineAValider,
         [ETAT_SEMAINE_VALIDABLE]: seedSemaineAValider,

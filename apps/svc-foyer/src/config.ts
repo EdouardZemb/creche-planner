@@ -1,9 +1,16 @@
+import {
+  lireConfigAssertion,
+  type ConfigAssertion,
+} from '@creche-planner/nest-commons';
+
 export interface ServiceConfig {
   readonly port: number;
   readonly databaseUrl: string;
   readonly natsUrl: string;
   /** Désabonnement one-click (RFC 8058, PR5) : secret de signature + validité du jeton. */
   readonly desabonnement: DesabonnementConfig;
+  /** Assertion d'identité inter-services (secret + enforce) — fondations lot 3. */
+  readonly assertion: ConfigAssertion;
 }
 
 /**
@@ -68,5 +75,6 @@ export function loadConfig(): ServiceConfig {
         process.env['DESABONNEMENT_TOKEN_SECRET'] ?? SECRET_DESABONNEMENT_DEV,
       ttlJours: Number(process.env['DESABONNEMENT_TOKEN_TTL_JOURS'] ?? 30),
     },
+    assertion: lireConfigAssertion(),
   };
 }

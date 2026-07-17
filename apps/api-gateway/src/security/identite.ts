@@ -16,6 +16,15 @@ export interface RequeteIdentifiable {
   readonly url?: string;
   /** Posée par `IdentiteGuard` quand une identité a pu être établie. */
   identite?: Identite;
+  /**
+   * Foyers autorisés du parent, résolus par `AppartenanceGuard` sur les routes
+   * `@FoyerScope` (via `FoyerClient.foyersParEmail`). Repris par l'interceptor de
+   * propagation pour bâtir l'assertion parent (fondations lot 3). Absent sur les
+   * routes non scopées ou quand la résolution échoue.
+   */
+  foyersAutorises?: readonly string[];
+  /** Statut admin résolu par `AppartenanceGuard` (bypass), repris par l'interceptor. */
+  estAdmin?: boolean;
 }
 
 /** Paramètres de vérification d'un JWT Cloudflare Access. */

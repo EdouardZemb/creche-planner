@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
+import { entetesAssertionMachine } from '@creche-planner/nest-commons';
 import { loadConfig } from '../config.js';
 import {
   CircuitBreaker,
@@ -53,7 +54,13 @@ export class ReferentielClient {
     return executerOuRepli<GrilleApplicableFallback | undefined>(
       'svc-referentiel',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        // Assertion machine inter-services (fondations lot 3).
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAssertionMachine(
+            'svc-tarification',
+            loadConfig().assertion.secret,
+          ),
+        });
         if (!reponse.ok) {
           throw new Error(`HTTP ${reponse.status}`);
         }

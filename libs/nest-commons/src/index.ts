@@ -18,3 +18,8 @@ export * from './lib/messaging/jetstream-consumer.js';
 export * from './lib/outbox/outbox.module.js';
 export * from './lib/outbox/outbox.options.js';
 export * from './lib/outbox/outbox.relay.js';
+export * from './lib/security/assertion-identite.js';
+export * from './lib/security/assertion-identite.options.js';
+export * from './lib/security/assertion-identite.guard.js';
+export * from './lib/security/assertion-identite.module.js';
+export * from './lib/security/assertion-publique.decorator.js';

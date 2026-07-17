@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { metrics } from '@opentelemetry/api';
 import { z } from 'zod';
+import { entetesAssertionMachine } from '@creche-planner/nest-commons';
 import { loadConfig } from '../config.js';
 import {
   CircuitBreaker,
@@ -71,7 +72,14 @@ export class PlanificationClient {
     return executerOuRepli<SaisieMois>(
       'svc-planification',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        // Assertion machine inter-services (fondations lot 3) : indispensable au récap
+        // du mardi (svc-notifications → svc-planification) une fois l'enforce activé.
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAssertionMachine(
+            'svc-notifications',
+            loadConfig().assertion.secret,
+          ),
+        });
         if (!reponse.ok) {
           throw new Error(`HTTP ${reponse.status}`);
         }

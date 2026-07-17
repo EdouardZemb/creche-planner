@@ -4,9 +4,17 @@ import {
   HealthCheckService,
   type HealthCheckResult,
 } from '@nestjs/terminus';
+import { AssertionPubliqueInterServices } from '../security/assertion-publique.decorator.js';
 import { DatabaseHealthIndicator } from './database.health.js';
 import { NatsHealthIndicator } from './nats.health.js';
 
+/**
+ * Sondes de santé — **exemptées** de l'assertion inter-services
+ * ({@link AssertionPubliqueInterServices}) : les healthchecks docker et le
+ * blackbox-exporter les appellent **sans** en-tête. L'exemption est non négociable,
+ * sinon tout le monitoring tomberait au premier passage en enforce.
+ */
+@AssertionPubliqueInterServices()
 @Controller('health')
 export class HealthController {
   constructor(

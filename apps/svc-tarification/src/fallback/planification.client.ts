@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { metrics } from '@opentelemetry/api';
 import { z } from 'zod';
+import { entetesAssertionMachine } from '@creche-planner/nest-commons';
 import { loadConfig } from '../config.js';
 import {
   CircuitBreaker,
@@ -92,7 +93,14 @@ export class PlanificationClient {
     return executerOuRepli<PrestationsContratFallback | undefined>(
       'svc-planification',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        // Assertion machine inter-services (fondations lot 3) : sans elle, l'enforce
+        // futur casserait ce repli tarif→planif. Vide si secret non configuré (legacy).
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAssertionMachine(
+            'svc-tarification',
+            loadConfig().assertion.secret,
+          ),
+        });
         if (!reponse.ok) {
           throw new Error(`HTTP ${reponse.status}`);
         }

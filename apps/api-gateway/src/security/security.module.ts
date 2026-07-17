@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AdminGuard } from './admin.guard.js';
 import { AppartenanceGuard } from './appartenance.guard.js';
+import { AssertionPropagationInterceptor } from './assertion-propagation.interceptor.js';
 import { CreationFoyerUniqueGuard } from './creation-foyer-unique.guard.js';
 import { IdentiteGuard } from './identite.guard.js';
 import { RateLimitGuard } from './rate-limit.guard.js';
@@ -30,6 +31,13 @@ import { TokenAuthGuard } from './token-auth.guard.js';
  *    **409** si une identité non-admin possède déjà ≥1 foyer. Admin illimité,
  *    identité absente = mode hérité. Il lit `request.identite` (donc après
  *    `IdentiteGuard`).
+ *
+ * Puis, **après tous les guards**, l'`AssertionPropagationInterceptor` ouvre le
+ * scope `AsyncLocalStorage` d'où les clients HTTP lisent l'identité pour signer
+ * l'assertion propagée vers les services (fondations lot 3). Un `APP_INTERCEPTOR`
+ * s'exécute nécessairement après les guards, d'où le placement du câblage ici : les
+ * résolutions faites *dans* les guards (`foyersParEmail`, `contrat`) partent, elles,
+ * avant l'ouverture du scope → assertion machine (repli de `entetesAval`).
  */
 @Module({
   providers: [
@@ -39,6 +47,7 @@ import { TokenAuthGuard } from './token-auth.guard.js';
     { provide: APP_GUARD, useClass: AdminGuard },
     { provide: APP_GUARD, useClass: AppartenanceGuard },
     { provide: APP_GUARD, useClass: CreationFoyerUniqueGuard },
+    { provide: APP_INTERCEPTOR, useClass: AssertionPropagationInterceptor },
   ],
 })
 export class SecurityModule {}

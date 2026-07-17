@@ -32,12 +32,22 @@ export default defineConfig(() => ({
       include: ['src/**/*.ts'],
       // Bootstrap process (main/tracing) : exécutés au boot du conteneur,
       // couverts par smoke-stack, non testables unitairement.
-      exclude: ['src/main.ts', 'src/tracing.ts', '**/*.spec.ts'],
+      // `app.module.ts` = racine de composition DI (pur câblage NestJS,
+      // couvert par smoke-stack/e2e), non testable unitairement — même
+      // catégorie que main.ts/tracing.ts (fondations lot 3).
+      exclude: [
+        'src/main.ts',
+        'src/tracing.ts',
+        'src/app.module.ts',
+        '**/*.spec.ts',
+      ],
+      // Ratchet relevé au lot 3 (mesuré 94,6/94/92,3/94,5 après exclusion
+      // d'app.module ; config assertion couverte par config.spec).
       thresholds: {
-        statements: 88,
+        statements: 92,
         branches: 92,
-        functions: 83,
-        lines: 88,
+        functions: 90,
+        lines: 92,
       },
     },
     testTimeout: 60000,

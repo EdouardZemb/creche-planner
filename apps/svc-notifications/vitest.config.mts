@@ -32,15 +32,25 @@ export default defineConfig(() => ({
       include: ['src/**/*.ts'],
       // Bootstrap process (main/tracing) : exécutés au boot du conteneur,
       // couverts par smoke-stack, non testables unitairement.
-      exclude: ['src/main.ts', 'src/tracing.ts', '**/*.spec.ts'],
+      // `app.module.ts` = racine de composition DI (pur câblage NestJS,
+      // couvert par smoke-stack/e2e), non testable unitairement — même
+      // catégorie que main.ts/tracing.ts (fondations lot 3).
+      exclude: [
+        'src/main.ts',
+        'src/tracing.ts',
+        'src/app.module.ts',
+        '**/*.spec.ts',
+      ],
       // Relevés après le lot 1 « Fondations » (consumer JetStream mutualisé dans
       // nest-commons) : le plancher atteint monte (88 / 88 / 84 / 88), on laisse
       // ~2 pts de marge.
+      // Ratchet relevé au lot 3 (mesuré 91,5/88,5/88,6/91,6 après ajout des specs
+      // fallback planification/desabonnement.client et exclusion d'app.module).
       thresholds: {
-        statements: 86,
-        branches: 85,
-        functions: 82,
-        lines: 86,
+        statements: 89,
+        branches: 86,
+        functions: 86,
+        lines: 89,
       },
     },
     testTimeout: 60000,

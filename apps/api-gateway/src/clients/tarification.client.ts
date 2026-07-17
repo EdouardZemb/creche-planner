@@ -7,6 +7,7 @@ import {
   fetchAvecTimeout,
   type OptionsResilience,
 } from '@creche-planner/resilience';
+import { entetesAval } from './assertion-aval.js';
 
 /** Ligne de coût (débit/crédit) en centimes. */
 const ligneVueSchema = z.object({
@@ -89,7 +90,9 @@ export class TarificationClient {
     return executerResilient(
       'svc-tarification',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }
@@ -114,7 +117,9 @@ export class TarificationClient {
     return executerResilient(
       'svc-tarification',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS_ANNUEL.timeoutMs);
+        const reponse = await fetchAvecTimeout(url, OPTIONS_ANNUEL.timeoutMs, {
+          headers: entetesAval(),
+        });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }

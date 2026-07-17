@@ -7,6 +7,7 @@ import {
 } from '@creche-planner/resilience';
 import { loadConfig } from '../config.js';
 import { appelResilient, type MethodeHttp } from './appel-resilient.js';
+import { entetesAval } from './assertion-aval.js';
 
 /** Saisie de création d'un foyer (montants en euros saisis par l'usager). */
 export interface SaisieFoyer {
@@ -406,7 +407,7 @@ export class FoyerClient {
     this.logger.debug(`POST ${url}`);
     const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...entetesAval() },
       body: JSON.stringify({ token }),
     });
     if (!reponse.ok) {

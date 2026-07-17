@@ -6,6 +6,7 @@ import {
   type CircuitBreaker,
   type OptionsResilience,
 } from '@creche-planner/resilience';
+import { entetesAval } from './assertion-aval.js';
 
 /** Méthodes HTTP émises par les clients REST du BFF. */
 export type MethodeHttp = 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -83,16 +84,16 @@ export async function appelResilient<T>(
   return executerResilient(
     config.service,
     async () => {
-      const init: RequestInit | undefined =
+      // Assertion d'identité propagée sur CHAQUE appel sortant (fondations lot 3).
+      const entetes = entetesAval();
+      const init: RequestInit =
         config.corps !== undefined
           ? {
               method: methode,
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...entetes },
               body: JSON.stringify(config.corps),
             }
-          : methode === 'GET'
-            ? undefined
-            : { method: methode };
+          : { method: methode, headers: { ...entetes } };
       const reponse = await fetchAvecTimeout(url, options.timeoutMs, init);
       if (!reponse.ok) {
         if (config.capturerCorpsErreur) {

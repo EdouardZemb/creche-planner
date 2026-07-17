@@ -7,6 +7,7 @@ import {
   fetchAvecTimeout,
   type OptionsResilience,
 } from '@creche-planner/resilience';
+import { entetesAval } from './assertion-aval.js';
 
 /**
  * Saisie de création d'un contrat. Le corps est une union discriminée par
@@ -154,7 +155,7 @@ export class PlanificationClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...entetesAval() },
           body: JSON.stringify(saisie),
         });
         if (!reponse.ok) {
@@ -179,7 +180,9 @@ export class PlanificationClient {
     return executerResilient(
       'svc-planification',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }
@@ -198,7 +201,9 @@ export class PlanificationClient {
     return executerResilient(
       'svc-planification',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }
@@ -226,7 +231,7 @@ export class PlanificationClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...entetesAval() },
           body: JSON.stringify(saisie),
         });
         if (!reponse.ok) {
@@ -249,6 +254,7 @@ export class PlanificationClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'DELETE',
+          headers: entetesAval(),
         });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
@@ -276,7 +282,7 @@ export class PlanificationClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...entetesAval() },
           body: JSON.stringify(corps),
         });
         if (!reponse.ok) {
@@ -308,7 +314,7 @@ export class PlanificationClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...entetesAval() },
           body: JSON.stringify(corps),
         });
         if (!reponse.ok) {
@@ -334,7 +340,9 @@ export class PlanificationClient {
     return executerResilient(
       'svc-planification',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }
@@ -353,7 +361,9 @@ export class PlanificationClient {
     return executerResilient(
       'svc-planification',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }
@@ -377,7 +387,7 @@ export class PlanificationClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...entetesAval() },
           body: JSON.stringify(saisie),
         });
         if (!reponse.ok) {
@@ -403,7 +413,7 @@ export class PlanificationClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...entetesAval() },
           body: JSON.stringify(saisie),
         });
         if (!reponse.ok) {
@@ -426,6 +436,7 @@ export class PlanificationClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'DELETE',
+          headers: entetesAval(),
         });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
@@ -450,7 +461,9 @@ export class PlanificationClient {
     return executerResilient(
       'svc-planification',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }
