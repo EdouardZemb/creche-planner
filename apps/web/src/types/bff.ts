@@ -476,6 +476,17 @@ export interface BrouillonEtablissement {
   dryRun: boolean;
 }
 
+/**
+ * Objet + corps **édités par le parent** transmis à l'envoi d'un récap
+ * établissement (L8/L9) : texte brut, échappé et journalisé tel quel côté service.
+ * Les deux champs vont ensemble (fournis ou omis) ; mêmes bornes que le DTO svc :
+ * objet non vide ≤ 300, corps non vide ≤ 20000.
+ */
+export interface CorpsEnvoiEtablissement {
+  sujet: string;
+  corps: string;
+}
+
 /** Statut d'un envoi de récap au service. */
 export type StatutEnvoi = 'EN_COURS' | 'ENVOYE' | 'ECHEC' | 'DRY_RUN';
 

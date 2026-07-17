@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type {
   BrouillonEtablissement,
+  ContratBesoinsSemaine,
   DeltaJour,
   EnfantBrouillon,
   EnvoiEtablissementResultat,
@@ -11,6 +12,11 @@ import { messageErreur } from '../utils/erreurs';
 import { dateLongueFr } from '../utils/dates';
 import { useAsync } from '../hooks/useAsync';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
+import { composerBrouillonSemaineComplete } from './brouillonSemaineComplete';
+
+/** Bornes de saisie du mail au service, alignées sur le DTO svc-notifications (L8). */
+const OBJET_MAX = 300;
+const CORPS_MAX = 20000;
 
 /**
  * Courte description d'un jour modifié pour la relecture, en mots de parent :
@@ -96,10 +102,14 @@ function ListeEnfantsConcernes({
 function BlocEnvoiEtablissement({
   foyerId,
   semaineIso,
+  jours,
+  contrats,
   brouillon,
 }: {
   foyerId: string;
   semaineIso: string;
+  jours: readonly string[];
+  contrats: readonly ContratBesoinsSemaine[];
   brouillon: BrouillonEtablissement;
 }) {
   const [confirmer, setConfirmer] = useState(false);
@@ -110,6 +120,33 @@ function BlocEnvoiEtablissement({
   } | null>(null);
   const [envoye, setEnvoye] = useState(false);
 
+  // Brouillon pré-rempli : la SEMAINE COMPLÈTE (7 jours) de chaque enfant
+  // concerné, bien formulée. Le parent part de ce texte et peut tout réécrire —
+  // c'est son texte exact qui part (L8 achemine `sujet`/`corps`).
+  const propose = composerBrouillonSemaineComplete({
+    jours,
+    contrats,
+    brouillon,
+  });
+  const [sujet, setSujet] = useState(propose.sujet);
+  const [corps, setCorps] = useState(propose.corps);
+
+  const idObjet = useId();
+  const idMessage = useId();
+
+  // Mêmes bornes que le DTO svc (L8) : non vide (hors espaces) et longueur bornée.
+  const messageValidation =
+    sujet.trim().length === 0
+      ? 'L’objet ne peut pas être vide.'
+      : sujet.length > OBJET_MAX
+        ? `L’objet est trop long (${String(OBJET_MAX)} caractères maximum).`
+        : corps.trim().length === 0
+          ? 'Le message ne peut pas être vide.'
+          : corps.length > CORPS_MAX
+            ? `Le message est trop long (${String(CORPS_MAX)} caractères maximum).`
+            : null;
+  const valide = messageValidation === null;
+
   const envoyer = async (): Promise<void> => {
     setConfirmer(false);
     setEnCours(true);
@@ -119,6 +156,7 @@ function BlocEnvoiEtablissement({
         foyerId,
         semaineIso,
         brouillon.etablissementId,
+        { sujet, corps },
       );
       const abouti = estAbouti(resultat);
       setMessage({
@@ -152,16 +190,50 @@ function BlocEnvoiEtablissement({
       <p className="relecture-champ">
         Destinataire : <strong>{brouillon.destinataire}</strong>
       </p>
-      <p className="relecture-champ">
-        Objet : <em>{brouillon.sujet}</em>
-      </p>
 
       <ListeEnfantsConcernes enfants={brouillon.enfants} />
 
-      <details className="relecture-apercu">
-        <summary>Aperçu du message</summary>
-        <pre className="apercu-message">{brouillon.texte}</pre>
-      </details>
+      <div className="relecture-editeur">
+        <label htmlFor={idObjet}>Objet</label>
+        <input
+          id={idObjet}
+          type="text"
+          value={sujet}
+          maxLength={OBJET_MAX}
+          onChange={(e) => {
+            setSujet(e.target.value);
+          }}
+        />
+
+        <label htmlFor={idMessage}>Message au service</label>
+        <textarea
+          id={idMessage}
+          className="relecture-message"
+          value={corps}
+          rows={14}
+          maxLength={CORPS_MAX}
+          onChange={(e) => {
+            setCorps(e.target.value);
+          }}
+        />
+
+        <button
+          type="button"
+          className="btn secondaire"
+          onClick={() => {
+            setSujet(propose.sujet);
+            setCorps(propose.corps);
+          }}
+        >
+          Rétablir le texte proposé
+        </button>
+      </div>
+
+      {messageValidation !== null && (
+        <p className="debit" role="alert">
+          {messageValidation}
+        </p>
+      )}
 
       {message !== null && (
         <p
@@ -175,7 +247,7 @@ function BlocEnvoiEtablissement({
       <button
         type="button"
         className="btn"
-        disabled={enCours || envoye}
+        disabled={enCours || envoye || !valide}
         aria-label={`Envoyer le récapitulatif à ${brouillon.etablissementLibelle}`}
         onClick={() => {
           setConfirmer(true);
@@ -296,16 +368,25 @@ export function RelectureEnvoi({
           ),
         ),
       );
-      return brouillons.flatMap((r) =>
-        r.status === 'fulfilled' ? [r.value] : [],
-      );
+      // La vue `semaine/besoins` porte DÉJÀ les 7 jours et les contrats datés
+      // (aucun nouveau fetch) : on les propage au bloc d'envoi pour composer le
+      // brouillon « semaine complète » de chaque enfant concerné (L9).
+      return {
+        jours: semaine.jours,
+        contrats: semaine.contrats,
+        brouillons: brouillons.flatMap((r) =>
+          r.status === 'fulfilled' ? [r.value] : [],
+        ),
+      };
     },
     [foyerId, semaineIso],
   );
 
   // On n'affiche un établissement que s'il a au moins un enfant concerné — qu'il soit
   // joignable (bloc d'envoi) ou non (carte d'avertissement).
-  const concernes = (data ?? []).filter((b) => b.enfants.length > 0);
+  const concernes = (data?.brouillons ?? []).filter(
+    (b) => b.enfants.length > 0,
+  );
 
   // La section apparaît APRÈS que le parent a tapé « Valider » : sans coup de
   // pouce, elle peut rester hors écran sur mobile et l'étape d'envoi passe
@@ -352,6 +433,8 @@ export function RelectureEnvoi({
             key={brouillon.etablissementId}
             foyerId={foyerId}
             semaineIso={semaineIso}
+            jours={data?.jours ?? []}
+            contrats={data?.contrats ?? []}
             brouillon={brouillon}
           />
         ) : (
