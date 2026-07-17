@@ -1,7 +1,9 @@
+// Sous-chemin **léger** (crypto pure `node:crypto`) : évite d'attirer le barrel
+// nest-commons (DB/NATS/mailer) dans le bundle du BFF — la gateway n'a pas de base.
 import {
   ENTETE_ASSERTION,
   signerAssertion,
-} from '@creche-planner/nest-commons';
+} from '@creche-planner/nest-commons/security';
 import { loadConfig } from '../config.js';
 import { contexteAssertionCourant } from '../security/contexte-assertion.js';
 

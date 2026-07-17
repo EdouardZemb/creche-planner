@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   ENTETE_ASSERTION,
   verifierAssertion,
-} from '@creche-planner/nest-commons';
+} from '@creche-planner/nest-commons/security';
 import { executerAvecContexteAssertion } from '../security/contexte-assertion.js';
 import { entetesAval } from './assertion-aval.js';
 
