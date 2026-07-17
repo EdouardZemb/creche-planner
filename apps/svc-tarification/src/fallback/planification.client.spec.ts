@@ -16,10 +16,17 @@ import { PlanificationClient } from './planification.client.js';
 
 const { add } = vi.hoisted(() => ({ add: vi.fn() }));
 
+// `createObservableGauge` est inclus car le client importe désormais le barrel
+// `@creche-planner/nest-commons` (assertion machine, lot 3), qui charge `outbox.relay`
+// et crée une jauge observable au chargement (fondations lot 2).
 vi.mock('@opentelemetry/api', () => ({
   metrics: {
     getMeter: () => ({
       createCounter: () => ({ add }),
+      createObservableGauge: () => ({
+        addCallback: () => undefined,
+        removeCallback: () => undefined,
+      }),
     }),
   },
 }));

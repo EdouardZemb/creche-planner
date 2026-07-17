@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { buildLoggerParams } from '@creche-planner/observability';
 import {
+  AssertionIdentiteModule,
   DatabaseModule,
   HealthModule,
   NatsModule,
@@ -33,6 +34,9 @@ import { FoyerModule } from './foyer/foyer.module.js';
     HealthModule,
     FoyerModule,
     OutboxModule.forRoot({ source: FOYER_EVENT_SOURCE, table: schema.outbox }),
+    // Guard aval d'assertion inter-services (observe-only tant qu'aucun
+    // INTERSERVICE_AUTHZ_ENFORCE=1 n'est posé) — fondations lot 3.
+    AssertionIdentiteModule.forRoot({ chargerConfig: loadConfig }),
   ],
 })
 export class AppModule {}

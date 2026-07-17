@@ -184,3 +184,32 @@ describe('loadConfig — flag d’enforcement par foyer (PR7)', () => {
     }
   });
 });
+
+/**
+ * Fondations lot 3 — `ASSERTION_IDENTITE_SECRET` : secret HMAC signant les
+ * assertions propagées aux services. Absent/vide ⇒ `undefined` (aucun en-tête émis,
+ * mode legacy aval).
+ */
+describe('loadConfig — secret d’assertion inter-services (lot 3)', () => {
+  let envInitial: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    envInitial = { ...process.env };
+    delete process.env['ASSERTION_IDENTITE_SECRET'];
+  });
+
+  afterEach(() => {
+    process.env = envInitial;
+  });
+
+  it('undefined par défaut (aucun en-tête émis)', () => {
+    expect(loadConfig().assertionSecret).toBeUndefined();
+  });
+
+  it('lu quand posé, trimé, vide/blanc → undefined', () => {
+    process.env['ASSERTION_IDENTITE_SECRET'] = '  s3cr3t  ';
+    expect(loadConfig().assertionSecret).toBe('s3cr3t');
+    process.env['ASSERTION_IDENTITE_SECRET'] = '   ';
+    expect(loadConfig().assertionSecret).toBeUndefined();
+  });
+});

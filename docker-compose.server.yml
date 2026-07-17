@@ -128,6 +128,13 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://referentiel:${PG_REFERENTIEL_PWD:?defini .env.server}@postgres-referentiel:5432/referentiel
+      # Assertion d'identité inter-services (fondations lot 3). Secret partagé
+      # gateway+services, REQUIS en prod (`:?`) : à définir dans .env.server PUIS
+      # .env.server.enc (sops) AVANT le prochain déploiement, sinon `docker compose
+      # config` échoue. INTERSERVICE_AUTHZ_ENFORCE reste vide (observe-only) tant
+      # qu'on ne bascule pas l'enforce — décision ops ultérieure (lot 4).
+      ASSERTION_IDENTITE_SECRET: ${ASSERTION_IDENTITE_SECRET:?defini .env.server}
+      INTERSERVICE_AUTHZ_ENFORCE: ${INTERSERVICE_AUTHZ_ENFORCE:-}
 
   svc-foyer:
     image: ghcr.io/edouardzemb/creche-planner/svc-foyer:${IMAGE_TAG:-main}
@@ -143,18 +150,39 @@ services:
       DESABONNEMENT_TOKEN_SECRET: ${DESABONNEMENT_TOKEN_SECRET:?defini .env.server}
       # Durée de validité d'un lien de désabonnement (jours) — défaut sain 30.
       DESABONNEMENT_TOKEN_TTL_JOURS: ${DESABONNEMENT_TOKEN_TTL_JOURS:-30}
+      # Assertion d'identité inter-services (fondations lot 3). Secret partagé
+      # gateway+services, REQUIS en prod (`:?`) : à définir dans .env.server PUIS
+      # .env.server.enc (sops) AVANT le prochain déploiement, sinon `docker compose
+      # config` échoue. INTERSERVICE_AUTHZ_ENFORCE reste vide (observe-only) tant
+      # qu'on ne bascule pas l'enforce — décision ops ultérieure (lot 4).
+      ASSERTION_IDENTITE_SECRET: ${ASSERTION_IDENTITE_SECRET:?defini .env.server}
+      INTERSERVICE_AUTHZ_ENFORCE: ${INTERSERVICE_AUTHZ_ENFORCE:-}
 
   svc-planification:
     image: ghcr.io/edouardzemb/creche-planner/svc-planification:${IMAGE_TAG:-main}
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://planification:${PG_PLANIFICATION_PWD:?defini .env.server}@postgres-planification:5432/planification
+      # Assertion d'identité inter-services (fondations lot 3). Secret partagé
+      # gateway+services, REQUIS en prod (`:?`) : à définir dans .env.server PUIS
+      # .env.server.enc (sops) AVANT le prochain déploiement, sinon `docker compose
+      # config` échoue. INTERSERVICE_AUTHZ_ENFORCE reste vide (observe-only) tant
+      # qu'on ne bascule pas l'enforce — décision ops ultérieure (lot 4).
+      ASSERTION_IDENTITE_SECRET: ${ASSERTION_IDENTITE_SECRET:?defini .env.server}
+      INTERSERVICE_AUTHZ_ENFORCE: ${INTERSERVICE_AUTHZ_ENFORCE:-}
 
   svc-tarification:
     image: ghcr.io/edouardzemb/creche-planner/svc-tarification:${IMAGE_TAG:-main}
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://tarification:${PG_TARIFICATION_PWD:?defini .env.server}@postgres-tarification:5432/tarification
+      # Assertion d'identité inter-services (fondations lot 3). Secret partagé
+      # gateway+services, REQUIS en prod (`:?`) : à définir dans .env.server PUIS
+      # .env.server.enc (sops) AVANT le prochain déploiement, sinon `docker compose
+      # config` échoue. INTERSERVICE_AUTHZ_ENFORCE reste vide (observe-only) tant
+      # qu'on ne bascule pas l'enforce — décision ops ultérieure (lot 4).
+      ASSERTION_IDENTITE_SECRET: ${ASSERTION_IDENTITE_SECRET:?defini .env.server}
+      INTERSERVICE_AUTHZ_ENFORCE: ${INTERSERVICE_AUTHZ_ENFORCE:-}
 
   # Lot 7 — svc-notifications : image GHCR + secret BDD + e-mails récap (Lots 5 & 6).
   # ENVOI RÉEL = effet de bord vers un tiers → GARDE-FOU EN PROFONDEUR :
@@ -197,6 +225,13 @@ services:
       # SEULEMENT quand l'envoi réel au service est validé bout-en-bout.
       NOTIF_EMAIL_DRY_RUN: ${NOTIF_EMAIL_DRY_RUN:-true}
       NOTIF_EMAIL_ALLOWLIST: ${NOTIF_EMAIL_ALLOWLIST:-}
+      # Assertion d'identité inter-services (fondations lot 3). Secret partagé
+      # gateway+services, REQUIS en prod (`:?`) : à définir dans .env.server PUIS
+      # .env.server.enc (sops) AVANT le prochain déploiement, sinon `docker compose
+      # config` échoue. INTERSERVICE_AUTHZ_ENFORCE reste vide (observe-only) tant
+      # qu'on ne bascule pas l'enforce — décision ops ultérieure (lot 4).
+      ASSERTION_IDENTITE_SECRET: ${ASSERTION_IDENTITE_SECRET:?defini .env.server}
+      INTERSERVICE_AUTHZ_ENFORCE: ${INTERSERVICE_AUTHZ_ENFORCE:-}
 
   # --- Gateway (BFF) : durcissement applicatif -------------------------------
   api-gateway:
@@ -245,6 +280,13 @@ services:
       # REFUSÉ », laisse passer). N'ACTIVER (`=1`) qu'APRÈS back-fill des parents
       # vérifié (sinon des foyers seraient verrouillés) — DÉCISION HUMAINE, doc 24.
       FOYER_AUTHZ_ENFORCE: ${FOYER_AUTHZ_ENFORCE:-}
+      # Assertion d'identité inter-services (fondations lot 3). Secret partagé
+      # gateway+services, REQUIS en prod (`:?`) : à définir dans .env.server PUIS
+      # .env.server.enc (sops) AVANT le prochain déploiement, sinon `docker compose
+      # config` échoue. INTERSERVICE_AUTHZ_ENFORCE reste vide (observe-only) tant
+      # qu'on ne bascule pas l'enforce — décision ops ultérieure (lot 4).
+      ASSERTION_IDENTITE_SECRET: ${ASSERTION_IDENTITE_SECRET:?defini .env.server}
+      INTERSERVICE_AUTHZ_ENFORCE: ${INTERSERVICE_AUTHZ_ENFORCE:-}
 
   # --- Front : plus de port LAN direct (servi via Caddy) ---------------------
   web:

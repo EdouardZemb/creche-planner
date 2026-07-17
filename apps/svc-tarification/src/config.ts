@@ -1,3 +1,8 @@
+import {
+  lireConfigAssertion,
+  type ConfigAssertion,
+} from '@creche-planner/nest-commons';
+
 export interface ServiceConfig {
   readonly port: number;
   readonly databaseUrl: string;
@@ -8,6 +13,8 @@ export interface ServiceConfig {
   readonly foyerUrl: string;
   /** URL du service Planification (prestations du mois) — fallback synchrone. */
   readonly planificationUrl: string;
+  /** Assertion d'identité inter-services (secret + enforce) — fondations lot 3. */
+  readonly assertion: ConfigAssertion;
 }
 
 /** Configuration du service depuis l'environnement, avec des défauts de dev local. */
@@ -22,5 +29,6 @@ export function loadConfig(): ServiceConfig {
     foyerUrl: process.env['FOYER_URL'] ?? 'http://localhost:3002',
     planificationUrl:
       process.env['PLANIFICATION_URL'] ?? 'http://localhost:3004',
+    assertion: lireConfigAssertion(),
   };
 }

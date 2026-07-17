@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
+import { entetesAssertionMachine } from '@creche-planner/nest-commons';
 import type { Canal, TypeNotification } from '@creche-planner/contracts-foyer';
 import { loadConfig } from '../config.js';
 import {
@@ -51,7 +52,15 @@ export class DesabonnementClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          // Assertion machine inter-services (fondations lot 3). La route
+          // `/api/desabonnement/jetons` (interne) N'EST PAS exemptée.
+          headers: {
+            'Content-Type': 'application/json',
+            ...entetesAssertionMachine(
+              'svc-notifications',
+              loadConfig().assertion.secret,
+            ),
+          },
           body: JSON.stringify(demande),
         });
         if (!reponse.ok) {

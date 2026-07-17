@@ -20,9 +20,18 @@ import { type RequeteIdentifiable } from './identite.js';
  */
 const { addRefus } = vi.hoisted(() => ({ addRefus: vi.fn() }));
 
+// `createObservableGauge` est inclus car l'import (transitif via les clients) du
+// barrel `@creche-planner/nest-commons` charge `outbox.relay`, qui crée une jauge
+// observable au chargement (fondations lot 2).
 vi.mock('@opentelemetry/api', () => ({
   metrics: {
-    getMeter: () => ({ createCounter: () => ({ add: addRefus }) }),
+    getMeter: () => ({
+      createCounter: () => ({ add: addRefus }),
+      createObservableGauge: () => ({
+        addCallback: () => undefined,
+        removeCallback: () => undefined,
+      }),
+    }),
   },
 }));
 
@@ -114,6 +123,8 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
     });
     await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
     expect(foyers.foyersParEmail).not.toHaveBeenCalled();
+    // Lot 3 : statut admin exposé à l'interceptor de propagation.
+    expect(req.estAdmin).toBe(true);
   });
 
   it('foyerId introuvable dans la requête → journalise et laisse passer', async () => {
@@ -145,6 +156,8 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
       expect(warn).not.toHaveBeenCalled();
       expect(addRefus).not.toHaveBeenCalled();
+      // Lot 3 : foyers résolus exposés à l'interceptor de propagation.
+      expect(req.foyersAutorises).toEqual(['f-1', 'f-2']);
     });
 
     it('foyer NON autorisé → journalise « AURAIT REFUSÉ » mais laisse passer', async () => {

@@ -210,6 +210,9 @@ importers:
       '@creche-planner/contracts-kernel':
         specifier: workspace:*
         version: link:../../libs/contracts/kernel
+      '@creche-planner/nest-commons':
+        specifier: workspace:*
+        version: link:../../libs/nest-commons
       '@creche-planner/observability':
         specifier: workspace:*
         version: link:../../libs/observability
@@ -868,6 +871,9 @@ importers:
       '@nestjs/common':
         specifier: ^11.1.27
         version: 11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core':
+        specifier: ^11.1.27
+        version: 11.1.27(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.1.27)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/terminus':
         specifier: ^11.0.0
         version: 11.1.1(@grpc/grpc-js@1.14.4)(@grpc/proto-loader@0.8.1)(@nestjs/common@11.1.27(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(reflect-metadata@0.2.2)(rxjs@7.8.2)

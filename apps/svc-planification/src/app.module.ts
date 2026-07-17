@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
 import { buildLoggerParams } from '@creche-planner/observability';
 import {
+  AssertionIdentiteModule,
   DatabaseModule,
   HealthModule,
   NatsModule,
@@ -40,6 +41,8 @@ import { EtablissementModule } from './etablissement/etablissement.module.js';
       source: PLANIFICATION_EVENT_SOURCE,
       table: schema.outbox,
     }),
+    // Guard aval d'assertion inter-services (observe-only) — fondations lot 3.
+    AssertionIdentiteModule.forRoot({ chargerConfig: loadConfig }),
   ],
 })
 export class AppModule {}

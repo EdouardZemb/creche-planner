@@ -1,3 +1,8 @@
+import {
+  lireConfigAssertion,
+  type ConfigAssertion,
+} from '@creche-planner/nest-commons';
+
 /**
  * Configuration e-mail du service. L'envoi vers un tiers réel est un effet de bord à
  * **isoler, tracer et pouvoir couper** : `dryRun` vaut **true par défaut** (on ne
@@ -64,6 +69,8 @@ export interface ServiceConfig {
   /** Test uniquement (`NOTIF_SCHEDULER_FORCER=1`) : ignore la fenêtre du mardi. */
   readonly schedulerForcer: boolean;
   readonly email: EmailConfig;
+  /** Assertion d'identité inter-services (secret + enforce) — fondations lot 3. */
+  readonly assertion: ConfigAssertion;
 }
 
 /** Découpe une liste CSV « a, b ,c » en tableau nettoyé. */
@@ -186,5 +193,6 @@ export function loadConfig(): ServiceConfig {
       dryRun: process.env['NOTIF_EMAIL_DRY_RUN'] !== 'false',
       allowlist: parseListe(process.env['NOTIF_EMAIL_ALLOWLIST']),
     },
+    assertion: lireConfigAssertion(),
   };
 }

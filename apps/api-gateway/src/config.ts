@@ -75,6 +75,13 @@ export interface GatewayConfig {
    * n'activer en prod qu'après vérification (décision humaine, doc 24).
    */
   readonly foyerAuthzEnforce: boolean;
+  /**
+   * Secret HMAC signant les **assertions d'identité** propagées vers les services
+   * (`ASSERTION_IDENTITE_SECRET`, chantier fondations lot 3). Partagé avec les 5
+   * services. **Absent ⇒** aucun en-tête `x-assertion-identite` n'est émis (les
+   * services restent en mode legacy). En prod, le compose l'exige (`${VAR:?}`).
+   */
+  readonly assertionSecret: string | undefined;
 }
 
 /** Normalise une variable d'env : trim, et chaîne vide/blanche → `undefined`. */
@@ -172,5 +179,6 @@ export function loadConfig(): GatewayConfig {
     },
     adminEmails: parseAdminEmails(process.env['ADMIN_EMAILS']),
     foyerAuthzEnforce: process.env['FOYER_AUTHZ_ENFORCE'] === '1',
+    assertionSecret: texteNonVide(process.env['ASSERTION_IDENTITE_SECRET']),
   };
 }

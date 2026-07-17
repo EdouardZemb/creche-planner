@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { AssertionPubliqueInterServices } from '@creche-planner/nest-commons';
 import { ZodValidationPipe } from './foyer.dto.js';
 import {
   consommerDesabonnementSchema,
@@ -33,6 +34,10 @@ export class DesabonnementController {
     return this.desabonnement.emettreJeton(dto);
   }
 
+  // H5 : point d'entrée RGPD one-click, auto-authentifié par son propre jeton HMAC
+  // et ouvert à un client de messagerie sans session → exempté d'assertion
+  // inter-services. `POST /jetons` (interne) reste, lui, soumis à l'assertion.
+  @AssertionPubliqueInterServices()
   @Post()
   @HttpCode(HttpStatus.NO_CONTENT)
   consommer(

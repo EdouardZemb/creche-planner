@@ -268,6 +268,9 @@ services:
       DATABASE_URL: postgres://referentiel:referentiel@postgres-referentiel:5432/referentiel
       NATS_URL: nats://nats:4222
       OTEL_SERVICE_NAME: svc-referentiel
+      # Assertion d'identité inter-services (fondations lot 3) : le chemin
+      # signature/vérification est réellement exercé en dev/e2e-stack (observe).
+      ASSERTION_IDENTITE_SECRET: dev-assertion-secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:
       postgres-referentiel:
@@ -288,6 +291,9 @@ services:
       DATABASE_URL: postgres://foyer:foyer@postgres-foyer:5432/foyer
       NATS_URL: nats://nats:4222
       OTEL_SERVICE_NAME: svc-foyer
+      # Assertion d'identité inter-services (fondations lot 3) : le chemin
+      # signature/vérification est réellement exercé en dev/e2e-stack (observe).
+      ASSERTION_IDENTITE_SECRET: dev-assertion-secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       # L'image embarque NODE_ENV=production (Dockerfile) → le garde-fou de boot de
       # svc-foyer (L5) exige un DESABONNEMENT_TOKEN_SECRET non-dev et non vide. Valeur
@@ -314,6 +320,9 @@ services:
       NATS_URL: nats://nats:4222
       REFERENTIEL_URL: http://svc-referentiel:3001
       OTEL_SERVICE_NAME: svc-planification
+      # Assertion d'identité inter-services (fondations lot 3) : le chemin
+      # signature/vérification est réellement exercé en dev/e2e-stack (observe).
+      ASSERTION_IDENTITE_SECRET: dev-assertion-secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:
       postgres-planification:
@@ -337,6 +346,9 @@ services:
       FOYER_URL: http://svc-foyer:3002
       PLANIFICATION_URL: http://svc-planification:3004
       OTEL_SERVICE_NAME: svc-tarification
+      # Assertion d'identité inter-services (fondations lot 3) : le chemin
+      # signature/vérification est réellement exercé en dev/e2e-stack (observe).
+      ASSERTION_IDENTITE_SECRET: dev-assertion-secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:
       postgres-tarification:
@@ -370,6 +382,9 @@ services:
       NOTIF_APP_URL: https://web.e2e.invalid
       NOTIF_PUBLIC_API_URL: https://api.e2e.invalid
       OTEL_SERVICE_NAME: svc-notifications
+      # Assertion d'identité inter-services (fondations lot 3) : le chemin
+      # signature/vérification est réellement exercé en dev/e2e-stack (observe).
+      ASSERTION_IDENTITE_SECRET: dev-assertion-secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:
       postgres-notifications:
@@ -403,6 +418,9 @@ services:
       # valeur de prod (120/min). N'affecte PAS la prod (déployée hors compose).
       RATE_LIMIT_MAX: '100000'
       OTEL_SERVICE_NAME: api-gateway
+      # Assertion d'identité inter-services (fondations lot 3) : le chemin
+      # signature/vérification est réellement exercé en dev/e2e-stack (observe).
+      ASSERTION_IDENTITE_SECRET: dev-assertion-secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     healthcheck:
       # Liveness HTTP (endpoint /api/health/live, SANS dépendance externe) :

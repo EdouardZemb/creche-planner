@@ -7,6 +7,7 @@ import {
   fetchAvecTimeout,
   type OptionsResilience,
 } from '@creche-planner/resilience';
+import { entetesAval } from './assertion-aval.js';
 
 /** Statut d'une validation hebdomadaire renvoyé par `svc-notifications`. */
 const statutSchema = z.enum(['A_VALIDER', 'VALIDEE', 'VALIDEE_AVEC_MODIFS']);
@@ -151,7 +152,9 @@ export class NotificationsClient {
     return executerResilient(
       'svc-notifications',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }
@@ -177,6 +180,7 @@ export class NotificationsClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'POST',
+          headers: entetesAval(),
         });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
@@ -205,7 +209,9 @@ export class NotificationsClient {
     return executerResilient(
       'svc-notifications',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }
@@ -228,7 +234,9 @@ export class NotificationsClient {
     return executerResilient(
       'svc-notifications',
       async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs);
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
         }
@@ -258,6 +266,7 @@ export class NotificationsClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'POST',
+          headers: entetesAval(),
         });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
@@ -291,7 +300,7 @@ export class NotificationsClient {
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...entetesAval() },
           body: JSON.stringify({
             foyerId,
             semaineIso,

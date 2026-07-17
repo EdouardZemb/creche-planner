@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
+import { entetesAssertionMachine } from '@creche-planner/nest-commons';
 import { loadConfig } from '../config.js';
 
 /** Forme d'un jour non facturable renvoyé par le Référentiel. */
@@ -23,9 +24,16 @@ export class ReferentielClient {
 
   /** Dates ISO `YYYY-MM-DD` non facturables (toutes périodes confondues). */
   async joursNonFacturables(): Promise<string[]> {
-    const url = `${loadConfig().referentielUrl}/api/calendrier/jours-non-facturables`;
+    const config = loadConfig();
+    const url = `${config.referentielUrl}/api/calendrier/jours-non-facturables`;
     try {
-      const reponse = await fetch(url);
+      // Assertion machine inter-services (fondations lot 3).
+      const reponse = await fetch(url, {
+        headers: entetesAssertionMachine(
+          'svc-planification',
+          config.assertion.secret,
+        ),
+      });
       if (!reponse.ok) {
         throw new Error(`HTTP ${reponse.status}`);
       }

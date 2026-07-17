@@ -8,7 +8,13 @@ import { loadConfig } from './config.js';
  * Modèle : `apps/svc-foyer/src/config.spec.ts`.
  */
 describe('loadConfig (svc-referentiel)', () => {
-  const CLES = ['PORT', 'DATABASE_URL', 'NATS_URL'] as const;
+  const CLES = [
+    'PORT',
+    'DATABASE_URL',
+    'NATS_URL',
+    'ASSERTION_IDENTITE_SECRET',
+    'INTERSERVICE_AUTHZ_ENFORCE',
+  ] as const;
   const initial: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -35,6 +41,7 @@ describe('loadConfig (svc-referentiel)', () => {
       databaseUrl:
         'postgres://referentiel:referentiel@localhost:5433/referentiel',
       natsUrl: 'nats://localhost:4222',
+      assertion: { secret: undefined, enforce: false },
     });
   });
 
@@ -47,6 +54,7 @@ describe('loadConfig (svc-referentiel)', () => {
       port: 4005,
       databaseUrl: 'postgres://u:p@db:5432/ref',
       natsUrl: 'nats://broker:4222',
+      assertion: { secret: undefined, enforce: false },
     });
   });
 
