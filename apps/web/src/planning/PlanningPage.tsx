@@ -238,7 +238,7 @@ export function PlanningPage() {
 
       {/* États loading / error */}
       {loading && (
-        <div className="carte muted">Chargement de votre famille...</div>
+        <div className="carte muted">Chargement de votre famille…</div>
       )}
       {error !== null && (
         <div className="carte" role="alert" style={{ color: 'var(--rouge)' }}>
