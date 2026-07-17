@@ -33,11 +33,14 @@ export default defineConfig(() => ({
       // Bootstrap process (main/tracing) : exécutés au boot du conteneur,
       // couverts par smoke-stack, non testables unitairement.
       exclude: ['src/main.ts', 'src/tracing.ts', '**/*.spec.ts'],
+      // Relevés après le lot 1 « Fondations » (consumer JetStream mutualisé dans
+      // nest-commons) : le plancher atteint monte (79 / 81 / 64 / 80), on laisse
+      // ~2 pts de marge.
       thresholds: {
-        statements: 71,
-        branches: 64,
-        functions: 54,
-        lines: 72,
+        statements: 77,
+        branches: 79,
+        functions: 62,
+        lines: 77,
       },
     },
     testTimeout: 60000,

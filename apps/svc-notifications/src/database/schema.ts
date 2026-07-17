@@ -603,3 +603,28 @@ export type EnvoiRecapParentRow = typeof envoiRecapParent.$inferSelect;
 export type NotificationRow = typeof notification.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;
+
+/**
+ * Dead-letter (chantier « Fondations backend », lot 1). Une ligne par message
+ * JetStream non traité : illisible (`PARSE_KO`), enveloppe sans `type`
+ * (`ENVELOPPE_INVALIDE`), type non géré (`TYPE_INCONNU`) ou livraisons épuisées
+ * (`MAX_LIVRAISONS`) — plus aucune perte silencieuse (ex. un récap de validation
+ * qui ne partirait jamais). Copie **structurelle** du modèle
+ * `libs/nest-commons/src/lib/messaging/dead-letter.options.ts` (le typecheck de
+ * `ConsumerModule.forRoot({ tableDeadLetter })` échoue si le service dérive). Pas
+ * d'index sur `created_at` (volumes faibles).
+ */
+export const deadLetter = pgTable('dead_letter', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  envelopeId: uuid('envelope_id'),
+  stream: varchar('stream', { length: 32 }).notNull(),
+  sujet: varchar('sujet', { length: 200 }).notNull(),
+  raison: varchar('raison', { length: 32 }).notNull(),
+  payload: text('payload').notNull(),
+  erreur: text('erreur'),
+  livraisons: integer('livraisons').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+export type DeadLetterRow = typeof deadLetter.$inferSelect;

@@ -4,6 +4,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  text,
   timestamp,
   unique,
   uuid,
@@ -234,6 +235,29 @@ export const outbox = pgTable('outbox', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
 });
 
+/**
+ * Dead-letter (chantier « Fondations backend », lot 1). Une ligne par message
+ * JetStream non traité : illisible (`PARSE_KO`), enveloppe sans `type`
+ * (`ENVELOPPE_INVALIDE`), type non géré (`TYPE_INCONNU`) ou livraisons épuisées
+ * (`MAX_LIVRAISONS`) — plus aucune perte silencieuse. Copie **structurelle** du
+ * modèle `libs/nest-commons/src/lib/messaging/dead-letter.options.ts` (le typecheck
+ * de `ConsumerModule.forRoot({ tableDeadLetter })` échoue si le service dérive).
+ * Pas d'index sur `created_at` (volumes faibles).
+ */
+export const deadLetter = pgTable('dead_letter', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  envelopeId: uuid('envelope_id'),
+  stream: varchar('stream', { length: 32 }).notNull(),
+  sujet: varchar('sujet', { length: 200 }).notNull(),
+  raison: varchar('raison', { length: 32 }).notNull(),
+  payload: text('payload').notNull(),
+  erreur: text('erreur'),
+  livraisons: integer('livraisons').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export type FoyerRow = typeof foyer.$inferSelect;
 export type EnfantRow = typeof enfant.$inferSelect;
 export type ContratRow = typeof contrat.$inferSelect;
@@ -241,3 +265,4 @@ export type GrilleTarifaireRow = typeof grilleTarifaire.$inferSelect;
 export type PrestationMoisRow = typeof prestationMois.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;
+export type DeadLetterRow = typeof deadLetter.$inferSelect;

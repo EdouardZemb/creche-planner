@@ -10,7 +10,11 @@ import {
   type ContratModifiePayload,
   type ModeContrat,
 } from '@creche-planner/contracts-planification';
-import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
+import {
+  DRIZZLE,
+  traceIdCourant,
+  type ResultatTraitement,
+} from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import { contrat, outbox, processedEvent } from '../database/schema.js';
 
@@ -41,29 +45,30 @@ export class ProjectionService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   /**
-   * Traite un message brut d'un stream. Renvoie `true` si l'événement a été
-   * appliqué (ou ignoré proprement) et peut être acquitté ; `false` si une erreur
-   * transitoire impose une re-livraison (NAK). Un type non géré est acquitté (on
-   * ne bloque pas le stream sur un événement étranger).
+   * Traite un message brut d'un stream et renvoie un {@link ResultatTraitement}
+   * qui dit au consommateur quoi en faire : `TRAITE` (appliqué ou ignoré
+   * proprement → ACK), `IGNORE_ENVELOPPE_INVALIDE`/`IGNORE_TYPE_INCONNU`
+   * (dead-letter + ACK), `ECHEC_TRANSITOIRE` (erreur transitoire → NAK, ou
+   * dead-letter au bout des livraisons). Aucun message ne disparaît en silence.
    */
-  async traiter(stream: string, donnees: unknown): Promise<boolean> {
+  async traiter(stream: string, donnees: unknown): Promise<ResultatTraitement> {
     try {
       const type = this.typeDe(donnees);
       if (type === undefined) {
-        return true; // pas une enveloppe reconnue : on acquitte sans projeter
+        return 'IGNORE_ENVELOPPE_INVALIDE'; // pas une enveloppe reconnue
       }
       switch (type) {
         case ENFANT_MODIFIE_TYPE:
           await this.appliquerEnfantModifie(stream, donnees);
-          return true;
+          return 'TRAITE';
         default:
-          return true; // type non consommé par Planification : acquitté
+          return 'IGNORE_TYPE_INCONNU'; // type non consommé par Planification
       }
     } catch (erreur) {
       this.logger.warn(
         `Projection échouée (${stream}) : ${(erreur as Error).message} — re-livraison`,
       );
-      return false;
+      return 'ECHEC_TRANSITOIRE';
     }
   }
 

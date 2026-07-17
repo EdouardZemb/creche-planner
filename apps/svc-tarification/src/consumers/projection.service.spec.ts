@@ -167,7 +167,7 @@ describe('ProjectionService.traiter', () => {
     const db = fakeDb(true);
     const projection = new ProjectionService(db, clientStub);
     await expect(projection.traiter('FOYER', { foo: 'bar' })).resolves.toBe(
-      true,
+      'IGNORE_ENVELOPPE_INVALIDE',
     );
     expect(db.transaction).not.toHaveBeenCalled();
   });
@@ -177,7 +177,7 @@ describe('ProjectionService.traiter', () => {
     const projection = new ProjectionService(db, clientStub);
     await expect(
       projection.traiter('AUTRE', { type: 'autre.Chose.v1' }),
-    ).resolves.toBe(true);
+    ).resolves.toBe('IGNORE_TYPE_INCONNU');
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
@@ -192,7 +192,7 @@ describe('ProjectionService.traiter', () => {
         >),
         payload: { foyerId: 'pas-un-uuid' },
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
   });
 
   it('projette un FoyerMisAJour valide (1ʳᵉ réception) et acquitte', async () => {
@@ -203,7 +203,7 @@ describe('ProjectionService.traiter', () => {
         'FOYER',
         evenementFoyer('11111111-1111-4111-8111-111111111111'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -215,7 +215,7 @@ describe('ProjectionService.traiter', () => {
         'FOYER',
         evenementFoyerV2('77777777-7777-4777-8777-777777777777'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     // Même projection que v1 : une transaction ouverte, aucune régression.
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
@@ -228,7 +228,7 @@ describe('ProjectionService.traiter', () => {
         'FOYER',
         evenementFoyer('11111111-1111-4111-8111-111111111111'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -246,7 +246,7 @@ describe('ProjectionService.traiter', () => {
           anneeRevenus: 1700,
         },
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
   });
 
   it('idempotent : un doublon (marqueur déjà présent) n’upsert pas mais acquitte', async () => {
@@ -257,7 +257,7 @@ describe('ProjectionService.traiter', () => {
         'FOYER',
         evenementFoyer('11111111-1111-4111-8111-111111111111'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
   });
 
   it('projette un ContratModifie valide (met à jour identité) et acquitte', async () => {
@@ -268,7 +268,7 @@ describe('ProjectionService.traiter', () => {
         'PLANIFICATION',
         evenementContratModifie('44444444-4444-4444-8444-444444444444'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -280,7 +280,7 @@ describe('ProjectionService.traiter', () => {
         'PLANIFICATION',
         evenementContratSupprime('66666666-6666-4666-8666-666666666666'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -292,7 +292,7 @@ describe('ProjectionService.traiter', () => {
         'PLANIFICATION',
         evenementContratSupprime('66666666-6666-4666-8666-666666666666'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
   });
 
   it('PlanningModifie déjà traité : court-circuit, ACK sans appel réseau de repli', async () => {
@@ -304,7 +304,7 @@ describe('ProjectionService.traiter', () => {
         'PLANIFICATION',
         evenementPlanning('33333333-3333-4333-8333-333333333333'),
       ),
-    ).resolves.toBe(true);
+    ).resolves.toBe('TRAITE');
     // L'optimisation : pas de fetch des prestations sur un rejeu déjà projeté.
     expect(client.prestations).not.toHaveBeenCalled();
     expect(db.transaction).not.toHaveBeenCalled();
