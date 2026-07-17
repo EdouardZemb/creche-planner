@@ -8,6 +8,7 @@ import {
 import { useTitrePage } from '../hooks/useTitrePage';
 import { useAnnonce } from '../hooks/useAnnonce';
 import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
+import { ChargementPage } from '../ui/ChargementPage';
 import type {
   CanalNotification,
   MonProfilVue,
@@ -401,9 +402,7 @@ export function MonProfilPage() {
       <h1>Mon profil</h1>
 
       {loading && !data && (
-        <div className="carte muted" aria-live="polite">
-          Chargement de votre profil…
-        </div>
+        <ChargementPage message="Chargement de votre profil…" />
       )}
 
       {!loading && error && !data && (

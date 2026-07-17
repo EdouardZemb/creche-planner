@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom';
@@ -69,4 +70,60 @@ describe('useAnnonceRoute', () => {
     });
     expect(screen.getByTestId('live')).toHaveTextContent('Coûts annuels');
   });
+
+  it('re-publie l’annonce quand le titre change SANS changement de pathname (swap tardif)', async () => {
+    render(
+      <MemoryRouter initialEntries={['/foyers/f1/dashboard']}>
+        <CoquilleTitreVariable />
+      </MemoryRouter>,
+    );
+    const live = screen.getByTestId('live');
+    const titre = screen.getByRole('heading');
+
+    // Settle initial du titre (chaîne vide → 1er titre) : PAS annoncé (muet).
+    await act(async () => {
+      screen.getByRole('button', { name: 'Poser le titre' }).click();
+    });
+    expect(live).toHaveTextContent('');
+
+    // Changement ULTÉRIEUR au même chemin (Outlet → écran de récupération) : annoncé.
+    await act(async () => {
+      screen.getByRole('button', { name: 'Basculer en erreur' }).click();
+    });
+    expect(live).toHaveTextContent('Famille introuvable');
+    // Aucun changement de pathname → le focus n'a PAS bougé.
+    expect(titre).not.toHaveFocus();
+  });
 });
+
+// Câble le hook avec un titre pilotable par l'état (sans navigation) : reproduit le
+// swap tardif `Outlet → « Famille introuvable »` au MÊME chemin.
+function CoquilleTitreVariable() {
+  const [titre, setTitre] = useState('');
+  const { refCible, regionLiveProps } =
+    useAnnonceRoute<HTMLHeadingElement>(titre);
+  return (
+    <div>
+      <p data-testid="live" {...regionLiveProps} />
+      <h1 tabIndex={-1} ref={refCible}>
+        {titre || 'Chargement…'}
+      </h1>
+      <button
+        type="button"
+        onClick={() => {
+          setTitre('Aujourd’hui');
+        }}
+      >
+        Poser le titre
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setTitre('Famille introuvable');
+        }}
+      >
+        Basculer en erreur
+      </button>
+    </div>
+  );
+}

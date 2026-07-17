@@ -8,6 +8,7 @@ import { moisCourant, formaterMoisFr } from '../utils/dates';
 import { libelleMode } from '../utils/libelles';
 import { Badge } from '../ui/Badge';
 import { EtatVide } from '../ui/EtatVide';
+import { ChargementPage } from '../ui/ChargementPage';
 import { PanneauCoutMois } from '../couts/PanneauCoutMois';
 import { EncartValidation } from '../notifications/EncartValidation';
 import { CalendrierCreche } from './CalendrierCreche';
@@ -237,9 +238,7 @@ export function PlanningPage() {
       </div>
 
       {/* États loading / error */}
-      {loading && (
-        <div className="carte muted">Chargement de votre famille…</div>
-      )}
+      {loading && <ChargementPage message="Chargement de votre famille…" />}
       {error !== null && (
         <div className="carte" role="alert" style={{ color: 'var(--rouge)' }}>
           {error}
