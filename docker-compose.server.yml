@@ -164,19 +164,26 @@ services:
   #   - NOTIF_EMAIL_ALLOWLIST (CSV) neutralise tout destinataire hors liste (rodage) ;
   #   - le transport réutilise le MÊME mot de passe d'application Gmail qu'Alertmanager
   #     (ALERTMANAGER_SMTP_PASSWORD) — mappé sur SMTP_PASSWORD, jamais dupliqué en clair.
-  # Le lien « valider » des mails pointe vers l'origine publique (SERVER_ORIGIN).
-  # Cf. .env.server.example (§ svc-notifications) et apps/svc-notifications/src/config.ts.
+  # Le lien « valider » des mails pointe vers l'origine PUBLIQUE, qui n'est pas
+  # forcément SERVER_ORIGIN : ce dernier est l'origine **LAN** (liste blanche CORS
+  # ci-dessous, et URL des portes santé/seed/perf de scripts/deploy.mjs, qui doit
+  # rester joignable sans passer par Cloudflare Access). Un parent, lui, ouvre le
+  # lien depuis son téléphone hors-LAN : il lui faut un domaine public à certificat
+  # valide. D'où le découplage : NOTIF_APP_URL / NOTIF_PUBLIC_API_URL priment si
+  # définis dans .env.server, sinon repli sur SERVER_ORIGIN (compat historique).
+  # Cf. .env.server.example (§ svc-notifications) et apps/svc-notifications/src/config.ts
+  # (garde-fou de boot : en production ces URL doivent être https + domaine public).
   svc-notifications:
     image: ghcr.io/edouardzemb/creche-planner/svc-notifications:${IMAGE_TAG:-main}
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://notifications:${PG_NOTIFICATIONS_PWD:?defini .env.server}@postgres-notifications:5432/notifications
       # URL publique = base du lien « valider la semaine » inséré dans les mails.
-      NOTIF_APP_URL: ${SERVER_ORIGIN:?defini .env.server}
+      NOTIF_APP_URL: ${NOTIF_APP_URL:-${SERVER_ORIGIN:?defini .env.server}}
       # Désabonnement one-click (RFC 8058, PR5) : base publique de l'API gateway,
       # cible de l'en-tête `List-Unsubscribe` (POST direct du client de messagerie sur
-      # ${SERVER_ORIGIN}/api/v1/desabonnement?token=…). Même origine publique que le front.
-      NOTIF_PUBLIC_API_URL: ${SERVER_ORIGIN:?defini .env.server}
+      # ${NOTIF_PUBLIC_API_URL}/api/v1/desabonnement?token=…). Même origine publique que le front.
+      NOTIF_PUBLIC_API_URL: ${NOTIF_PUBLIC_API_URL:-${SERVER_ORIGIN:?defini .env.server}}
       # Adresse `mailto:` optionnelle ajoutée à l'en-tête List-Unsubscribe (repli non
       # one-click, RFC 2369). Vide → seule l'URL HTTPS one-click est publiée.
       NOTIF_UNSUBSCRIBE_MAILTO: ${NOTIF_UNSUBSCRIBE_MAILTO:-}
