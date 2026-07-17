@@ -491,23 +491,132 @@ describe('App — mode borné par identité (PR6)', () => {
     expect(screen.queryByText('PAGE_NOUVEAU_FOYER')).not.toBeInTheDocument();
   });
 
-  it('identité + N foyers : sélecteur borné à l’ensemble autorisé', async () => {
+  it('identité + N foyers : le sélecteur nomme chaque famille par ses enfants', async () => {
     mockedApi.moi.mockResolvedValue({
       email: 'parent@test.fr',
       admin: false,
       foyers: [FOYER_ID, 'f2'],
     });
+    mockedApi.lireFoyer.mockImplementation((id: string) =>
+      id === FOYER_ID
+        ? Promise.resolve({
+            foyer: { id: FOYER_ID },
+            enfants: [{ prenom: 'Léa' }, { prenom: 'Noé' }],
+            parents: [],
+          })
+        : Promise.resolve({
+            foyer: { id: 'f2' },
+            enfants: [{ prenom: 'Tom' }],
+            parents: [],
+          }),
+    );
     rendre('/');
 
     expect(await screen.findByText('Choisir une famille')).toBeInTheDocument();
-    const ouvertures = screen.getAllByRole('link', {
-      name: /Ouvrir la famille/,
+    // Chaque carte est un lien nommé par les prénoms (Intl.ListFormat 'fr').
+    const lea = await screen.findByRole('link', {
+      name: 'Famille de Léa et Noé',
     });
-    expect(ouvertures).toHaveLength(2);
-    expect(ouvertures[0]).toHaveAttribute(
-      'href',
-      `/foyers/${FOYER_ID}/dashboard`,
+    expect(lea).toHaveAttribute('href', `/foyers/${FOYER_ID}/dashboard`);
+    const tom = screen.getByRole('link', { name: 'Famille de Tom' });
+    expect(tom).toHaveAttribute('href', '/foyers/f2/dashboard');
+    // Plus aucun libellé ordinal (« Ouvrir la famille 1/2 »).
+    expect(screen.queryByText(/Ouvrir la famille/)).not.toBeInTheDocument();
+    // Vraie liste sémantique (ul/li).
+    expect(lea.closest('li')).not.toBeNull();
+  });
+
+  it('N foyers sans enfant : le libellé retombe sur le parent principal (nom, puis e-mail)', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [FOYER_ID, 'f2'],
+    });
+    mockedApi.lireFoyer.mockImplementation((id: string) =>
+      id === FOYER_ID
+        ? Promise.resolve({
+            foyer: { id: FOYER_ID },
+            enfants: [],
+            parents: [
+              {
+                prenom: 'Marie',
+                nom: 'Curie',
+                email: 'marie@test.fr',
+                principal: true,
+              },
+            ],
+          })
+        : Promise.resolve({
+            foyer: { id: 'f2' },
+            enfants: [],
+            parents: [
+              {
+                prenom: null,
+                nom: null,
+                email: 'jean@test.fr',
+                principal: true,
+              },
+            ],
+          }),
     );
+    rendre('/');
+
+    expect(
+      await screen.findByRole('link', { name: 'Famille Marie Curie' }),
+    ).toHaveAttribute('href', `/foyers/${FOYER_ID}/dashboard`);
+    // Parent sans prénom/nom : repli sur l'e-mail, jamais un ordinal.
+    expect(screen.getByRole('link', { name: 'jean@test.fr' })).toHaveAttribute(
+      'href',
+      '/foyers/f2/dashboard',
+    );
+  });
+
+  it('N foyers : un dossier en échec dégrade sa seule carte sans masquer les autres', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [FOYER_ID, 'f2'],
+    });
+    mockedApi.lireFoyer.mockImplementation((id: string) =>
+      id === FOYER_ID
+        ? Promise.resolve({
+            foyer: { id: FOYER_ID },
+            enfants: [{ prenom: 'Léa' }],
+            parents: [],
+          })
+        : Promise.reject(new ApiError(503, undefined)),
+    );
+    rendre('/');
+
+    // La famille chargée reste lisible…
+    expect(
+      await screen.findByRole('link', { name: 'Famille de Léa' }),
+    ).toHaveAttribute('href', `/foyers/${FOYER_ID}/dashboard`);
+    // … et la carte en échec offre un repli cliquable (jamais bloquant).
+    expect(
+      screen.getByRole('link', { name: 'Ouvrir cette famille' }),
+    ).toHaveAttribute('href', '/foyers/f2/dashboard');
+  });
+
+  it('N foyers : tous les dossiers en échec → EtatVide « Réessayer »', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [FOYER_ID, 'f2'],
+    });
+    mockedApi.lireFoyer.mockRejectedValue(new ApiError(503, undefined));
+    rendre('/');
+
+    expect(
+      await screen.findByText('Impossible de charger vos familles'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Réessayer' }),
+    ).toBeInTheDocument();
+    // Aucune carte de famille n'est rendue quand tout échoue.
+    expect(
+      screen.queryByRole('link', { name: 'Ouvrir cette famille' }),
+    ).not.toBeInTheDocument();
   });
 
   it('cache localStorage hors ensemble autorisé : ignoré (plus une source de vérité)', async () => {

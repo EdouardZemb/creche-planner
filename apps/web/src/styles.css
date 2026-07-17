@@ -823,6 +823,65 @@ h3 {
   justify-content: center;
 }
 
+/* ---- Sélecteur « Mes familles » (mode borné, multi-foyer) ---------------- */
+.selecteur-familles {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: var(--esp-5) var(--esp-4);
+}
+
+.selecteur-familles-titre {
+  margin: 0 0 var(--esp-2);
+  font-size: var(--h1);
+  color: #111827;
+}
+
+.selecteur-familles-intro {
+  margin: 0 0 var(--esp-5);
+}
+
+.selecteur-familles-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-3);
+}
+
+/* Carte-lien d'une famille : cible tactile confortable (≥ 44px de haut). */
+.selecteur-famille-carte {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--esp-1);
+  min-height: 2.75rem;
+  padding: var(--esp-3) var(--esp-4);
+  background: white;
+  border: 1px solid var(--bordure);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  color: #111827;
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.selecteur-famille-carte:hover {
+  border-color: var(--bleu);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.selecteur-famille-nom {
+  font-weight: 600;
+}
+
+.selecteur-famille-detail {
+  font-size: 0.9rem;
+  color: var(--gris);
+}
+
 /* ---- Encart « Valider la semaine suivante » (mobile-first) ---------------- */
 /* Base mobile : le libellé occupe sa ligne et les actions « Éditer la
    semaine » / « Valider » s'empilent pleine largeur — deux boutons côte à
