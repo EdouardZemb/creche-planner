@@ -24,6 +24,7 @@ import { ParentsSection } from './ParentsSection';
 import { EnfantsSection } from './EnfantsSection';
 import { useContrats } from './useContrats';
 import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
+import { ChargementPage } from '../ui/ChargementPage';
 
 /**
  * Valeurs de saisie (chaînes) dérivées d'un foyer chargé : on pré-remplit avec
@@ -57,7 +58,7 @@ export function FoyerModifierPage() {
   );
 
   if (loading) {
-    return <p className="muted">Chargement de votre famille…</p>;
+    return <ChargementPage message="Chargement de votre famille…" />;
   }
   // `GardeFoyer` traite déjà 404 / 5xx / session expirée en amont (l'`<Outlet/>`
   // n'est rendu qu'après un chargement réussi). Ce repli ne couvre donc que

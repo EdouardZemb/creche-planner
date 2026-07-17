@@ -14,6 +14,7 @@ import {
 import { useTitrePage } from '../hooks/useTitrePage';
 import { EtatVide } from '../ui/EtatVide';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
+import { ChargementPage } from '../ui/ChargementPage';
 import { useEtablissements } from './useEtablissements';
 
 /** Jours de la semaine pour la règle « jour + heure ». */
@@ -587,9 +588,7 @@ export function EtablissementsPage() {
       </div>
 
       {loading && !data && (
-        <div className="carte muted" aria-live="polite">
-          Chargement des crèches et écoles…
-        </div>
+        <ChargementPage message="Chargement des crèches et écoles…" />
       )}
 
       {!loading && error && !data && (
