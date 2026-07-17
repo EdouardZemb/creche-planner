@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ZodError } from 'zod';
 import {
   AucuneVersionApplicableError,
   ModeGardeInconnuError,
@@ -150,6 +151,20 @@ describe('ReferentielService.publierGrilleAbcm (versionnement + outbox)', () => 
         }),
       );
     }
+  });
+
+  it("VALIDE l'entrée via Zod EN TÊTE (parse déplacé du pipe HTTP vers le service) — entrée invalide rejetée avant tout accès base", async () => {
+    const { db, select, transaction } = fakeDbPublication([]);
+    const service = new ReferentielService(db);
+
+    // Montant négatif : refusé par `publierGrilleAbcmSchema` (nonnegative), donc
+    // le parse en tête lève AVANT toute lecture ou transaction. Prouve que les
+    // grilles seedées passent la même validation (plus de pipe HTTP).
+    await expect(
+      service.publierGrilleAbcm({ ...DTO_GRILLE, cantineTotal: -1 }),
+    ).rejects.toBeInstanceOf(ZodError);
+    expect(select).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
   });
 
   it('cantinePartGarde absente → null en vue (pas de 0 implicite)', async () => {
@@ -315,37 +330,6 @@ describe('ReferentielService.grilleApplicable (sélection par date)', () => {
     await expect(
       service.grilleApplicable('2026-06-15', 'CANTINE', undefined),
     ).rejects.toBeInstanceOf(TrancheInconnueError);
-  });
-});
-
-describe('ReferentielService.fraisFixesApplicable', () => {
-  it('sélectionne les frais fixes couvrant la date', async () => {
-    const db = fakeDbLecture([
-      {
-        id: '66666666-0000-4000-8000-000000000000',
-        valideDu: '2025-09-01',
-        valideAu: '2026-08-31',
-        cotisation1EnfantCentimes: 2600,
-        premiereInscriptionCentimes: 800,
-        createdAt: new Date('2025-09-01T00:00:00Z'),
-      },
-      {
-        id: '66666666-0000-4000-8000-000000000001',
-        valideDu: '2026-09-01',
-        valideAu: null,
-        cotisation1EnfantCentimes: 2800,
-        premiereInscriptionCentimes: 900,
-        createdAt: new Date('2026-09-01T00:00:00Z'),
-      },
-    ]);
-    const service = new ReferentielService(db);
-
-    await expect(service.fraisFixesApplicable('2026-10-01')).resolves.toEqual({
-      valideDu: '2026-09-01',
-      valideAu: null,
-      cotisation1EnfantCentimes: 2800,
-      premiereInscriptionCentimes: 900,
-    });
   });
 });
 

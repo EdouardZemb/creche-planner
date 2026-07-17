@@ -34,10 +34,10 @@ export default defineConfig(() => ({
       // couverts par smoke-stack, non testables unitairement.
       exclude: ['src/main.ts', 'src/tracing.ts', '**/*.spec.ts'],
       thresholds: {
-        statements: 52,
-        branches: 62,
-        functions: 52,
-        lines: 53,
+        statements: 88,
+        branches: 92,
+        functions: 83,
+        lines: 88,
       },
     },
     testTimeout: 60000,

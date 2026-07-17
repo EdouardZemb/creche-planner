@@ -8,6 +8,13 @@
       "when": 1780431149239,
       "tag": "0000_referentiel_initial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784316148458,
+      "tag": "0001_drop_frais_fixes_abcm",
+      "breakpoints": true
     }
   ]
 }
