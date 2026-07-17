@@ -41,13 +41,14 @@ export default defineConfig(() => ({
         'src/app.module.ts',
         '**/*.spec.ts',
       ],
-      // Ratchet relevé au lot 3 (marge ~2 pts : mesuré 83,6/79,6/68,1/84,1 après
-      // exclusion d'app.module de la couverture et ajout de la config assertion).
+      // Ratchet relevé au lot 3 (mesuré 83,6/79,6/68,1/84,1).
+      // Ratchet relevé au lot 4 « Fondations » (scoping par ressource : décorateurs
+      // sur foyer.controller + spec d'intégration enforce) — mesuré 84,5/80,6/69,2/85,0.
       thresholds: {
-        statements: 81,
-        branches: 77,
-        functions: 66,
-        lines: 82,
+        statements: 82,
+        branches: 78,
+        functions: 67,
+        lines: 83,
       },
     },
     testTimeout: 60000,

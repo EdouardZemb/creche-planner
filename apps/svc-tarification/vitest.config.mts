@@ -45,13 +45,15 @@ export default defineConfig(() => ({
       // quitte ce service pour nest-commons, le plancher atteint monte à
       // 76 / 75 / 73 / 75. On garde une marge volontairement large (~4-5 pts) car
       // les specs de résilience sont sensibles au timing (cf. historique branches).
-      // Ratchet relevé au lot 3 (mesuré 84,4/77,7/81,7/84,2 après ajout des specs
-      // fallback foyer/referentiel.client et exclusion d'app.module).
+      // Ratchet relevé au lot 3 (mesuré 84,4/77,7/81,7/84,2).
+      // Ratchet relevé au lot 4 « Fondations » (scoping : décorateurs sur
+      // cout.controller + spec d'intégration enforce) — mesuré 86,2/78,4/81,7/86,0.
+      // Branches gardées à marge large (≥2 pts) : specs de résilience sensibles au timing.
       thresholds: {
-        statements: 82,
-        branches: 75,
+        statements: 84,
+        branches: 76,
         functions: 79,
-        lines: 82,
+        lines: 84,
       },
     },
     testTimeout: 60000,

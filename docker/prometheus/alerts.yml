@@ -251,6 +251,7 @@ groups:
   #   • outbox_backlog / outbox_publications_echecs_total — libs/nest-commons/outbox
   #   • notifications_envoi_echecs_total — libs/nest-commons/mailer (svc-notifications)
   #   • gateway_authz_refus_total{decision,motif} — api-gateway (appartenance.guard)
+  #   • svc_scope_refus_total{decision} — libs/nest-commons (scope-foyer.guard, lot 4)
   # Toutes routées e-mail via le label `severity` (receiver email-ops par défaut).
   # ---------------------------------------------------------------------------
   - name: fondations
@@ -340,3 +341,24 @@ groups:
             = observe-only (à surveiller AVANT toute bascule enforce : un flux non nul signale
             des faux positifs, ex. un point d'appel oublié). Corréler aux logs
             (Loki : `{service="api-gateway"} |= "appartenance"`).
+
+      # Défense en profondeur (lot 4) : un service a détecté une requête ciblant un foyer
+      # NON couvert par l'assertion (gateway contournée/boguée, ou point d'appel oublié).
+      # `decision="refuse"` = 403 réel (enforce) ; `aurait_refuse` = observe-only. Le suivi
+      # de `aurait_refuse` pendant la période observe conditionne la bascule enforce (~1
+      # semaine à zéro « SCOPE AURAIT REFUSÉ » légitime, cf. docs/exploitation/authz-inter-services.md).
+      - alert: ScopeInterServicesRefus
+        expr: >
+          increase(svc_scope_refus_total[1h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Refus de scoping inter-services ({{ $labels.decision }})'
+          description: >
+            Un service a compté {{ $value | humanize }} refus de scoping par ressource sur 1 h
+            (decision={{ $labels.decision }}). `refuse` = 403 réel (un foyer a tenté de lire/écrire
+            les données d'un autre, gateway contournée) ; `aurait_refuse` = observe-only (mesure ce
+            que l'enforce refuserait — AVANT bascule, un flux non nul signale un faux positif, ex.
+            un client interne sans assertion machine ou une règle de scoping trop stricte). Corréler
+            aux logs (Loki : `{service=~"svc-.*"} |= "SCOPE AURAIT REFUSÉ"` ou `|= "SCOPE REFUSÉ"`).

@@ -8,6 +8,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ScopeFoyerInterServices } from '@creche-planner/nest-commons';
 import {
   InboxService,
   type InboxVue,
@@ -26,6 +27,7 @@ export class InboxController {
   constructor(private readonly inbox: InboxService) {}
 
   /** Panneau + compteur de non-lus d'un parent : `?parent=<uuid>`. */
+  @ScopeFoyerInterServices({ resoudre: 'parent', query: 'parent' })
   @Get()
   lister(@Query('parent', ParseUUIDPipe) parentId: string): Promise<InboxVue> {
     return this.inbox.lister(parentId);
@@ -35,6 +37,7 @@ export class InboxController {
    * Marque la notification `:id` du parent `?parent=<uuid>` comme lue (idempotent).
    * **404** si l'id est inconnu **ou** appartient à un autre parent (même message).
    */
+  @ScopeFoyerInterServices({ resoudre: 'parent', query: 'parent' })
   @Post(':id/lu')
   @HttpCode(HttpStatus.OK)
   marquerLu(

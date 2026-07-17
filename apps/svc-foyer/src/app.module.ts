@@ -35,8 +35,10 @@ import { FoyerModule } from './foyer/foyer.module.js';
     FoyerModule,
     OutboxModule.forRoot({ source: FOYER_EVENT_SOURCE, table: schema.outbox }),
     // Guard aval d'assertion inter-services (observe-only tant qu'aucun
-    // INTERSERVICE_AUTHZ_ENFORCE=1 n'est posé) — fondations lot 3.
-    AssertionIdentiteModule.forRoot({ chargerConfig: loadConfig }),
+    // INTERSERVICE_AUTHZ_ENFORCE=1 n'est posé) — fondations lot 3, + scoping par
+    // ressource (lot 4). svc-foyer scope en **direct** (foyer `:id`, e-mails
+    // `createurEmail`/`parentEmail`) → aucun résolveur en base (`scoping: {}`).
+    AssertionIdentiteModule.forRoot({ chargerConfig: loadConfig, scoping: {} }),
   ],
 })
 export class AppModule {}

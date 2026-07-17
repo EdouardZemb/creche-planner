@@ -11,6 +11,7 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
+import { ScopeFoyerInterServices } from '@creche-planner/nest-commons';
 import type { FoyerId } from '@creche-planner/contracts-foyer';
 import {
   ajouterEnfantSchema,
@@ -38,6 +39,11 @@ import {
   type PreferenceVue,
 } from './foyer.service.js';
 
+// Scoping aval (lot 4) — défaut de contrôleur : toutes les routes `/foyers/:id/**`
+// (foyer, enfants, parents, préférences) exigent `:id ∈ assertion.foyers`. Les deux
+// routes sans `:id` (création, résolution par e-mail) redéclarent leur propre source
+// au niveau méthode (l'override prime dans `getAllAndOverride([handler, class])`).
+@ScopeFoyerInterServices({ param: 'id' })
 @Controller('foyers')
 export class FoyerController {
   constructor(private readonly foyers: FoyerService) {}
@@ -47,6 +53,9 @@ export class FoyerController {
    * transactionnelle (réponse 201 = dossier complet). Corps étendu rétrocompatible :
    * `enfants`/`parents`/`createurEmail` sont facultatifs.
    */
+  // Scoping aval (lot 4) : le créateur déclaré doit être l'identité de l'assertion
+  // (`createurEmail` facultatif → si absent, le guard ne peut décider et laisse passer).
+  @ScopeFoyerInterServices({ body: 'createurEmail', comparer: 'email' })
   @Post()
   creer(
     @Body(new ZodValidationPipe(creerFoyerSchema)) dto: CreerFoyerDto,
@@ -59,6 +68,10 @@ export class FoyerController {
    * identité→foyers** : renvoie les `foyerId` dont l'e-mail est parent actif
    * (insensible à la casse) — utilisé par le BFF pour l'autorisation par foyer.
    */
+  // Scoping aval (lot 4) : `?parentEmail=` doit être l'identité de l'assertion (le BFF
+  // ne résout que ses propres foyers). Sans `parentEmail` (liste globale, appel interne),
+  // le guard ne peut décider et laisse passer — l'assertion machine bypasse de toute façon.
+  @ScopeFoyerInterServices({ query: 'parentEmail', comparer: 'email' })
   @Get()
   lister(
     @Query('parentEmail') parentEmail?: string,

@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
+import { ScopeFoyerInterServices } from '@creche-planner/nest-commons';
 import {
   SemaineIsoPipe,
   ZodValidationPipe,
@@ -42,6 +43,7 @@ export class EnvoiController {
   constructor(private readonly envois: EnvoiService) {}
 
   /** Régénère le brouillon agrégé du mail de service pour relecture (lecture seule). */
+  @ScopeFoyerInterServices({ param: 'foyerId' })
   @Get(
     'validations/semaine/:foyerId/:semaineIso/etablissements/:etablissementId/brouillon',
   )
@@ -54,6 +56,7 @@ export class EnvoiController {
   }
 
   /** Envoie réellement le récap agrégé au service (après relecture). Idempotent. */
+  @ScopeFoyerInterServices({ body: 'foyerId' })
   @Post('envois/etablissement')
   @HttpCode(HttpStatus.OK)
   envoyer(

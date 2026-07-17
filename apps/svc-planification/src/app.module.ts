@@ -16,6 +16,7 @@ import * as schema from './database/schema.js';
 import { ConsumersModule } from './consumers/consumers.module.js';
 import { PlanificationModule } from './planification/planification.module.js';
 import { EtablissementModule } from './etablissement/etablissement.module.js';
+import { ResolveurFoyerPlanification } from './security/resolveur-foyer.js';
 
 @Module({
   imports: [
@@ -41,8 +42,14 @@ import { EtablissementModule } from './etablissement/etablissement.module.js';
       source: PLANIFICATION_EVENT_SOURCE,
       table: schema.outbox,
     }),
-    // Guard aval d'assertion inter-services (observe-only) — fondations lot 3.
-    AssertionIdentiteModule.forRoot({ chargerConfig: loadConfig }),
+    // Guard aval d'assertion inter-services (observe-only) — fondations lot 3, +
+    // scoping par ressource (lot 4). Les routes `/contrats/:id…` et
+    // `/etablissements/:id` ne portent pas le foyer → résolution locale (contrat /
+    // établissement → foyer_id) par `ResolveurFoyerPlanification`.
+    AssertionIdentiteModule.forRoot({
+      chargerConfig: loadConfig,
+      scoping: { resolveur: ResolveurFoyerPlanification },
+    }),
   ],
 })
 export class AppModule {}

@@ -8,6 +8,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { ScopeFoyerInterServices } from '@creche-planner/nest-commons';
 import { SemaineIsoPipe } from './validation.dto.js';
 import type {
   NotificationAValiderVue,
@@ -26,6 +27,7 @@ export class ValidationController {
   constructor(private readonly validation: ValidationService) {}
 
   /** Liste les semaines à valider d'un foyer : `?foyer=<uuid>`. */
+  @ScopeFoyerInterServices({ query: 'foyer' })
   @Get('a-valider')
   aValider(
     @Query('foyer', ParseUUIDPipe) foyerId: string,
@@ -34,6 +36,7 @@ export class ValidationController {
   }
 
   /** Valide la semaine `:semaineIso` du contrat `:contratId` (idempotent). */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'contratId' })
   @Post(':contratId/:semaineIso')
   @HttpCode(HttpStatus.OK)
   valider(

@@ -21,6 +21,7 @@ import { ValidationModule } from './validation/validation.module.js';
 import { EnvoiModule } from './envoi/envoi.module.js';
 import { InboxModule } from './inbox/inbox.module.js';
 import { SchedulerModule } from './scheduler/scheduler.module.js';
+import { ResolveurFoyerNotifications } from './security/resolveur-foyer.js';
 
 /**
  * Options du mailer dérivées de la config. Le mot de passe est résolu
@@ -71,8 +72,14 @@ function optionsMailer(): OptionsMailer {
     EnvoiModule,
     InboxModule,
     SchedulerModule,
-    // Guard aval d'assertion inter-services (observe-only) — fondations lot 3.
-    AssertionIdentiteModule.forRoot({ chargerConfig: loadConfig }),
+    // Guard aval d'assertion inter-services (observe-only) — fondations lot 3, +
+    // scoping par ressource (lot 4). La validation porte un contratId et l'inbox un
+    // parentId → résolution locale (contrat → foyer, parent → e-mail propriétaire)
+    // par `ResolveurFoyerNotifications`.
+    AssertionIdentiteModule.forRoot({
+      chargerConfig: loadConfig,
+      scoping: { resolveur: ResolveurFoyerNotifications },
+    }),
   ],
 })
 export class AppModule {}
