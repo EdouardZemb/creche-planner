@@ -32,15 +32,24 @@ import {
 } from './semaine-besoins.js';
 
 /**
- * Corps minimal de la demande d'envoi agrégé (`POST …/envois/etablissement`). La forme
- * fine (UUID foyer/établissement, semaine ISO) est revalidée par le service amont ;
- * ici on s'assure des champs requis.
+ * Corps de la demande d'envoi agrégé (`POST …/envois/etablissement`). La forme fine
+ * (UUID foyer/établissement, semaine ISO) est revalidée par le service amont ; ici on
+ * s'assure des champs requis. `sujet`/`corps` sont **optionnels** (rétro-compatibles) :
+ * quand le parent a édité le brouillon dans l'app, ils voyagent jusqu'au service (mêmes
+ * bornes qu'amont) ; invariant « les deux ensemble ou aucun » (sinon 400).
  */
-const envoiEtablissementSchema = z.object({
-  foyerId: z.string().min(1),
-  semaineIso: z.string().min(1),
-  etablissementId: z.string().min(1),
-});
+const envoiEtablissementSchema = z
+  .object({
+    foyerId: z.string().min(1),
+    semaineIso: z.string().min(1),
+    etablissementId: z.string().min(1),
+    sujet: z.string().min(1).max(300).optional(),
+    corps: z.string().min(1).max(20000).optional(),
+  })
+  .refine((d) => (d.sujet == null) === (d.corps == null), {
+    message: 'objet et corps doivent être fournis ensemble',
+    path: ['corps'],
+  });
 
 /**
  * Une semaine à valider **enrichie** (jointure BFF avec les contrats du foyer) du prénom
@@ -196,16 +205,21 @@ export class ValidationsController {
    */
   @Post('envois/etablissement')
   @FoyerScope('body:foyerId')
-  envoyer(@Body() corps: unknown): Promise<EnvoiEtablissementResultat> {
-    const { foyerId, semaineIso, etablissementId } = valider(
+  envoyer(@Body() body: unknown): Promise<EnvoiEtablissementResultat> {
+    const { foyerId, semaineIso, etablissementId, sujet, corps } = valider(
       envoiEtablissementSchema,
-      corps,
+      body,
     );
+    // `sujet`/`corps` fournis ensemble ou pas du tout (invariant du schéma) : le corps
+    // édité par le parent n'est transmis qu'en présence des deux.
+    const corpsEdite =
+      sujet !== undefined && corps !== undefined ? { sujet, corps } : undefined;
     return relayer(() =>
       this.notifications.envoyerRecapEtablissement(
         foyerId,
         semaineIso,
         etablissementId,
+        corpsEdite,
       ),
     );
   }

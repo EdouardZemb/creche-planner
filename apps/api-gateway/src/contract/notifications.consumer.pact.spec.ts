@@ -327,6 +327,63 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
     });
   });
 
+  it('envoie le récap avec un objet + corps édités par le parent (POST /api/envois/etablissement)', async () => {
+    provider
+      .given(ETAT_ENVOI)
+      .uponReceiving('un envoi du récap agrégé avec un corps édité')
+      .withRequest({
+        method: 'POST',
+        path: '/api/envois/etablissement',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        // Objet + corps (texte brut) relus/édités par le parent avant l'envoi :
+        // rétro-compatible avec l'interaction « 3 ids seuls » ci-dessus.
+        body: {
+          foyerId: FOYER_ID,
+          semaineIso: SEMAINE,
+          etablissementId: ETABLISSEMENT_ID,
+          sujet: 'Planning de la semaine du 2 mars — Léa',
+          corps:
+            'Bonjour,\n\nVoici le planning complet de la semaine.\n\nMerci !',
+        },
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        // Réponse de forme identique (le corps édité ne change pas la forme du résultat).
+        body: {
+          foyerId: string(FOYER_ID),
+          semaineIso: string(SEMAINE),
+          etablissementId: string(ETABLISSEMENT_ID),
+          destinataire: string('contact-creche@example.org'),
+          statut: string('DRY_RUN'),
+          messageId: null,
+          erreur: null,
+          envoyeLe: string('2026-03-09T08:00:00.000Z'),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/envois/etablissement`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({
+            foyerId: FOYER_ID,
+            semaineIso: SEMAINE,
+            etablissementId: ETABLISSEMENT_ID,
+            sujet: 'Planning de la semaine du 2 mars — Léa',
+            corps:
+              'Bonjour,\n\nVoici le planning complet de la semaine.\n\nMerci !',
+          }),
+        },
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as { statut: string };
+      expect(corps.statut).toBe('DRY_RUN');
+    });
+  });
+
   // --- Inbox in-app (cloche) : liste, accusé de lecture, isolation cross-parent ---
 
   it('liste l’inbox d’un parent (GET /api/moi/notifications?parent=…)', async () => {
