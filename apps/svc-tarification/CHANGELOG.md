@@ -1,3 +1,16 @@
+## 0.13.0 (2026-07-18)
+
+### 🚀 Features
+
+- **fondations:** scoping par ressource dans chaque service + enforce testé (lot 4) ([#229](https://github.com/EdouardZemb/creche-planner/pull/229))
+- **fondations:** assertion d'identité signée gateway→svc en mode observe (lot 3) ([#228](https://github.com/EdouardZemb/creche-planner/pull/228))
+- **fondations:** dead-letter + mutualisation du consumer JetStream (lot 1) ([#225](https://github.com/EdouardZemb/creche-planner/pull/225))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.12.0 (2026-07-17)
 
 This was a version bump only for svc-tarification to align it with other projects, there were no code changes.

@@ -1,3 +1,15 @@
+## 0.13.0 (2026-07-18)
+
+### 🚀 Features
+
+- **fondations:** assertion d'identité signée gateway→svc en mode observe (lot 3) ([#228](https://github.com/EdouardZemb/creche-planner/pull/228))
+- **fondations:** métriques métier + alertes e-mail (lot 2) ([#226](https://github.com/EdouardZemb/creche-planner/pull/226))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.12.0 (2026-07-17)
 
 ### 🚀 Features
