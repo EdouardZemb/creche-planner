@@ -32,6 +32,7 @@ import type {
   CorpsEnvoiEtablissement,
   EnvoiEtablissementResultat,
   SemaineBesoins,
+  SuiviEnvois,
 } from '../types/bff';
 
 // Client HTTP du BFF. Base URL configurable via VITE_API_BASE_URL (défaut '/api',
@@ -691,6 +692,23 @@ export const api = {
       { headers: entetes(false) },
       opts,
     ).then((r) => lire<BrouillonEtablissement>(r));
+  },
+
+  /**
+   * Suivi **persistant** des envois d'une semaine (B1, lecture seule) —
+   * `GET /v1/notifications/semaine/:foyerId/:semaineIso/envois`. Alimente le bloc
+   * « Suivi des envois » de l'encart de validation.
+   */
+  lireSuiviEnvois(
+    foyerId: string,
+    semaineIso: string,
+    opts: RequeteOptions = {},
+  ): Promise<SuiviEnvois> {
+    return requeteIdempotente(
+      `${BASE}/v1/notifications/semaine/${encodeURIComponent(foyerId)}/${encodeURIComponent(semaineIso)}/envois`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<SuiviEnvois>(r));
   },
 
   envoyerRecapEtablissement(

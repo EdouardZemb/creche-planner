@@ -13,6 +13,8 @@ vi.mock('../api/client', () => ({
     // Ouvrir l'éditeur hebdomadaire (Phase 3) charge la vue consolidée.
     lireSemaineBesoins: vi.fn(),
     ecrireSemaineBesoins: vi.fn(),
+    // Suivi des envois (B1) : rendu sous l'éditeur et sous la relecture/envoi.
+    lireSuiviEnvois: vi.fn(),
   },
   ApiError: class ApiError extends Error {},
 }));
@@ -122,6 +124,14 @@ describe('EncartValidation', () => {
         Promise.resolve(brouillonPour(etablissementId)),
     );
     vi.mocked(api.lireSemaineBesoins).mockResolvedValue(SEMAINE_BESOINS);
+    // Par défaut, suivi vide (début de semaine) → le bloc ne s'affiche pas et
+    // n'interfère avec aucune assertion existante.
+    vi.mocked(api.lireSuiviEnvois).mockResolvedValue({
+      foyerId: 'foyer-1',
+      semaineIso: '2026-W27',
+      rappel: null,
+      etablissements: [],
+    });
   });
 
   it('affiche un placeholder pendant la vérification puis rien s’il n’y a rien à valider', async () => {
@@ -198,6 +208,43 @@ describe('EncartValidation', () => {
       await screen.findByRole('heading', {
         name: /Dernière étape : prévenir les services/i,
       }),
+    ).toBeInTheDocument();
+  });
+
+  it('affiche le suivi des envois (B1) sous la relecture après une validation avec modifications', async () => {
+    vi.mocked(api.listerAValider).mockResolvedValue(A_VALIDER);
+    vi.mocked(api.validerSemaine).mockResolvedValue({
+      contratId: A_VALIDER[0]!.contratId,
+      semaineIso: '2026-W27',
+      statut: 'VALIDEE_AVEC_MODIFS',
+      deltaModifs: { jours: [{ date: '2026-07-01', avant: null, apres: {} }] },
+    });
+    // Le récap a déjà été envoyé (dry-run) : le statut est PERSISTANT et consultable.
+    vi.mocked(api.lireSuiviEnvois).mockResolvedValue({
+      foyerId: 'foyer-1',
+      semaineIso: '2026-W27',
+      rappel: null,
+      etablissements: [
+        {
+          etablissementId: ID_CRECHE,
+          statut: 'DRY_RUN',
+          envoyeLe: '2026-06-23T06:05:00.000Z',
+          erreur: null,
+          destinataire: 'contact-creche@example.org',
+        },
+      ],
+    });
+
+    render(<EncartValidation foyerId="foyer-1" />, { wrapper: MemoryRouter });
+    fireEvent.click(await screen.findByRole('button', { name: 'Valider' }));
+
+    // Le bloc « Suivi des envois » apparaît avec le statut persistant (plus seulement
+    // l'état React de la relecture, perdu au reload).
+    expect(await screen.findByText(/Suivi des envois/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        /Récapitulatif en mode test \(aucun e-mail envoyé\)\./i,
+      ),
     ).toBeInTheDocument();
   });
 

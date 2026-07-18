@@ -104,6 +104,47 @@ export type EnvoiEtablissementResultat = z.infer<
   typeof envoiEtablissementResultatSchema
 >;
 
+// --- Suivi des envois (B1, lecture seule) -----------------------------------
+
+/** Livraison du récap du mardi vers un parent (ledger `envoi_recap_parent`). */
+const suiviRappelParentSchema = z.object({
+  email: z.string(),
+  statut: z.enum(['ENVOYE', 'DRY_RUN', 'ECHEC']),
+  envoyeLe: z.string().nullable(),
+  essais: z.number(),
+});
+
+/** État d'envoi du rappel hebdo du mardi (agrégat + détail par parent). */
+const suiviRappelSchema = z.object({
+  statut: z.enum(['A_ENVOYER', 'ENVOYE', 'DRY_RUN', 'ECHEC', 'ABANDONNE']),
+  envoyeLe: z.string().nullable(),
+  erreur: z.string().nullable(),
+  parents: z.array(suiviRappelParentSchema),
+});
+
+/** État d'envoi du récap agrégé vers un établissement (`envoi_etablissement`). */
+const suiviEnvoiEtablissementSchema = z.object({
+  etablissementId: z.string(),
+  statut: statutEnvoiSchema,
+  envoyeLe: z.string().nullable(),
+  erreur: z.string().nullable(),
+  destinataire: z.string().nullable(),
+});
+
+/**
+ * Vue lecture seule du suivi des envois d'une `(foyer, semaine)` : statut persistant du
+ * rappel aux parents (`null` si la semaine n'a jamais été programmée) et des récaps aux
+ * établissements. Alimente le bloc « Suivi des envois » de l'encart de validation.
+ */
+const suiviEnvoisSchema = z.object({
+  foyerId: z.string(),
+  semaineIso: z.string(),
+  rappel: suiviRappelSchema.nullable(),
+  etablissements: z.array(suiviEnvoiEtablissementSchema),
+});
+
+export type SuiviEnvoisVue = z.infer<typeof suiviEnvoisSchema>;
+
 /** Une notification in-app d'un parent (inbox générique, PR6). */
 const notificationInAppSchema = z.object({
   id: z.string(),
@@ -216,6 +257,36 @@ export class NotificationsClient {
           throw new Error('HTTP ' + reponse.status);
         }
         return brouillonEtablissementSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /**
+   * GET `/api/validations/semaine/:foyerId/:semaineIso/envois` (B1) — suivi **lecture
+   * seule** des envois de la semaine : statut persistant du rappel aux parents et des
+   * récaps aux établissements. Même enveloppe résiliente que les voisins.
+   */
+  async lireSuiviEnvois(
+    foyerId: string,
+    semaineIso: string,
+  ): Promise<SuiviEnvoisVue> {
+    const base = loadConfig().notificationsUrl;
+    const url =
+      `${base}/api/validations/semaine/${encodeURIComponent(foyerId)}` +
+      `/${encodeURIComponent(semaineIso)}/envois`;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-notifications',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return suiviEnvoisSchema.parse(await reponse.json());
       },
       this.breaker,
       OPTIONS,
