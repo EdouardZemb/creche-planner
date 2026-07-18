@@ -502,6 +502,60 @@ export interface EnvoiEtablissementResultat {
   envoyeLe: string | null;
 }
 
+// ---- Notifications : suivi des envois (B1, lecture seule) -------------------
+//
+// Hand-typé : la route BFF `GET /api/v1/notifications/semaine/:foyerId/:semaineIso/
+// envois` n'est pas décrite dans l'OpenAPI de la gateway (agrégation orientée écran) →
+// rien à dériver. Miroir du schéma Zod du client gateway.
+
+/** Statut de livraison du rappel du mardi vers UN parent. */
+export type StatutRappelParent = 'ENVOYE' | 'DRY_RUN' | 'ECHEC';
+
+/** Statut de l'envoi du rappel hebdo du mardi (agrégat foyer). */
+export type StatutRappelHebdo =
+  | 'A_ENVOYER'
+  | 'ENVOYE'
+  | 'DRY_RUN'
+  | 'ECHEC'
+  | 'ABANDONNE';
+
+/** Livraison du récap du mardi vers un parent (ledger `envoi_recap_parent`). */
+export interface SuiviRappelParent {
+  email: string;
+  statut: StatutRappelParent;
+  envoyeLe: string | null;
+  essais: number;
+}
+
+/** État d'envoi du rappel hebdo du mardi aux parents (+ détail par parent). */
+export interface SuiviRappelHebdo {
+  statut: StatutRappelHebdo;
+  envoyeLe: string | null;
+  erreur: string | null;
+  parents: SuiviRappelParent[];
+}
+
+/** État d'envoi du récap agrégé vers un établissement (`envoi_etablissement`). */
+export interface SuiviEnvoiEtablissement {
+  etablissementId: string;
+  statut: StatutEnvoi;
+  envoyeLe: string | null;
+  erreur: string | null;
+  destinataire: string | null;
+}
+
+/**
+ * Suivi **persistant** des envois d'une `(foyer, semaine)` (B1) : statut du rappel aux
+ * parents (`null` si la semaine n'a jamais été programmée) et des récaps aux
+ * établissements. Affiché dans le bloc « Suivi des envois » de l'encart de validation.
+ */
+export interface SuiviEnvois {
+  foyerId: string;
+  semaineIso: string;
+  rappel: SuiviRappelHebdo | null;
+  etablissements: SuiviEnvoiEtablissement[];
+}
+
 // Contrat enrichi conservé côté client (le BFF ne renvoie pas la semaine-type ;
 // on la mémorise pour piloter le calendrier). Voir utils/store.ts.
 export interface ContratLocal extends ContratVue {

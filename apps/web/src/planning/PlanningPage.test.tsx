@@ -20,6 +20,8 @@ vi.mock('../api/client', () => ({
     ecrireSemaineBesoins: vi.fn(),
     lireBrouillonEtablissement: vi.fn(),
     envoyerRecapEtablissement: vi.fn(),
+    // Suivi des envois (B1) : rendu sous l'éditeur ouvert par l'encart de validation.
+    lireSuiviEnvois: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -127,6 +129,13 @@ describe('PlanningPage', () => {
     // Encart de validation (Lot 4) : rien à valider par défaut.
     vi.mocked(api.listerAValider).mockResolvedValue([]);
     vi.mocked(api.lireSemaineBesoins).mockResolvedValue(SEMAINE_BESOINS_W27);
+    // Suivi des envois (B1) : suivi vide par défaut (le bloc ne s'affiche pas).
+    vi.mocked(api.lireSuiviEnvois).mockResolvedValue({
+      foyerId: 'foyer-1',
+      semaineIso: '2026-W27',
+      rappel: null,
+      etablissements: [],
+    });
   });
 
   it('affiche le chargement puis le titre', async () => {

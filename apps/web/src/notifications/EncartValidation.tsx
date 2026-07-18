@@ -7,6 +7,7 @@ import { libelleSemaine } from '../utils/dates';
 import { useNotifications } from './useNotifications';
 import { RelectureEnvoi } from './RelectureEnvoi';
 import { EditeurSemaine } from './EditeurSemaine';
+import { SuiviEnvois } from './SuiviEnvois';
 
 /**
  * Cible « enfant, mode » d'une notification enrichie (`Zoé, Crèche`), ou `null` si le
@@ -246,19 +247,37 @@ export function EncartValidation({
       </ul>
 
       {/* Éditeur hebdomadaire consolidé (foyer + semaine), ouvert à la demande.
-          La validation reste par contrat, présentée à l'intérieur de l'éditeur. */}
+          La validation reste par contrat, présentée à l'intérieur de l'éditeur.
+          Le suivi des envois (B1) rend le statut d'envoi de la semaine éditée
+          persistant et consultable, sous l'éditeur. */}
       {semaineEditee !== null && (
-        <EditeurSemaine
-          foyerId={foyerId}
-          semaineIso={semaineEditee}
-          onFermer={() => {
-            setSemaineEditee(null);
-          }}
-        />
+        <>
+          <EditeurSemaine
+            foyerId={foyerId}
+            semaineIso={semaineEditee}
+            onFermer={() => {
+              setSemaineEditee(null);
+            }}
+          />
+          <SuiviEnvois
+            foyerId={foyerId}
+            semaineIso={semaineEditee}
+            version={version}
+          />
+        </>
       )}
 
+      {/* Relecture + envoi des récaps, puis le suivi persistant des envois de la
+          semaine validée (le résultat ne vit plus seulement dans l'état React). */}
       {aEnvoyer !== null && (
-        <RelectureEnvoi foyerId={foyerId} semaineIso={aEnvoyer} />
+        <>
+          <RelectureEnvoi foyerId={foyerId} semaineIso={aEnvoyer} />
+          <SuiviEnvois
+            foyerId={foyerId}
+            semaineIso={aEnvoyer}
+            version={version}
+          />
+        </>
       )}
     </section>
   );

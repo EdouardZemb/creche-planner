@@ -26,6 +26,11 @@ const ETAT_ENVOI =
   'un récap agrégé par établissement est prêt à envoyer au service';
 // Inbox in-app (PR6, §5.6) : un parent possède UNE notification in-app non lue.
 const ETAT_INBOX = 'un parent a une notification in-app non lue';
+// Suivi des envois (B1) : une semaine avec un rappel envoyé (+ 1 parent) et un récap
+// établissement ; le cas VIDE (début de semaine) est aussi contracté.
+const ETAT_SUIVI_ENVOIS =
+  'un suivi des envois existe pour une semaine (rappel + établissement)';
+const ETAT_SUIVI_ENVOIS_VIDE = 'aucun envoi enregistré pour une semaine';
 
 /**
  * Id figé de la **fiche établissement projetée** (read model `etablissement`, P3) —
@@ -49,6 +54,11 @@ const CONTRAT_ID_2 = '55555555-0000-4000-8000-000000000001';
 const CONTRAT_ID_SANS_EMAIL = '55555555-0000-4000-8000-000000000002';
 const CONTRAT_ID_ARCHIVE = '55555555-0000-4000-8000-000000000003';
 const SEMAINE = '2026-W10';
+// Semaines dédiées au suivi des envois (B1) — distinctes de SEMAINE pour ne pas
+// interférer avec les seeds de brouillon/envoi. Une peuplée, une vide.
+const SUIVI_SEMAINE = '2026-W12';
+const SUIVI_SEMAINE_VIDE = '2026-W13';
+const SUIVI_PARENT_ID = '77777777-7777-4777-8777-777777777770';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-notifications) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
@@ -306,6 +316,47 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
         )
       `;
     };
+    // Suivi des envois (B1) : seede un état PERSISTANT pour SUIVI_SEMAINE — un slot
+    // `envoi_recap_hebdo` ENVOYE, une ligne `envoi_recap_parent` ENVOYE et un
+    // `envoi_etablissement` ENVOYE. Delete-then-insert = idempotent (rejeu de l'état).
+    const seedSuiviEnvois = async (): Promise<void> => {
+      await db`delete from envoi_recap_parent where foyer_id = ${FOYER_ID} and semaine_iso = ${SUIVI_SEMAINE}`;
+      await db`delete from envoi_recap_hebdo where foyer_id = ${FOYER_ID} and semaine_iso = ${SUIVI_SEMAINE}`;
+      await db`delete from envoi_etablissement where foyer_id = ${FOYER_ID} and semaine_iso = ${SUIVI_SEMAINE}`;
+      await db`
+        insert into envoi_recap_hebdo (
+          foyer_id, semaine_iso, statut, destinataires, message_id, envoye_le
+        ) values (
+          ${FOYER_ID}, ${SUIVI_SEMAINE}, 'ENVOYE',
+          ${JSON.stringify(['parent@example.org'])}::jsonb,
+          '<recap@test>', '2026-03-24T06:00:00.000Z'
+        )
+      `;
+      await db`
+        insert into envoi_recap_parent (
+          foyer_id, semaine_iso, parent_id, statut, email, essais, message_id, envoye_le
+        ) values (
+          ${FOYER_ID}, ${SUIVI_SEMAINE}, ${SUIVI_PARENT_ID}, 'ENVOYE',
+          'parent@example.org', 0, '<recap@test>', '2026-03-24T06:00:00.000Z'
+        )
+      `;
+      await db`
+        insert into envoi_etablissement (
+          id, foyer_id, semaine_iso, etablissement_id, destinataire, sujet, corps,
+          statut, message_id, envoye_le
+        ) values (
+          gen_random_uuid(), ${FOYER_ID}, ${SUIVI_SEMAINE}, ${ETABLISSEMENT_ID},
+          'contact-creche@example.org', 'Plannings modifiés', '<p>Bonjour</p>',
+          'ENVOYE', '<etab@test>', '2026-03-24T06:00:00.000Z'
+        )
+      `;
+    };
+    // Cas VIDE (début de semaine) : aucune ligne d'envoi pour SUIVI_SEMAINE_VIDE.
+    const seedSuiviEnvoisVide = async (): Promise<void> => {
+      await db`delete from envoi_recap_parent where foyer_id = ${FOYER_ID} and semaine_iso = ${SUIVI_SEMAINE_VIDE}`;
+      await db`delete from envoi_recap_hebdo where foyer_id = ${FOYER_ID} and semaine_iso = ${SUIVI_SEMAINE_VIDE}`;
+      await db`delete from envoi_etablissement where foyer_id = ${FOYER_ID} and semaine_iso = ${SUIVI_SEMAINE_VIDE}`;
+    };
     await new Verifier({
       provider: 'svc-notifications',
       providerBaseUrl: `http://localhost:${PORT}`,
@@ -328,6 +379,8 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
         [ETAT_BROUILLON_SANS_EMAIL]: seedBrouillonSansEmail,
         [ETAT_BROUILLON_ARCHIVE]: seedBrouillonArchive,
         [ETAT_ENVOI]: seedEnvoi,
+        [ETAT_SUIVI_ENVOIS]: seedSuiviEnvois,
+        [ETAT_SUIVI_ENVOIS_VIDE]: seedSuiviEnvoisVide,
         [ETAT_INBOX]: async (params?: unknown): Promise<void> => {
           const { parentId, id } = params as { parentId: string; id: string };
           await seedInbox(parentId, id);

@@ -18,6 +18,7 @@ import {
   type BrouillonEtablissementVue,
   type EnvoiEtablissementResultat,
   type NotificationAValiderVue,
+  type SuiviEnvoisVue,
   type ValidationResultat,
 } from '../clients/notifications.client.js';
 import { PlanificationClient } from '../clients/planification.client.js';
@@ -196,6 +197,23 @@ export class ValidationsController {
         semaineIso,
         etablissementId,
       ),
+    );
+  }
+
+  /**
+   * Suivi des envois de la semaine (B1, **lecture seule**) : statut persistant du rappel
+   * aux parents et des récaps aux établissements, pour le bloc « Suivi des envois » de
+   * l'encart de validation. La forme fine (UUID, semaine ISO) est revalidée par le
+   * service amont.
+   */
+  @Get('semaine/:foyerId/:semaineIso/envois')
+  @FoyerScope('param:foyerId')
+  suivi(
+    @Param('foyerId') foyerId: string,
+    @Param('semaineIso') semaineIso: string,
+  ): Promise<SuiviEnvoisVue> {
+    return relayer(() =>
+      this.notifications.lireSuiviEnvois(foyerId, semaineIso),
     );
   }
 
