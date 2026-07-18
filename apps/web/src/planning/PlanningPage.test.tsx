@@ -382,11 +382,16 @@ describe('PlanningPage', () => {
       'onglet-mode-CRECHE_PSU',
     );
 
-    // Flèche droite -> ABCM, focus géré.
+    // Flèche droite -> ABCM, focus géré. Les calendriers sont chargés en `lazy`
+    // (E1) : le passage à ABCM fait suspendre le nouveau calendrier, si bien que
+    // la bascule d'`aria-selected` est commitée de façon asynchrone. On laisse
+    // donc `findByRole({ selected: true })` réessayer jusqu'à la sélection.
     ongletPsu.focus();
     await user.keyboard('{ArrowRight}');
-    const abcmApres = await screen.findByRole('tab', { name: 'ABCM' });
-    expect(abcmApres).toHaveAttribute('aria-selected', 'true');
+    const abcmApres = await screen.findByRole('tab', {
+      name: 'ABCM',
+      selected: true,
+    });
     expect(abcmApres).toHaveFocus();
   });
 
