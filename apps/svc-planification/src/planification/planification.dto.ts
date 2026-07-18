@@ -68,8 +68,18 @@ const lienEtablissementChamps = {
   nouvelEtablissement: creerEtablissementSchema.optional(),
 };
 
+/**
+ * Clé d'idempotence de création (chantier « Confiance », lot 3 — C1). Générée par
+ * la **gateway** avant l'appel résilient (les deux tentatives d'un retry la
+ * partagent) et injectée dans le corps. Optionnelle : un client legacy sans `id`
+ * retombe sur un `randomUUID()` côté service. UUID strict (Zod 4, version 1-8 /
+ * variant 8-b), même forme que `foyerId`/`enfantId`.
+ */
+const idIdempotenceChamp = { id: z.string().uuid().optional() };
+
 /** Création d'un contrat crèche PSU. */
 const creerContratCrecheSchema = z.object({
+  ...idIdempotenceChamp,
   mode: z.literal('CRECHE_PSU'),
   foyerId: z.string().uuid(),
   enfant: z.string().min(1),
@@ -84,6 +94,7 @@ const creerContratCrecheSchema = z.object({
 
 /** Création d'un contrat ABCM (cantine / périscolaire / ALSH). */
 const creerContratAbcmSchema = z.object({
+  ...idIdempotenceChamp,
   mode: z.enum(['CANTINE', 'PERISCOLAIRE', 'ALSH']),
   foyerId: z.string().uuid(),
   enfant: z.string().min(1),

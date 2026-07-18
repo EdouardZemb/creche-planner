@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Param } from 'drizzle-orm';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import {
   ETABLISSEMENT_CREE_TYPE,
@@ -70,8 +71,12 @@ function fakeCreer(): {
         }
         etab.push(v);
         const row = ligneEtab(v);
+        // Insert idempotent (Lot 3) : `.onConflictDoNothing().returning()` — ce fake
+        // sans état ne simule aucun conflit (chemin nominal, ligne renvoyée).
+        const returning = () => Promise.resolve([row]);
         return Object.assign(Promise.resolve(), {
-          returning: () => Promise.resolve([row]),
+          returning,
+          onConflictDoNothing: () => ({ returning }),
         });
       },
     }),
@@ -247,6 +252,103 @@ describe('EtablissementService.creer', () => {
     await expect(
       service.creer(FOYER_ID, { nom: 'Doublon' }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+/**
+ * Faux `db` **à état** pour l'idempotence de création (Lot 3 — C1). Modélise le
+ * comportement Postgres de `insert(...).onConflictDoNothing({ target: id }).returning()` :
+ * - même `id` déjà présent → aucune insertion, `returning` vide (rejeu no-op) ;
+ * - `id` différent mais `(foyer_id, nom)` déjà pris → **23505** (le target `id` ne
+ *   suppresse pas la violation d'unicité du nom) → 409 conservé.
+ * Le `select().from().where(eq(id))` du chemin de rejeu filtre le magasin par id.
+ */
+function fakeCreerStateful(): {
+  db: Database;
+  etab: Record<string, unknown>[];
+  outbox: Record<string, unknown>[];
+} {
+  const etab: Record<string, unknown>[] = [];
+  const outbox: Record<string, unknown>[] = [];
+  const tx = {
+    select: () => ({
+      from: () => ({
+        where: (condition: unknown) => {
+          const chunks = (condition as { queryChunks: unknown[] }).queryChunks;
+          const param = chunks.find((c) => c instanceof Param) as
+            Param | undefined;
+          return Promise.resolve(etab.filter((e) => e['id'] === param?.value));
+        },
+      }),
+    }),
+    insert: () => ({
+      values: (v: Record<string, unknown>) => {
+        if (estOutbox(v)) {
+          outbox.push(v);
+          return Promise.resolve();
+        }
+        const returning = () => {
+          if (etab.some((e) => e['id'] === v['id'])) {
+            return Promise.resolve([]); // rejeu même id : PK → no-op
+          }
+          if (
+            etab.some(
+              (e) => e['foyerId'] === v['foyerId'] && e['nom'] === v['nom'],
+            )
+          ) {
+            // Vrai doublon de nom (id différent) : UNIQUE(foyer_id, nom) → 23505.
+            return Promise.reject(
+              Object.assign(new Error('doublon'), { code: '23505' }),
+            );
+          }
+          etab.push({ ...v });
+          return Promise.resolve([{ ...v }]);
+        };
+        return Object.assign(Promise.resolve(), {
+          returning,
+          onConflictDoNothing: () => ({ returning }),
+        });
+      },
+    }),
+  };
+  const db = {
+    transaction: vi.fn(async (cb: (t: unknown) => Promise<unknown>) => cb(tx)),
+  } as unknown as Database;
+  return { db, etab, outbox };
+}
+
+describe('EtablissementService.creer (idempotence, Lot 3 — C1)', () => {
+  const ID_A = '11111111-1111-4111-8111-111111111111';
+  const ID_B = '22222222-2222-4222-8222-222222222222';
+
+  it('double création (même id) → 1 ressource, 1 seul EtablissementCree, même vue', async () => {
+    const { db, etab, outbox } = fakeCreerStateful();
+    const service = new EtablissementService(db);
+    const dto: CreerEtablissementDto = { id: ID_A, nom: 'Crèche du centre' };
+
+    const vue1 = await service.creer(FOYER_ID, dto);
+    const vue2 = await service.creer(FOYER_ID, dto);
+
+    expect(etab).toHaveLength(1);
+    expect(
+      outbox.filter((o) => o['type'] === ETABLISSEMENT_CREE_TYPE),
+    ).toHaveLength(1);
+    expect(vue2).toEqual(vue1);
+    expect(vue1).toMatchObject({ id: ID_A, nom: 'Crèche du centre' });
+  });
+
+  it('id différent + même nom → 409 conservé (vrai doublon), rien de créé ni émis en plus', async () => {
+    const { db, etab, outbox } = fakeCreerStateful();
+    const service = new EtablissementService(db);
+    await service.creer(FOYER_ID, { id: ID_A, nom: 'Doublon' });
+
+    await expect(
+      service.creer(FOYER_ID, { id: ID_B, nom: 'Doublon' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(etab).toHaveLength(1);
+    expect(
+      outbox.filter((o) => o['type'] === ETABLISSEMENT_CREE_TYPE),
+    ).toHaveLength(1);
   });
 });
 
