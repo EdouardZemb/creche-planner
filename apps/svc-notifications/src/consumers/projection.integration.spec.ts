@@ -74,6 +74,28 @@ function fakeBaseEnMemoire(): {
   };
   const clefConflit = (table: Table, cibles: Column[], ligne: Ligne): string =>
     cibles.map((c) => String(ligne[cleDe(table, c)])).join('|');
+  /**
+   * Évalue la garde de monotonie `setWhere`
+   * (`<col> is null or <col> <= excluded.occurred_at`) : renvoie `true` si le `set`
+   * doit s'appliquer, `false` si l'état stocké est plus récent (le `set` est ignoré).
+   * Lit la colonne comparée dans les `queryChunks` du fragment `sql` ; seul ce
+   * prédicat de monotonie est supporté.
+   */
+  const passeSetWhere = (
+    table: Table,
+    setWhere: unknown,
+    existante: Ligne,
+    valeurs: Ligne,
+  ): boolean => {
+    const chunks = (setWhere as { queryChunks: unknown[] }).queryChunks;
+    const colonne = chunks.find((c) => c instanceof Column) as Column;
+    const cle = cleDe(table, colonne);
+    const stockee = existante[cle] as Date | null | undefined;
+    if (stockee === null || stockee === undefined) {
+      return true; // occurred_at NULL ⇒ auto-amorçage : on applique
+    }
+    return stockee.getTime() <= (valeurs[cle] as Date).getTime();
+  };
 
   const operations = {
     select: () => ({
@@ -98,10 +120,12 @@ function fakeBaseEnMemoire(): {
             return Promise.resolve([{ id: valeurs['id'] }]);
           },
         }),
-        // Upsert de projection : remplace sur conflit de clé (simple ou composite).
+        // Upsert de projection : remplace sur conflit de clé (simple ou composite),
+        // sous réserve de la garde de monotonie `setWhere` si elle est fournie.
         onConflictDoUpdate: (opts: {
           target: Column | Column[];
           set: Ligne;
+          setWhere?: unknown;
         }) => {
           const cibles = Array.isArray(opts.target)
             ? opts.target
@@ -111,7 +135,12 @@ function fakeBaseEnMemoire(): {
             (l) => clefConflit(table, cibles, l) === clef,
           );
           if (existante) {
-            Object.assign(existante, opts.set);
+            if (
+              opts.setWhere === undefined ||
+              passeSetWhere(table, opts.setWhere, existante, valeurs)
+            ) {
+              Object.assign(existante, opts.set);
+            }
           } else {
             lignesDe(table).push({ ...valeurs });
           }
@@ -747,5 +776,301 @@ describe('Projection établissement (fiche projetée, stream PLANIFICATION)', ()
     expect(
       lignesDe(processedEvent).filter((l) => l['id'] === ID_SUPPR),
     ).toHaveLength(1);
+  });
+});
+
+/**
+ * Garde de **monotonie** `occurred_at` (lot 4 « Confiance & quotidien ») : un
+ * événement plus ANCIEN re-livré (NAK/backoff JetStream) ne doit plus écraser un
+ * état plus récent. Deux angles par handler : « désordre » (le récent T2 puis
+ * l'ancien T1 ⇒ l'état reste T2) et « rattrapage » (l'ancien puis le récent ⇒
+ * convergence vers T2). Ids d'enveloppe différents (sinon `processed_event`
+ * masquerait la garde). `appliquerPreferencesNotif` (delete+insert) est protégé
+ * par un pré-check `max(occurred_at)`, pas par un `setWhere`.
+ */
+describe('Garde de monotonie occurred_at (désordre / rattrapage)', () => {
+  const T1 = '2026-09-01T00:00:00.000Z';
+  const T2 = '2026-09-02T00:00:00.000Z';
+  const ID_X = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'; // événement récent (T2)
+  const ID_Y = 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb'; // événement ancien (T1)
+
+  const avecInstant = (evt: unknown, occurredAt: string): unknown => ({
+    ...(evt as Record<string, unknown>),
+    occurredAt,
+  });
+
+  const evtContrat = (
+    type: string,
+    id: string,
+    occurredAt: string,
+    enfant: string,
+  ): unknown => ({
+    id,
+    type,
+    source: 'svc-planification',
+    version: 1,
+    occurredAt,
+    traceId: 'trace-mono',
+    payload: {
+      contratId: CONTRAT_ID,
+      foyerId: FOYER_ID,
+      enfant,
+      mode: 'CRECHE_PSU',
+      valideDu: '2026-01-01',
+      valideAu: null,
+    },
+  });
+
+  it('ContratCree — désordre : l’ancien re-livré n’écrase pas l’état récent', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      evtContrat(CONTRAT_CREE_TYPE, ID_X, T2, 'Zoé'),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      evtContrat(CONTRAT_CREE_TYPE, ID_Y, T1, 'Mia'),
+    );
+
+    expect(lignesDe(contrat)).toHaveLength(1);
+    expect(lignesDe(contrat)[0]).toMatchObject({
+      enfant: 'Zoé',
+      eventId: ID_X,
+    });
+    expect(lignesDe(processedEvent)).toHaveLength(2);
+  });
+
+  it('ContratCree — rattrapage : l’ancien puis le récent convergent vers T2', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      evtContrat(CONTRAT_CREE_TYPE, ID_Y, T1, 'Mia'),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      evtContrat(CONTRAT_CREE_TYPE, ID_X, T2, 'Zoé'),
+    );
+
+    expect(lignesDe(contrat)[0]).toMatchObject({
+      enfant: 'Zoé',
+      eventId: ID_X,
+    });
+  });
+
+  it('ContratModifie — désordre : l’ancien re-livré n’écrase pas l’état récent', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      evtContrat(CONTRAT_MODIFIE_TYPE, ID_X, T2, 'Zoé'),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      evtContrat(CONTRAT_MODIFIE_TYPE, ID_Y, T1, 'Mia'),
+    );
+
+    expect(lignesDe(contrat)).toHaveLength(1);
+    expect(lignesDe(contrat)[0]).toMatchObject({
+      enfant: 'Zoé',
+      eventId: ID_X,
+    });
+  });
+
+  it('ContratModifie — rattrapage : l’ancien puis le récent convergent vers T2', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      evtContrat(CONTRAT_MODIFIE_TYPE, ID_Y, T1, 'Mia'),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      evtContrat(CONTRAT_MODIFIE_TYPE, ID_X, T2, 'Zoé'),
+    );
+
+    expect(lignesDe(contrat)[0]).toMatchObject({
+      enfant: 'Zoé',
+      eventId: ID_X,
+    });
+  });
+
+  it('ParentEtat — désordre : l’ancien re-livré n’écrase pas l’état récent', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementParent(PARENT_MODIFIE_TYPE, ID_X, { email: 'recent@test.fr' }),
+        T2,
+      ),
+    );
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementParent(PARENT_MODIFIE_TYPE, ID_Y, { email: 'ancien@test.fr' }),
+        T1,
+      ),
+    );
+
+    expect(lignesDe(foyerParent)).toHaveLength(1);
+    expect(lignesDe(foyerParent)[0]).toMatchObject({
+      email: 'recent@test.fr',
+      eventId: ID_X,
+    });
+  });
+
+  it('ParentEtat — rattrapage : l’ancien puis le récent convergent vers T2', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementParent(PARENT_MODIFIE_TYPE, ID_Y, { email: 'ancien@test.fr' }),
+        T1,
+      ),
+    );
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementParent(PARENT_MODIFIE_TYPE, ID_X, { email: 'recent@test.fr' }),
+        T2,
+      ),
+    );
+
+    expect(lignesDe(foyerParent)[0]).toMatchObject({
+      email: 'recent@test.fr',
+      eventId: ID_X,
+    });
+  });
+
+  it('EtablissementEtat — désordre : l’ancien re-livré n’écrase pas l’état récent', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementEtablissement(ETABLISSEMENT_MODIFIE_TYPE, ID_X, {
+          emailService: 'recent@test.fr',
+        }),
+        T2,
+      ),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementEtablissement(ETABLISSEMENT_MODIFIE_TYPE, ID_Y, {
+          emailService: 'ancien@test.fr',
+        }),
+        T1,
+      ),
+    );
+
+    expect(lignesDe(etablissement)).toHaveLength(1);
+    expect(lignesDe(etablissement)[0]).toMatchObject({
+      emailService: 'recent@test.fr',
+      eventId: ID_X,
+    });
+  });
+
+  it('EtablissementEtat — rattrapage : l’ancien puis le récent convergent vers T2', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementEtablissement(ETABLISSEMENT_MODIFIE_TYPE, ID_Y, {
+          emailService: 'ancien@test.fr',
+        }),
+        T1,
+      ),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementEtablissement(ETABLISSEMENT_MODIFIE_TYPE, ID_X, {
+          emailService: 'recent@test.fr',
+        }),
+        T2,
+      ),
+    );
+
+    expect(lignesDe(etablissement)[0]).toMatchObject({
+      emailService: 'recent@test.fr',
+      eventId: ID_X,
+    });
+  });
+
+  it('PreferencesNotif — désordre : le pré-check ignore un event plus ancien (consommé, non appliqué)', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementPreferences(ID_X, [
+          {
+            typeNotification: 'VALIDATION_HEBDO',
+            canal: 'EMAIL',
+            actif: false,
+          },
+        ]),
+        T2,
+      ),
+    );
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementPreferences(ID_Y, [
+          { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: true },
+        ]),
+        T1,
+      ),
+    );
+
+    expect(lignesDe(preferenceNotification)).toHaveLength(1);
+    expect(lignesDe(preferenceNotification)[0]).toMatchObject({ actif: false });
+    // Les deux enveloppes sont consommées (marqueur posé), l'ancienne non appliquée.
+    expect(lignesDe(processedEvent)).toHaveLength(2);
+  });
+
+  it('PreferencesNotif — rattrapage : l’ancien puis le récent convergent vers T2', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementPreferences(ID_Y, [
+          { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: true },
+        ]),
+        T1,
+      ),
+    );
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementPreferences(ID_X, [
+          {
+            typeNotification: 'VALIDATION_HEBDO',
+            canal: 'EMAIL',
+            actif: false,
+          },
+        ]),
+        T2,
+      ),
+    );
+
+    expect(lignesDe(preferenceNotification)).toHaveLength(1);
+    expect(lignesDe(preferenceNotification)[0]).toMatchObject({ actif: false });
   });
 });

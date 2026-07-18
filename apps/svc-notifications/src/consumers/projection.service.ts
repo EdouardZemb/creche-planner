@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   contratCreeEventSchema,
   contratModifieEventSchema,
@@ -203,6 +203,8 @@ export class ProjectionService {
           etablissementId: p.etablissementId ?? null,
           valideDu: p.valideDu,
           valideAu: p.valideAu,
+          eventId: evt.id,
+          occurredAt: new Date(evt.occurredAt),
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -214,8 +216,14 @@ export class ProjectionService {
             etablissementId: p.etablissementId ?? null,
             valideDu: p.valideDu,
             valideAu: p.valideAu,
+            eventId: evt.id,
+            occurredAt: new Date(evt.occurredAt),
             updatedAt: new Date(),
           },
+          // Garde de monotonie : un événement plus ancien re-livré (NAK/backoff
+          // JetStream) n'écrase plus un état plus récent (égalité incluse pour
+          // qu'un correctif ré-émis au même instant s'applique).
+          setWhere: sql`${contrat.occurredAt} is null or ${contrat.occurredAt} <= excluded.occurred_at`,
         });
     });
   }
@@ -245,6 +253,8 @@ export class ProjectionService {
           etablissementId: p.etablissementId ?? null,
           valideDu: p.valideDu,
           valideAu: p.valideAu,
+          eventId: evt.id,
+          occurredAt: new Date(evt.occurredAt),
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -256,8 +266,14 @@ export class ProjectionService {
             etablissementId: p.etablissementId ?? null,
             valideDu: p.valideDu,
             valideAu: p.valideAu,
+            eventId: evt.id,
+            occurredAt: new Date(evt.occurredAt),
             updatedAt: new Date(),
           },
+          // Garde de monotonie : un événement plus ancien re-livré (NAK/backoff
+          // JetStream) n'écrase plus un état plus récent (égalité incluse pour
+          // qu'un correctif ré-émis au même instant s'applique).
+          setWhere: sql`${contrat.occurredAt} is null or ${contrat.occurredAt} <= excluded.occurred_at`,
         });
     });
   }
@@ -308,6 +324,8 @@ export class ProjectionService {
           email: p.email,
           principal: p.principal,
           actif: p.actif,
+          eventId: evt.id,
+          occurredAt: new Date(evt.occurredAt),
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -317,8 +335,12 @@ export class ProjectionService {
             email: p.email,
             principal: p.principal,
             actif: p.actif,
+            eventId: evt.id,
+            occurredAt: new Date(evt.occurredAt),
             updatedAt: new Date(),
           },
+          // Garde de monotonie (cf. appliquerContratCree).
+          setWhere: sql`${foyerParent.occurredAt} is null or ${foyerParent.occurredAt} <= excluded.occurred_at`,
         });
     });
   }
@@ -360,11 +382,35 @@ export class ProjectionService {
     donnees: unknown,
   ): Promise<void> {
     const evt = preferencesNotifModifieesEventSchema.parse(donnees);
+    const occurredAt = new Date(evt.occurredAt);
     await this.db.transaction(async (tx) => {
       if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
         return;
       }
       const p = evt.payload;
+      // Garde de monotonie — ce handler **remplace** l'état (delete + insert) : il
+      // ne peut pas s'appuyer sur le `setWhere` d'un upsert. On pré-vérifie donc que
+      // l'événement est au moins aussi récent que l'état déjà projeté du parent
+      // (`max(occurred_at)`). Un `PreferencesNotifModifiees` plus ancien re-livré
+      // (NAK/backoff JetStream) est **consommé** (marqueur posé) mais **non appliqué**
+      // (pas de retour en arrière de l'état). Égalité incluse (correctif ré-émis).
+      const dejaProjetees = await tx
+        .select()
+        .from(preferenceNotification)
+        .where(eq(preferenceNotification.parentId, p.parentId));
+      const occurredMaxMs = dejaProjetees.reduce<number | null>(
+        (max, ligne) => {
+          if (ligne.occurredAt === null) {
+            return max;
+          }
+          const ms = ligne.occurredAt.getTime();
+          return max === null || ms > max ? ms : max;
+        },
+        null,
+      );
+      if (occurredMaxMs !== null && occurredAt.getTime() < occurredMaxMs) {
+        return;
+      }
       // Remplace l'état : on efface les préférences existantes du parent…
       await tx
         .delete(preferenceNotification)
@@ -378,6 +424,8 @@ export class ProjectionService {
             typeNotification: pref.typeNotification,
             canal: pref.canal,
             actif: pref.actif,
+            eventId: evt.id,
+            occurredAt,
             updatedAt: new Date(),
           })
           .onConflictDoUpdate({
@@ -386,7 +434,12 @@ export class ProjectionService {
               preferenceNotification.typeNotification,
               preferenceNotification.canal,
             ],
-            set: { actif: pref.actif, updatedAt: new Date() },
+            set: {
+              actif: pref.actif,
+              eventId: evt.id,
+              occurredAt,
+              updatedAt: new Date(),
+            },
           });
       }
     });
@@ -422,6 +475,8 @@ export class ProjectionService {
           preavisRegle: p.preavisRegle,
           types: p.types,
           actif: p.actif,
+          eventId: evt.id,
+          occurredAt: new Date(evt.occurredAt),
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -433,8 +488,12 @@ export class ProjectionService {
             preavisRegle: p.preavisRegle,
             types: p.types,
             actif: p.actif,
+            eventId: evt.id,
+            occurredAt: new Date(evt.occurredAt),
             updatedAt: new Date(),
           },
+          // Garde de monotonie (cf. appliquerContratCree).
+          setWhere: sql`${etablissement.occurredAt} is null or ${etablissement.occurredAt} <= excluded.occurred_at`,
         });
     });
   }

@@ -72,6 +72,28 @@ function fakeBaseEnMemoire(): {
   };
   const clefConflit = (table: Table, cibles: Column[], ligne: Ligne): string =>
     cibles.map((c) => String(ligne[cleDe(table, c)])).join('|');
+  /**
+   * Évalue la garde de monotonie `setWhere`
+   * (`<col> is null or <col> <= excluded.occurred_at`) : renvoie `true` si le `set`
+   * doit s'appliquer, `false` si l'état stocké est plus récent (le `set` est ignoré).
+   * Lit la colonne comparée dans les `queryChunks` du fragment `sql` ; seul ce
+   * prédicat de monotonie est supporté.
+   */
+  const passeSetWhere = (
+    table: Table,
+    setWhere: unknown,
+    existante: Ligne,
+    valeurs: Ligne,
+  ): boolean => {
+    const chunks = (setWhere as { queryChunks: unknown[] }).queryChunks;
+    const colonne = chunks.find((c) => c instanceof Column) as Column;
+    const cle = cleDe(table, colonne);
+    const stockee = existante[cle] as Date | null | undefined;
+    if (stockee === null || stockee === undefined) {
+      return true; // occurred_at NULL ⇒ auto-amorçage : on applique
+    }
+    return stockee.getTime() <= (valeurs[cle] as Date).getTime();
+  };
 
   const operations = {
     select: () => ({
@@ -96,10 +118,12 @@ function fakeBaseEnMemoire(): {
             return Promise.resolve([{ id: valeurs['id'] }]);
           },
         }),
-        // Upsert de projection : remplace sur conflit de clé (simple ou composite).
+        // Upsert de projection : remplace sur conflit de clé (simple ou composite),
+        // sous réserve de la garde de monotonie `setWhere` si elle est fournie.
         onConflictDoUpdate: (opts: {
           target: Column | Column[];
           set: Ligne;
+          setWhere?: unknown;
         }) => {
           const cibles = Array.isArray(opts.target)
             ? opts.target
@@ -109,7 +133,12 @@ function fakeBaseEnMemoire(): {
             (l) => clefConflit(table, cibles, l) === clef,
           );
           if (existante) {
-            Object.assign(existante, opts.set);
+            if (
+              opts.setWhere === undefined ||
+              passeSetWhere(table, opts.setWhere, existante, valeurs)
+            ) {
+              Object.assign(existante, opts.set);
+            }
           } else {
             lignesDe(table).push({ ...valeurs });
           }
@@ -558,5 +587,343 @@ describe('Projection « première inscription » (Coûts lot 4b)', () => {
     expect(lignesDe(contrat)).toHaveLength(1);
     expect(lignesDe(contrat)[0]).toMatchObject({ premiereInscription: true });
     expect(lignesDe(processedEvent)).toHaveLength(1);
+  });
+});
+
+/**
+ * Garde de **monotonie** `occurred_at` (lot 4 « Confiance & quotidien ») : un
+ * événement plus ANCIEN re-livré (NAK/backoff JetStream) ne doit plus écraser un
+ * état plus récent. Deux angles par handler : « désordre » (le récent T2 puis
+ * l'ancien T1 ⇒ l'état reste T2) et « rattrapage » (l'ancien puis le récent ⇒
+ * convergence vers T2). Les deux enveloppes ont des **ids différents** (sinon
+ * l'idempotence `processed_event` masquerait la garde).
+ */
+describe('Garde de monotonie occurred_at (désordre / rattrapage)', () => {
+  const T1 = '2026-09-01T00:00:00.000Z';
+  const T2 = '2026-09-02T00:00:00.000Z';
+  const ID_X = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'; // événement récent (T2)
+  const ID_Y = 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb'; // événement ancien (T1)
+
+  const avecInstant = (evt: unknown, occurredAt: string): unknown => ({
+    ...(evt as Record<string, unknown>),
+    occurredAt,
+  });
+
+  const evenementGrille = (
+    id: string,
+    occurredAt: string,
+    valideAu: string | null,
+  ): unknown => ({
+    id,
+    type: GRILLE_PUBLIEE_TYPE,
+    source: 'svc-referentiel',
+    version: 1,
+    occurredAt,
+    traceId: 'trace-mono-g',
+    payload: {
+      grilleId: '44444444-0000-4000-8000-000000000000',
+      mode: 'CANTINE',
+      tranche: 3,
+      valideDu: '2026-01-01',
+      valideAu,
+    },
+  });
+
+  it('FoyerMisAJour — désordre : l’ancien re-livré n’écrase pas l’état récent', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementFoyer(ID_X, {
+          ressourcesMensuellesCentimes: 500000,
+          tranche: 1,
+        }),
+        T2,
+      ),
+    );
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementFoyer(ID_Y, {
+          ressourcesMensuellesCentimes: 999999,
+          tranche: 2,
+        }),
+        T1,
+      ),
+    );
+
+    expect(lignesDe(foyer)[0]).toMatchObject({
+      ressourcesMensuellesCentimes: 500000,
+      tranche: 1,
+      eventId: ID_X,
+    });
+    expect(lignesDe(processedEvent)).toHaveLength(2); // les deux sont consommés
+  });
+
+  it('FoyerMisAJour — rattrapage : l’ancien puis le récent convergent vers T2', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementFoyer(ID_Y, {
+          ressourcesMensuellesCentimes: 999999,
+          tranche: 2,
+        }),
+        T1,
+      ),
+    );
+    await projection.traiter(
+      'FOYER',
+      avecInstant(
+        evenementFoyer(ID_X, {
+          ressourcesMensuellesCentimes: 500000,
+          tranche: 1,
+        }),
+        T2,
+      ),
+    );
+
+    expect(lignesDe(foyer)[0]).toMatchObject({
+      ressourcesMensuellesCentimes: 500000,
+      tranche: 1,
+      eventId: ID_X,
+    });
+  });
+
+  it('GrillePubliee — désordre : l’ancien re-livré n’écrase pas l’état récent', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await projection.traiter(
+      'REFERENTIEL',
+      evenementGrille(ID_X, T2, '2099-12-31'),
+    );
+    await projection.traiter(
+      'REFERENTIEL',
+      evenementGrille(ID_Y, T1, '2026-06-30'),
+    );
+
+    expect(lignesDe(grilleTarifaire)).toHaveLength(1);
+    expect(lignesDe(grilleTarifaire)[0]).toMatchObject({
+      valideAu: '2099-12-31',
+      eventId: ID_X,
+    });
+  });
+
+  it('GrillePubliee — rattrapage : l’ancien puis le récent convergent vers T2', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await projection.traiter(
+      'REFERENTIEL',
+      evenementGrille(ID_Y, T1, '2026-06-30'),
+    );
+    await projection.traiter(
+      'REFERENTIEL',
+      evenementGrille(ID_X, T2, '2099-12-31'),
+    );
+
+    expect(lignesDe(grilleTarifaire)[0]).toMatchObject({
+      valideAu: '2099-12-31',
+      eventId: ID_X,
+    });
+  });
+
+  it('ContratCree — désordre : l’ancien re-livré n’écrase pas l’état récent', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementContratCree(ID_X, {
+          premiereInscription: true,
+          valideDu: '2026-09-01',
+        }),
+        T2,
+      ),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementContratCree(ID_Y, {
+          premiereInscription: false,
+          valideDu: '2025-01-01',
+        }),
+        T1,
+      ),
+    );
+
+    expect(lignesDe(contrat)[0]).toMatchObject({
+      premiereInscription: true,
+      valideDu: '2026-09-01',
+      eventId: ID_X,
+    });
+  });
+
+  it('ContratCree — rattrapage : l’ancien puis le récent convergent vers T2', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementContratCree(ID_Y, {
+          premiereInscription: false,
+          valideDu: '2025-01-01',
+        }),
+        T1,
+      ),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementContratCree(ID_X, {
+          premiereInscription: true,
+          valideDu: '2026-09-01',
+        }),
+        T2,
+      ),
+    );
+
+    expect(lignesDe(contrat)[0]).toMatchObject({
+      premiereInscription: true,
+      valideDu: '2026-09-01',
+      eventId: ID_X,
+    });
+  });
+
+  it('ContratModifie — désordre : l’ancien re-livré n’écrase pas l’état récent', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementContratModifie(ID_X, {
+          premiereInscription: true,
+          valideDu: '2026-09-01',
+        }),
+        T2,
+      ),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementContratModifie(ID_Y, {
+          premiereInscription: false,
+          valideDu: '2025-01-01',
+        }),
+        T1,
+      ),
+    );
+
+    expect(lignesDe(contrat)).toHaveLength(1);
+    expect(lignesDe(contrat)[0]).toMatchObject({
+      premiereInscription: true,
+      valideDu: '2026-09-01',
+      eventId: ID_X,
+    });
+  });
+
+  it('ContratModifie — rattrapage : l’ancien puis le récent convergent vers T2', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementContratModifie(ID_Y, {
+          premiereInscription: false,
+          valideDu: '2025-01-01',
+        }),
+        T1,
+      ),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementContratModifie(ID_X, {
+          premiereInscription: true,
+          valideDu: '2026-09-01',
+        }),
+        T2,
+      ),
+    );
+
+    expect(lignesDe(contrat)[0]).toMatchObject({
+      premiereInscription: true,
+      valideDu: '2026-09-01',
+      eventId: ID_X,
+    });
+  });
+
+  it('PlanningModifie — désordre : les prestations d’un événement ancien n’écrasent pas les récentes', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const client = {
+      prestations: vi.fn(async () => ({
+        contratId: CONTRAT_ID,
+        mois: MOIS,
+        simule: false,
+        prestations: [{ mode: 'CRECHE_PSU' as const, heuresFacturees: 9000 }],
+      })),
+    } as unknown as PlanificationClient;
+    const projection = new ProjectionService(db, client);
+    // Identité du contrat requise avant toute projection de prestations.
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementContratCree('cccccccc-3333-4333-8333-cccccccccccc'),
+        '2026-08-01T00:00:00.000Z',
+      ),
+    );
+
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(evenementPlanning(ID_X), T2),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(evenementPlanning(ID_Y), T1),
+    );
+
+    expect(lignesDe(prestationMois)).toHaveLength(1);
+    expect(lignesDe(prestationMois)[0]).toMatchObject({ eventId: ID_X });
+  });
+
+  it('PlanningModifie — rattrapage : l’ancien puis le récent convergent vers T2', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const client = {
+      prestations: vi.fn(async () => ({
+        contratId: CONTRAT_ID,
+        mois: MOIS,
+        simule: false,
+        prestations: [{ mode: 'CRECHE_PSU' as const, heuresFacturees: 9000 }],
+      })),
+    } as unknown as PlanificationClient;
+    const projection = new ProjectionService(db, client);
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(
+        evenementContratCree('cccccccc-3333-4333-8333-cccccccccccc'),
+        '2026-08-01T00:00:00.000Z',
+      ),
+    );
+
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(evenementPlanning(ID_Y), T1),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      avecInstant(evenementPlanning(ID_X), T2),
+    );
+
+    expect(lignesDe(prestationMois)).toHaveLength(1);
+    expect(lignesDe(prestationMois)[0]).toMatchObject({ eventId: ID_X });
   });
 });

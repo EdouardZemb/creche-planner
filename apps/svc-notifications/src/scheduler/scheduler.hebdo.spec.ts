@@ -79,6 +79,8 @@ function contratRow(partiel: Partial<ContratRow> = {}): ContratRow {
     etablissementId: null,
     valideDu: '2026-01-01',
     valideAu: null,
+    eventId: null,
+    occurredAt: null,
     updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...partiel,
   };

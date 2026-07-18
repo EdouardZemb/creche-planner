@@ -62,6 +62,14 @@ export const contrat = pgTable('contrat', {
   valideDu: varchar('valide_du', { length: 10 }).notNull(),
   /** Fin de validité ISO `YYYY-MM-DD` (incluse), `null` si période ouverte. */
   valideAu: varchar('valide_au', { length: 10 }),
+  /** Id du dernier événement appliqué (corrélation/diagnostic). */
+  eventId: uuid('event_id'),
+  /**
+   * Horodatage d'occurrence du dernier événement appliqué (garde de monotonie) :
+   * un événement plus ancien re-livré (NAK/backoff JetStream) n'écrase plus un état
+   * plus récent. NULLABLE : auto-amorçage au premier événement, pas de back-fill.
+   */
+  occurredAt: timestamp('occurred_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -99,6 +107,14 @@ export const etablissement = pgTable('etablissement', {
     .default(sql`'[]'::jsonb`),
   /** Établissement actif (un établissement archivé n'est plus notifié). */
   actif: boolean('actif').notNull().default(true),
+  /** Id du dernier événement appliqué (corrélation/diagnostic). */
+  eventId: uuid('event_id'),
+  /**
+   * Horodatage d'occurrence du dernier événement appliqué (garde de monotonie) :
+   * un événement plus ancien re-livré (NAK/backoff JetStream) n'écrase plus un état
+   * plus récent. NULLABLE : auto-amorçage au premier événement, pas de back-fill.
+   */
+  occurredAt: timestamp('occurred_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -131,6 +147,14 @@ export const foyerParent = pgTable('foyer_parent', {
   principal: boolean('principal').notNull().default(false),
   /** Parent actif (un parent retiré reste en base avec `actif = false`). */
   actif: boolean('actif').notNull().default(true),
+  /** Id du dernier événement appliqué (corrélation/diagnostic). */
+  eventId: uuid('event_id'),
+  /**
+   * Horodatage d'occurrence du dernier événement appliqué (garde de monotonie) :
+   * un événement plus ancien re-livré (NAK/backoff JetStream) n'écrase plus un état
+   * plus récent. NULLABLE : auto-amorçage au premier événement, pas de back-fill.
+   */
+  occurredAt: timestamp('occurred_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -165,6 +189,15 @@ export const preferenceNotification = pgTable(
     canal: varchar('canal', { length: 32 }).notNull(),
     /** Préférence active pour ce triplet (une ligne coupée retire le destinataire). */
     actif: boolean('actif').notNull().default(true),
+    /** Id du dernier événement appliqué (corrélation/diagnostic). */
+    eventId: uuid('event_id'),
+    /**
+     * Horodatage d'occurrence du dernier événement appliqué (garde de monotonie) :
+     * un `PreferencesNotifModifiees` plus ancien re-livré n'écrase plus un état plus
+     * récent (pré-check `max(occurred_at)` par parent). NULLABLE : auto-amorçage au
+     * premier événement, pas de back-fill.
+     */
+    occurredAt: timestamp('occurred_at', { withTimezone: true }),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
