@@ -175,7 +175,11 @@ describe('NotificationsClient (gateway→svc-notifications)', () => {
     it('succès → renvoie le suivi parsé (rappel + établissements)', async () => {
       vi.stubGlobal(
         'fetch',
-        vi.fn(async () => ({ ok: true, status: 200, json: async () => SUIVI_OK })),
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => SUIVI_OK,
+        })),
       );
       const suivi = await new NotificationsClient().lireSuiviEnvois(
         'f-1',

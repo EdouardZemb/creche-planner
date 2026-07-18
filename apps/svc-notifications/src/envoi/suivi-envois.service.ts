@@ -76,18 +76,16 @@ export class SuiviEnvoisService {
           envoyeLe: slot.envoyeLe ? slot.envoyeLe.toISOString() : null,
           erreur: slot.erreur,
           parents: parents
-            .map(
-              (p): SuiviRappelParent => ({
-                email: p.email,
-                statut: this.narrow(
-                  STATUTS_ENVOI_RECAP_PARENT,
-                  p.statut,
-                  'rappel parent',
-                ),
-                envoyeLe: p.envoyeLe ? p.envoyeLe.toISOString() : null,
-                essais: p.essais,
-              }),
-            )
+            .map((p): SuiviRappelParent => ({
+              email: p.email,
+              statut: this.narrow(
+                STATUTS_ENVOI_RECAP_PARENT,
+                p.statut,
+                'rappel parent',
+              ),
+              envoyeLe: p.envoyeLe ? p.envoyeLe.toISOString() : null,
+              essais: p.essais,
+            }))
             // Ordre déterministe (e-mail) pour une liste stable et testable.
             .sort((a, b) => a.email.localeCompare(b.email)),
         }
@@ -98,15 +96,13 @@ export class SuiviEnvoisService {
       semaineIso,
       rappel,
       etablissements: etablissements
-        .map(
-          (e): SuiviEnvoiEtablissement => ({
-            etablissementId: e.etablissementId,
-            statut: this.narrow(STATUTS_ENVOI, e.statut, 'envoi établissement'),
-            envoyeLe: e.envoyeLe ? e.envoyeLe.toISOString() : null,
-            erreur: e.erreur,
-            destinataire: e.destinataire,
-          }),
-        )
+        .map((e): SuiviEnvoiEtablissement => ({
+          etablissementId: e.etablissementId,
+          statut: this.narrow(STATUTS_ENVOI, e.statut, 'envoi établissement'),
+          envoyeLe: e.envoyeLe ? e.envoyeLe.toISOString() : null,
+          erreur: e.erreur,
+          destinataire: e.destinataire,
+        }))
         // Ordre déterministe (id d'établissement) pour une liste stable et testable.
         .sort((a, b) => a.etablissementId.localeCompare(b.etablissementId)),
     };

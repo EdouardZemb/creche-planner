@@ -513,11 +513,7 @@ export type StatutRappelParent = 'ENVOYE' | 'DRY_RUN' | 'ECHEC';
 
 /** Statut de l'envoi du rappel hebdo du mardi (agrégat foyer). */
 export type StatutRappelHebdo =
-  | 'A_ENVOYER'
-  | 'ENVOYE'
-  | 'DRY_RUN'
-  | 'ECHEC'
-  | 'ABANDONNE';
+  'A_ENVOYER' | 'ENVOYE' | 'DRY_RUN' | 'ECHEC' | 'ABANDONNE';
 
 /** Livraison du récap du mardi vers un parent (ledger `envoi_recap_parent`). */
 export interface SuiviRappelParent {
