@@ -19,6 +19,9 @@ vi.mock('../api/client', () => ({
     // Lot 3 onboarding : la carte « aucune garde » interroge les contrats du
     // foyer (via `useContrats`) pour distinguer un foyer neuf d'un foyer actif.
     listerContrats: vi.fn(),
+    // A1 « Signaler une absence » : read-modify-write du planning du mois.
+    lirePlanning: vi.fn(),
+    ecrirePlanning: vi.fn(),
   },
   // `messageErreur` (utils/erreurs) teste `e instanceof ApiError` : le mock doit
   // exposer la classe, sinon le chemin d'erreur lève « No ApiError export ».
@@ -797,6 +800,242 @@ describe('DashboardJourPage', () => {
       expect(
         screen.getByRole('button', { name: /Recharger/i }),
       ).toBeInTheDocument();
+    });
+  });
+
+  // « Signaler une absence » en 2 taps (A1) : depuis une rangée de garde crèche,
+  // une modale de confirmation sans champ écrit une absence journée par
+  // read-modify-write (le PUT mois est un remplacement complet).
+  describe('« Signaler une absence » (A1)', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    // Lundi 6 juillet 2026 (2026-W28) : demain (mardi 7) est dans la même semaine
+    // ISO → un seul appel réseau initial et une seule rangée « gardée ».
+    const LUNDI = '2026-07-06';
+    const AUTRE_JOUR = '2026-07-08'; // mercredi : ajustement d'un AUTRE jour
+    const JOUR_SUP = '2026-07-11'; // samedi : jour ajouté d'un AUTRE jour
+
+    // Semaine-type gardée le seul LUNDI : demain (mardi) n'a pas de rangée, donc
+    // un unique bouton « Signaler une absence » (celui d'aujourd'hui).
+    const SEMAINE_LUNDI: SemaineTypeCreche = {
+      LUNDI: [PLAGE],
+      MARDI: [],
+      MERCREDI: [],
+      JEUDI: [],
+      VENDREDI: [],
+      SAMEDI: [],
+      DIMANCHE: [],
+    };
+    const gardeLundi = (): SemaineBesoins => ({
+      ...semaineAvecGarde,
+      contrats: [
+        { ...semaineAvecGarde.contrats[0]!, semaineType: SEMAINE_LUNDI },
+      ],
+    });
+
+    it('confirme une absence journée en préservant les autres jours (read-modify-write) + reload', async () => {
+      figerLe(LUNDI);
+      vi.mocked(api.lireSemaineBesoins).mockResolvedValue(gardeLundi());
+      // Saisie existante : un complément, un ajustement et un jour ajouté sur
+      // d'AUTRES jours du mois — tout doit survivre au PUT.
+      vi.mocked(api.lirePlanning).mockResolvedValue({
+        saisie: {
+          complementMinutes: 120,
+          ajustements: [
+            {
+              date: AUTRE_JOUR,
+              debutHeures: 8,
+              debutMinutes: 0,
+              finHeures: 17,
+              finMinutes: 0,
+              preavisJours: 0,
+              certificatMaladie: false,
+            },
+          ],
+          joursSupplementaires: [
+            {
+              date: JOUR_SUP,
+              debutHeures: 9,
+              debutMinutes: 0,
+              finHeures: 12,
+              finMinutes: 0,
+            },
+          ],
+        },
+      });
+      vi.mocked(api.ecrirePlanning).mockResolvedValue(undefined);
+
+      renderPage();
+
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: /Signaler une absence de Léa/i,
+        }),
+      );
+      fireEvent.click(
+        await screen.findByRole('button', { name: "Confirmer l'absence" }),
+      );
+
+      await waitFor(() => expect(api.ecrirePlanning).toHaveBeenCalled());
+      // Lecture préalable du mois courant, en réel (jamais simule=true).
+      expect(api.lirePlanning).toHaveBeenCalledWith('c1', '2026-07', false);
+
+      const appel = vi.mocked(api.ecrirePlanning).mock.calls[0];
+      expect(appel).toBeDefined();
+      const [contratId, moisEcrit, simule, corps] = appel!;
+      expect(contratId).toBe('c1');
+      expect(moisEcrit).toBe('2026-07');
+      expect(simule).toBe(false);
+      // Les autres jours restent INTACTS dans le corps du PUT…
+      expect(corps.complementMinutes).toBe(120);
+      expect(corps.ajustements).toEqual([
+        {
+          date: AUTRE_JOUR,
+          debutHeures: 8,
+          debutMinutes: 0,
+          finHeures: 17,
+          finMinutes: 0,
+          preavisJours: 0,
+          certificatMaladie: false,
+        },
+      ]);
+      expect(corps.joursSupplementaires).toEqual([
+        {
+          date: JOUR_SUP,
+          debutHeures: 9,
+          debutMinutes: 0,
+          finHeures: 12,
+          finMinutes: 0,
+        },
+      ]);
+      // … et la nouvelle absence pleine journée (plage 08:30–17:00) est ajoutée.
+      expect(corps.absences).toEqual([
+        {
+          date: LUNDI,
+          debutHeures: 8,
+          debutMinutes: 30,
+          finHeures: 17,
+          finMinutes: 0,
+          preavisJours: 0,
+          certificatMaladie: false,
+        },
+      ]);
+
+      // Succès : accusé role="status" sur le dashboard + reload de la journée.
+      expect(
+        await screen.findByText(/Absence enregistrée pour Léa/),
+      ).toBeInTheDocument();
+      await waitFor(() =>
+        expect(api.lireSemaineBesoins).toHaveBeenCalledTimes(2),
+      );
+    });
+
+    it('échec de l’écriture : reste dans la modale, alerte + « Réessayer », puis réussit', async () => {
+      figerLe(LUNDI);
+      vi.mocked(api.lireSemaineBesoins).mockResolvedValue(gardeLundi());
+      vi.mocked(api.lirePlanning).mockResolvedValue({ saisie: null });
+      // 1er envoi en échec réseau (TypeError), 2e réussi.
+      vi.mocked(api.ecrirePlanning)
+        .mockRejectedValueOnce(new TypeError('réseau coupé'))
+        .mockResolvedValue(undefined);
+
+      renderPage();
+
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: /Signaler une absence de Léa/i,
+        }),
+      );
+      fireEvent.click(
+        await screen.findByRole('button', { name: "Confirmer l'absence" }),
+      );
+
+      // Pas de perte silencieuse : alerte dans la modale + bouton « Réessayer ».
+      const alerte = await screen.findByRole('alert');
+      expect(alerte).toHaveTextContent(/indisponible/i);
+      const reessayer = await screen.findByRole('button', {
+        name: 'Réessayer',
+      });
+
+      // Réessai : l'écriture repasse et réussit → accusé de succès.
+      fireEvent.click(reessayer);
+      expect(
+        await screen.findByText(/Absence enregistrée pour Léa/),
+      ).toBeInTheDocument();
+      expect(api.ecrirePlanning).toHaveBeenCalledTimes(2);
+    });
+
+    it('rangée ABCM : pas de bouton « Signaler une absence » (garde « Modifier »)', async () => {
+      figerLe(LUNDI);
+      const cantine: SemaineBesoins = {
+        ...semaineAvecGarde,
+        etablissements: [],
+        contrats: [
+          {
+            contratId: 'c-cant',
+            enfant: 'Tom',
+            mode: 'CANTINE',
+            etablissementId: null,
+            besoins: {},
+            semaineAbcm: { LUNDI: { cantine: true } },
+          },
+        ],
+      };
+      vi.mocked(api.lireSemaineBesoins).mockResolvedValue(cantine);
+
+      renderPage();
+
+      expect(await screen.findByText('Tom')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: /Modifier la garde de Tom/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Signaler une absence/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('rangée déjà « Absent » : pas de bouton « Signaler une absence »', async () => {
+      figerLe(LUNDI);
+      const absente: SemaineBesoins = {
+        ...semaineAvecGarde,
+        contrats: [
+          {
+            ...semaineAvecGarde.contrats[0]!,
+            semaineType: SEMAINE_LUNDI,
+            besoins: {
+              [LUNDI]: {
+                joursSupplementaires: [],
+                absences: [
+                  {
+                    date: LUNDI,
+                    debutHeures: 8,
+                    debutMinutes: 30,
+                    finHeures: 17,
+                    finMinutes: 0,
+                    preavisJours: 0,
+                    certificatMaladie: false,
+                  },
+                ],
+                ajustements: [],
+                exceptions: [],
+                joursAlsh: [],
+              },
+            },
+          },
+        ],
+      };
+      vi.mocked(api.lireSemaineBesoins).mockResolvedValue(absente);
+
+      renderPage();
+
+      // La rangée existe et est marquée « Absent »…
+      expect((await screen.findAllByText(/Absent/)).length).toBeGreaterThan(0);
+      // … mais aucun geste rapide (déjà absent).
+      expect(
+        screen.queryByRole('button', { name: /Signaler une absence/i }),
+      ).not.toBeInTheDocument();
     });
   });
 });

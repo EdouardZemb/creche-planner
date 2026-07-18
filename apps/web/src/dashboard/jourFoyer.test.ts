@@ -442,3 +442,17 @@ describe('lignesDuJour — établissement & agrégation', () => {
     expect(lignes.map((l) => l.contratId)).toEqual(['c1', 'c3']);
   });
 });
+
+describe('lignesDuJour — semaine-type portée (geste « Signaler une absence »)', () => {
+  it('crèche : la semaine-type du contrat est portée telle quelle sur la ligne', () => {
+    const c = contratCreche();
+    expect(lignesDuJour(vue(c), MARDI)[0]?.semaineType).toEqual(c.semaineType);
+  });
+
+  it('ABCM : aucune semaine-type crèche (undefined)', () => {
+    const c = contratAbcm('CANTINE', {
+      semaineAbcm: { MARDI: { cantine: true } },
+    });
+    expect(lignesDuJour(vue(c), MARDI)[0]?.semaineType).toBeUndefined();
+  });
+});

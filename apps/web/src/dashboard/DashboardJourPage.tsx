@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   jourCourantParis,
@@ -9,6 +10,8 @@ import {
   couleurAjuste,
   couleurRetire,
 } from '../planning/couleursPlanning';
+import { plageGardeDuJour } from '../planning/saisieAbsence';
+import { ModaleAbsenceRapide } from './ModaleAbsenceRapide';
 import { couleurDuMode } from '../utils/couleurs';
 import { libelleMode } from '../utils/libelles';
 import {
@@ -71,16 +74,29 @@ function couleurEtat(ligne: LigneJour): string {
   }
 }
 
-/** Une ligne de garde du jour : pastille colorée, enfant + mode, horaire, action. */
+/** Une ligne de garde du jour : pastille colorée, enfant + mode, horaire, actions. */
 function RangeeJour({
   ligne,
   foyerId,
   mois,
+  iso,
+  reload,
   contexte,
 }: {
   ligne: LigneJour;
   foyerId: string;
   mois: string;
+  /**
+   * Jour `YYYY-MM-DD` de CETTE rangée (aujourd'hui ou demain) : sert au geste
+   * « Signaler une absence » (A1) — date de l'absence + plage de garde du jour.
+   */
+  iso: string;
+  /**
+   * Recharge la vue qui porte cette rangée, appelé après l'enregistrement d'une
+   * absence pour que la rangée bascule en « Absent » (le cache `useAsync` ne
+   * s'invalide pas seul).
+   */
+  reload: () => void;
   /**
    * Complément d'aria-label (« demain ») : la page affiche désormais deux
    * sections de lignes (aujourd'hui / demain) — sans lui, deux liens « Modifier
@@ -88,6 +104,8 @@ function RangeeJour({
    */
   contexte?: string;
 }) {
+  const [modaleOuverte, setModaleOuverte] = useState(false);
+  const [messageSucces, setMessageSucces] = useState<string | null>(null);
   const etat = LIBELLES_ETAT[ligne.etat];
   // Deep-link (P3a) : « Modifier » ouvre le planning directement sur l'onglet
   // enfant + le sous-onglet mode de CETTE garde, au mois affiché — au lieu du
@@ -98,6 +116,13 @@ function RangeeJour({
     mode: ligne.mode,
     mois,
   }).toString()}`;
+  // Éligibilité « Signaler une absence » (A1) : uniquement une garde crèche d'un
+  // jour effectivement gardé (plage de semaine-type non-nulle). Les contrats ABCM
+  // et les jours déjà absents/ajustés gardent le seul lien « Modifier ».
+  const plageGarde =
+    ligne.etat === 'garde' && ligne.mode === 'CRECHE_PSU'
+      ? plageGardeDuJour(ligne.semaineType, iso)
+      : null;
   return (
     <li className="jour-rangee">
       <span
@@ -117,15 +142,55 @@ function RangeeJour({
           {ligne.horaire !== null && ` · ${ligne.horaire}`}
         </span>
       </span>
-      <Link
-        to={cible}
-        className="btn secondaire"
-        aria-label={`Modifier la garde de ${ligne.enfant}${
-          contexte === undefined ? '' : ` ${contexte}`
-        }`}
-      >
-        Modifier
-      </Link>
+      <div className="jour-actions">
+        <Link
+          to={cible}
+          className="btn secondaire"
+          aria-label={`Modifier la garde de ${ligne.enfant}${
+            contexte === undefined ? '' : ` ${contexte}`
+          }`}
+        >
+          Modifier
+        </Link>
+        {plageGarde !== null && (
+          <button
+            type="button"
+            className="btn secondaire"
+            onClick={() => {
+              setModaleOuverte(true);
+            }}
+            // Désambiguïsation par la date (aujourd'hui / demain, même enfant).
+            aria-label={`Signaler une absence de ${ligne.enfant} le ${libelleDate(iso)}`}
+          >
+            Signaler une absence
+          </button>
+        )}
+      </div>
+      {messageSucces !== null && (
+        <p className="jour-message-succes" role="status">
+          {messageSucces}
+        </p>
+      )}
+      {modaleOuverte && plageGarde !== null && (
+        <ModaleAbsenceRapide
+          foyerId={foyerId}
+          contratId={ligne.contratId}
+          enfant={ligne.enfant}
+          dateIso={iso}
+          mois={mois}
+          plageGarde={plageGarde}
+          onFermer={() => {
+            setModaleOuverte(false);
+          }}
+          onEnregistree={() => {
+            setMessageSucces(
+              `Absence enregistrée pour ${ligne.enfant} (${libelleDate(iso)}). Retrouvez-la dans le planning.`,
+            );
+            setModaleOuverte(false);
+            reload();
+          }}
+        />
+      )}
     </li>
   );
 }
@@ -260,6 +325,7 @@ function SectionDemain({
   semaineDemain,
   memeSemaine,
   vueAujourdhui,
+  reloadJour,
 }: {
   foyerId: string;
   demain: string;
@@ -267,6 +333,12 @@ function SectionDemain({
   /** `true` si demain est dans la même semaine ISO qu'aujourd'hui (pas de 2e fetch). */
   memeSemaine: boolean;
   vueAujourdhui: SemaineBesoins;
+  /**
+   * Reload de la vue du JOUR (page) : en `memeSemaine`, demain est servi par cette
+   * vue, pas par le fetch secondaire — c'est donc elle qu'il faut recharger après
+   * l'enregistrement d'une absence de demain.
+   */
+  reloadJour: () => void;
 }) {
   const {
     data: vueSuivante,
@@ -280,6 +352,9 @@ function SectionDemain({
     [foyerId, semaineDemain, memeSemaine],
   );
   const vue = memeSemaine ? vueAujourdhui : vueSuivante;
+  // Reload correct pour une absence signalée depuis « Demain » : la vue du JOUR en
+  // `memeSemaine` (elle sert demain), sinon le fetch secondaire de la semaine de demain.
+  const reloadDemain = memeSemaine ? reloadJour : reload;
   // Chargement du fetch secondaire (`vue === null` SANS erreur) : on se tait
   // plutôt que d'afficher un faux « aucune garde » — anti-saut de layout, la
   // journée au-dessus reste intacte. En `memeSemaine`, `vue` n'est jamais null
@@ -312,6 +387,8 @@ function SectionDemain({
               // Le deep-link « Modifier » atterrit sur le mois de DEMAIN (qui
               // peut différer d'aujourd'hui en fin de mois).
               mois={demain.slice(0, 7)}
+              iso={demain}
+              reload={reloadDemain}
               contexte="demain"
             />
           ))}
@@ -553,6 +630,8 @@ export function DashboardJourPage() {
               ligne={ligne}
               foyerId={id}
               mois={mois}
+              iso={aujourdhui}
+              reload={reload}
             />
           ))}
         </ul>
@@ -577,6 +656,7 @@ export function DashboardJourPage() {
           semaineDemain={semaineDemain}
           memeSemaine={semaineDemain === semaine}
           vueAujourdhui={data}
+          reloadJour={reload}
         />
       )}
 
