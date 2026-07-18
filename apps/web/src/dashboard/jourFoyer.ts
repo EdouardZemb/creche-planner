@@ -3,6 +3,7 @@ import type {
   Mode,
   PlageHoraire,
   SemaineBesoins,
+  SemaineTypeCreche,
 } from '../types/bff';
 import { classerAbsence, classerAjustement } from '../planning/etatJourGarde';
 import { formaterPlage, minutesDeHhmm, versHhmm } from '../planning/heures';
@@ -57,6 +58,13 @@ export interface LigneJour {
   readonly etat: EtatJour;
   /** Horaire/fenêtre effectif à afficher (`HH:MM–HH:MM`, « matin + soir », …), `null` si sans objet. */
   readonly horaire: string | null;
+  /**
+   * Semaine-type du contrat crèche, `undefined` hors CRECHE_PSU : permet à l'écran
+   * de dériver la plage de garde d'un jour (`plageGardeDuJour`) pour le geste
+   * « Signaler une absence » (A1), sans réinterroger la vue. Purement porté, la
+   * couche pure ne l'exploite pas.
+   */
+  readonly semaineType?: SemaineTypeCreche;
 }
 
 /** Libellé d'absence crèche (`classerAbsence`) → jeton d'état stable. */
@@ -230,6 +238,11 @@ export function lignesDuJour(
           : null,
       etat: calc.etat,
       horaire: calc.horaire,
+      // Porté tel quel (crèche uniquement) pour dériver la plage de garde côté
+      // écran ; propriété OMISE pour les contrats ABCM (`exactOptionalPropertyTypes`).
+      ...(contrat.semaineType !== undefined
+        ? { semaineType: contrat.semaineType }
+        : {}),
     });
   }
   return lignes;

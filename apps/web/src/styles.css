@@ -1278,10 +1278,38 @@ h3 {
 
 .jour-rangee {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 4.75rem;
+  /* 3e colonne : au moins la largeur d'un « Modifier » seul, mais extensible
+     quand la rangée porte aussi « Signaler une absence » (A1). */
+  grid-template-columns: auto minmax(0, 1fr) minmax(4.75rem, auto);
   align-items: center;
   gap: 0.25rem 0.5rem;
   padding: 0.3rem 0;
+}
+
+/* Actions d'une rangée de garde : « Modifier » seul, ou empilé avec « Signaler
+   une absence » sous 480px (cibles au pouce pleine largeur), côte à côte au-delà. */
+.jour-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-1);
+  align-items: stretch;
+}
+
+@media (min-width: 480px) {
+  .jour-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}
+
+/* Accusé d'enregistrement d'une absence (A1) : discret, en vert de succès, sur
+   toute la largeur de la rangée (nouvelle ligne implicite de la grille). */
+.jour-message-succes {
+  grid-column: 1 / -1;
+  margin: 0.3rem 0 0;
+  color: var(--vert);
+  font-size: 0.85rem;
 }
 
 /* Fin séparateur entre jours (lisibilité de la liste). */
@@ -1319,7 +1347,7 @@ h3 {
 
 @media (min-width: 768px) {
   .jour-rangee {
-    grid-template-columns: 11rem minmax(0, 1fr) 6rem;
+    grid-template-columns: 11rem minmax(0, 1fr) minmax(6rem, auto);
     gap: 0.5rem 0.75rem;
   }
 
