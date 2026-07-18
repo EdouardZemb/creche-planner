@@ -187,6 +187,15 @@ export const contrat = pgTable('contrat', {
    * avant ce lot n'ont pas la date (elle se remplit au prochain événement).
    */
   valideDu: varchar('valide_du', { length: 10 }),
+  /** Id du dernier événement appliqué (corrélation/diagnostic). */
+  eventId: uuid('event_id'),
+  /**
+   * Horodatage d'occurrence du dernier événement appliqué (garde de monotonie) :
+   * un événement plus ancien re-livré (NAK/backoff JetStream) n'écrase plus un état
+   * plus récent. NULLABLE : auto-amorçage au premier événement, pas de back-fill
+   * (les lignes projetées avant ce lot ont `occurred_at NULL`).
+   */
+  occurredAt: timestamp('occurred_at', { withTimezone: true }),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
