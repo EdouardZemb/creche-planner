@@ -137,4 +137,56 @@ describe('PlanificationClient (gateway→svc-planification)', () => {
       ).rejects.toThrow('HTTP 503');
     });
   });
+
+  describe('creerContrat (idempotence de création, lot 3 — C1)', () => {
+    const REGEX_UUID_V4 =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+    /** Corps parsé de l'appel `fetch` d'indice `i` (POST → body JSON). */
+    function corpsAppel(
+      fetchMock: ReturnType<typeof vi.fn>,
+      i: number,
+    ): { id?: string } {
+      const body = (fetchMock.mock.calls[i]?.[1] as { body?: string }).body;
+      return JSON.parse(body ?? '{}') as { id?: string };
+    }
+
+    it('injecte un id UUID et rejoue le POST avec le MÊME id (1er essai en échec réseau)', async () => {
+      vi.useFakeTimers();
+      try {
+        let appels = 0;
+        // 1er essai : échec réseau (déclenche le retry `executerResilient`) ;
+        // 2ᵉ essai : succès. La clé d'idempotence doit être IDENTIQUE sur les deux.
+        const fetchMock = vi.fn(async () => {
+          appels += 1;
+          if (appels === 1) {
+            throw new TypeError('réseau coupé');
+          }
+          return { ok: true, status: 201, json: async () => CONTRAT_OK };
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const promesse = new PlanificationClient().creerContrat({
+          mode: 'CRECHE_PSU',
+          foyerId: 'f-1',
+          enfant: 'Mia',
+          enfantId: 'e-1',
+          valideDu: '2026-01-01',
+          valideAu: null,
+        });
+        // Passe la pause de 200 ms entre les deux tentatives.
+        await vi.advanceTimersByTimeAsync(300);
+        await promesse;
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        const id1 = corpsAppel(fetchMock, 0).id;
+        const id2 = corpsAppel(fetchMock, 1).id;
+        expect(id1).toMatch(REGEX_UUID_V4);
+        // Les deux tentatives d'un même POST partagent la clé d'idempotence.
+        expect(id2).toBe(id1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });

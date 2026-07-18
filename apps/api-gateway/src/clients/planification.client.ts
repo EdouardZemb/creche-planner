@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { loadConfig } from '../config.js';
@@ -150,13 +151,17 @@ export class PlanificationClient {
     const base = loadConfig().planificationUrl;
     const url = `${base}/api/contrats`;
     this.logger.debug(`POST ${url}`);
+    // Clé d'idempotence générée AVANT `executerResilient` : les deux tentatives
+    // d'un même POST (retry sur réponse lente) partagent cet `id`, dédupliqué par
+    // PK `contrat.id` côté service (`onConflictDoNothing`) → jamais de doublon.
+    const corps = { id: randomUUID(), ...saisie };
     return executerResilient(
       'svc-planification',
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...entetesAval() },
-          body: JSON.stringify(saisie),
+          body: JSON.stringify(corps),
         });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);
@@ -382,13 +387,16 @@ export class PlanificationClient {
     const base = loadConfig().planificationUrl;
     const url = `${base}/api/etablissements?foyer=${encodeURIComponent(foyerId)}`;
     this.logger.debug(`POST ${url}`);
+    // Même clé d'idempotence que `creerContrat` : l'`id` généré ici est partagé
+    // par les deux tentatives d'un retry → dédup par PK `etablissement.id`.
+    const corps = { id: randomUUID(), ...saisie };
     return executerResilient(
       'svc-planification',
       async () => {
         const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...entetesAval() },
-          body: JSON.stringify(saisie),
+          body: JSON.stringify(corps),
         });
         if (!reponse.ok) {
           throw new Error('HTTP ' + reponse.status);

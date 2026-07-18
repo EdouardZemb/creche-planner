@@ -68,6 +68,18 @@ const FOYER_ID = '33333333-3333-4333-8333-333333333333';
 /** Identifiant figé du contrat ABCM créé (renvoyé par le provider). */
 const CONTRAT_ABCM_ID = '44444444-4444-4444-4444-444444444444';
 /**
+ * Clés d'idempotence de création (chantier « Confiance », lot 3 — C1) : la GATEWAY
+ * génère cet `id` et l'injecte dans le corps du POST **avant** son retry résilient
+ * (les 2 tentatives le partagent) → dédup par PK côté provider. Le pact le matche
+ * par regex UUID (comme `$.id` de la réponse). Exemples UUID **v4 valides** : le
+ * provider rejoue cette valeur, qui traverse `z.string().uuid()` (Zod 4, strict
+ * version 1-8 / variant 8-b) du DTO de création. **Distincts par interaction** :
+ * l'insert étant désormais idempotent (dédup par `contrat.id`), un id partagé
+ * ferait renvoyer, à la 2ᵉ interaction vérifiée, le contrat déjà créé par la 1ʳᵉ.
+ */
+const CONTRAT_CREE_CANTINE_ID = '55555555-5555-4555-8555-555555555555';
+const CONTRAT_CREE_ALSH_ID = '66666666-6666-4666-8666-666666666666';
+/**
  * Enfant figé des contrats seedés provider (aligné `ENFANT_SEED_ID` du
  * stateHandler). UUID RFC (v4) : le champ traverse `z.string().uuid()` (Zod 4,
  * strict version/variant) dans les corps de création/modification.
@@ -228,6 +240,8 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
         path: '/api/contrats',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: {
+          // Clé d'idempotence injectée par la gateway (lot 3 — C1), regex UUID.
+          id: uuid(CONTRAT_CREE_CANTINE_ID),
           mode: 'CANTINE',
           foyerId: FOYER_ID,
           enfant: 'Zoé',
@@ -263,6 +277,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
         body: JSON.stringify({
+          id: CONTRAT_CREE_CANTINE_ID,
           mode: 'CANTINE',
           foyerId: FOYER_ID,
           enfant: 'Zoé',
@@ -314,7 +329,8 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
         method: 'POST',
         path: '/api/contrats',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: corpsCreation,
+        // Clé d'idempotence injectée par la gateway (lot 3 — C1), regex UUID.
+        body: { ...corpsCreation, id: uuid(CONTRAT_CREE_ALSH_ID) },
       })
       .willRespondWith({
         status: 201,
@@ -337,7 +353,7 @@ describe('Pact consumer · api-gateway → svc-planification', () => {
       const reponse = await fetch(`${mockServer.url}/api/contrats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: JSON.stringify(corpsCreation),
+        body: JSON.stringify({ ...corpsCreation, id: CONTRAT_CREE_ALSH_ID }),
       });
       expect(reponse.status).toBe(201);
       const corps = (await reponse.json()) as { id: string; mode: string };

@@ -84,17 +84,25 @@ export class EtablissementService {
   /**
    * Crée un établissement pour un foyer + émet `EtablissementCree` dans la même
    * transaction (outbox). 409 si le nom est déjà pris dans ce foyer.
+   *
+   * **Idempotent** (chantier « Confiance », lot 3 — C1) : la gateway génère l'`id`
+   * avant son retry résilient (les 2 tentatives le partagent) → le rejeu du même
+   * POST retombe sur la PK `etablissement.id` (`onConflictDoNothing`) et renvoie la
+   * ressource déjà créée SANS second `EtablissementCree`. Un **vrai** doublon de
+   * nom (id différent, même nom) lève toujours `23505` sur `UNIQUE(foyer_id, nom)`
+   * → 409 conservé (comportement UX inchangé).
    */
   async creer(
     foyerId: string,
     dto: CreerEtablissementDto,
   ): Promise<EtablissementVue> {
+    const id = dto.id ?? randomUUID();
     try {
       const ligne = await this.db.transaction(async (tx) => {
         const insere = await tx
           .insert(etablissement)
           .values({
-            id: randomUUID(),
+            id,
             foyerId,
             nom: dto.nom,
             emailService: dto.emailService ?? null,
@@ -105,10 +113,22 @@ export class EtablissementService {
             contact: dto.contact ?? null,
             actif: dto.actif ?? true,
           })
+          .onConflictDoNothing({ target: etablissement.id })
           .returning();
         const ligneInseree = insere[0];
         if (!ligneInseree) {
-          throw new Error(`insertion établissement échouée (foyer ${foyerId})`);
+          // Rejeu du même POST (même id) : relire l'existant, aucun nouvel événement.
+          const existants = await tx
+            .select()
+            .from(etablissement)
+            .where(eq(etablissement.id, id));
+          const existant = existants[0];
+          if (!existant) {
+            throw new Error(
+              `insertion établissement échouée (foyer ${foyerId})`,
+            );
+          }
+          return existant;
         }
         await tx
           .insert(outbox)
