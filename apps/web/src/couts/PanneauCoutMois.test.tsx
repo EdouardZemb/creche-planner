@@ -151,10 +151,11 @@ describe('PanneauCoutMois', () => {
     expect(deltaEl).toHaveStyle({ color: 'var(--vert)' });
   });
 
-  // UT-08 — sigles métier explicités (nom accessible via Abbr). Le mode crèche
-  // ne porte plus de sigle (« Crèche » tout court, UX lot 2) : on vérifie le
-  // mécanisme `avecSigles` sur « ALSH », seul mode dont le libellé reste un sigle.
-  it('explicite le sigle « ALSH » du libellé de mode (UT-08)', async () => {
+  // UT-08 — sigles métier explicités (nom accessible via Abbr). Les modes
+  // crèche et ALSH ne portent plus de sigle nu dans leur libellé (« Crèche »,
+  // « Centre de loisirs » — UX lots 2 et 6) : le mécanisme `avecSigles` reste
+  // couvert via la pseudo-prestation « Frais annuels — ABCM » (test suivant).
+  it('affiche « Centre de loisirs » (sans sigle nu) pour le mode ALSH (lot 6)', async () => {
     vi.mocked(api.lireCoutMois).mockResolvedValue({
       ...coutMoisFactice,
       prestations: [
@@ -169,16 +170,11 @@ describe('PanneauCoutMois', () => {
 
     render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule={false} />);
 
-    await screen.findByText(/Emma/);
-    // <abbr> dont le titre expose le libellé long du glossaire
-    const abbr = document.querySelector('abbr[title]');
-    expect(abbr).toBeTruthy();
-    expect(abbr?.textContent).toBe('ALSH');
-    expect(abbr?.getAttribute('title')).toMatch(
-      /Accueil de loisirs sans hébergement/i,
-    );
-    // atteignable au clavier
-    expect(abbr).toHaveAttribute('tabindex', '0');
+    expect(
+      await screen.findByText(/Emma — Centre de loisirs/),
+    ).toBeInTheDocument();
+    // Le libellé n'est plus un sigle nu : aucune explicitation Abbr ici.
+    expect(document.querySelector('abbr[title]')).not.toBeInTheDocument();
   });
 
   // Lot 2 qualité Coûts — la pseudo-prestation des frais fixes annuels ABCM

@@ -143,4 +143,83 @@ describe('NotificationsClient (gateway→svc-notifications)', () => {
       ).rejects.toThrow('HTTP 409');
     });
   });
+
+  describe('lireSuiviEnvois (B1)', () => {
+    const SUIVI_OK = {
+      foyerId: 'f-1',
+      semaineIso: '2026-W03',
+      rappel: {
+        statut: 'ENVOYE',
+        envoyeLe: '2026-01-13T08:00:00.000Z',
+        erreur: null,
+        parents: [
+          {
+            email: 'parent@ex.org',
+            statut: 'ENVOYE',
+            envoyeLe: '2026-01-13T08:00:00.000Z',
+            essais: 0,
+          },
+        ],
+      },
+      etablissements: [
+        {
+          etablissementId: 'e-1',
+          statut: 'DRY_RUN',
+          envoyeLe: '2026-01-13T08:05:00.000Z',
+          erreur: null,
+          destinataire: 'creche@ex.org',
+        },
+      ],
+    };
+
+    it('succès → renvoie le suivi parsé (rappel + établissements)', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => SUIVI_OK,
+        })),
+      );
+      const suivi = await new NotificationsClient().lireSuiviEnvois(
+        'f-1',
+        '2026-W03',
+      );
+      expect(suivi.rappel?.statut).toBe('ENVOYE');
+      expect(suivi.rappel?.parents[0]?.essais).toBe(0);
+      expect(suivi.etablissements[0]?.statut).toBe('DRY_RUN');
+    });
+
+    it('cas vide → rappel null, établissements vides', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            foyerId: 'f-1',
+            semaineIso: '2026-W03',
+            rappel: null,
+            etablissements: [],
+          }),
+        })),
+      );
+      const suivi = await new NotificationsClient().lireSuiviEnvois(
+        'f-1',
+        '2026-W03',
+      );
+      expect(suivi.rappel).toBeNull();
+      expect(suivi.etablissements).toEqual([]);
+    });
+
+    it('erreur HTTP → propage Error(HTTP <code>)', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })),
+      );
+      await expect(
+        new NotificationsClient().lireSuiviEnvois('f-1', '2026-W03'),
+      ).rejects.toThrow('HTTP 503');
+    });
+  });
 });

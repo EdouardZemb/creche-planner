@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { jourCourantParis } from '@creche-planner/shared-semaine';
@@ -465,7 +465,7 @@ describe('DashboardJourPage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('carte « semaine à valider » : silencieuse si la liste échoue (journée préservée)', async () => {
+  it('carte « semaine à valider » : ligne « indisponible » + Recharger si la liste échoue (B2)', async () => {
     vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineVide);
     vi.mocked(api.listerAValider).mockRejectedValue(
       new Error('notifs indispo'),
@@ -473,26 +473,69 @@ describe('DashboardJourPage', () => {
 
     renderPage();
 
+    // Plus d'effacement silencieux : une panne des notifications affiche une
+    // ligne discrète actionnable (rater une validation coûte cher).
     expect(
-      await screen.findByText(/Aucune garde prévue aujourd/i),
+      await screen.findByText(
+        "Impossible de vérifier s'il reste une semaine à valider.",
+      ),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole('link', { name: /Vérifier et valider/i }),
-    ).not.toBeInTheDocument();
+      screen.getByRole('button', { name: /Recharger/i }),
+    ).toBeInTheDocument();
+    // La journée reste lisible en dessous.
+    expect(
+      screen.getByText(/Aucune garde prévue aujourd/i),
+    ).toBeInTheDocument();
   });
 
-  it('bandeau « coût du mois » : silencieux si le coût échoue (journée préservée)', async () => {
+  it('bandeau « coût du mois » : ligne « indisponible » + Recharger si le coût échoue (B2)', async () => {
     vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineVide);
     vi.mocked(api.lireCoutMois).mockRejectedValue(new Error('coût indispo'));
 
     renderPage();
 
-    // La journée reste lisible ; le bandeau ne rend rien (pas de lien « Détail »).
+    // La journée reste lisible ; le bandeau ne DISPARAÎT plus : il affiche une
+    // ligne discrète à l'emplacement du montant (pas de saut de layout).
     expect(
-      await screen.findByText(/Aucune garde prévue aujourd/i),
+      await screen.findByText('Coût du mois indisponible pour le moment.'),
     ).toBeInTheDocument();
     expect(
+      screen.getByRole('button', { name: /Recharger/i }),
+    ).toBeInTheDocument();
+    // Le message technique remonté par l'API n'est jamais montré au parent.
+    expect(screen.queryByText(/coût indispo/)).not.toBeInTheDocument();
+    // Pas encore de montant : la lecture a échoué.
+    expect(
       screen.queryByRole('link', { name: /Détail/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('bandeau « coût du mois » : « Recharger » raffiche le montant après rétablissement (B2)', async () => {
+    vi.mocked(api.lireSemaineBesoins).mockResolvedValue(semaineVide);
+    // Premier appel en échec (service en panne), puis rétabli.
+    vi.mocked(api.lireCoutMois)
+      .mockRejectedValueOnce(new Error('coût indispo'))
+      .mockResolvedValue(coutMois);
+
+    renderPage();
+
+    const recharger = await screen.findByRole('button', {
+      name: /Recharger/i,
+    });
+    // Panne : ligne discrète, pas de montant.
+    expect(screen.queryByText(/851,16/)).not.toBeInTheDocument();
+
+    fireEvent.click(recharger);
+
+    // Le second appel (résolu) raffiche le montant réel et le lien de détail.
+    expect(await screen.findByText(/851,16/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Détail/i })).toHaveAttribute(
+      'href',
+      `/foyers/${FOYER_ID}/couts`,
+    );
+    expect(
+      screen.queryByText('Coût du mois indisponible pour le moment.'),
     ).not.toBeInTheDocument();
   });
 
@@ -599,7 +642,7 @@ describe('DashboardJourPage', () => {
       expect(vide).toHaveClass('muted');
     });
 
-    it('échec du fetch de demain (semaine suivante) : la journée reste intacte, la section se tait', async () => {
+    it('échec du fetch de demain (semaine suivante) : la journée reste intacte, ligne « indisponible » (B2)', async () => {
       figerLe('2026-07-05'); // dimanche → le fetch de demain vise 2026-W28
       vi.mocked(api.lireSemaineBesoins).mockImplementation((_id, semaine) =>
         semaine === '2026-W28'
@@ -609,6 +652,7 @@ describe('DashboardJourPage', () => {
 
       renderPage();
 
+      // La journée d'aujourd'hui reste intacte…
       expect(await screen.findByText('Léa')).toBeInTheDocument();
       await waitFor(() => {
         expect(api.lireSemaineBesoins).toHaveBeenCalledWith(
@@ -617,10 +661,18 @@ describe('DashboardJourPage', () => {
           expect.anything(),
         );
       });
-      // Silence total : ni faux « aucune garde », ni erreur qui masque le jour.
+      // … et la section « Demain » (titre + date) reste affichée, avec une ligne
+      // discrète + Recharger à la place du contenu (plus de disparition muette).
       expect(
-        screen.queryByRole('heading', { level: 2, name: 'Demain' }),
-      ).not.toBeInTheDocument();
+        screen.getByRole('heading', { level: 2, name: 'Demain' }),
+      ).toBeInTheDocument();
+      expect(
+        await screen.findByText('Impossible de charger le planning de demain.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /Recharger/i }),
+      ).toBeInTheDocument();
+      // Toujours pas de faux « aucune garde ».
       expect(
         screen.queryByText(/Aucune garde prévue demain/),
       ).not.toBeInTheDocument();
@@ -720,6 +772,30 @@ describe('DashboardJourPage', () => {
       expect(screen.queryByText(/Prochaine garde/)).not.toBeInTheDocument();
       expect(
         screen.getByRole('link', { name: /Voir le planning/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('échec du fetch de la semaine suivante : ligne « indisponible » + Recharger (B2)', async () => {
+      // Samedi 4 juillet (W27) sans garde → sonde W28, qui échoue.
+      figerLe('2026-07-04');
+      vi.mocked(api.lireSemaineBesoins).mockImplementation((_id, semaine) =>
+        semaine === '2026-W28'
+          ? Promise.reject(new Error('semaine suivante indispo'))
+          : Promise.resolve(gardeLe({})),
+      );
+
+      renderPage();
+
+      expect(
+        await screen.findByText(/Aucune garde prévue aujourd/),
+      ).toBeInTheDocument();
+      // La panne du fetch secondaire remplace « Prochaine garde : … » par une
+      // ligne discrète actionnable, au lieu de l'ancien silence.
+      expect(
+        await screen.findByText('Prochaine garde indisponible pour le moment.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /Recharger/i }),
       ).toBeInTheDocument();
     });
   });

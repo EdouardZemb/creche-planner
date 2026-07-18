@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Column, getTableColumns, Param, type Table } from 'drizzle-orm';
 import {
   BadRequestException,
   ConflictException,
@@ -18,6 +19,7 @@ import type {
 } from '@creche-planner/planification-domain';
 import { PlanificationService } from './planification.service.js';
 import type { Database } from '../database/database.types.js';
+import { contrat, etablissement, outbox } from '../database/schema.js';
 import type { ContratRow } from '../database/schema.js';
 import type { ReferentielClient } from './referentiel.client.js';
 import type {
@@ -407,16 +409,21 @@ function fakeDbTransaction(contratPresent: boolean): {
     insert: () => ({
       values: (...args: unknown[]) => {
         insertValues(...args);
-        return Object.assign(Promise.resolve(), { onConflictDoUpdate });
+        // Insert idempotent (Lot 3) : `.onConflictDoNothing().returning()` renvoie
+        // une ligne (pas de conflit dans ce fake sans état) → chemin nominal.
+        const returning = (): Promise<{ id: string }[]> =>
+          Promise.resolve([{ id: CONTRAT_ID }]);
+        return Object.assign(Promise.resolve(), {
+          onConflictDoUpdate,
+          onConflictDoNothing: () => ({ returning }),
+        });
       },
     }),
     update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
     delete: () => ({ where: () => Promise.resolve() }),
   };
   const db = {
-    transaction: vi.fn(async (cb: (t: unknown) => Promise<void>) => {
-      await cb(tx);
-    }),
+    transaction: vi.fn(async (cb: (t: unknown) => Promise<unknown>) => cb(tx)),
   } as unknown as Database;
   return { db, insertValues, onConflictDoUpdate };
 }
@@ -767,27 +774,30 @@ function fakeCreerAvecEtab(
     insert: () => ({
       values: (v: Record<string, unknown>) => {
         inserts.push(v);
+        // Insert idempotent (Lot 3) : la création d'établissement (à la volée) et
+        // celle du contrat passent toutes deux par `.onConflictDoNothing().returning()`
+        // → ce fake sans état ne simule aucun conflit (chemin nominal, ligne renvoyée).
+        const returning = (): Promise<Record<string, unknown>[]> =>
+          Promise.resolve([
+            {
+              id: 'new-etab-id',
+              foyerId: v['foyerId'],
+              nom: v['nom'],
+              emailService: v['emailService'] ?? null,
+              preavisRegle: v['preavisRegle'] ?? null,
+              types: v['types'] ?? [],
+              actif: v['actif'] ?? true,
+            },
+          ]);
         return Object.assign(Promise.resolve(), {
-          returning: () =>
-            Promise.resolve([
-              {
-                id: 'new-etab-id',
-                foyerId: v['foyerId'],
-                nom: v['nom'],
-                emailService: v['emailService'] ?? null,
-                preavisRegle: v['preavisRegle'] ?? null,
-                types: v['types'] ?? [],
-                actif: v['actif'] ?? true,
-              },
-            ]),
+          returning,
+          onConflictDoNothing: () => ({ returning }),
         });
       },
     }),
   };
   const db = {
-    transaction: vi.fn(async (cb: (t: unknown) => Promise<void>) => {
-      await cb(tx);
-    }),
+    transaction: vi.fn(async (cb: (t: unknown) => Promise<unknown>) => cb(tx)),
   } as unknown as Database;
   return { db, inserts };
 }
@@ -866,6 +876,217 @@ describe('PlanificationService.creerContrat (lien établissement, P2)', () => {
     expect(contratCree?.['payload']).toMatchObject({
       etablissementId: 'new-etab-id',
     });
+  });
+});
+
+/**
+ * Base factice **à état** (Lot 3 — C1 : idempotence de création), calquée sur le
+ * `fakeBaseEnMemoire()` des tests d'intégration de projection (consumers). Un
+ * magasin de lignes par table Drizzle, qui honore le sous-ensemble utilisé par
+ * `creerContrat` : `select().from().where(eq | and(eq, eq))`,
+ * `insert().values().onConflictDoNothing().returning()` (marqueur d'idempotence,
+ * dédup par clé cible) et l'insert outbox « à plat » (`await ...values()`). Les
+ * `eq(colonne, valeur)` (et leur conjonction `and`) sont évalués en lisant les
+ * `queryChunks` Drizzle. La `transaction` **renvoie** la valeur du callback (la vue).
+ */
+type LigneMem = Record<string, unknown>;
+
+function fakeBaseEnMemoire(seed?: { etablissements?: LigneMem[] }): {
+  db: Database;
+  lignesDe: (t: Table) => LigneMem[];
+} {
+  const magasin = new Map<Table, LigneMem[]>();
+  const lignesDe = (table: Table): LigneMem[] => {
+    let lignes = magasin.get(table);
+    if (!lignes) {
+      lignes = [];
+      magasin.set(table, lignes);
+    }
+    return lignes;
+  };
+  for (const e of seed?.etablissements ?? []) {
+    lignesDe(etablissement).push({ ...e });
+  }
+  /** Nom de propriété TS d'une colonne dans sa table (ex. `foyer_id` → `foyerId`). */
+  const cleDe = (table: Table, colonne: Column): string => {
+    const entree = Object.entries(getTableColumns(table)).find(
+      ([, c]) => c === colonne,
+    );
+    if (!entree) {
+      throw new Error(`colonne inconnue dans la table : ${colonne.name}`);
+    }
+    return entree[0];
+  };
+  /** Collecte colonnes + paramètres d'un `eq`/`and(eq, …)` (récursif sur les SQL imbriqués). */
+  const collecter = (
+    chunks: unknown[],
+    cols: Column[],
+    params: Param[],
+  ): void => {
+    for (const c of chunks) {
+      if (c instanceof Column) {
+        cols.push(c);
+      } else if (c instanceof Param) {
+        params.push(c);
+      } else if (
+        c &&
+        typeof c === 'object' &&
+        Array.isArray((c as { queryChunks?: unknown[] }).queryChunks)
+      ) {
+        collecter((c as { queryChunks: unknown[] }).queryChunks, cols, params);
+      }
+    }
+  };
+  /** Prédicat d'un `where(eq | and(eq, eq))` — conjonction d'égalités colonne=valeur. */
+  const filtre = (table: Table, condition: unknown) => {
+    const cols: Column[] = [];
+    const params: Param[] = [];
+    collecter(
+      (condition as { queryChunks: unknown[] }).queryChunks,
+      cols,
+      params,
+    );
+    return (ligne: LigneMem): boolean =>
+      cols.every((col, i) => ligne[cleDe(table, col)] === params[i]?.value);
+  };
+  const clefConflit = (
+    table: Table,
+    cibles: Column[],
+    ligne: LigneMem,
+  ): string => cibles.map((c) => String(ligne[cleDe(table, c)])).join('|');
+
+  const operations = {
+    select: () => ({
+      from: (table: Table) => ({
+        where: (condition: unknown) =>
+          Promise.resolve(lignesDe(table).filter(filtre(table, condition))),
+      }),
+    }),
+    insert: (table: Table) => ({
+      values: (valeurs: LigneMem) => ({
+        // Insert « à plat » (outbox) : `await ...values()` → insertion directe.
+        then: (
+          resoudre: (v: undefined) => void,
+          rejeter: (e: unknown) => void,
+        ) => {
+          try {
+            lignesDe(table).push({ ...valeurs });
+            resoudre(undefined);
+          } catch (e) {
+            rejeter(e);
+          }
+        },
+        // Insert idempotent : n'insère (et ne « renvoie ») que si la clé est nouvelle.
+        onConflictDoNothing: (opts: { target: Column | Column[] }) => ({
+          returning: () => {
+            const cibles = Array.isArray(opts.target)
+              ? opts.target
+              : [opts.target];
+            const clef = clefConflit(table, cibles, valeurs);
+            const doublon = lignesDe(table).some(
+              (l) => clefConflit(table, cibles, l) === clef,
+            );
+            if (doublon) {
+              return Promise.resolve([]);
+            }
+            lignesDe(table).push({ ...valeurs });
+            return Promise.resolve([{ id: valeurs['id'] }]);
+          },
+        }),
+      }),
+    }),
+  };
+
+  const db = {
+    ...operations,
+    transaction: async (cb: (tx: unknown) => Promise<unknown>) =>
+      cb(operations),
+  } as unknown as Database;
+
+  return { db, lignesDe };
+}
+
+/** Établissement seedé (actif) rattachable par les contrats des tests d'idempotence. */
+function etabSeed(overrides: Partial<Record<string, unknown>> = {}): LigneMem {
+  return {
+    id: ETAB_ID,
+    foyerId: FOYER_ID,
+    nom: 'Crèche du centre',
+    actif: true,
+    ...overrides,
+  };
+}
+
+describe('PlanificationService.creerContrat (idempotence de création, Lot 3 — C1)', () => {
+  it('double création (même id) → 1 seule ligne contrat, 1 seul ContratCree, même vue', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire({
+      etablissements: [etabSeed()],
+    });
+    const service = new PlanificationService(db, referentielVide);
+    const dto = {
+      ...DTO_CRECHE_BASE,
+      id: CONTRAT_ID,
+      etablissementId: ETAB_ID,
+    };
+
+    const vue1 = await service.creerContrat(dto);
+    const vue2 = await service.creerContrat(dto);
+
+    // Une seule ligne contrat, un seul événement ContratCree (pas de double projection).
+    expect(lignesDe(contrat)).toHaveLength(1);
+    expect(
+      lignesDe(outbox).filter((o) => o['type'] === CONTRAT_CREE_TYPE),
+    ).toHaveLength(1);
+    // Les deux appels renvoient exactement la même vue (rejeu = relecture à l'identique).
+    expect(vue2).toEqual(vue1);
+    expect(vue1).toMatchObject({ id: CONTRAT_ID, foyerId: FOYER_ID });
+  });
+
+  it('resoudreEtablissement : nom déjà pris → contrat créé lié à l’établissement existant', async () => {
+    // L'établissement « Crèche du centre » existe déjà dans le foyer ; la création
+    // « à la volée » du même nom ne doit PAS échouer ni dupliquer : elle relie le
+    // contrat à l'existant (au lieu du 23505 mensonger d'avant).
+    const { db, lignesDe } = fakeBaseEnMemoire({
+      etablissements: [etabSeed()],
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const vue = await service.creerContrat({
+      ...DTO_CRECHE_BASE,
+      id: CONTRAT_ID,
+      nouvelEtablissement: { nom: 'Crèche du centre', types: ['CRECHE_PSU'] },
+    });
+
+    expect(vue.id).toBe(CONTRAT_ID);
+    // Aucun doublon d'établissement ; le contrat pointe sur l'existant.
+    expect(lignesDe(etablissement)).toHaveLength(1);
+    expect(lignesDe(contrat)[0]?.['etablissementId']).toBe(ETAB_ID);
+    // Pas de nouvel EtablissementCree (l'établissement existait déjà) ; mais le
+    // ContratCree est bien émis (le contrat, lui, est une vraie création).
+    expect(
+      lignesDe(outbox).filter((o) => o['type'] === ETABLISSEMENT_CREE_TYPE),
+    ).toHaveLength(0);
+    expect(
+      lignesDe(outbox).filter((o) => o['type'] === CONTRAT_CREE_TYPE),
+    ).toHaveLength(1);
+  });
+
+  it('nouvelEtablissement inédit → crée l’établissement (+EtablissementCree) ET le contrat', async () => {
+    // Foyer vierge : la création à la volée insère réellement l'établissement.
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const service = new PlanificationService(db, referentielVide);
+
+    await service.creerContrat({
+      ...DTO_CRECHE_BASE,
+      id: CONTRAT_ID,
+      nouvelEtablissement: { nom: 'Crèche neuve', types: ['CRECHE_PSU'] },
+    });
+
+    expect(lignesDe(etablissement)).toHaveLength(1);
+    expect(
+      lignesDe(outbox).filter((o) => o['type'] === ETABLISSEMENT_CREE_TYPE),
+    ).toHaveLength(1);
+    expect(lignesDe(contrat)).toHaveLength(1);
   });
 });
 

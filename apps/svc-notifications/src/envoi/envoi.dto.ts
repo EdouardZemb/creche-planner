@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import type { StatutEnvoi } from '../database/schema.js';
+import type {
+  StatutEnvoi,
+  StatutEnvoiRecap,
+  StatutEnvoiRecapParent,
+} from '../database/schema.js';
 import type { DeltaModifs } from '../validation/validation.diff.js';
 import { estSemaineIso } from '@creche-planner/shared-semaine';
 
@@ -102,3 +106,54 @@ export const envoiEtablissementSchema = z
     path: ['corps'],
   });
 export type EnvoiEtablissementDto = z.infer<typeof envoiEtablissementSchema>;
+
+// --- Suivi des envois (B1, LECTURE SEULE) -----------------------------------
+
+/**
+ * Livraison du récap du mardi vers **un parent** du foyer (ledger
+ * `envoi_recap_parent`). `essais` compte les tentatives en échec ; `envoyeLe` est nul
+ * tant que la ligne n'a pas abouti.
+ */
+export interface SuiviRappelParent {
+  readonly email: string;
+  readonly statut: StatutEnvoiRecapParent;
+  readonly envoyeLe: string | null;
+  readonly essais: number;
+}
+
+/**
+ * État d'envoi du **rappel hebdomadaire du mardi** d'un foyer pour une semaine
+ * (agrégat `envoi_recap_hebdo` + détail par parent `envoi_recap_parent`). `null` côté
+ * vue quand aucun slot n'a été programmé (semaine jamais notifiée).
+ */
+export interface SuiviRappelHebdo {
+  readonly statut: StatutEnvoiRecap;
+  readonly envoyeLe: string | null;
+  readonly erreur: string | null;
+  readonly parents: readonly SuiviRappelParent[];
+}
+
+/**
+ * État d'envoi du récap **agrégé vers un établissement** (`envoi_etablissement`) pour la
+ * semaine. `destinataire` est l'adresse figée à l'envoi (preuve).
+ */
+export interface SuiviEnvoiEtablissement {
+  readonly etablissementId: string;
+  readonly statut: StatutEnvoi;
+  readonly envoyeLe: string | null;
+  readonly erreur: string | null;
+  readonly destinataire: string | null;
+}
+
+/**
+ * Vue **LECTURE SEULE** du suivi des envois d'une `(foyer, semaine)` (B1) : le statut
+ * **persistant** du rappel hebdo aux parents et des envois aux établissements, rendu
+ * consultable dans l'encart de validation (plus seulement dans l'état React éphémère).
+ * Aucune écriture : trois `select` par `(foyer_id, semaine_iso)`.
+ */
+export interface SuiviEnvoisVue {
+  readonly foyerId: string;
+  readonly semaineIso: string;
+  readonly rappel: SuiviRappelHebdo | null;
+  readonly etablissements: readonly SuiviEnvoiEtablissement[];
+}

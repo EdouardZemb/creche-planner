@@ -419,7 +419,9 @@ export function RelectureEnvoi({
           {error}
         </p>
       )}
-      {loading && !data && <p className="muted">Chargement des brouillons…</p>}
+      {loading && !data && (
+        <p className="muted">Préparation des récapitulatifs…</p>
+      )}
 
       {data && concernes.length === 0 && (
         <p className="muted">

@@ -11,7 +11,7 @@ describe('LIBELLES_MODE', () => {
     expect(LIBELLES_MODE.CRECHE_PSU).toBe('Crèche');
     expect(LIBELLES_MODE.CANTINE).toBe('Cantine');
     expect(LIBELLES_MODE.PERISCOLAIRE).toBe('Périscolaire');
-    expect(LIBELLES_MODE.ALSH).toBe('ALSH');
+    expect(LIBELLES_MODE.ALSH).toBe('Centre de loisirs');
   });
 
   it("n'affiche jamais le mode brut", () => {
