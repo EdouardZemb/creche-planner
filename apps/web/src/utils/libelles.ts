@@ -10,7 +10,7 @@ export const LIBELLES_MODE: Record<Mode, string> = {
   CRECHE_PSU: 'Crèche',
   CANTINE: 'Cantine',
   PERISCOLAIRE: 'Périscolaire',
-  ALSH: 'ALSH',
+  ALSH: 'Centre de loisirs',
 };
 
 /**
