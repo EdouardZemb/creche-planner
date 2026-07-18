@@ -294,7 +294,7 @@ a {
   /* Les défilements programmatiques (scrollIntoView, focus, ancres) laissent
      la cible AU-DESSUS de la barre fixe, pas derrière. */
   html {
-    scroll-padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+    scroll-padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
   }
 }
 

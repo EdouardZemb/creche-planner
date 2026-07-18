@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useFoyer } from '../hooks/useFoyer';
@@ -11,9 +11,17 @@ import { EtatVide } from '../ui/EtatVide';
 import { ChargementPage } from '../ui/ChargementPage';
 import { PanneauCoutMois } from '../couts/PanneauCoutMois';
 import { EncartValidation } from '../notifications/EncartValidation';
-import { CalendrierCreche } from './CalendrierCreche';
-import { CalendrierAbcm } from './CalendrierAbcm';
 import type { ContratLocal } from '../types/bff';
+
+// E1 (bundle) : les calendriers embarquent FullCalendar (~lourd). Chargés à la
+// demande (`lazy`) pour les sortir du bundle initial (le dashboard n'en a pas
+// besoin) ; leur rendu est enveloppé dans un `<Suspense>` plus bas.
+const CalendrierCreche = lazy(() =>
+  import('./CalendrierCreche').then((m) => ({ default: m.CalendrierCreche })),
+);
+const CalendrierAbcm = lazy(() =>
+  import('./CalendrierAbcm').then((m) => ({ default: m.CalendrierAbcm })),
+);
 
 /** Forme d'une semaine ISO 8601 (`YYYY-Www`) acceptée dans `?semaine`. */
 const SEMAINE_ISO_REGEX = /^\d{4}-W\d{2}$/;
@@ -421,23 +429,29 @@ export function PlanningPage() {
                           </div>
 
                           {contratActif !== null ? (
-                            contratActif.mode === 'CRECHE_PSU' ? (
-                              <CalendrierCreche
-                                contrat={contratActif}
-                                mois={mois}
-                                simule={simule}
-                                onEnregistre={handleEnregistre}
-                                onContratModifie={handleContratModifie}
-                              />
-                            ) : (
-                              <CalendrierAbcm
-                                contrat={contratActif}
-                                mois={mois}
-                                simule={simule}
-                                onEnregistre={handleEnregistre}
-                                onContratModifie={handleContratModifie}
-                              />
-                            )
+                            <Suspense
+                              fallback={
+                                <ChargementPage message="Chargement du calendrier…" />
+                              }
+                            >
+                              {contratActif.mode === 'CRECHE_PSU' ? (
+                                <CalendrierCreche
+                                  contrat={contratActif}
+                                  mois={mois}
+                                  simule={simule}
+                                  onEnregistre={handleEnregistre}
+                                  onContratModifie={handleContratModifie}
+                                />
+                              ) : (
+                                <CalendrierAbcm
+                                  contrat={contratActif}
+                                  mois={mois}
+                                  simule={simule}
+                                  onEnregistre={handleEnregistre}
+                                  onContratModifie={handleContratModifie}
+                                />
+                              )}
+                            </Suspense>
                           ) : (
                             <div className="muted">
                               Sélectionnez un contrat.
