@@ -175,7 +175,7 @@ export function ContratsPage() {
           <strong>Famille</strong>{' '}
           <span className="muted">
             {data.enfants.length} enfant{data.enfants.length !== 1 ? 's' : ''} —{' '}
-            tranche de revenus {data.foyer.tranche}
+            tranche CAF {data.foyer.tranche}
           </span>
         </div>
       )}

@@ -339,7 +339,8 @@ export function CoutsAnnuelsPage() {
 
       {simule && (
         <p className="muted aide-simulation">
-          Comparez le coût du planning simulé au planning réel.
+          Le mode simulation vous laisse essayer des changements sans toucher au
+          planning réel. Comparez ici le coût simulé au coût réel.
         </p>
       )}
 

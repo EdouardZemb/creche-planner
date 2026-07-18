@@ -39,14 +39,20 @@ export interface PanneauCoutMoisProps {
   version?: number;
 }
 
-function LigneCout({ ligne }: { ligne: Ligne }) {
+function LigneCout({
+  ligne,
+  avecSigne = true,
+}: {
+  ligne: Ligne;
+  avecSigne?: boolean;
+}) {
   const prefixe = ligne.sens === 'debit' ? '-' : '+';
   const classe = ligne.sens === 'debit' ? 'debit' : 'credit';
   return (
     <div className="ligne-cout">
       <span>{ligne.libelle}</span>
       <span className={classe}>
-        {prefixe}
+        {avecSigne ? prefixe : null}
         {centimesEnEuros(ligne.montantCentimes)}
       </span>
     </div>
@@ -67,7 +73,7 @@ function SectionPrestation({ prestation }: { prestation: PrestationCout }) {
         <span>{centimesEnEuros(prestation.totalCentimes)}</span>
       </div>
       {prestation.lignes.map((l, i) => (
-        <LigneCout key={i} ligne={l} />
+        <LigneCout key={i} ligne={l} avecSigne={false} />
       ))}
     </div>
   );
@@ -77,7 +83,7 @@ function RecapGlobal({ lignes }: { lignes: Ligne[] }) {
   if (lignes.length === 0) return null;
   return (
     <div className="recap-global">
-      <div className="recap-global-titre">Récapitulatif</div>
+      <div className="recap-global-titre">Total du mois</div>
       {lignes.map((l, i) => (
         <LigneCout key={i} ligne={l} />
       ))}
