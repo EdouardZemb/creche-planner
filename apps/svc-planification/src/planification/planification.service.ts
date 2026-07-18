@@ -35,6 +35,7 @@ import {
   etablissement,
   outbox,
   planningMois,
+  type ContratRow,
 } from '../database/schema.js';
 import {
   joursDeLaSemaine,
@@ -105,7 +106,13 @@ export class PlanificationService {
     private readonly referentiel: ReferentielClient,
   ) {}
 
-  /** Crée un contrat + émet `ContratCree` dans la même transaction (outbox). */
+  /**
+   * Crée un contrat + émet `ContratCree` dans la même transaction (outbox).
+   * **Idempotent** (chantier « Confiance », lot 3 — C1) : la gateway génère l'`id`
+   * AVANT son retry résilient, si bien que le rejeu du même POST (réponse lente)
+   * retombe sur la PK `contrat.id` (`onConflictDoNothing`) → aucun doublon, aucun
+   * second `ContratCree`, et la ressource déjà créée est renvoyée à l'identique.
+   */
   async creerContrat(dto: CreerContratDto): Promise<ContratVue> {
     // Valide la cohérence métier via le domaine avant de persister.
     if (dto.mode === 'CRECHE_PSU') {
@@ -118,12 +125,14 @@ export class PlanificationService {
       });
     }
 
-    const id = randomUUID();
+    // Clé d'idempotence fournie par la gateway (partagée par les 2 tentatives d'un
+    // retry) ; à défaut (client legacy), on la génère comme avant.
+    const id = dto.id ?? randomUUID();
     // Première inscription ABCM (lot 4a) : le DTO crèche n'expose pas le champ →
     // toujours `false` pour CRECHE_PSU ; défaut `false` si non coché (ABCM).
     const premiereInscription =
       dto.mode === 'CRECHE_PSU' ? false : (dto.premiereInscription ?? false);
-    await this.db.transaction(async (tx) => {
+    return this.db.transaction(async (tx) => {
       // Résout le lien établissement DANS la même transaction (atomicité : pas de
       // contrat orphelin ni d'établissement fantôme — cf. `resoudreEtablissement`).
       const etablissementId = await this.resoudreEtablissement(
@@ -131,24 +140,48 @@ export class PlanificationService {
         dto.foyerId,
         dto,
       );
-      await tx.insert(contrat).values({
-        id,
-        foyerId: dto.foyerId,
-        enfant: dto.enfant,
-        enfantId: dto.enfantId,
-        mode: dto.mode,
-        etablissementId,
-        valideDu: dto.valideDu,
-        valideAu: dto.valideAu,
-        premiereInscription,
-        heuresAnnuellesContractualisees:
-          dto.mode === 'CRECHE_PSU'
-            ? dto.heuresAnnuellesContractualisees
-            : null,
-        nbMensualites: dto.mode === 'CRECHE_PSU' ? dto.nbMensualites : null,
-        semaineType: dto.mode === 'CRECHE_PSU' ? dto.semaineType : null,
-        semaineAbcm: dto.mode === 'CRECHE_PSU' ? null : dto.semaineAbcm,
-      });
+      // Insert idempotent : un rejeu (même `id`) ne réinsère rien et ne renvoie
+      // aucune ligne (`returning` vide).
+      const insere = await tx
+        .insert(contrat)
+        .values({
+          id,
+          foyerId: dto.foyerId,
+          enfant: dto.enfant,
+          enfantId: dto.enfantId,
+          mode: dto.mode,
+          etablissementId,
+          valideDu: dto.valideDu,
+          valideAu: dto.valideAu,
+          premiereInscription,
+          heuresAnnuellesContractualisees:
+            dto.mode === 'CRECHE_PSU'
+              ? dto.heuresAnnuellesContractualisees
+              : null,
+          nbMensualites: dto.mode === 'CRECHE_PSU' ? dto.nbMensualites : null,
+          semaineType: dto.mode === 'CRECHE_PSU' ? dto.semaineType : null,
+          semaineAbcm: dto.mode === 'CRECHE_PSU' ? null : dto.semaineAbcm,
+        })
+        .onConflictDoNothing({ target: contrat.id })
+        .returning({ id: contrat.id });
+
+      if (insere.length === 0) {
+        // Rejeu du même POST : le contrat existe déjà (créé par la 1ʳᵉ tentative).
+        // On NE ré-émet PAS `ContratCree` (pas de double projection) et on relit la
+        // ressource pour la renvoyer à l'identique (201 conservé côté contrôleur).
+        const existants = await tx
+          .select()
+          .from(contrat)
+          .where(eq(contrat.id, id));
+        const ligne = existants[0];
+        if (!ligne) {
+          throw new Error(
+            `contrat introuvable après conflit d'idempotence : ${id}`,
+          );
+        }
+        return this.versContratVue(ligne);
+      }
+
       const payload: ContratCreePayload = {
         contratId: id,
         foyerId: dto.foyerId,
@@ -166,17 +199,31 @@ export class PlanificationService {
         payload,
         traceId: traceIdCourant(),
       });
-    });
 
+      return {
+        id,
+        foyerId: dto.foyerId,
+        enfant: dto.enfant,
+        enfantId: dto.enfantId,
+        mode: dto.mode,
+        valideDu: dto.valideDu,
+        valideAu: dto.valideAu,
+        premiereInscription,
+      };
+    });
+  }
+
+  /** Projette une ligne `contrat` en `ContratVue` (cœur du contrat). */
+  private versContratVue(ligne: ContratRow): ContratVue {
     return {
-      id,
-      foyerId: dto.foyerId,
-      enfant: dto.enfant,
-      enfantId: dto.enfantId,
-      mode: dto.mode,
-      valideDu: dto.valideDu,
-      valideAu: dto.valideAu,
-      premiereInscription,
+      id: ligne.id,
+      foyerId: ligne.foyerId,
+      enfant: ligne.enfant,
+      enfantId: ligne.enfantId,
+      mode: ligne.mode,
+      valideDu: ligne.valideDu,
+      valideAu: ligne.valideAu,
+      premiereInscription: ligne.premiereInscription,
     };
   }
 
@@ -554,6 +601,13 @@ export class PlanificationService {
   ): Promise<string> {
     if (dto.nouvelEtablissement) {
       const nouvel = dto.nouvelEtablissement;
+      // Idempotence de la création à la volée (chantier « Confiance », lot 3 — C1) :
+      // l'`id` d'un établissement créé au vol est régénéré à chaque tentative, la
+      // dédup se fait donc sur `UNIQUE(foyer_id, nom)` (`onConflictDoNothing`). Au
+      // rejeu d'un POST contrat, la 1ʳᵉ tentative a déjà créé l'établissement →
+      // l'insert ne renvoie rien : on relie le contrat à l'établissement EXISTANT
+      // du foyer (par nom), SANS second `EtablissementCree`. C'est ce qui remplace
+      // le 23505 mensonger d'avant (qui faisait échouer le contrat au retry).
       const insere = await tx
         .insert(etablissement)
         .values({
@@ -568,29 +622,47 @@ export class PlanificationService {
           contact: nouvel.contact ?? null,
           actif: nouvel.actif ?? true,
         })
+        .onConflictDoNothing({
+          target: [etablissement.foyerId, etablissement.nom],
+        })
         .returning();
       const ligne = insere[0];
-      if (!ligne) {
+      if (ligne) {
+        // Vraie création : projeté tel quel (état complet) pour le read-model
+        // notifications (P3) ; les coordonnées internes (adresse/téléphone/contact)
+        // ne voyagent pas.
+        const payload: EtablissementCreePayload = {
+          etablissementId: ligne.id,
+          foyerId: ligne.foyerId,
+          nom: ligne.nom,
+          emailService: ligne.emailService,
+          preavisRegle: ligne.preavisRegle,
+          types: ligne.types,
+          actif: ligne.actif,
+        };
+        await tx.insert(outbox).values({
+          id: randomUUID(),
+          type: ETABLISSEMENT_CREE_TYPE,
+          payload,
+          traceId: traceIdCourant(),
+        });
+        return ligne.id;
+      }
+      // Collision de nom (rejeu / concurrence) : réutiliser l'établissement du foyer.
+      const existants = await tx
+        .select()
+        .from(etablissement)
+        .where(
+          and(
+            eq(etablissement.foyerId, foyerId),
+            eq(etablissement.nom, nouvel.nom),
+          ),
+        );
+      const existant = existants[0];
+      if (!existant) {
         throw new Error(`insertion établissement échouée (foyer ${foyerId})`);
       }
-      // Projeté tel quel (état complet) pour le read-model notifications (P3) ;
-      // les coordonnées internes (adresse/téléphone/contact) ne voyagent pas.
-      const payload: EtablissementCreePayload = {
-        etablissementId: ligne.id,
-        foyerId: ligne.foyerId,
-        nom: ligne.nom,
-        emailService: ligne.emailService,
-        preavisRegle: ligne.preavisRegle,
-        types: ligne.types,
-        actif: ligne.actif,
-      };
-      await tx.insert(outbox).values({
-        id: randomUUID(),
-        type: ETABLISSEMENT_CREE_TYPE,
-        payload,
-        traceId: traceIdCourant(),
-      });
-      return ligne.id;
+      return existant.id;
     }
 
     if (dto.etablissementId !== undefined) {

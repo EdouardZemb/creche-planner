@@ -197,7 +197,7 @@ describe('CoutsAnnuelsPage', () => {
     renderPage('foyer-1', '?simule=true');
 
     await screen.findByText(
-      'Comparez le coût du planning simulé au planning réel.',
+      'Le mode simulation vous laisse essayer des changements sans toucher au planning réel. Comparez ici le coût simulé au coût réel.',
     );
   });
 

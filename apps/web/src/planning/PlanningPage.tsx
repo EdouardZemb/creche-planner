@@ -237,6 +237,13 @@ export function PlanningPage() {
         {simule && <Badge variante="simulation">Simulation</Badge>}
       </div>
 
+      {simule && (
+        <p className="muted aide-simulation">
+          Le mode simulation vous laisse essayer des changements sans toucher au
+          planning réel ni aux récapitulatifs envoyés.
+        </p>
+      )}
+
       {/* États loading / error */}
       {loading && <ChargementPage message="Chargement de votre famille…" />}
       {error !== null && (

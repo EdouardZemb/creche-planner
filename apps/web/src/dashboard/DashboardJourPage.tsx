@@ -26,6 +26,7 @@ import { useTitrePage } from '../hooks/useTitrePage';
 import { useNotifications } from '../notifications/useNotifications';
 import { useContrats } from '../foyer/useContrats';
 import { api } from '../api/client';
+import { LigneIndisponible } from '../ui/LigneIndisponible';
 import { lignesDuJour, type EtatJour, type LigneJour } from './jourFoyer';
 
 /**
@@ -136,11 +137,27 @@ function RangeeJour({
  * uniquement : la validation elle-même reste dans l'`EncartValidation` du
  * planning, vers lequel la carte renvoie. Plusieurs contrats peuvent partager une
  * même semaine notifiée → on dédoublonne par semaine (le détail par enfant vit
- * sur le planning). Silencieuse tant qu'il n'y a rien à valider (chargement,
- * erreur, liste vide) : c'est un rappel, jamais un obstacle à la journée.
+ * sur le planning). Silencieuse en chargement et quand il n'y a rien à valider
+ * (liste vide) : c'est un rappel, jamais un obstacle à la journée. En cas d'échec
+ * de lecture, une ligne discrète « … · Recharger » (lot B2) — rater une
+ * validation coûte cher, on ne l'efface plus en silence.
  */
 function CarteAValider({ foyerId }: { foyerId: string }) {
-  const { data } = useNotifications(foyerId);
+  const { data, error, reload } = useNotifications(foyerId);
+  // Échec de lecture (données jamais arrivées) : une ligne discrète plutôt que
+  // l'ancien effacement silencieux — rater une validation coûte cher. En
+  // chargement (`data === null`, `error === null`), on reste muet plus bas
+  // (semaines vide → null) : pas de saut de layout.
+  if (error !== null && data === null) {
+    return (
+      <section className="carte">
+        <LigneIndisponible
+          texte="Impossible de vérifier s'il reste une semaine à valider."
+          onRecharger={reload}
+        />
+      </section>
+    );
+  }
   const semaines = [...new Set((data ?? []).map((n) => n.semaineIso))].sort();
   if (semaines.length === 0) {
     return null;
@@ -182,15 +199,29 @@ function CarteAValider({ foyerId }: { foyerId: string }) {
 /**
  * Bandeau « coût du mois » (P3c) : le coût RÉEL (`simule=false`) du mois courant,
  * en lecture seule, avec un lien vers le détail des coûts. Secondaire et
- * non-bloquant — s'efface silencieusement tant qu'il charge ou s'il échoue, pour
- * ne jamais masquer la journée. Réutilise le client `lireCoutMois` et le
- * formatage `centimesEnEuros` (mêmes conventions que le planning / les coûts).
+ * non-bloquant — muet pendant le chargement (anti-saut de layout) ; en cas
+ * d'échec, une ligne discrète « … · Recharger » remplace le montant (lot B2)
+ * plutôt que de disparaître, pour ne jamais masquer la journée. Réutilise le
+ * client `lireCoutMois` et le formatage `centimesEnEuros`.
  */
 function BandeauCoutMois({ foyerId, mois }: { foyerId: string; mois: string }) {
-  const { data } = useAsync<CoutMoisVue>(
+  const { data, error, reload } = useAsync<CoutMoisVue>(
     (signal) => api.lireCoutMois(foyerId, mois, false, { signal }),
     [foyerId, mois],
   );
+  // Échec de lecture : ligne discrète RENDUE DANS la carte existante (même
+  // conteneur → hauteur stable) au lieu de la disparition silencieuse.
+  if (error !== null && data === null) {
+    return (
+      <div className="carte bandeau-cout">
+        <LigneIndisponible
+          texte="Coût du mois indisponible pour le moment."
+          onRecharger={reload}
+        />
+      </div>
+    );
+  }
+  // Chargement (data null, error null) : muet, anti-saut de layout (préservé).
   if (!data) {
     return null;
   }
@@ -218,9 +249,10 @@ function BandeauCoutMois({ foyerId, mois }: { foyerId: string; mois: string }) {
  * `RangeeJour` et `lignesDuJour` avec la date de demain.
  *
  * Demain peut tomber dans la semaine ISO suivante (dimanche → lundi) : dans ce
- * cas seulement, un second `lireSemaineBesoins` — silencieux en chargement et
- * en erreur (pattern du `BandeauCoutMois`), pour ne jamais bloquer ni faire
- * échouer l'affichage d'aujourd'hui.
+ * cas seulement, un second `lireSemaineBesoins` — silencieux en chargement ; en
+ * cas d'échec, le titre « Demain » reste et une ligne discrète « … · Recharger »
+ * remplace le contenu (lot B2), pour ne jamais bloquer ni faire échouer
+ * l'affichage d'aujourd'hui.
  */
 function SectionDemain({
   foyerId,
@@ -236,7 +268,11 @@ function SectionDemain({
   memeSemaine: boolean;
   vueAujourdhui: SemaineBesoins;
 }) {
-  const { data: vueSuivante } = useAsync<SemaineBesoins | null>(
+  const {
+    data: vueSuivante,
+    error,
+    reload,
+  } = useAsync<SemaineBesoins | null>(
     (signal) =>
       memeSemaine
         ? Promise.resolve(null)
@@ -244,20 +280,29 @@ function SectionDemain({
     [foyerId, semaineDemain, memeSemaine],
   );
   const vue = memeSemaine ? vueAujourdhui : vueSuivante;
-  if (vue === null) {
-    // Fetch secondaire en cours ou en échec : on se tait plutôt que d'afficher
-    // un faux « aucune garde » — la journée au-dessus reste intacte.
+  // Chargement du fetch secondaire (`vue === null` SANS erreur) : on se tait
+  // plutôt que d'afficher un faux « aucune garde » — anti-saut de layout, la
+  // journée au-dessus reste intacte. En `memeSemaine`, `vue` n'est jamais null
+  // (la vue du jour est déjà chargée) : ce cas ne concerne que le 2e fetch.
+  if (vue === null && error === null) {
     return null;
   }
-  const lignes = lignesDuJour(vue, demain);
   const jour = jourSemaineDeIso(demain);
+  const lignes = vue !== null ? lignesDuJour(vue, demain) : [];
   return (
     <section aria-label="Demain">
       <h2 className="titre-avec-date">Demain</h2>
       <p className="muted sous-titre-date">
         {LIBELLES_JOURS[jour]} {formaterDateFr(demain)}
       </p>
-      {lignes.length > 0 ? (
+      {vue === null ? (
+        // Échec du fetch secondaire : la section « Demain » (titre + date) reste
+        // affichée, la ligne discrète remplace le contenu.
+        <LigneIndisponible
+          texte="Impossible de charger le planning de demain."
+          onRecharger={reload}
+        />
+      ) : lignes.length > 0 ? (
         <ul className="jours-liste">
           {lignes.map((ligne) => (
             <RangeeJour
@@ -312,9 +357,9 @@ function premiereDateAvecGarde(
  * aujourd'hui (week-end typiquement), dire au parent QUAND ça reprend plutôt
  * que le laisser sur un simple constat. Scanne les jours suivants dans la vue
  * déjà chargée (semaine courante), puis la semaine ISO suivante via un fetch
- * silencieux en chargement comme en erreur (pattern `BandeauCoutMois`) — pas
- * au-delà (~2 semaines) : sans garde trouvée, on se tait et l'état vide garde
- * son lien vers le planning.
+ * silencieux en chargement ; en cas d'échec, une ligne discrète « … · Recharger »
+ * à la place de « Prochaine garde : … » (lot B2) — pas au-delà (~2 semaines) :
+ * sans garde trouvée, on se tait et l'état vide garde son lien vers le planning.
  */
 function ProchaineGarde({
   foyerId,
@@ -345,13 +390,28 @@ function ProchaineGarde({
 
   // Fetch secondaire UNIQUEMENT si la semaine courante n'a rien donné.
   const chercherSuivante = trouveeCourante === undefined;
-  const { data: vueSuivante } = useAsync<SemaineBesoins | null>(
+  const {
+    data: vueSuivante,
+    error,
+    reload,
+  } = useAsync<SemaineBesoins | null>(
     (signal) =>
       chercherSuivante
         ? api.lireSemaineBesoins(foyerId, semaineSuivante, { signal })
         : Promise.resolve(null),
     [foyerId, semaineSuivante, chercherSuivante],
   );
+  // Échec du fetch secondaire (semaine ISO suivante) : ligne discrète à la place
+  // de « Prochaine garde : … », plutôt que l'ancien silence. `error` ne peut être
+  // non-null que si `chercherSuivante` (donc `trouveeCourante === undefined`).
+  if (error !== null && vueSuivante === null) {
+    return (
+      <LigneIndisponible
+        texte="Prochaine garde indisponible pour le moment."
+        onRecharger={reload}
+      />
+    );
+  }
   const prochaine =
     trouveeCourante ??
     (vueSuivante

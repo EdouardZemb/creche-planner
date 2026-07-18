@@ -19,6 +19,14 @@ export const typesEtablissementSchema = z.array(z.enum(MODES_CONTRAT));
  * peuvent être `null` (champ vidé). `types` défaut `[]`, `actif` défaut `true`.
  */
 export const creerEtablissementSchema = z.object({
+  /**
+   * Clé d'idempotence de création (chantier « Confiance », lot 3 — C1) : `id`
+   * généré par la gateway et partagé par les deux tentatives d'un retry → dédup
+   * par PK `etablissement.id`. Optionnel (client legacy → `randomUUID()` service).
+   * Sans effet sur la **création à la volée** via contrat (`nouvelEtablissement`),
+   * dédupliquée par nom (cf. `resoudreEtablissement`).
+   */
+  id: z.string().uuid().optional(),
   nom: z.string().min(1).max(200),
   emailService: z.email('adresse e-mail invalide').nullish(),
   preavisRegle: preavisRegleSchema.nullish(),

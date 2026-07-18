@@ -103,7 +103,7 @@ describe('delaiPreavis', () => {
       const r = delaiPreavis(JEUDI_12H, W28, '2026-07-05'); // après le 02/07
       expect(r?.depasse).toBe(true);
       expect(r?.texte).toBe(
-        '⏰ Délai peut-être dépassé — prévenez la crèche au plus vite. À valider avant jeudi 12:00 (le 02/07)',
+        'Délai peut-être dépassé — prévenez la crèche au plus vite. À valider avant jeudi 12:00 (le 02/07)',
       );
       expect(r?.dateLimite).toBe('2026-07-02');
     });

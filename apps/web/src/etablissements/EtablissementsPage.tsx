@@ -415,7 +415,7 @@ function CarteEtablissement({
       ) : e.actif ? (
         <p className="debit" role="note">
           <span aria-hidden="true">⚠️ </span>
-          Sans e-mail, cette crèche ne recevra pas les récapitulatifs.{' '}
+          Sans e-mail, ce lieu d’accueil ne recevra pas les récapitulatifs.{' '}
           <span className="muted">Ajoutez son e-mail via « Modifier ».</span>
         </p>
       ) : null}

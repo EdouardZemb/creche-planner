@@ -99,7 +99,7 @@ describe('EtablissementsPage (per-foyer)', () => {
     await screen.findByText('Crèche du Centre');
     const avertissement = screen.getByRole('note');
     expect(avertissement).toHaveTextContent(
-      /Sans e-mail, cette crèche ne recevra pas les récapitulatifs/i,
+      /Sans e-mail, ce lieu d’accueil ne recevra pas les récapitulatifs/i,
     );
   });
 

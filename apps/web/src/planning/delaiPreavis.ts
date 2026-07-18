@@ -86,7 +86,7 @@ function reculerJoursOuvres(lundiCible: string, valeur: number): string {
 }
 
 const PREFIXE_DEPASSE =
-  '⏰ Délai peut-être dépassé — prévenez la crèche au plus vite. ';
+  'Délai peut-être dépassé — prévenez la crèche au plus vite. ';
 
 /**
  * Traduit une règle de préavis en date limite concrète pour la semaine `semaineIso`

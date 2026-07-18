@@ -15,6 +15,7 @@
           "enfant": "Zoé",
           "enfantId": "77777777-7777-4777-8777-777777777777",
           "foyerId": "33333333-3333-4333-8333-333333333333",
+          "id": "66666666-6666-4666-8666-666666666666",
           "mode": "ALSH",
           "nouvelEtablissement": {
             "nom": "Centre Pact ALSH"
@@ -38,6 +39,19 @@
         },
         "headers": {
           "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          }
         },
         "method": "POST",
         "path": "/api/contrats"
@@ -102,6 +116,7 @@
           "enfant": "Zoé",
           "enfantId": "77777777-7777-4777-8777-777777777777",
           "foyerId": "33333333-3333-4333-8333-333333333333",
+          "id": "55555555-5555-4555-8555-555555555555",
           "mode": "CANTINE",
           "nouvelEtablissement": {
             "nom": "Crèche Pact CANTINE"
@@ -123,6 +138,19 @@
         },
         "headers": {
           "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          }
         },
         "method": "POST",
         "path": "/api/contrats"
