@@ -585,6 +585,212 @@
       }
     },
     {
+      "description": "une lecture du suivi des envois d’une semaine",
+      "providerStates": [
+        {
+          "name": "un suivi des envois existe pour une semaine (rappel + établissement)"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/validations/semaine/22222222-2222-4222-8222-222222222222/2026-W12/envois"
+      },
+      "response": {
+        "body": {
+          "etablissements": [
+            {
+              "destinataire": "contact-creche@example.org",
+              "envoyeLe": "2026-03-24T06:00:00.000Z",
+              "erreur": null,
+              "etablissementId": "99999999-9999-4999-8999-999999999999",
+              "statut": "ENVOYE"
+            }
+          ],
+          "foyerId": "22222222-2222-4222-8222-222222222222",
+          "rappel": {
+            "envoyeLe": "2026-03-24T06:00:00.000Z",
+            "erreur": null,
+            "parents": [
+              {
+                "email": "parent@example.org",
+                "envoyeLe": "2026-03-24T06:00:00.000Z",
+                "essais": 0,
+                "statut": "ENVOYE"
+              }
+            ],
+            "statut": "ENVOYE"
+          },
+          "semaineIso": "2026-W12"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.etablissements": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.etablissements[*].destinataire": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.etablissements[*].envoyeLe": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.etablissements[*].etablissementId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.etablissements[*].statut": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.rappel.envoyeLe": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.rappel.parents": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.rappel.parents[*].email": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.rappel.parents[*].envoyeLe": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.rappel.parents[*].essais": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.rappel.parents[*].statut": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.rappel.statut": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.semaineIso": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une lecture du suivi des envois d’une semaine sans envoi",
+      "providerStates": [
+        {
+          "name": "aucun envoi enregistré pour une semaine"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/validations/semaine/22222222-2222-4222-8222-222222222222/2026-W13/envois"
+      },
+      "response": {
+        "body": {
+          "etablissements": [],
+          "foyerId": "22222222-2222-4222-8222-222222222222",
+          "rappel": null,
+          "semaineIso": "2026-W13"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.semaineIso": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "une régénération du brouillon agrégé d’un établissement archivé",
       "providerStates": [
         {

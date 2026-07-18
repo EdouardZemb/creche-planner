@@ -32,6 +32,9 @@ import type { Database } from '../database/database.types.js';
  */
 function fakeDb(marqueurInsere: boolean): Database {
   const tx = {
+    // `select().from().where()` sert au pré-check de monotonie d'`appliquerPreferencesNotif`
+    // (max(occurred_at)) : sans état préalable, il renvoie zéro ligne (garde passante).
+    select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
     insert: () => ({
       values: () => ({
         onConflictDoNothing: () => ({

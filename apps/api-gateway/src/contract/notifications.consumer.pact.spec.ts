@@ -26,6 +26,11 @@ const ETAT_ENVOI =
 // état sert la liste (200), l'accusé (200) et le 404 cross-parent (la notif reste
 // possédée par `PARENT_INBOX_ID` ; le 404 la requête avec `AUTRE_PARENT_ID`).
 const ETAT_INBOX = 'un parent a une notification in-app non lue';
+// Suivi des envois (B1) : un état PEUPLÉ (rappel envoyé + établissement) et le cas VIDE
+// (début de semaine). Alignés avec les `stateHandlers` de la vérification provider.
+const ETAT_SUIVI_ENVOIS =
+  'un suivi des envois existe pour une semaine (rappel + établissement)';
+const ETAT_SUIVI_ENVOIS_VIDE = 'aucun envoi enregistré pour une semaine';
 
 /** Identifiants figés partagés avec les stateHandlers de la vérification provider. */
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
@@ -40,6 +45,9 @@ const ETABLISSEMENT_SANS_EMAIL_ID = '99999999-9999-4999-8999-999999999998';
 const ETABLISSEMENT_ARCHIVE_ID = '99999999-9999-4999-8999-999999999997';
 // Semaine entièrement dans un mois (mars) : une seule relecture amont côté provider.
 const SEMAINE = '2026-W10';
+// Suivi des envois (B1) : semaines dédiées (peuplée / vide), partagées avec le provider.
+const SUIVI_SEMAINE = '2026-W12';
+const SUIVI_SEMAINE_VIDE = '2026-W13';
 
 // Inbox in-app : le parent propriétaire de la notification, un AUTRE parent (pour
 // le 404 cross-parent), et l'id de la notification seedée. UUID v4 valides
@@ -500,6 +508,93 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
       expect(reponse.status).toBe(404);
       const corps = (await reponse.json()) as { message: string };
       expect(corps.message).toBe('notification inconnue');
+    });
+  });
+
+  // --- Suivi des envois (B1) : lecture seule, cas peuplé + cas vide ---------
+
+  it('lit le suivi des envois d’une semaine (GET …/envois) — rappel + établissement', async () => {
+    provider
+      .given(ETAT_SUIVI_ENVOIS)
+      .uponReceiving('une lecture du suivi des envois d’une semaine')
+      .withRequest({
+        method: 'GET',
+        path: `/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE}/envois`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: {
+          foyerId: string(FOYER_ID),
+          semaineIso: string(SUIVI_SEMAINE),
+          // Rappel du mardi ENVOYE aux parents (au moins un parent servi).
+          rappel: {
+            statut: string('ENVOYE'),
+            envoyeLe: string('2026-03-24T06:00:00.000Z'),
+            erreur: null,
+            parents: MatchersV3.eachLike({
+              email: string('parent@example.org'),
+              statut: string('ENVOYE'),
+              envoyeLe: string('2026-03-24T06:00:00.000Z'),
+              essais: integer(0),
+            }),
+          },
+          // Au moins un récap établissement ENVOYE.
+          etablissements: MatchersV3.eachLike({
+            etablissementId: string(ETABLISSEMENT_ID),
+            statut: string('ENVOYE'),
+            envoyeLe: string('2026-03-24T06:00:00.000Z'),
+            erreur: null,
+            destinataire: string('contact-creche@example.org'),
+          }),
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE}/envois`,
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as {
+        rappel: { statut: string } | null;
+        etablissements: { statut: string }[];
+      };
+      expect(corps.rappel?.statut).toBe('ENVOYE');
+      expect(corps.etablissements[0]?.statut).toBe('ENVOYE');
+    });
+  });
+
+  it('lit un suivi des envois VIDE (rappel null, aucun établissement)', async () => {
+    provider
+      .given(ETAT_SUIVI_ENVOIS_VIDE)
+      .uponReceiving('une lecture du suivi des envois d’une semaine sans envoi')
+      .withRequest({
+        method: 'GET',
+        path: `/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE_VIDE}/envois`,
+      })
+      .willRespondWith({
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        // Cas nominal de début de semaine : rien n'est encore parti.
+        body: {
+          foyerId: string(FOYER_ID),
+          semaineIso: string(SUIVI_SEMAINE_VIDE),
+          rappel: null,
+          etablissements: [],
+        },
+      });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE_VIDE}/envois`,
+      );
+      expect(reponse.status).toBe(200);
+      const corps = (await reponse.json()) as {
+        rappel: unknown;
+        etablissements: unknown[];
+      };
+      expect(corps.rappel).toBeNull();
+      expect(corps.etablissements).toEqual([]);
     });
   });
 });

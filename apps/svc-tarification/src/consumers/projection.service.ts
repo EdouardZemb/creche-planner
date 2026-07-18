@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   enfantAjouteEventSchema,
   foyerMisAJourEventSchema,
@@ -195,6 +195,11 @@ export class ProjectionService {
             occurredAt: new Date(evt.occurredAt),
             updatedAt: new Date(),
           },
+          // Garde de monotonie : n'écrase l'état que si l'événement entrant est
+          // au moins aussi récent (égalité incluse : un correctif ré-émis au même
+          // instant doit pouvoir s'appliquer). Une re-livraison tardive (NAK/backoff
+          // JetStream) d'un événement périmé est ainsi ignorée.
+          setWhere: sql`${foyer.occurredAt} is null or ${foyer.occurredAt} <= excluded.occurred_at`,
         });
     });
   }
@@ -266,6 +271,8 @@ export class ProjectionService {
             occurredAt: new Date(evt.occurredAt),
             updatedAt: new Date(),
           },
+          // Garde de monotonie (cf. appliquerFoyerMisAJour).
+          setWhere: sql`${grilleTarifaire.occurredAt} is null or ${grilleTarifaire.occurredAt} <= excluded.occurred_at`,
         });
     });
   }
@@ -296,6 +303,8 @@ export class ProjectionService {
           // Champ additif lot 4a : un événement historique ne le porte pas.
           premiereInscription: p.premiereInscription ?? false,
           valideDu: p.valideDu,
+          eventId: evt.id,
+          occurredAt: new Date(evt.occurredAt),
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -306,8 +315,12 @@ export class ProjectionService {
             mode: p.mode,
             premiereInscription: p.premiereInscription ?? false,
             valideDu: p.valideDu,
+            eventId: evt.id,
+            occurredAt: new Date(evt.occurredAt),
             updatedAt: new Date(),
           },
+          // Garde de monotonie (cf. appliquerFoyerMisAJour).
+          setWhere: sql`${contrat.occurredAt} is null or ${contrat.occurredAt} <= excluded.occurred_at`,
         });
     });
   }
@@ -339,6 +352,8 @@ export class ProjectionService {
           // Champ additif lot 4a : un événement historique ne le porte pas.
           premiereInscription: p.premiereInscription ?? false,
           valideDu: p.valideDu,
+          eventId: evt.id,
+          occurredAt: new Date(evt.occurredAt),
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -349,8 +364,12 @@ export class ProjectionService {
             mode: p.mode,
             premiereInscription: p.premiereInscription ?? false,
             valideDu: p.valideDu,
+            eventId: evt.id,
+            occurredAt: new Date(evt.occurredAt),
             updatedAt: new Date(),
           },
+          // Garde de monotonie (cf. appliquerFoyerMisAJour).
+          setWhere: sql`${contrat.occurredAt} is null or ${contrat.occurredAt} <= excluded.occurred_at`,
         });
       // Réaligne l'identité des prestations déjà projetées (les quantités seront
       // recalculées au prochain PlanningModifie).
@@ -475,6 +494,8 @@ export class ProjectionService {
             occurredAt: new Date(evt.occurredAt),
             updatedAt: new Date(),
           },
+          // Garde de monotonie (cf. appliquerFoyerMisAJour).
+          setWhere: sql`${prestationMois.occurredAt} is null or ${prestationMois.occurredAt} <= excluded.occurred_at`,
         });
     });
   }
