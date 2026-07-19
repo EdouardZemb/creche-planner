@@ -8,4 +8,19 @@ export {
   MontantNonEntierError,
   DureeInvalideError,
   PlageHoraireInvalideError,
+  PeriodeInvalideError,
+  AucuneVersionApplicableError,
+  ChevauchementVersionsError,
+  TrouDansVersionsError,
 } from './lib/domain-error.js';
+export {
+  PeriodeValidite,
+  cloreVersionPrecedente,
+  selectionnerVersionApplicable,
+  verifierAbsenceChevauchement,
+  verifierContinuite,
+  depuisBornes,
+  depuisSuite,
+  type Versionne,
+  type VersionValide,
+} from './lib/versionnement.js';
