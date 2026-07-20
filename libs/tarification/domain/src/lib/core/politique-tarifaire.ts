@@ -1,7 +1,15 @@
 import type { CoutMois } from './cout-mois.js';
 
-/** Mode de garde / nature de charge porté par une politique (doc 02 §1). */
-export type ModeGarde =
+/**
+ * Nature de charge portée par une politique tarifaire (doc 02 §1) : les 4 modes
+ * de garde d'un contrat (`CRECHE_PSU`, `PERISCOLAIRE`, `CANTINE`, `ALSH`) plus 2
+ * politiques internes qui ne correspondent à **aucun** mode de contrat —
+ * `FRAIS_FIXES_ABCM` (frais annuels rattachés à la rentrée) et
+ * `UNITES_ASSOCIATIVES` (part associative) — d'où le nom `PolitiqueTarifaire`,
+ * distinct de `ModeContrat`/`ModeGarde` (SFD 30 §H4, DV-04 réduit : ce n'était
+ * pas un second `ModeGarde` divergent, mais une union plus large mal nommée).
+ */
+export type PolitiqueTarifaireId =
   | 'CRECHE_PSU'
   | 'PERISCOLAIRE'
   | 'CANTINE'
@@ -16,6 +24,6 @@ export type ModeGarde =
  * `CoutMois` produits.
  */
 export interface PolitiqueTarifaire<Saisie> {
-  readonly mode: ModeGarde;
+  readonly mode: PolitiqueTarifaireId;
   calculerCoutMois(saisie: Saisie): CoutMois;
 }

@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { z } from 'zod';
+import { MODES_CONTRAT } from '@creche-planner/contracts-kernel';
 
 /**
  * Schémas de validation des **entrées de la gateway** (frontière BFF). La
@@ -83,7 +84,7 @@ export type EcrireFoyerScalaires = z.infer<typeof ecrireFoyerScalairesSchema>;
  */
 export const creerContratSchema = z
   .object({
-    mode: z.enum(['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH']),
+    mode: z.enum(MODES_CONTRAT),
     foyerId: z.string().min(1),
     // Prénom dénormalisé (affichage) + lien de référence vers l'enfant (svc-foyer).
     enfant: z.string().min(1),

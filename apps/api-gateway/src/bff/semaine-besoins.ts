@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MODES_CONTRAT } from '@creche-planner/contracts-kernel';
 import {
   extraireSemaine,
   type SnapshotSemaine,
@@ -23,7 +24,7 @@ import { preavisRegleSchema } from './bff.dto.js';
  */
 
 /** Modes de garde connus (un mode inconnu côté amont est ignoré défensivement). */
-const MODES = ['CRECHE_PSU', 'PERISCOLAIRE', 'CANTINE', 'ALSH'] as const;
+const MODES = MODES_CONTRAT;
 type Mode = (typeof MODES)[number];
 
 function estModeConnu(mode: string): mode is Mode {

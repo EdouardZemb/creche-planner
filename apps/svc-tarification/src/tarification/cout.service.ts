@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { and, eq, like } from 'drizzle-orm';
+import { MODES_ABCM } from '@creche-planner/contracts-kernel';
 import {
   CoutMois,
   FraisFixesAbcm,
@@ -70,7 +71,8 @@ type ContratRow = (typeof contrat)['$inferSelect'];
 /** Ligne de la projection `prestation_mois` (quantités d'un contrat sur un mois). */
 type PrestationMoisRow = (typeof prestationMois)['$inferSelect'];
 
-const MODES_ABCM = new Set(['CANTINE', 'PERISCOLAIRE', 'ALSH']);
+/** Modes ABCM (SFD 30 §H4, source unique `@creche-planner/contracts-kernel`). */
+const MODES_ABCM_SET = new Set<string>(MODES_ABCM);
 const MOIS_FRAIS_FIXES = 9; // septembre (doc 02 §4.4)
 
 /**
@@ -147,7 +149,7 @@ export class CoutService {
     let auMoinsUnAbcm = false;
 
     for (const projection of projections) {
-      if (MODES_ABCM.has(projection.mode)) {
+      if (MODES_ABCM_SET.has(projection.mode)) {
         auMoinsUnAbcm = true;
       }
       const cout = valoriserPrestation(projection.prestation, donneesFoyer);
@@ -169,7 +171,7 @@ export class CoutService {
         premiereAnnee: estPremiereAnneeAbcm(
           mois,
           contrats.map((c) => ({
-            modeAbcm: MODES_ABCM.has(c.mode),
+            modeAbcm: MODES_ABCM_SET.has(c.mode),
             premiereInscription: c.premiereInscription,
             valideDu: c.valideDu,
           })),
