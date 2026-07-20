@@ -13,10 +13,7 @@ export {
 } from './lib/core/tarification-error.js';
 
 // Crèche PSU
-export {
-  BaremeEffortPsu,
-  BAREME_EFFORT_PSU_2026,
-} from './lib/psu/bareme-effort-psu.js';
+export { BaremeEffortPsu } from './lib/psu/bareme-effort-psu.js';
 export { TarifCrechePsu } from './lib/psu/tarif-creche-psu.js';
 export type {
   ConfigTarifCrechePsu,
@@ -26,6 +23,7 @@ export type {
 
 // ABCM
 export { GrilleAbcm } from './lib/abcm/grille-abcm.js';
+export type { ParametresGrilleAbcm } from './lib/abcm/grille-abcm.js';
 export { TarifCantineAbcm } from './lib/abcm/tarif-cantine-abcm.js';
 export type { SaisieMoisCantine } from './lib/abcm/tarif-cantine-abcm.js';
 export { TarifPeriscolaireAbcm } from './lib/abcm/tarif-periscolaire-abcm.js';

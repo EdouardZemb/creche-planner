@@ -36,6 +36,13 @@
       "when": 1784393157770,
       "tag": "0004_contrat_monotonie",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784492847942,
+      "tag": "0005_bareme_psu_readmodel",
+      "breakpoints": true
     }
   ]
 }

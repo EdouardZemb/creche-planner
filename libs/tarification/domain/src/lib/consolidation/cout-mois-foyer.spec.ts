@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { Duree, Money, Tranche } from '@creche-planner/shared-kernel';
 import { consoliderCoutMoisFoyer } from './cout-mois-foyer.js';
 import { TarifCrechePsu } from '../psu/tarif-creche-psu.js';
-import { GrilleAbcm } from '../abcm/grille-abcm.js';
+import { baremeEffortPsu2026 } from '../psu/bareme-effort-psu.fixtures.js';
+import { grilleAbcm2026 } from '../abcm/grille-abcm.fixtures.js';
 import { TarifCantineAbcm } from '../abcm/tarif-cantine-abcm.js';
 import { TarifPeriscolaireAbcm } from '../abcm/tarif-periscolaire-abcm.js';
 import { FraisFixesAbcm } from '../abcm/frais-fixes-abcm.js';
@@ -12,8 +13,9 @@ const RESSOURCES = Money.depuisEuros(6716.92);
 const psu = new TarifCrechePsu({
   ressourcesMensuelles: RESSOURCES,
   nbEnfantsACharge: 2,
+  bareme: baremeEffortPsu2026(),
 });
-const grilleT3 = GrilleAbcm.pour(Tranche.T3);
+const grilleT3 = grilleAbcm2026(Tranche.T3);
 
 describe('consoliderCoutMoisFoyer (doc 02 §2, CT-20)', () => {
   it('CT-04 — total foyer crèche (Mia + Zoé) = 851,16 €', () => {

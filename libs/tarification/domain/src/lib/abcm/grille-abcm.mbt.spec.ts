@@ -3,7 +3,7 @@
 // Traçabilité doc 17 ; SUT : abcm/grille-abcm.ts
 import { describe, expect, it } from 'vitest';
 import { Tranche } from '@creche-planner/shared-kernel';
-import { GrilleAbcm } from './grille-abcm.js';
+import { grilleAbcm2026 } from './grille-abcm.fixtures.js';
 import { GrilleIndisponibleError } from '../core/tarification-error.js';
 
 /**
@@ -57,7 +57,7 @@ const TRANCHES: readonly [1 | 2 | 3, Tranche][] = [
 
 describe('MBT BVA-17 — grille ABCM par tranche (partition complète)', () => {
   it.each(TRANCHES)('tranche T%i — tous les tarifs', (niveau, tranche) => {
-    const g = GrilleAbcm.pour(tranche);
+    const g = grilleAbcm2026(tranche);
     const attendu = ATTENDU[niveau];
     expect(g.cantineTotal.centimes).toBe(attendu.cantineTotal);
     expect(g.periMatin.centimes).toBe(attendu.periMatin);
@@ -70,7 +70,7 @@ describe('MBT BVA-17 — grille ABCM par tranche (partition complète)', () => {
 
 describe('MBT BVA-17 — part « garde » cantine (PAI) : T3 seule', () => {
   it('T3 ⇒ part garde = 8,01 €', () => {
-    expect(GrilleAbcm.pour(Tranche.T3).cantinePartGarde.centimes).toBe(801);
+    expect(grilleAbcm2026(Tranche.T3).cantinePartGarde.centimes).toBe(801);
   });
 
   const sansPartGarde: readonly [1 | 2, Tranche][] = [
@@ -80,7 +80,7 @@ describe('MBT BVA-17 — part « garde » cantine (PAI) : T3 seule', () => {
   it.each(sansPartGarde)(
     'T%i ⇒ GrilleIndisponibleError (INV-03)',
     (_n, tranche) => {
-      expect(() => GrilleAbcm.pour(tranche).cantinePartGarde).toThrow(
+      expect(() => grilleAbcm2026(tranche).cantinePartGarde).toThrow(
         GrilleIndisponibleError,
       );
     },

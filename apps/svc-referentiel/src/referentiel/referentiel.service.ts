@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, lt } from 'drizzle-orm';
 import { Money } from '@creche-planner/shared-kernel';
 import {
   estModeAbcm,
@@ -12,9 +12,12 @@ import {
   type ModeGarde,
 } from '@creche-planner/referentiel-domain';
 import {
-  GRILLE_PUBLIEE_TYPE,
+  BAREME_PSU_PUBLIE_TYPE,
+  GRILLE_PUBLIEE_V2_TYPE,
   MODES_ABCM_CONTRAT,
-  type GrillePublieePayload,
+  type BaremePsuPubliePayload,
+  type GrillePublieeV2Payload,
+  type ParametresGrille,
 } from '@creche-planner/contracts-referentiel';
 import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
@@ -25,7 +28,21 @@ import {
   outbox,
   type GrilleAbcmRow,
 } from '../database/schema.js';
-import { publierGrilleAbcmSchema } from './referentiel.dto.js';
+import {
+  publierBaremePsuSchema,
+  publierGrilleAbcmSchema,
+} from './referentiel.dto.js';
+
+/** Postes tarifaires ABCM (centimes) partagés par une vue et une ligne de grille. */
+interface PostesGrilleAbcm {
+  readonly cantineTotalCentimes: number;
+  readonly cantinePartGardeCentimes: number | null;
+  readonly periMatinCentimes: number;
+  readonly periSoirCentimes: number;
+  readonly alshJourneeCompleteCentimes: number;
+  readonly alshDemiJourneeCentimes: number;
+  readonly alshRepasCentimes: number;
+}
 
 /** Vue d'une grille ABCM publiée (montants en centimes, fidèle à `Money`). */
 export interface GrilleAbcmVue {
@@ -40,6 +57,16 @@ export interface GrilleAbcmVue {
   readonly alshJourneeCompleteCentimes: number;
   readonly alshDemiJourneeCentimes: number;
   readonly alshRepasCentimes: number;
+}
+
+/** Vue d'un barème PSU publié (taux + bornes CNAF en centimes). */
+export interface BaremePsuVue {
+  readonly id: string;
+  readonly valideDu: string;
+  readonly valideAu: string | null;
+  readonly taux: Record<string, number>;
+  readonly plancherCentimes: number | null;
+  readonly plafondCentimes: number | null;
 }
 
 /** Réponse « grille applicable à (date, tranche, mode) » — discriminée par `mode`. */
@@ -89,12 +116,41 @@ export class ReferentielService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   /**
+   * Découpe les postes tarifaires d'une grille (vue ou ligne) en **paramètres du
+   * mode projeté** (centimes) — cœur du payload `GrillePubliee.v2` (D1). Un mode =
+   * un sous-ensemble de postes ; le consommateur reconstitue la grille du mode.
+   */
+  private projeterParametresGrille(
+    postes: PostesGrilleAbcm,
+    mode: (typeof MODES_ABCM_CONTRAT)[number],
+  ): ParametresGrille {
+    if (mode === 'CANTINE') {
+      return {
+        cantineTotalCentimes: postes.cantineTotalCentimes,
+        cantinePartGardeCentimes: postes.cantinePartGardeCentimes,
+      };
+    }
+    if (mode === 'PERISCOLAIRE') {
+      return {
+        periMatinCentimes: postes.periMatinCentimes,
+        periSoirCentimes: postes.periSoirCentimes,
+      };
+    }
+    return {
+      alshJourneeCompleteCentimes: postes.alshJourneeCompleteCentimes,
+      alshDemiJourneeCentimes: postes.alshDemiJourneeCentimes,
+      alshRepasCentimes: postes.alshRepasCentimes,
+    };
+  }
+
+  /**
    * Publie une grille ABCM versionnée : **valide l'entrée via Zod** (le schéma
    * n'étant plus branché sur un pipe HTTP, la validation vit ici pour couvrir
    * aussi les grilles seedées au boot), valide période/tranche via le domaine,
    * refuse un chevauchement avec une grille existante de la même tranche, puis
-   * insère la grille et émet un `GrillePubliee` **par mode ABCM** dans la même
-   * transaction (outbox).
+   * insère la grille et émet un `GrillePubliee.v2` **par mode ABCM** (payload
+   * portant les montants du mode, D1/RM-30-04) dans la même transaction (outbox).
+   * La grille est marquée `version_payload = 2` : elle ne sera pas ré-émise au boot.
    */
   async publierGrilleAbcm(entree: unknown): Promise<GrilleAbcmVue> {
     const dto = publierGrilleAbcmSchema.parse(entree);
@@ -135,18 +191,19 @@ export class ReferentielService {
     };
 
     await this.db.transaction(async (tx) => {
-      await tx.insert(grilleAbcm).values(vue);
+      await tx.insert(grilleAbcm).values({ ...vue, versionPayload: 2 });
       for (const mode of MODES_ABCM_CONTRAT) {
-        const payload: GrillePublieePayload = {
+        const payload: GrillePublieeV2Payload = {
           grilleId: id,
           mode,
           tranche: tranche.niveau,
           valideDu: dto.valideDu,
           valideAu: dto.valideAu ?? null,
+          parametres: this.projeterParametresGrille(vue, mode),
         };
         await tx.insert(outbox).values({
           id: randomUUID(),
-          type: GRILLE_PUBLIEE_TYPE,
+          type: GRILLE_PUBLIEE_V2_TYPE,
           payload,
           traceId: traceIdCourant(),
         });
@@ -154,6 +211,138 @@ export class ReferentielService {
     });
 
     return vue;
+  }
+
+  /**
+   * Ré-émet en **v2** (une seule fois) les grilles publiées avant ce lot
+   * (`version_payload < 2`) : en prod, `svc-tarification` n'a jamais reçu les
+   * montants (v1 muette). Idempotent — une fois `version_payload` remonté à `2`,
+   * plus rien à ré-émettre. Renvoie le nombre de grilles ré-émises (pour le log).
+   */
+  async reemettreGrillesEnV2(): Promise<number> {
+    const aReemettre = await this.db
+      .select()
+      .from(grilleAbcm)
+      .where(lt(grilleAbcm.versionPayload, 2));
+    for (const grille of aReemettre) {
+      await this.db.transaction(async (tx) => {
+        for (const mode of MODES_ABCM_CONTRAT) {
+          const payload: GrillePublieeV2Payload = {
+            grilleId: grille.id,
+            mode,
+            tranche: trancheDepuisNiveau(grille.tranche).niveau,
+            valideDu: grille.valideDu,
+            valideAu: grille.valideAu,
+            parametres: this.projeterParametresGrille(grille, mode),
+          };
+          await tx.insert(outbox).values({
+            id: randomUUID(),
+            type: GRILLE_PUBLIEE_V2_TYPE,
+            payload,
+            traceId: traceIdCourant(),
+          });
+        }
+        await tx
+          .update(grilleAbcm)
+          .set({ versionPayload: 2 })
+          .where(eq(grilleAbcm.id, grille.id));
+      });
+    }
+    return aReemettre.length;
+  }
+
+  /**
+   * Publie un barème PSU versionné (D2) : valide via Zod, refuse un chevauchement
+   * de période, insère et émet `BaremePsuPublie.v1` dans la même transaction. Le
+   * barème est marqué `version_payload = 1` (ne sera pas ré-émis au boot).
+   */
+  async publierBaremePsu(entree: unknown): Promise<BaremePsuVue> {
+    const dto = publierBaremePsuSchema.parse(entree);
+    const periode = PeriodeValidite.creer(
+      dto.valideDu,
+      dto.valideAu ?? undefined,
+    );
+
+    const existants = await this.db.select().from(baremePsu);
+    verifierAbsenceChevauchement([
+      ...existants.map((b) =>
+        PeriodeValidite.creer(b.valideDu, b.valideAu ?? undefined),
+      ),
+      periode,
+    ]);
+
+    const id = randomUUID();
+    const plancherCentimes =
+      dto.plancher === undefined
+        ? null
+        : Money.depuisEuros(dto.plancher).centimes;
+    const plafondCentimes =
+      dto.plafond === undefined
+        ? null
+        : Money.depuisEuros(dto.plafond).centimes;
+    const vue: BaremePsuVue = {
+      id,
+      valideDu: dto.valideDu,
+      valideAu: dto.valideAu ?? null,
+      taux: dto.taux,
+      plancherCentimes,
+      plafondCentimes,
+    };
+
+    await this.db.transaction(async (tx) => {
+      await tx.insert(baremePsu).values({ ...vue, versionPayload: 1 });
+      const payload: BaremePsuPubliePayload = {
+        baremeId: id,
+        valideDu: vue.valideDu,
+        valideAu: vue.valideAu,
+        taux: vue.taux,
+        plancherCentimes,
+        plafondCentimes,
+      };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: BAREME_PSU_PUBLIE_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+    });
+
+    return vue;
+  }
+
+  /**
+   * Ré-émet en `BaremePsuPublie.v1` (une seule fois) les barèmes seedés avant ce
+   * lot (`version_payload < 1`) : le seed PSU n'émettait rien historiquement.
+   * Idempotent. Renvoie le nombre de barèmes ré-émis.
+   */
+  async reemettreBaremesPsu(): Promise<number> {
+    const aReemettre = await this.db
+      .select()
+      .from(baremePsu)
+      .where(lt(baremePsu.versionPayload, 1));
+    for (const bareme of aReemettre) {
+      await this.db.transaction(async (tx) => {
+        const payload: BaremePsuPubliePayload = {
+          baremeId: bareme.id,
+          valideDu: bareme.valideDu,
+          valideAu: bareme.valideAu,
+          taux: bareme.taux as Record<string, number>,
+          plancherCentimes: bareme.plancherCentimes,
+          plafondCentimes: bareme.plafondCentimes,
+        };
+        await tx.insert(outbox).values({
+          id: randomUUID(),
+          type: BAREME_PSU_PUBLIE_TYPE,
+          payload,
+          traceId: traceIdCourant(),
+        });
+        await tx
+          .update(baremePsu)
+          .set({ versionPayload: 1 })
+          .where(eq(baremePsu.id, bareme.id));
+      });
+    }
+    return aReemettre.length;
   }
 
   /** Grille/barème applicable à `(date, tranche, mode)` (DoD Phase 4). */

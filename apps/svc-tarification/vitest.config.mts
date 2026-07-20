@@ -48,12 +48,14 @@ export default defineConfig(() => ({
       // Ratchet relevé au lot 3 (mesuré 84,4/77,7/81,7/84,2).
       // Ratchet relevé au lot 4 « Fondations » (scoping : décorateurs sur
       // cout.controller + spec d'intégration enforce) — mesuré 86,2/78,4/81,7/86,0.
+      // Ratchet relevé au SFD 30 lot 2 (résolution grille/barème à date + repli REST +
+      // projection v2/BaremePsu) — mesuré 88,4/82,2/84,4/88,2.
       // Branches gardées à marge large (≥2 pts) : specs de résilience sensibles au timing.
       thresholds: {
-        statements: 84,
-        branches: 76,
-        functions: 79,
-        lines: 84,
+        statements: 87,
+        branches: 80,
+        functions: 83,
+        lines: 87,
       },
     },
     testTimeout: 60000,

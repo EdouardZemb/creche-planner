@@ -43,11 +43,13 @@ export default defineConfig(() => ({
       ],
       // Ratchet relevé au lot 3 (mesuré 94,6/94/92,3/94,5 après exclusion
       // d'app.module ; config assertion couverte par config.spec).
+      // Ratchet relevé au SFD 30 lot 2 (publierBaremePsu + ré-émission one-shot)
+      // — mesuré 94,8/92,6/94,3/94,7 ; branches marge fine, gardée à 92.
       thresholds: {
-        statements: 92,
+        statements: 93,
         branches: 92,
-        functions: 90,
-        lines: 92,
+        functions: 92,
+        lines: 93,
       },
     },
     testTimeout: 60000,

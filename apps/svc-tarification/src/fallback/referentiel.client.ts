@@ -22,6 +22,21 @@ const grilleReponseSchema = z
 /** Forme générique d'une grille/barème applicable (paramètres bruts conservés). */
 export type GrilleApplicableFallback = z.infer<typeof grilleReponseSchema>;
 
+/** Barème PSU applicable renvoyé par `svc-referentiel` (mode `CRECHE_PSU`, sans tranche). */
+const baremePsuReponseSchema = z
+  .object({
+    mode: z.literal('CRECHE_PSU'),
+    valideDu: z.string(),
+    valideAu: z.string().nullable(),
+    taux: z.record(z.string(), z.number()),
+    plancherCentimes: z.number().nullable(),
+    plafondCentimes: z.number().nullable(),
+  })
+  .passthrough();
+
+/** Barème PSU applicable (taux + bornes CNAF) résolu à date. */
+export type BaremePsuFallback = z.infer<typeof baremePsuReponseSchema>;
+
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
   retries: 1,
@@ -65,6 +80,39 @@ export class ReferentielClient {
           throw new Error(`HTTP ${reponse.status}`);
         }
         return grilleReponseSchema.parse(await reponse.json());
+      },
+      undefined,
+      this.breaker,
+      OPTIONS,
+      this.logger,
+    );
+  }
+
+  /**
+   * Barème PSU applicable à `date` (mode `CRECHE_PSU`, sans tranche) — repli
+   * synchrone quand le read-model `bareme_psu` local est froid. Même résilience
+   * (timeout / retry / circuit-breaker) ; `undefined` en cas d'échec total.
+   */
+  async baremePsuApplicable(
+    date: string,
+  ): Promise<BaremePsuFallback | undefined> {
+    const base = loadConfig().referentielUrl;
+    const url =
+      `${base}/api/grilles/applicable?date=${encodeURIComponent(date)}` +
+      `&mode=CRECHE_PSU`;
+    return executerOuRepli<BaremePsuFallback | undefined>(
+      'svc-referentiel',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAssertionMachine(
+            'svc-tarification',
+            loadConfig().assertion.secret,
+          ),
+        });
+        if (!reponse.ok) {
+          throw new Error(`HTTP ${reponse.status}`);
+        }
+        return baremePsuReponseSchema.parse(await reponse.json());
       },
       undefined,
       this.breaker,

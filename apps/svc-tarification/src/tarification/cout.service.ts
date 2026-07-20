@@ -6,22 +6,116 @@ import {
 } from '@nestjs/common';
 import { and, eq, like } from 'drizzle-orm';
 import {
+  AucuneVersionApplicableError,
+  Money,
+  depuisBornes,
+  selectionnerVersionApplicable,
+} from '@creche-planner/shared-kernel';
+import {
+  BaremeEffortPsu,
   CoutMois,
   FraisFixesAbcm,
+  GrilleAbcm,
   consoliderCoutMoisFoyer,
   estPremiereAnneeAbcm,
+  type ParametresGrilleAbcm,
 } from '@creche-planner/tarification-domain';
 import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
-import { contrat, foyer, prestationMois } from '../database/schema.js';
+import {
+  baremePsu,
+  contrat,
+  foyer,
+  grilleTarifaire,
+  prestationMois,
+  type BaremePsuRow,
+  type GrilleTarifaireRow,
+} from '../database/schema.js';
 import { FoyerClient } from '../fallback/foyer.client.js';
 import { PlanificationClient } from '../fallback/planification.client.js';
 import {
+  ReferentielClient,
+  type BaremePsuFallback,
+  type GrilleApplicableFallback,
+} from '../fallback/referentiel.client.js';
+import {
   parsePrestationRm,
   valoriserPrestation,
+  type ContexteTarif,
   type FoyerCalcul,
   type PrestationRM,
 } from './cout.mapper.js';
+
+/** Vrai si les paramètres projetés portent le montant nécessaire au `mode` ABCM. */
+function aMontantsGrille(
+  parametres: ParametresGrilleAbcm,
+  mode: string,
+): boolean {
+  if (mode === 'CANTINE') {
+    return parametres.cantineTotalCentimes !== undefined;
+  }
+  if (mode === 'PERISCOLAIRE') {
+    return parametres.periMatinCentimes !== undefined;
+  }
+  return parametres.alshJourneeCompleteCentimes !== undefined;
+}
+
+/**
+ * Traduit une réponse REST `/grilles/applicable` (repli) en paramètres du domaine.
+ * Le Référentiel projette des noms de champs par mode (`totalCentimes`, `matinCentimes`…)
+ * distincts de la forme événement ; on les remappe vers `ParametresGrilleAbcm`.
+ */
+function parametresDepuisRepli(
+  repli: GrilleApplicableFallback,
+  mode: string,
+): ParametresGrilleAbcm {
+  const brut = repli as unknown as Record<string, unknown>;
+  // exactOptionalPropertyTypes : n'inclure une clé que si le montant est présent.
+  const n = (cle: string): number | undefined => {
+    const valeur = brut[cle];
+    return typeof valeur === 'number' ? valeur : undefined;
+  };
+  if (mode === 'CANTINE') {
+    const total = n('totalCentimes');
+    return {
+      ...(total !== undefined ? { cantineTotalCentimes: total } : {}),
+      cantinePartGardeCentimes: n('partGardeCentimes') ?? null,
+    };
+  }
+  if (mode === 'PERISCOLAIRE') {
+    const matin = n('matinCentimes');
+    const soir = n('soirCentimes');
+    return {
+      ...(matin !== undefined ? { periMatinCentimes: matin } : {}),
+      ...(soir !== undefined ? { periSoirCentimes: soir } : {}),
+    };
+  }
+  const journee = n('journeeCompleteCentimes');
+  const demi = n('demiJourneeCentimes');
+  const repas = n('repasCentimes');
+  return {
+    ...(journee !== undefined ? { alshJourneeCompleteCentimes: journee } : {}),
+    ...(demi !== undefined ? { alshDemiJourneeCentimes: demi } : {}),
+    ...(repas !== undefined ? { alshRepasCentimes: repas } : {}),
+  };
+}
+
+/** Assemble un contexte PSU (barème + bornes) depuis taux et bornes en centimes. */
+function contexteBaremePsu(
+  taux: Record<string, number>,
+  plancherCentimes: number | null,
+  plafondCentimes: number | null,
+): ContexteTarif {
+  return {
+    baremePsu: new BaremeEffortPsu(taux),
+    ...(plancherCentimes !== null
+      ? { plancher: Money.depuisCentimes(plancherCentimes) }
+      : {}),
+    ...(plafondCentimes !== null
+      ? { plafond: Money.depuisCentimes(plafondCentimes) }
+      : {}),
+  };
+}
 
 /** Détail d'une ligne de coût sérialisée (montant en centimes). */
 export interface LigneVue {
@@ -98,6 +192,7 @@ export class CoutService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly foyerClient: FoyerClient,
     private readonly planificationClient: PlanificationClient,
+    private readonly referentielClient: ReferentielClient,
   ) {}
 
   /** Coût consolidé d'un foyer pour un mois (réel ou simulé). */
@@ -106,11 +201,14 @@ export class CoutService {
     mois: string,
     simule: boolean,
   ): Promise<CoutMoisVue> {
-    const [donneesFoyer, contrats, projetees] = await Promise.all([
-      this.chargerFoyer(foyerId),
-      this.chargerContrats(foyerId),
-      this.chargerProjeteesMois(foyerId, mois, simule),
-    ]);
+    const [donneesFoyer, contrats, projetees, grilles, baremes] =
+      await Promise.all([
+        this.chargerFoyer(foyerId),
+        this.chargerContrats(foyerId),
+        this.chargerProjeteesMois(foyerId, mois, simule),
+        this.chargerGrilles(),
+        this.chargerBaremes(),
+      ]);
     return this.calculerCoutMois(
       foyerId,
       mois,
@@ -118,6 +216,8 @@ export class CoutService {
       donneesFoyer,
       contrats,
       projetees,
+      grilles,
+      baremes,
     );
   }
 
@@ -134,6 +234,8 @@ export class CoutService {
     donneesFoyer: FoyerCalcul,
     contrats: readonly ContratRow[],
     projetees: readonly PrestationMoisRow[],
+    grilles: readonly GrilleTarifaireRow[],
+    baremes: readonly BaremePsuRow[],
   ): Promise<CoutMoisVue> {
     const projections = await this.assemblerPrestations(
       mois,
@@ -141,6 +243,10 @@ export class CoutService {
       contrats,
       projetees,
     );
+
+    // Résolution des paramètres tarifaires au 1er du mois (H7 : mensuel au 1er ;
+    // les grilles ABCM changent à leur date d'effet, résolues au niveau du mois).
+    const dateResolution = `${mois}-01`;
 
     const prestations: CoutPrestationVue[] = [];
     const couts: CoutMois[] = [];
@@ -150,7 +256,18 @@ export class CoutService {
       if (MODES_ABCM.has(projection.mode)) {
         auMoinsUnAbcm = true;
       }
-      const cout = valoriserPrestation(projection.prestation, donneesFoyer);
+      const contexte = await this.resoudreContexteTarif(
+        projection.mode,
+        donneesFoyer.tranche,
+        dateResolution,
+        grilles,
+        baremes,
+      );
+      const cout = valoriserPrestation(
+        projection.prestation,
+        donneesFoyer,
+        contexte,
+      );
       couts.push(cout);
       prestations.push({
         enfant: projection.enfant,
@@ -226,11 +343,14 @@ export class CoutService {
     annee: number,
     simule: boolean,
   ): Promise<CoutAnnuelVue> {
-    const [donneesFoyer, contrats, projeteesAnnee] = await Promise.all([
-      this.chargerFoyer(foyerId),
-      this.chargerContrats(foyerId),
-      this.chargerProjeteesAnnee(foyerId, annee, simule),
-    ]);
+    const [donneesFoyer, contrats, projeteesAnnee, grilles, baremes] =
+      await Promise.all([
+        this.chargerFoyer(foyerId),
+        this.chargerContrats(foyerId),
+        this.chargerProjeteesAnnee(foyerId, annee, simule),
+        this.chargerGrilles(),
+        this.chargerBaremes(),
+      ]);
     const mois = await Promise.all(
       Array.from({ length: 12 }, (_, i) => {
         const moisIso = `${annee}-${String(i + 1).padStart(2, '0')}`;
@@ -241,6 +361,8 @@ export class CoutService {
           donneesFoyer,
           contrats,
           projeteesAnnee.get(moisIso) ?? [],
+          grilles,
+          baremes,
         );
       }),
     );
@@ -342,6 +464,132 @@ export class CoutService {
       }
     }
     return parMois;
+  }
+
+  /** Grilles tarifaires projetées (toutes versions/modes, table petite). */
+  private chargerGrilles(): Promise<GrilleTarifaireRow[]> {
+    return this.db.select().from(grilleTarifaire);
+  }
+
+  /** Barèmes PSU projetés (toutes versions, table petite). */
+  private chargerBaremes(): Promise<BaremePsuRow[]> {
+    return this.db.select().from(baremePsu);
+  }
+
+  /**
+   * Résout le **contexte tarifaire** d'une prestation à `date` : barème PSU pour la
+   * crèche, grille ABCM `(mode, tranche)` sinon. Read-model d'abord, repli REST
+   * ensuite ; **503 explicite** si aucune version n'est résoluble ni localement ni
+   * en repli (jamais de montant faux — c'est de l'argent).
+   */
+  private async resoudreContexteTarif(
+    mode: string,
+    tranche: 1 | 2 | 3,
+    date: string,
+    grilles: readonly GrilleTarifaireRow[],
+    baremes: readonly BaremePsuRow[],
+  ): Promise<ContexteTarif> {
+    if (mode === 'CRECHE_PSU') {
+      return this.resoudreBaremePsu(date, baremes);
+    }
+    return { grille: await this.resoudreGrille(mode, tranche, date, grilles) };
+  }
+
+  /** Grille ABCM applicable à `(mode, tranche, date)` — read-model puis repli REST. */
+  private async resoudreGrille(
+    mode: string,
+    tranche: 1 | 2 | 3,
+    date: string,
+    grilles: readonly GrilleTarifaireRow[],
+  ): Promise<GrilleAbcm> {
+    const versions = grilles
+      .filter((g) => g.mode === mode && g.tranche === tranche)
+      .map((g) => ({
+        valideDu: g.valideDu,
+        valideAu: g.valideAu,
+        valeur: g.parametres as ParametresGrilleAbcm,
+      }));
+    const local = this.selectionner(versions, date);
+    if (local && aMontantsGrille(local, mode)) {
+      return GrilleAbcm.depuisParametres(local);
+    }
+    this.logger.warn(
+      `Grille ${mode}/T${tranche} au ${date} absente du read model — repli svc-referentiel`,
+    );
+    const repli = await this.referentielClient.grilleApplicable(
+      date,
+      tranche,
+      mode,
+    );
+    if (repli) {
+      return GrilleAbcm.depuisParametres(parametresDepuisRepli(repli, mode));
+    }
+    this.logger.error(
+      `Grille ${mode}/T${tranche} au ${date} indisponible : read model froid et repli svc-referentiel en échec`,
+    );
+    throw new ServiceUnavailableException(
+      `grille ${mode}/T${tranche} au ${date} indisponible : read model froid et repli svc-referentiel en échec`,
+    );
+  }
+
+  /** Barème PSU applicable à `date` — read-model puis repli REST, sinon 503. */
+  private async resoudreBaremePsu(
+    date: string,
+    baremes: readonly BaremePsuRow[],
+  ): Promise<ContexteTarif> {
+    const versions = baremes.map((b) => ({
+      valideDu: b.valideDu,
+      valideAu: b.valideAu,
+      valeur: b,
+    }));
+    const local = this.selectionner(versions, date);
+    if (local) {
+      return contexteBaremePsu(
+        local.taux as Record<string, number>,
+        local.plancherCentimes,
+        local.plafondCentimes,
+      );
+    }
+    this.logger.warn(
+      `Barème PSU au ${date} absent du read model — repli svc-referentiel`,
+    );
+    const repli: BaremePsuFallback | undefined =
+      await this.referentielClient.baremePsuApplicable(date);
+    if (repli) {
+      return contexteBaremePsu(
+        repli.taux,
+        repli.plancherCentimes,
+        repli.plafondCentimes,
+      );
+    }
+    this.logger.error(
+      `Barème PSU au ${date} indisponible : read model froid et repli svc-referentiel en échec`,
+    );
+    throw new ServiceUnavailableException(
+      `barème PSU au ${date} indisponible : read model froid et repli svc-referentiel en échec`,
+    );
+  }
+
+  /**
+   * Sélectionne la valeur de la version applicable à `date` via le socle
+   * versionné (lot 1) ; `undefined` si aucune version ne couvre la date.
+   */
+  private selectionner<T>(
+    versions: readonly {
+      valideDu: string;
+      valideAu: string | null;
+      valeur: T;
+    }[],
+    date: string,
+  ): T | undefined {
+    try {
+      return selectionnerVersionApplicable(depuisBornes(versions), date).valeur;
+    } catch (erreur) {
+      if (erreur instanceof AucuneVersionApplicableError) {
+        return undefined;
+      }
+      throw erreur;
+    }
   }
 
   /**

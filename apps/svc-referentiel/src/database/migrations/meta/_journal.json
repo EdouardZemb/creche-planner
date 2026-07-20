@@ -15,6 +15,13 @@
       "when": 1784316148458,
       "tag": "0001_drop_frais_fixes_abcm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784490986934,
+      "tag": "0002_grille_bareme_version_payload",
+      "breakpoints": true
     }
   ]
 }

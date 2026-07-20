@@ -2,7 +2,7 @@
 // Critère : partition complète des paliers + BVA aux bornes de palier (3|4, 7|8) + valeurs invalides ;
 // Traçabilité doc 17 ; SUT : psu/bareme-effort-psu.ts
 import { describe, expect, it } from 'vitest';
-import { BaremeEffortPsu } from './bareme-effort-psu.js';
+import { baremeEffortPsu2026 } from './bareme-effort-psu.fixtures.js';
 import { TauxEffortInconnuError } from '../core/tarification-error.js';
 
 /**
@@ -17,7 +17,7 @@ import { TauxEffortInconnuError } from '../core/tarification-error.js';
  * Bornes de palier sensibles : 3↔4 (palier 3 vs palier 4-7) et 7↔8 (palier 4-7 vs ≥8).
  */
 
-const bareme = new BaremeEffortPsu();
+const bareme = baremeEffortPsu2026();
 
 describe('MBT DT-08 — paliers du taux d’effort (partition complète)', () => {
   // Tous les paliers, un représentant par classe + bornes BVA.

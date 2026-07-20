@@ -22,3 +22,18 @@ export const publierGrilleAbcmSchema = z.object({
   alshRepas: z.number().nonnegative(),
 });
 export type PublierGrilleAbcmDto = z.infer<typeof publierGrilleAbcmSchema>;
+
+/**
+ * Publication d'un barème PSU versionné (SFD 30, D2). `taux` = map
+ * `nbEnfantsACharge` (chaîne) → taux horaire CNAF. Bornes (plancher/plafond)
+ * saisies en **euros**, converties en centimes côté service. Validé en tête de
+ * `ReferentielService.publierBaremePsu` (couvre aussi le barème seedé au boot).
+ */
+export const publierBaremePsuSchema = z.object({
+  valideDu: z.iso.date('date ISO YYYY-MM-DD attendue'),
+  valideAu: z.iso.date('date ISO YYYY-MM-DD attendue').nullable().optional(),
+  taux: z.record(z.string(), z.number().nonnegative()),
+  plancher: z.number().nonnegative().optional(),
+  plafond: z.number().nonnegative().optional(),
+});
+export type PublierBaremePsuDto = z.infer<typeof publierBaremePsuSchema>;

@@ -42,6 +42,13 @@ export const grilleAbcm = pgTable('grille_abcm', {
   alshRepasCentimes: bigint('alsh_repas_centimes', {
     mode: 'number',
   }).notNull(),
+  /**
+   * Plus haute version d'événement `GrillePubliee` déjà émise pour cette grille
+   * (SFD 30, lot 2). Défaut `1` : les grilles déjà seedées en prod n'ont émis que
+   * la v1 (sans montants) ; le seed les ré-émet **une fois** en v2 au premier boot
+   * post-déploiement, puis remonte cette borne à `2`. Idempotent, sans intervention ops.
+   */
+  versionPayload: integer('version_payload').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -57,6 +64,13 @@ export const baremePsu = pgTable('bareme_psu', {
   /** Bornes de ressources CNAF — optionnelles (doc 02 §3.1 ; l'oracle CT-01 ne les applique pas). */
   plancherCentimes: bigint('plancher_centimes', { mode: 'number' }),
   plafondCentimes: bigint('plafond_centimes', { mode: 'number' }),
+  /**
+   * Plus haute version d'événement `BaremePsuPublie` déjà émise (SFD 30, lot 2).
+   * Défaut `0` : le seed PSU n'émettait rien jusqu'ici ; le barème déjà seedé en
+   * prod est ré-émis **une fois** (v1) au premier boot post-déploiement, puis cette
+   * borne passe à `1`.
+   */
+  versionPayload: integer('version_payload').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
