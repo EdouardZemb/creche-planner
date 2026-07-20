@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { integrationEventSchema } from '@creche-planner/contracts-kernel';
+import {
+  integrationEventSchema,
+  MODES_CONTRAT,
+  type ModeContrat,
+} from '@creche-planner/contracts-kernel';
 import { preavisRegleSchema } from '../etablissement/preavis.js';
 
 /**
@@ -13,15 +17,12 @@ import { preavisRegleSchema } from '../etablissement/preavis.js';
 /** Service émetteur (champ `source` de l'enveloppe). */
 export const PLANIFICATION_EVENT_SOURCE = 'svc-planification';
 
-/** Modes de garde couverts par un contrat de garde. */
-export const MODES_CONTRAT = [
-  'CRECHE_PSU',
-  'PERISCOLAIRE',
-  'CANTINE',
-  'ALSH',
-] as const;
-/** Mode de garde d'un contrat (type unitaire dérivé de `MODES_CONTRAT`). */
-export type ModeContrat = (typeof MODES_CONTRAT)[number];
+/**
+ * Modes de garde couverts par un contrat de garde — ré-export de compatibilité
+ * de la définition unique (SFD 30 §H4, `@creche-planner/contracts-kernel`).
+ */
+export { MODES_CONTRAT };
+export type { ModeContrat };
 
 // --- planification.ContratCree.v1 -------------------------------------------
 

@@ -5,4 +5,5 @@
 // dans `@creche-planner/contracts-<contexte>`.
 export * from './lib/events/index.js';
 export * from './lib/dto/index.js';
+export * from './lib/modes.js';
 export * from './lib/openapi/gateway.openapi.js';

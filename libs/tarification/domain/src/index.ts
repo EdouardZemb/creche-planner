@@ -2,7 +2,7 @@
 export { LigneDeCout, CoutMois } from './lib/core/cout-mois.js';
 export type { SensLigne } from './lib/core/cout-mois.js';
 export type {
-  ModeGarde,
+  PolitiqueTarifaireId,
   PolitiqueTarifaire,
 } from './lib/core/politique-tarifaire.js';
 export {
