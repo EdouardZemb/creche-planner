@@ -118,6 +118,40 @@ export const grilleTarifaire = pgTable(
   ],
 );
 
+/**
+ * Projection du **barème PSU** applicable (event `referentiel.BaremePsuPublie.v1`).
+ * Versionné par période de validité (`valide_du`/`valide_au`). Le taux d'effort
+ * (map `nbEnfants → taux`) et les bornes CNAF sont projetés bruts et passés au
+ * domaine, résolus **à la date du mois** (RM-30-04 : plus de barème figé dans le
+ * calcul). `valide_du` est unique (une version par date de début).
+ */
+export const baremePsu = pgTable(
+  'bareme_psu',
+  {
+    /** Identifiant du barème amont (PK). */
+    id: uuid('id').primaryKey(),
+    /** Début de validité ISO `YYYY-MM-DD` (inclus). */
+    valideDu: varchar('valide_du', { length: 10 }).notNull(),
+    /** Fin de validité ISO `YYYY-MM-DD` (incluse), `null` si période ouverte. */
+    valideAu: varchar('valide_au', { length: 10 }),
+    /** Map `nbEnfantsACharge` (chaîne) → taux horaire CNAF, forme domaine. */
+    taux: jsonb('taux').notNull(),
+    /** Plancher de ressources CNAF en centimes, `null` si non appliqué. */
+    plancherCentimes: integer('plancher_centimes'),
+    /** Plafond de ressources CNAF en centimes, `null` si non appliqué. */
+    plafondCentimes: integer('plafond_centimes'),
+    eventId: uuid('event_id'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // Un barème amont par début de validité : republication idempotente.
+    unique('bareme_psu_du_uq').on(table.valideDu),
+  ],
+);
+
 // --- Read model : Planification (projeté depuis le stream PLANIFICATION) ----
 
 /**
@@ -271,6 +305,7 @@ export type FoyerRow = typeof foyer.$inferSelect;
 export type EnfantRow = typeof enfant.$inferSelect;
 export type ContratRow = typeof contrat.$inferSelect;
 export type GrilleTarifaireRow = typeof grilleTarifaire.$inferSelect;
+export type BaremePsuRow = typeof baremePsu.$inferSelect;
 export type PrestationMoisRow = typeof prestationMois.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;

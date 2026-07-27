@@ -6,10 +6,7 @@ import {
   exigerNombreNonNegatif,
 } from '../core/garde.js';
 import { DeductionExcessiveError } from '../core/tarification-error.js';
-import {
-  BAREME_EFFORT_PSU_2026,
-  type BaremeEffortPsu,
-} from './bareme-effort-psu.js';
+import { type BaremeEffortPsu } from './bareme-effort-psu.js';
 
 /** Configuration contractuelle du tarif crèche PSU (données du Foyer + barème). */
 export interface ConfigTarifCrechePsu {
@@ -17,8 +14,8 @@ export interface ConfigTarifCrechePsu {
   ressourcesMensuelles: Money;
   /** Nombre d'enfants à charge → taux d'effort (doc 02 §3.3). */
   nbEnfantsACharge: number;
-  /** Barème CNAF applicable ; défaut : barème 2026. */
-  bareme?: BaremeEffortPsu;
+  /** Barème CNAF applicable, résolu à la date du mois (RM-30-04, plus de défaut figé). */
+  bareme: BaremeEffortPsu;
   /** Plancher de ressources CNAF (borne basse), optionnel (doc 02 §3.1). */
   plancher?: Money;
   /** Plafond de ressources CNAF (borne haute), optionnel (doc 02 §3.1). */
@@ -72,12 +69,11 @@ export class TarifCrechePsu implements PolitiqueTarifaire<SaisieMoisPsu> {
   private readonly _tarifHoraire: Money;
 
   constructor(private readonly config: ConfigTarifCrechePsu) {
-    const bareme = config.bareme ?? BAREME_EFFORT_PSU_2026;
     const ressourcesBornees = this.bornerRessources(
       config.ressourcesMensuelles,
     );
     this._tarifHoraire = ressourcesBornees.fois(
-      bareme.taux(config.nbEnfantsACharge),
+      config.bareme.taux(config.nbEnfantsACharge),
     );
   }
 

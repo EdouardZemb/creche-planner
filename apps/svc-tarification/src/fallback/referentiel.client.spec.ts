@@ -83,4 +83,38 @@ describe('ReferentielClient (repli tarif→référentiel)', () => {
     );
     expect(dernierEntetes(fetchMock)[ENTETE_ASSERTION]).toBeDefined();
   });
+
+  it('baremePsuApplicable : succès → renvoie taux + bornes (repli PSU à date)', async () => {
+    delete process.env['ASSERTION_IDENTITE_SECRET'];
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        mode: 'CRECHE_PSU',
+        valideDu: '2026-01-01',
+        valideAu: null,
+        taux: { '1': 0.000619, '2': 0.000516 },
+        plancherCentimes: null,
+        plafondCentimes: null,
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const bareme = await new ReferentielClient().baremePsuApplicable(
+      '2026-09-15',
+    );
+    expect(bareme?.taux).toEqual({ '1': 0.000619, '2': 0.000516 });
+    // La requête cible bien le mode CRECHE_PSU sans tranche.
+    const url = (fetchMock.mock.calls[0] as unknown[] | undefined)?.[0];
+    expect(String(url)).toContain('mode=CRECHE_PSU');
+  });
+
+  it('baremePsuApplicable : erreur HTTP → dégradation propre (undefined)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })),
+    );
+    expect(
+      await new ReferentielClient().baremePsuApplicable('2026-09-15'),
+    ).toBeUndefined();
+  });
 });

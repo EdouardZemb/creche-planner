@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Duree, Money } from '@creche-planner/shared-kernel';
 import { TarifCrechePsu } from './tarif-creche-psu.js';
-import { BaremeEffortPsu } from './bareme-effort-psu.js';
+import { baremeEffortPsu2026 } from './bareme-effort-psu.fixtures.js';
 import { DeductionExcessiveError } from '../core/tarification-error.js';
 
 /** Jeu de données de référence (doc 02 §0). */
@@ -11,6 +11,7 @@ function tarifFoyer(): TarifCrechePsu {
   return new TarifCrechePsu({
     ressourcesMensuelles: RESSOURCES,
     nbEnfantsACharge: 2,
+    bareme: baremeEffortPsu2026(),
   });
 }
 
@@ -126,6 +127,7 @@ describe('TarifCrechePsu (crèche PSU/CNAF, doc 02 §3)', () => {
     const tarif = new TarifCrechePsu({
       ressourcesMensuelles: Money.depuisEuros(100000),
       nbEnfantsACharge: 2,
+      bareme: baremeEffortPsu2026(),
       plafond: RESSOURCES,
     });
     expect(tarif.tarifHoraire.centimes).toBe(347);
@@ -135,6 +137,7 @@ describe('TarifCrechePsu (crèche PSU/CNAF, doc 02 §3)', () => {
     const tarif = new TarifCrechePsu({
       ressourcesMensuelles: Money.depuisEuros(1000),
       nbEnfantsACharge: 2,
+      bareme: baremeEffortPsu2026(),
       plancher: RESSOURCES,
     });
     expect(tarif.tarifHoraire.centimes).toBe(347);
@@ -144,7 +147,7 @@ describe('TarifCrechePsu (crèche PSU/CNAF, doc 02 §3)', () => {
     const tarif = new TarifCrechePsu({
       ressourcesMensuelles: RESSOURCES,
       nbEnfantsACharge: 1,
-      bareme: new BaremeEffortPsu(),
+      bareme: baremeEffortPsu2026(),
     });
     // 6 716,92 € × 0,0619 % = 4,1578 €/h → arrondi 4,16 €/h
     expect(tarif.tarifHoraire.centimes).toBe(416);

@@ -8,13 +8,17 @@ import {
   VersionsChevauchantesError,
 } from '@creche-planner/referentiel-domain';
 import {
-  GRILLE_PUBLIEE_TYPE,
+  BAREME_PSU_PUBLIE_TYPE,
+  GRILLE_PUBLIEE_V2_TYPE,
   MODES_ABCM_CONTRAT,
 } from '@creche-planner/contracts-referentiel';
 import { ReferentielService } from './referentiel.service.js';
 import type { Database } from '../database/database.types.js';
 import type { BaremePsuRow, GrilleAbcmRow } from '../database/schema.js';
-import type { PublierGrilleAbcmDto } from './referentiel.dto.js';
+import type {
+  PublierBaremePsuDto,
+  PublierGrilleAbcmDto,
+} from './referentiel.dto.js';
 
 /**
  * Tests unitaires du `ReferentielService` SANS infra (Postgres mocké), AQ-08. Même
@@ -55,6 +59,7 @@ function ligneGrille(overrides: Partial<GrilleAbcmRow> = {}): GrilleAbcmRow {
     alshJourneeCompleteCentimes: 1250,
     alshDemiJourneeCentimes: 725,
     alshRepasCentimes: 310,
+    versionPayload: 2,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     ...overrides,
   };
@@ -68,6 +73,7 @@ function ligneBareme(overrides: Partial<BaremePsuRow> = {}): BaremePsuRow {
     taux: { '1': 0.000619, '2': 0.000516 },
     plancherCentimes: 80000,
     plafondCentimes: 700000,
+    versionPayload: 1,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     ...overrides,
   };
@@ -140,17 +146,29 @@ describe('ReferentielService.publierGrilleAbcm (versionnement + outbox)', () => 
     for (const mode of MODES_ABCM_CONTRAT) {
       expect(insertValues).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: GRILLE_PUBLIEE_TYPE,
+          type: GRILLE_PUBLIEE_V2_TYPE,
           payload: expect.objectContaining({
             grilleId: vue.id,
             mode,
             tranche: 3,
             valideDu: '2026-01-01',
             valideAu: null,
+            parametres: expect.any(Object),
           }),
         }),
       );
     }
+    // La v2 CANTINE porte les montants de la cantine (D1) ; les autres modes non.
+    const eventCantine = insertValues.mock.calls
+      .map((appel) => appel[0] as { payload?: { mode?: string } })
+      .find((v) => v.payload?.mode === 'CANTINE');
+    expect(eventCantine?.payload).toMatchObject({
+      parametres: { cantineTotalCentimes: 540, cantinePartGardeCentimes: 270 },
+    });
+    // La grille est marquée version_payload = 2 (pas de ré-émission au boot).
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ versionPayload: 2, tranche: 3 }),
+    );
   });
 
   it("VALIDE l'entrée via Zod EN TÊTE (parse déplacé du pipe HTTP vers le service) — entrée invalide rejetée avant tout accès base", async () => {
@@ -330,6 +348,175 @@ describe('ReferentielService.grilleApplicable (sélection par date)', () => {
     await expect(
       service.grilleApplicable('2026-06-15', 'CANTINE', undefined),
     ).rejects.toBeInstanceOf(TrancheInconnueError);
+  });
+});
+
+/** DTO de publication de barème PSU valide (taux + bornes en euros). */
+const DTO_BAREME: PublierBaremePsuDto = {
+  valideDu: '2026-01-01',
+  valideAu: null,
+  taux: { '1': 0.000619, '2': 0.000516 },
+  plancher: 800,
+  plafond: 7000,
+};
+
+/**
+ * Faux `db` pour `publierBaremePsu` : `select().from(baremePsu)` (table entière,
+ * sans `where`) renvoie `existants` ; la transaction expose `insert().values()`.
+ */
+function fakeDbBareme(existants: BaremePsuRow[]): {
+  db: Database;
+  transaction: ReturnType<typeof vi.fn>;
+  insertValues: ReturnType<typeof vi.fn>;
+  select: ReturnType<typeof vi.fn>;
+} {
+  const insertValues = vi.fn(() => Promise.resolve());
+  const tx = { insert: () => ({ values: insertValues }) };
+  const transaction = vi.fn(async (cb: (t: unknown) => Promise<unknown>) =>
+    cb(tx),
+  );
+  const select = vi.fn(() => ({ from: () => Promise.resolve(existants) }));
+  const db = { select, transaction } as unknown as Database;
+  return { db, transaction, insertValues, select };
+}
+
+/**
+ * Faux `db` pour la ré-émission : `select().from(t).where(...)` renvoie `aReemettre`
+ * (lignes sous le seuil `version_payload`) ; la transaction expose `insert().values()`
+ * et `update().set().where()`.
+ */
+function fakeDbReemission(aReemettre: unknown[]): {
+  db: Database;
+  transaction: ReturnType<typeof vi.fn>;
+  insertValues: ReturnType<typeof vi.fn>;
+  setWhere: ReturnType<typeof vi.fn>;
+} {
+  const insertValues = vi.fn(() => Promise.resolve());
+  const setWhere = vi.fn(() => Promise.resolve());
+  const tx = {
+    insert: () => ({ values: insertValues }),
+    update: () => ({ set: () => ({ where: setWhere }) }),
+  };
+  const transaction = vi.fn(async (cb: (t: unknown) => Promise<unknown>) =>
+    cb(tx),
+  );
+  const select = vi.fn(() => ({
+    from: () => ({ where: () => Promise.resolve(aReemettre) }),
+  }));
+  const db = { select, transaction } as unknown as Database;
+  return { db, transaction, insertValues, setWhere };
+}
+
+describe('ReferentielService.publierBaremePsu (versionnement + outbox)', () => {
+  it('insère le barème + un BaremePsuPublie dans UNE transaction (bornes euros → centimes)', async () => {
+    const { db, transaction, insertValues } = fakeDbBareme([]);
+    const service = new ReferentielService(db);
+
+    const vue = await service.publierBaremePsu(DTO_BAREME);
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(vue).toMatchObject({
+      valideDu: '2026-01-01',
+      valideAu: null,
+      plancherCentimes: 80000,
+      plafondCentimes: 700000,
+    });
+    // 1 insert barème (version_payload = 1) + 1 événement BaremePsuPublie.
+    expect(insertValues).toHaveBeenCalledTimes(2);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ versionPayload: 1 }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: BAREME_PSU_PUBLIE_TYPE,
+        payload: expect.objectContaining({
+          baremeId: vue.id,
+          taux: { '1': 0.000619, '2': 0.000516 },
+          plancherCentimes: 80000,
+          plafondCentimes: 700000,
+        }),
+      }),
+    );
+  });
+
+  it('bornes absentes → null (pas de 0 implicite)', async () => {
+    const { db } = fakeDbBareme([]);
+    const service = new ReferentielService(db);
+
+    const vue = await service.publierBaremePsu({
+      valideDu: '2026-01-01',
+      valideAu: null,
+      taux: { '1': 0.0006 },
+    });
+    expect(vue.plancherCentimes).toBeNull();
+    expect(vue.plafondCentimes).toBeNull();
+  });
+
+  it('REFUSE un chevauchement de période avec un barème existant — aucune écriture', async () => {
+    const { db, transaction } = fakeDbBareme([ligneBareme()]);
+    const service = new ReferentielService(db);
+
+    await expect(
+      service.publierBaremePsu({ ...DTO_BAREME, valideDu: '2026-09-01' }),
+    ).rejects.toThrow();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReferentielService — ré-émission one-shot (rattrapage prod)', () => {
+  it('reemettreGrillesEnV2 : ré-émet en v2 par mode + remonte version_payload à 2', async () => {
+    const { db, transaction, insertValues, setWhere } = fakeDbReemission([
+      ligneGrille({ versionPayload: 1 }),
+    ]);
+    const service = new ReferentielService(db);
+
+    const n = await service.reemettreGrillesEnV2();
+
+    expect(n).toBe(1);
+    expect(transaction).toHaveBeenCalledTimes(1);
+    // Un événement v2 par mode ABCM + une mise à jour de version_payload.
+    expect(insertValues).toHaveBeenCalledTimes(MODES_ABCM_CONTRAT.length);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ type: GRILLE_PUBLIEE_V2_TYPE }),
+    );
+    expect(setWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('reemettreGrillesEnV2 : rien à ré-émettre → aucune transaction', async () => {
+    const { db, transaction } = fakeDbReemission([]);
+    const service = new ReferentielService(db);
+
+    expect(await service.reemettreGrillesEnV2()).toBe(0);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it('reemettreBaremesPsu : ré-émet le barème + remonte version_payload à 1', async () => {
+    const { db, insertValues, setWhere } = fakeDbReemission([
+      ligneBareme({ versionPayload: 0 }),
+    ]);
+    const service = new ReferentielService(db);
+
+    const n = await service.reemettreBaremesPsu();
+
+    expect(n).toBe(1);
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: BAREME_PSU_PUBLIE_TYPE,
+        payload: expect.objectContaining({
+          taux: { '1': 0.000619, '2': 0.000516 },
+        }),
+      }),
+    );
+    expect(setWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('reemettreBaremesPsu : rien à ré-émettre → 0', async () => {
+    const { db, transaction } = fakeDbReemission([]);
+    const service = new ReferentielService(db);
+
+    expect(await service.reemettreBaremesPsu()).toBe(0);
+    expect(transaction).not.toHaveBeenCalled();
   });
 });
 

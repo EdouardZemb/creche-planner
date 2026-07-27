@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Tranche } from '@creche-planner/shared-kernel';
-import { GrilleAbcm } from './grille-abcm.js';
+import { grilleAbcm2026 } from './grille-abcm.fixtures.js';
 import { TarifCantineAbcm } from './tarif-cantine-abcm.js';
 import { QuantiteInvalideError } from '../core/tarification-error.js';
 
-const cantine = new TarifCantineAbcm(GrilleAbcm.pour(Tranche.T3));
+const cantine = new TarifCantineAbcm(grilleAbcm2026(Tranche.T3));
 
 describe('TarifCantineAbcm (doc 02 §4.1)', () => {
   it('CT-10 — 16 jours × 12,68 € = 202,88 €', () => {

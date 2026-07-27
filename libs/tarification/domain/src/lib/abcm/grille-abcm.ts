@@ -1,102 +1,115 @@
-import { Money, Tranche } from '@creche-planner/shared-kernel';
+import { Money } from '@creche-planner/shared-kernel';
 import { GrilleIndisponibleError } from '../core/tarification-error.js';
 
-/** Tarifs ABCM d'une tranche RFR (doc 02 §4, Maternelle Mulhouse, au 01/01/2026). */
+/**
+ * Tarifs ABCM d'une tranche RFR (doc 02 §4). Représentation **interne** : chaque
+ * poste est un `Money` ou `undefined` (la grille peut être partielle — projetée
+ * pour un seul mode). L'accès à un poste absent lève `GrilleIndisponibleError`.
+ */
 interface DonneesGrilleAbcm {
   /** Cantine — TOTAL repas + encadrement, par jour (doc 02 §4.1). */
-  cantineTotal: Money;
-  /**
-   * Cantine — part « garde » seule (cas PAI panier-repas, doc 02 §4.4 bis).
-   * Connue uniquement pour la T3 Maternelle Mulhouse (8,01 €) ; absente sinon.
-   */
-  cantinePartGarde?: Money;
+  cantineTotal: Money | undefined;
+  /** Cantine — part « garde » seule (cas PAI panier-repas, doc 02 §4.4 bis). */
+  cantinePartGarde: Money | undefined;
   /** Périscolaire — séance du matin (doc 02 §4.2). */
-  periMatin: Money;
+  periMatin: Money | undefined;
   /** Périscolaire — séance du soir, 2 h (doc 02 §4.2). */
-  periSoir: Money;
+  periSoir: Money | undefined;
   /** ALSH — journée complète (doc 02 §4.3). */
-  alshJourneeComplete: Money;
+  alshJourneeComplete: Money | undefined;
   /** ALSH — demi-journée (doc 02 §4.3). */
-  alshDemiJournee: Money;
+  alshDemiJournee: Money | undefined;
   /** ALSH — repas (doc 02 §4.3). */
-  alshRepas: Money;
+  alshRepas: Money | undefined;
 }
 
 /**
- * Grille ABCM versionnée 2026 par tranche (doc 02 §4). Donnée du Référentiel,
- * figée ici pour tester le domaine en isolation (Phase 2).
+ * Paramètres tarifaires ABCM en **centimes entiers** (forme du Référentiel projeté,
+ * `referentiel.GrillePubliee.v2`). Tous les champs sont optionnels : un événement
+ * projette une grille **par mode**, donc seuls les postes du mode concerné sont
+ * renseignés. `null` (part « garde » absente pour la tranche) vaut « non défini ».
  */
-const GRILLE_ABCM_2026: Record<1 | 2 | 3, DonneesGrilleAbcm> = {
-  1: {
-    cantineTotal: Money.depuisEuros(10.5),
-    periMatin: Money.depuisEuros(2.31),
-    periSoir: Money.depuisEuros(5.01),
-    alshJourneeComplete: Money.depuisEuros(23.5),
-    alshDemiJournee: Money.depuisEuros(8.5),
-    alshRepas: Money.depuisEuros(6.5),
-  },
-  2: {
-    cantineTotal: Money.depuisEuros(11.65),
-    periMatin: Money.depuisEuros(2.87),
-    periSoir: Money.depuisEuros(6.01),
-    alshJourneeComplete: Money.depuisEuros(25.0),
-    alshDemiJournee: Money.depuisEuros(9.0),
-    alshRepas: Money.depuisEuros(7.0),
-  },
-  3: {
-    cantineTotal: Money.depuisEuros(12.68),
-    cantinePartGarde: Money.depuisEuros(8.01),
-    periMatin: Money.depuisEuros(3.33),
-    periSoir: Money.depuisEuros(7.05),
-    alshJourneeComplete: Money.depuisEuros(26.5),
-    alshDemiJournee: Money.depuisEuros(9.5),
-    alshRepas: Money.depuisEuros(7.5),
-  },
-};
+export interface ParametresGrilleAbcm {
+  readonly cantineTotalCentimes?: number;
+  readonly cantinePartGardeCentimes?: number | null;
+  readonly periMatinCentimes?: number;
+  readonly periSoirCentimes?: number;
+  readonly alshJourneeCompleteCentimes?: number;
+  readonly alshDemiJourneeCentimes?: number;
+  readonly alshRepasCentimes?: number;
+}
 
 /**
  * Grille tarifaire ABCM applicable à une tranche RFR (INV-03). Façade lecture
- * seule sur les barèmes versionnés ; ne fait aucun calcul de quantité.
+ * seule sur des barèmes **fournis en paramètres** (RM-30-04 : plus aucune valeur
+ * tarifaire figée dans le domaine) ; ne fait aucun calcul de quantité.
  */
 export class GrilleAbcm {
   private constructor(private readonly donnees: DonneesGrilleAbcm) {}
 
-  /** Grille ABCM 2026 pour la tranche donnée (doc 02 §4). */
-  static pour(tranche: Tranche): GrilleAbcm {
-    return new GrilleAbcm(GRILLE_ABCM_2026[tranche.niveau]);
+  /**
+   * Construit une grille depuis des paramètres en centimes (Référentiel projeté).
+   * Un poste absent (`undefined`) ou nul (`null`) reste indisponible : accéder au
+   * getter correspondant lèvera `GrilleIndisponibleError`.
+   */
+  static depuisParametres(parametres: ParametresGrilleAbcm): GrilleAbcm {
+    const money = (centimes: number | null | undefined): Money | undefined =>
+      centimes === undefined || centimes === null
+        ? undefined
+        : Money.depuisCentimes(centimes);
+    return new GrilleAbcm({
+      cantineTotal: money(parametres.cantineTotalCentimes),
+      cantinePartGarde: money(parametres.cantinePartGardeCentimes),
+      periMatin: money(parametres.periMatinCentimes),
+      periSoir: money(parametres.periSoirCentimes),
+      alshJourneeComplete: money(parametres.alshJourneeCompleteCentimes),
+      alshDemiJournee: money(parametres.alshDemiJourneeCentimes),
+      alshRepas: money(parametres.alshRepasCentimes),
+    });
+  }
+
+  /** Exige un poste tarifaire présent, sinon lève avec un libellé explicite. */
+  private exiger(valeur: Money | undefined, libelle: string): Money {
+    if (valeur === undefined) {
+      throw new GrilleIndisponibleError(
+        `${libelle} non défini pour cette grille`,
+      );
+    }
+    return valeur;
   }
 
   get cantineTotal(): Money {
-    return this.donnees.cantineTotal;
+    return this.exiger(this.donnees.cantineTotal, 'tarif cantine');
   }
 
   /** Part « garde » de la cantine (PAI). Lève si la tranche ne la définit pas. */
   get cantinePartGarde(): Money {
-    if (this.donnees.cantinePartGarde === undefined) {
-      throw new GrilleIndisponibleError(
-        'part « garde » cantine (PAI) non définie pour cette tranche',
-      );
-    }
-    return this.donnees.cantinePartGarde;
+    return this.exiger(
+      this.donnees.cantinePartGarde,
+      'part « garde » cantine (PAI)',
+    );
   }
 
   get periMatin(): Money {
-    return this.donnees.periMatin;
+    return this.exiger(this.donnees.periMatin, 'tarif périscolaire matin');
   }
 
   get periSoir(): Money {
-    return this.donnees.periSoir;
+    return this.exiger(this.donnees.periSoir, 'tarif périscolaire soir');
   }
 
   get alshJourneeComplete(): Money {
-    return this.donnees.alshJourneeComplete;
+    return this.exiger(
+      this.donnees.alshJourneeComplete,
+      'tarif ALSH journée complète',
+    );
   }
 
   get alshDemiJournee(): Money {
-    return this.donnees.alshDemiJournee;
+    return this.exiger(this.donnees.alshDemiJournee, 'tarif ALSH demi-journée');
   }
 
   get alshRepas(): Money {
-    return this.donnees.alshRepas;
+    return this.exiger(this.donnees.alshRepas, 'tarif ALSH repas');
   }
 }

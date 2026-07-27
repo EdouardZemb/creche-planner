@@ -4,7 +4,11 @@ import {
   FOYER_MIS_A_JOUR_TYPE,
   FOYER_MIS_A_JOUR_V2_TYPE,
 } from '@creche-planner/contracts-foyer';
-import { GRILLE_PUBLIEE_TYPE } from '@creche-planner/contracts-referentiel';
+import {
+  BAREME_PSU_PUBLIE_TYPE,
+  GRILLE_PUBLIEE_TYPE,
+  GRILLE_PUBLIEE_V2_TYPE,
+} from '@creche-planner/contracts-referentiel';
 import {
   CONTRAT_CREE_TYPE,
   CONTRAT_MODIFIE_TYPE,
@@ -14,6 +18,7 @@ import { ProjectionService } from './projection.service.js';
 import type { Database } from '../database/database.types.js';
 import type { PlanificationClient } from '../fallback/planification.client.js';
 import {
+  baremePsu,
   contrat,
   foyer,
   grilleTarifaire,
@@ -390,6 +395,78 @@ describe('Projection GrillePubliee (référentiel)', () => {
       mode: 'CANTINE',
       tranche: 3,
       valideDu: '2026-01-01',
+    });
+    // v1 historique : la ligne est projetée mais sans montants (ignorée au calcul).
+    expect(lignesDe(grilleTarifaire)[0]?.['parametres']).toEqual({});
+    expect(lignesDe(processedEvent)).toHaveLength(1);
+  });
+
+  it('GrillePubliee.v2 : stocke les montants (parametres) dans le read model', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+    const evt = {
+      id: '33333333-3333-4333-8333-333333333334',
+      type: GRILLE_PUBLIEE_V2_TYPE,
+      source: 'svc-referentiel',
+      version: 1,
+      occurredAt: '2026-01-01T00:00:00.000Z',
+      traceId: 'trace-v2',
+      payload: {
+        grilleId: '44444444-0000-4000-8000-000000000001',
+        mode: 'CANTINE',
+        tranche: 3,
+        valideDu: '2026-01-01',
+        valideAu: null,
+        parametres: {
+          cantineTotalCentimes: 1268,
+          cantinePartGardeCentimes: 801,
+        },
+      },
+    };
+
+    await expect(projection.traiter('REFERENTIEL', evt)).resolves.toBe(
+      'TRAITE',
+    );
+    expect(lignesDe(grilleTarifaire)[0]?.['parametres']).toEqual({
+      cantineTotalCentimes: 1268,
+      cantinePartGardeCentimes: 801,
+    });
+  });
+});
+
+describe('Projection BaremePsuPublie (référentiel)', () => {
+  it('projette le barème PSU (taux + bornes) puis rejoue en no-op', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+    const evt = {
+      id: '33333333-3333-4333-8333-333333333335',
+      type: BAREME_PSU_PUBLIE_TYPE,
+      source: 'svc-referentiel',
+      version: 1,
+      occurredAt: '2026-01-01T00:00:00.000Z',
+      traceId: 'trace-psu',
+      payload: {
+        baremeId: '55555555-0000-4000-8000-000000000000',
+        valideDu: '2026-01-01',
+        valideAu: null,
+        taux: { '1': 0.000619, '2': 0.000516 },
+        plancherCentimes: null,
+        plafondCentimes: null,
+      },
+    };
+
+    await expect(projection.traiter('REFERENTIEL', evt)).resolves.toBe(
+      'TRAITE',
+    );
+    await expect(projection.traiter('REFERENTIEL', evt)).resolves.toBe(
+      'TRAITE',
+    );
+
+    expect(lignesDe(baremePsu)).toHaveLength(1);
+    expect(lignesDe(baremePsu)[0]).toMatchObject({
+      id: '55555555-0000-4000-8000-000000000000',
+      valideDu: '2026-01-01',
+      taux: { '1': 0.000619, '2': 0.000516 },
     });
     expect(lignesDe(processedEvent)).toHaveLength(1);
   });

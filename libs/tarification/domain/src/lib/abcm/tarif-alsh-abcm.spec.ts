@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Tranche } from '@creche-planner/shared-kernel';
-import { GrilleAbcm } from './grille-abcm.js';
+import { grilleAbcm2026 } from './grille-abcm.fixtures.js';
 import { TarifAlshAbcm } from './tarif-alsh-abcm.js';
 import { QuantiteInvalideError } from '../core/tarification-error.js';
 
-const alsh = new TarifAlshAbcm(GrilleAbcm.pour(Tranche.T3));
+const alsh = new TarifAlshAbcm(grilleAbcm2026(Tranche.T3));
 
 describe('TarifAlshAbcm (doc 02 §4.3)', () => {
   it('CT-12 — 5 journées complètes × 26,50 € = 132,50 €', () => {

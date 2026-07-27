@@ -28,19 +28,26 @@ function amorcer(seed: SeedService): Promise<void> {
 }
 
 /**
- * Faux `ReferentielService` : `publier` (espion autonome, pour éviter le
- * `unbound-method` d'un `expect(obj.methode)`) est renvoyé à part du service.
+ * Faux `ReferentielService` : les espions (publication de grille/barème,
+ * ré-émission one-shot) sont renvoyés à part du service (évite le `unbound-method`
+ * d'un `expect(obj.methode)`). Les ré-émissions renvoient `0` (rien à rattraper).
  */
 function fauxReferentiel(): {
   referentiel: ReferentielService;
   publier: ReturnType<typeof vi.fn>;
+  publierBareme: ReturnType<typeof vi.fn>;
 } {
   const publier = vi.fn(() => Promise.resolve());
+  const publierBareme = vi.fn(() => Promise.resolve());
   return {
     referentiel: {
       publierGrilleAbcm: publier,
+      publierBaremePsu: publierBareme,
+      reemettreGrillesEnV2: vi.fn(() => Promise.resolve(0)),
+      reemettreBaremesPsu: vi.fn(() => Promise.resolve(0)),
     } as unknown as ReferentielService,
     publier,
+    publierBareme,
   };
 }
 
@@ -87,21 +94,22 @@ describe('SeedService — idempotence', () => {
       psu: true,
       jours: true,
     });
-    const { referentiel, publier } = fauxReferentiel();
+    const { referentiel, publier, publierBareme } = fauxReferentiel();
     const seed = new SeedService(db, referentiel);
 
     await amorcer(seed);
 
     expect(publier).not.toHaveBeenCalled();
+    expect(publierBareme).not.toHaveBeenCalled();
     expect(insert).not.toHaveBeenCalled();
   });
 });
 
 describe('SeedService — premier boot (tables vides)', () => {
-  it('insère les 3 grilles GRILLES_2026 (T1/T2/T3) + barème PSU + jours non facturables', async () => {
+  it('publie les 3 grilles GRILLES_2026 (T1/T2/T3) + barème PSU + insère les jours non facturables', async () => {
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const { db, insert, insertValues } = fauxDbSeed();
-    const { referentiel, publier } = fauxReferentiel();
+    const { referentiel, publier, publierBareme } = fauxReferentiel();
     const seed = new SeedService(db, referentiel);
 
     await amorcer(seed);
@@ -113,15 +121,16 @@ describe('SeedService — premier boot (tables vides)', () => {
     );
     expect(tranches).toEqual([1, 2, 3]);
 
-    // Barème PSU d'abord, puis jours non facturables (ordre déterministe).
-    expect(insert).toHaveBeenNthCalledWith(1, baremePsu);
-    expect(insert).toHaveBeenNthCalledWith(2, jourNonFacturable);
+    // Barème PSU publié via le service (émet BaremePsuPublie), pas d'insert direct.
+    expect(publierBareme).toHaveBeenCalledTimes(1);
+    const psuDto = publierBareme.mock.calls[0]?.[0] as { taux: unknown };
+    expect(psuDto).toMatchObject({ valideDu: '2026-01-01' });
+    expect(psuDto.taux).toBeTypeOf('object');
 
-    const psuPayload = insertValues.mock.calls[0]?.[0] as { taux: unknown };
-    expect(psuPayload).toMatchObject({ valideDu: '2026-01-01' });
-    expect(psuPayload.taux).toBeTypeOf('object');
-
-    const jours = insertValues.mock.calls[1]?.[0] as readonly {
+    // Seuls les jours non facturables sont insérés directement (pas versionnés).
+    expect(insert).toHaveBeenCalledTimes(1);
+    expect(insert).toHaveBeenNthCalledWith(1, jourNonFacturable);
+    const jours = insertValues.mock.calls[0]?.[0] as readonly {
       type: string;
     }[];
     expect(Array.isArray(jours)).toBe(true);
@@ -190,22 +199,28 @@ describe('SeedService — résilience (base indisponible)', () => {
   });
 });
 
-describe('SeedService — validation Zod des grilles seedées', () => {
-  it('publie les 3 grilles via le VRAI service (parse Zod en tête) — données valides acceptées', async () => {
+describe('SeedService — validation Zod des grilles/barème seedés', () => {
+  it('publie les 3 grilles + le barème PSU via le VRAI service (parse Zod en tête)', async () => {
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
-    // `db` awaitable sur `.limit()` (checks du seed) ET `.where()` (publication).
+    // `db` awaitable sur `.limit()` (checks du seed), sur `.where()` (publication
+    // grille + ré-émission) ET sur `from()` seul (barème PSU lu table entière).
     const insertValues = vi.fn(() => Promise.resolve());
-    const tx = { insert: () => ({ values: insertValues }) };
+    const setWhere = vi.fn(() => Promise.resolve());
+    const tx = {
+      insert: () => ({ values: insertValues }),
+      update: () => ({ set: () => ({ where: setWhere }) }),
+    };
     const transaction = vi.fn(async (cb: (t: unknown) => Promise<unknown>) =>
       cb(tx),
     );
     const insert = vi.fn(() => ({ values: vi.fn(() => Promise.resolve()) }));
     const select = vi.fn(() => ({
-      from: () => ({
-        limit: () => Promise.resolve([]),
-        where: () => Promise.resolve([]),
-      }),
+      from: () =>
+        Object.assign(Promise.resolve([]), {
+          limit: () => Promise.resolve([]),
+          where: () => Promise.resolve([]),
+        }),
     }));
     const db = { select, transaction, insert } as unknown as Database;
 
@@ -214,11 +229,13 @@ describe('SeedService — validation Zod des grilles seedées', () => {
 
     await amorcer(seed);
 
-    // 3 grilles réelles publiées SANS rejet du parse → GRILLES_2026 valides.
-    expect(transaction).toHaveBeenCalledTimes(3);
-    // Chaque publication insère la grille + un événement outbox par mode ABCM.
+    // 3 grilles + 1 barème PSU publiés SANS rejet du parse (données seed valides).
+    expect(transaction).toHaveBeenCalledTimes(4);
+    // 3 × (grille + 1 événement par mode ABCM) + (barème + 1 événement PSU).
     expect(insertValues).toHaveBeenCalledTimes(
-      3 * (1 + MODES_ABCM_CONTRAT.length),
+      3 * (1 + MODES_ABCM_CONTRAT.length) + 2,
     );
+    // Rien à ré-émettre (base fraîche : version_payload posé à la publication).
+    expect(setWhere).not.toHaveBeenCalled();
   });
 });
