@@ -89,6 +89,7 @@
   },
   "dependencies": {
     "@creche-planner/tarification-domain": "workspace:*",
+    "@creche-planner/contracts-kernel": "workspace:*",
     "@creche-planner/contracts-foyer": "workspace:*",
     "@creche-planner/contracts-referentiel": "workspace:*",
     "@creche-planner/contracts-planification": "workspace:*",

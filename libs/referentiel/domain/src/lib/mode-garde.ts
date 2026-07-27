@@ -1,6 +1,15 @@
 import { ModeGardeInconnuError } from './referentiel-error.js';
 
-/** Modes de garde du domaine (doc 02 §1). */
+/**
+ * Modes de garde du domaine (doc 02 §1). Valeurs identiques par convention à
+ * `MODES_CONTRAT`/`ModeContrat` de `@creche-planner/contracts-kernel` (source
+ * de vérité inter-services, SFD 30 §H4) : ce lib `type:domain` ne peut pas
+ * dépendre d'un lib `type:contracts` (`@nx/enforce-module-boundaries`), donc
+ * la vocabulaire du domaine reste local et volontairement en miroir plutôt
+ * qu'importé. Ne plus la faire diverger (c'était le cas de l'ancien
+ * `ModeGarde` à 6 valeurs de `tarification-domain`, renommé en
+ * `PolitiqueTarifaireId`).
+ */
 export type ModeGarde = 'CRECHE_PSU' | 'PERISCOLAIRE' | 'CANTINE' | 'ALSH';
 
 export const MODES_GARDE: readonly ModeGarde[] = [

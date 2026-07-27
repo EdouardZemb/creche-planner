@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { integrationEventSchema } from '@creche-planner/contracts-kernel';
+import {
+  integrationEventSchema,
+  MODES_ABCM,
+} from '@creche-planner/contracts-kernel';
 
 /**
  * Événements d'intégration du bounded context **Référentiel** (catalogue tarifaire
@@ -11,8 +14,11 @@ import { integrationEventSchema } from '@creche-planner/contracts-kernel';
 /** Service émetteur (champ `source` de l'enveloppe). */
 export const REFERENTIEL_EVENT_SOURCE = 'svc-referentiel';
 
-/** Modes facturés via une grille ABCM (cohérent avec `referentiel-domain`). */
-export const MODES_ABCM_CONTRAT = ['PERISCOLAIRE', 'CANTINE', 'ALSH'] as const;
+/**
+ * Modes facturés via une grille ABCM — ré-export de compatibilité de la
+ * définition unique (SFD 30 §H4, `@creche-planner/contracts-kernel`).
+ */
+export const MODES_ABCM_CONTRAT = MODES_ABCM;
 
 // --- referentiel.GrillePubliee.v1 -------------------------------------------
 
