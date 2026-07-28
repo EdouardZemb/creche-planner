@@ -263,18 +263,45 @@ function estMoisScolaire(mois) {
 
 // --- Client HTTP ----------------------------------------------------------
 
-async function http(methode, chemin, corps) {
-  const reponse = await fetch(`${BASE_URL}${chemin}`, {
-    method: methode,
-    headers: corps ? { 'Content-Type': 'application/json' } : undefined,
-    body: corps ? JSON.stringify(corps) : undefined,
-  });
-  if (!reponse.ok) {
+/**
+ * Fenêtre de rejeu des réponses 502/503 de la gateway. `attendreGateway` ne
+ * prouve que la gateway elle-même : ses services amont (svc-foyer notamment,
+ * circuit breaker) peuvent ne pas encore accepter d'appels — la toute première
+ * écriture (`POST /foyers`) recevait alors un 503 « erreur du service amont »
+ * (flaky CI documenté depuis #165). Un 502/503 de la gateway signifie que
+ * l'amont n'a pas traité la requête (breaker ouvert, connexion refusée) : la
+ * rejouer ne crée pas de doublon. Toute autre erreur échoue franchement.
+ */
+const REJEU_ECHEANCE_MS = 30_000;
+const REJEU_PAUSE_MS = 1_000;
+
+async function http(methode, chemin, corps, { rejouerAmont = true } = {}) {
+  const echeance = Date.now() + REJEU_ECHEANCE_MS;
+  let signale = false;
+  for (;;) {
+    const reponse = await fetch(`${BASE_URL}${chemin}`, {
+      method: methode,
+      headers: corps ? { 'Content-Type': 'application/json' } : undefined,
+      body: corps ? JSON.stringify(corps) : undefined,
+    });
+    if (reponse.ok) {
+      const type = reponse.headers.get('content-type') ?? '';
+      return type.includes('application/json') ? reponse.json() : undefined;
+    }
     const texte = await reponse.text().catch(() => '');
+    const amontIndisponible = reponse.status === 502 || reponse.status === 503;
+    if (rejouerAmont && amontIndisponible && Date.now() < echeance) {
+      if (!signale) {
+        console.log(
+          `  ⏳ ${methode} ${chemin} → HTTP ${reponse.status} (amont pas prêt) — rejeu ≤ ${REJEU_ECHEANCE_MS / 1000} s…`,
+        );
+        signale = true;
+      }
+      await pause(REJEU_PAUSE_MS);
+      continue;
+    }
     throw new Error(`${methode} ${chemin} → HTTP ${reponse.status} ${texte}`);
   }
-  const type = reponse.headers.get('content-type') ?? '';
-  return type.includes('application/json') ? reponse.json() : undefined;
 }
 
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -493,7 +520,16 @@ async function verifierCouts(foyerId) {
     // caches vides, agrégation multi-contrats) — bien plus que sur une pile chaude.
     for (let i = 0; i < 30; i++) {
       try {
-        cout = await http('GET', `/couts?foyer=${foyerId}&mois=${mois}`);
+        // Pas de rejeu 502/503 ici : cette boucle de polling est déjà bornée
+        // (30 × 2 s) et son rythme ne doit pas être modifié par l'helper.
+        cout = await http(
+          'GET',
+          `/couts?foyer=${foyerId}&mois=${mois}`,
+          undefined,
+          {
+            rejouerAmont: false,
+          },
+        );
         if (cout && estSatisfaisant(cout, cible)) break;
       } catch {
         /* projection asynchrone pas encore prête */
