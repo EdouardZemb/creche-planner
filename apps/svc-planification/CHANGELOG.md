@@ -1,3 +1,16 @@
+## 0.14.0 (2026-07-28)
+
+### 🚀 Features
+
+- **planification:** contrat versionne a date d'effet, avenants + resolution temporelle (lot 4) ([#248](https://github.com/EdouardZemb/creche-planner/pull/248))
+- **planification:** idempotence de creation contrat et lieu d'accueil (C1) ([#234](https://github.com/EdouardZemb/creche-planner/pull/234))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.13.0 (2026-07-18)
 
 ### 🚀 Features

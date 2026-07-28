@@ -1,3 +1,19 @@
+## 0.14.0 (2026-07-28)
+
+### 🚀 Features
+
+- **web:** contract amendments, history and retroactive correction UI (SFD 30 lot 5) ([#252](https://github.com/EdouardZemb/creche-planner/pull/252))
+- **foyer:** versioned tranche thresholds + household with effective date (SFD 30 lot 3) ([#249](https://github.com/EdouardZemb/creche-planner/pull/249))
+- **planification:** contrat versionne a date d'effet, avenants + resolution temporelle (lot 4) ([#248](https://github.com/EdouardZemb/creche-planner/pull/248))
+- **tarification:** la projection devient la source des grilles et du barème PSU (SFD 30 lot 2) ([#247](https://github.com/EdouardZemb/creche-planner/pull/247))
+- **projections:** garde de monotonie occurred_at sur les upserts (C2) ([#235](https://github.com/EdouardZemb/creche-planner/pull/235))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.13.0 (2026-07-18)
 
 ### 🚀 Features

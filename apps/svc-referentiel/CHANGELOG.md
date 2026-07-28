@@ -1,3 +1,16 @@
+## 0.14.0 (2026-07-28)
+
+### 🚀 Features
+
+- **referentiel:** ecran Tarifs, publication de grille securisee (SFD 30 lot 6) ([#251](https://github.com/EdouardZemb/creche-planner/pull/251))
+- **foyer:** versioned tranche thresholds + household with effective date (SFD 30 lot 3) ([#249](https://github.com/EdouardZemb/creche-planner/pull/249))
+- **tarification:** la projection devient la source des grilles et du barème PSU (SFD 30 lot 2) ([#247](https://github.com/EdouardZemb/creche-planner/pull/247))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.13.0 (2026-07-18)
 
 ### 🚀 Features

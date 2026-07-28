@@ -1,3 +1,30 @@
+## 0.14.0 (2026-07-28)
+
+### 🚀 Features
+
+- **web:** contract amendments, history and retroactive correction UI (SFD 30 lot 5) ([#252](https://github.com/EdouardZemb/creche-planner/pull/252))
+- **referentiel:** ecran Tarifs, publication de grille securisee (SFD 30 lot 6) ([#251](https://github.com/EdouardZemb/creche-planner/pull/251))
+- **foyer:** versioned tranche thresholds + household with effective date (SFD 30 lot 3) ([#249](https://github.com/EdouardZemb/creche-planner/pull/249))
+- **planification:** contrat versionne a date d'effet, avenants + resolution temporelle (lot 4) ([#248](https://github.com/EdouardZemb/creche-planner/pull/248))
+- **dashboard:** signaler une absence creche en deux taps (A1) ([#236](https://github.com/EdouardZemb/creche-planner/pull/236))
+- **notifications:** suivi persistant du statut d'envoi du recap (B1) ([#231](https://github.com/EdouardZemb/creche-planner/pull/231))
+- **web:** harmonise le vocabulaire parent + aide simulation (A3+A4) ([#233](https://github.com/EdouardZemb/creche-planner/pull/233))
+- **dashboard:** remplace les blocs disparus par une ligne rechargeable (B2) ([#232](https://github.com/EdouardZemb/creche-planner/pull/232))
+
+### 🩹 Fixes
+
+- **web:** make avenant stack e2e deterministic (strict mode, retry) ([#254](https://github.com/EdouardZemb/creche-planner/pull/254))
+
+### 🔥 Performance
+
+- **web:** allege le bundle (FullCalendar en lazy) + icones PWA + focus ([#237](https://github.com/EdouardZemb/creche-planner/pull/237))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Claude Opus 4.8
+- Edouard Zemb @EdouardZemb
+
 ## 0.13.0 (2026-07-18)
 
 This was a version bump only for web to align it with other projects, there were no code changes.

@@ -1,3 +1,14 @@
+## 0.14.0 (2026-07-28)
+
+### 🚀 Features
+
+- **foyer:** versioned tranche thresholds + household with effective date (SFD 30 lot 3) ([#249](https://github.com/EdouardZemb/creche-planner/pull/249))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.13.0 (2026-07-18)
 
 ### 🚀 Features
