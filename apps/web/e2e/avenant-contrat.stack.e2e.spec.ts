@@ -8,12 +8,18 @@ import { lireEtatSeed, urlContrats } from './support/stack';
  *   - un avenant à une date future s'enregistre et l'historique montre 2 versions ;
  *   - la correction affiche un aperçu d'impact (mois recalculés) avant enregistrement.
  *
- * On cible le contrat de Mia (unique, CRECHE_PSU) pour un libellé non ambigu.
+ * L'avenant cible le contrat de Mia (unique, CRECHE_PSU → libellé non ambigu) ;
+ * l'aperçu de correction cible la crèche de Zoé, JAMAIS mutée par ce test :
+ * « Corriger les paramètres actuels » vise la version encore ouverte, or après
+ * l'avenant celle de Mia est l'avenant futur — au-delà de la fin de son contrat,
+ * donc zéro mois couvert. Sur Zoé, la version courante couvre les mois enregistrés
+ * du seed, et l'aperçu reste vérifiable même au retry Playwright (pile déjà mutée
+ * par la tentative précédente).
  */
 
 test('stack réelle : avenant + historique + aperçu de correction', async ({
   page,
-}) => {
+}, testInfo) => {
   const { foyerId } = lireEtatSeed();
   await page.goto(urlContrats(foyerId));
 
@@ -42,7 +48,11 @@ test('stack réelle : avenant + historique + aperçu de correction', async ({
   await expect(page.getByLabel('Enfant')).toHaveCount(0);
 
   const anneeProchaine = new Date().getFullYear() + 1;
-  await dateEffet.fill(`${anneeProchaine}-09-01`);
+  // Date d'effet unique PAR TENTATIVE : l'avenant créé ici survit dans la pile
+  // au retry Playwright (CI), et reposer la même date répond « Un changement
+  // existe déjà à cette date » — le toast de succès n'apparaît alors jamais.
+  const jourEffet = String(1 + testInfo.retry).padStart(2, '0');
+  await dateEffet.fill(`${anneeProchaine}-09-${jourEffet}`);
   await page.getByRole('button', { name: 'Enregistrer le changement' }).click();
 
   await expect(
@@ -60,15 +70,31 @@ test('stack réelle : avenant + historique + aperçu de correction', async ({
   expect(await lignes.count()).toBeGreaterThanOrEqual(2);
 
   // 4) La correction affiche un aperçu d'impact (mois recalculés) avant d'écrire.
+  //    Sur la crèche de Zoé (cf. en-tête) — sa carte est ciblée par enfant + mode,
+  //    car « Modifier le contrat de Zoé » existe aussi pour cantine/périscolaire.
   await page
-    .getByRole('button', { name: 'Modifier le contrat de Mia' })
+    .locator('.carte-contrat')
+    .filter({ hasText: 'Zoé' })
+    .filter({ hasText: 'Crèche' })
+    .getByRole('button', { name: 'Modifier le contrat de Zoé' })
     .click();
   await page
     .getByRole('button', { name: /Corriger les paramètres actuels/ })
     .click();
   await page.getByRole('button', { name: /Voir l’impact et corriger/ }).click();
-  // L'aperçu d'impact liste les mois recalculés (au moins un).
-  await expect(page.getByText(/recalculé/)).toBeVisible();
-  // On quitte sans corriger : rien n'est écrit.
-  await page.getByRole('button', { name: 'Annuler' }).first().click();
+  // L'aperçu d'impact liste les mois recalculés (au moins un). Motif avec
+  // décompte (« N mois sera/seront recalculé(s) ») : les intros statiques du
+  // formulaire et de la modale contiennent aussi « recalculés » — un /recalculé/
+  // nu matche plusieurs éléments (violation strict mode) et passerait même sans
+  // impact chargé.
+  await expect(
+    page.getByText(/\d+ mois (sera|seront) recalculé/),
+  ).toBeVisible();
+  // On quitte sans corriger : rien n'est écrit. Le Annuler visé est celui DE LA
+  // MODALE (le formulaire de correction en a un aussi, sous l'overlay qui
+  // intercepte les clics).
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Annuler' })
+    .click();
 });
