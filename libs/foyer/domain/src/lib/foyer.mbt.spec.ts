@@ -6,13 +6,24 @@
  */
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { Money, Tranche } from '@creche-planner/shared-kernel';
+import {
+  Money,
+  Tranche,
+  type BaremeTranches,
+} from '@creche-planner/shared-kernel';
 import { Foyer } from './foyer.js';
 import { Enfant } from './enfant.js';
 import {
   EnfantsAChargeInvalideError,
   NombreDePartsInvalideError,
 } from './foyer-error.js';
+
+/** Barème métier historique (T1 < 20 000, 20 000 ≤ T2 ≤ 50 000, T3 > 50 000). */
+const BAREME: BaremeTranches = [
+  { niveau: 1, rfrMaxCentimes: 1999999 },
+  { niveau: 2, rfrMaxCentimes: 5000000 },
+  { niveau: 3, rfrMaxCentimes: null },
+];
 
 // --------------------------------------------------------------------------
 // Outillage commun
@@ -51,7 +62,7 @@ function snapshot(f: Foyer): SnapshotFoyer {
   return {
     rfrCentimes: f.rfr.centimes,
     nbEnfants: f.enfants.length,
-    trancheNiveau: f.tranche.niveau,
+    trancheNiveau: f.trancheSelon(BAREME).niveau,
     nbEnfantsACharge: f.nbEnfantsACharge,
     nbPartsX1000: Math.round(f.nbParts * 1000),
     ressourcesCentimes: f.ressourcesMensuelles.centimes,
@@ -78,7 +89,7 @@ interface RealFoyer {
  * SUT shared-kernel, source de vérité de la dérivation).
  */
 function trancheAttendue(rfrCentimes: number): Tranche {
-  return Tranche.depuisRfr(Money.depuisCentimes(rfrCentimes));
+  return Tranche.depuisRfr(Money.depuisCentimes(rfrCentimes), BAREME);
 }
 
 /** Commande de transition : actualiserRfr(rfr). */
@@ -105,7 +116,9 @@ class ActualiserRfrCommand implements fc.Command<ModeleFoyer, RealFoyer> {
     model.rfrCentimes = nouveauRfr.centimes;
 
     // Invariants post-transition.
-    expect(apres.tranche.egale(trancheAttendue(model.rfrCentimes))).toBe(true);
+    expect(
+      apres.trancheSelon(BAREME).egale(trancheAttendue(model.rfrCentimes)),
+    ).toBe(true);
     expect(apres.enfants.length).toBe(model.nbEnfants);
 
     real.current = apres;
@@ -138,7 +151,9 @@ class AjouterEnfantCommand implements fc.Command<ModeleFoyer, RealFoyer> {
 
     // Invariants post-transition : un enfant de plus, tranche inchangée.
     expect(apres.enfants.length).toBe(model.nbEnfants);
-    expect(apres.tranche.egale(trancheAttendue(model.rfrCentimes))).toBe(true);
+    expect(
+      apres.trancheSelon(BAREME).egale(trancheAttendue(model.rfrCentimes)),
+    ).toBe(true);
 
     real.current = apres;
   }
@@ -198,7 +213,9 @@ function appliquer(
     const apres = foyer.actualiserRfr(nouveauRfr);
     expect(snapshot(foyer)).toEqual(snapAvant); // immuabilité
     expect(apres).not.toBe(foyer);
-    expect(apres.tranche.egale(Tranche.depuisRfr(nouveauRfr))).toBe(true);
+    expect(
+      apres.trancheSelon(BAREME).egale(Tranche.depuisRfr(nouveauRfr, BAREME)),
+    ).toBe(true);
     return { foyer: apres, rfrCentimes: nouveauRfr.centimes };
   }
   const apres = foyer.ajouterEnfant(enfantArbitraire());
@@ -206,7 +223,9 @@ function appliquer(
   expect(apres).not.toBe(foyer);
   expect(apres.enfants.length).toBe(foyer.enfants.length + 1);
   // La tranche ne dépend que du RFR, inchangé par un ajout d'enfant.
-  expect(apres.tranche.egale(Tranche.depuisRfr(apres.rfr))).toBe(true);
+  expect(
+    apres.trancheSelon(BAREME).egale(Tranche.depuisRfr(apres.rfr, BAREME)),
+  ).toBe(true);
   return { foyer: apres, rfrCentimes: rfrCentimesCourant };
 }
 
@@ -240,9 +259,11 @@ describe('SM-01 — couverture 1-switch (toutes les paires de transitions)', () 
 
       // Cohérence finale : tranche dérivée du RFR final.
       expect(
-        etape2.foyer.tranche.egale(
-          Tranche.depuisRfr(Money.depuisCentimes(etape2.rfrCentimes)),
-        ),
+        etape2.foyer
+          .trancheSelon(BAREME)
+          .egale(
+            Tranche.depuisRfr(Money.depuisCentimes(etape2.rfrCentimes), BAREME),
+          ),
       ).toBe(true);
       // L'agrégat initial n'a jamais muté tout au long de la séquence.
       expect(f0.enfants.length).toBe(0);
@@ -261,9 +282,7 @@ describe('DT-02 — Foyer.creer table de décision (nbEnfantsACharge × nbParts)
     readonly nbEnfantsACharge: number;
     readonly nbParts: number;
     readonly attendu:
-      | 'ok'
-      | 'EnfantsAChargeInvalideError'
-      | 'NombreDePartsInvalideError';
+      'ok' | 'EnfantsAChargeInvalideError' | 'NombreDePartsInvalideError';
   }
 
   // C1 : nbEnfantsACharge entier ≥ 1 ?  C2 : nbParts fini > 0 ?
@@ -391,7 +410,9 @@ describe('Foyer — propriétés (fast-check)', () => {
       fc.property(fc.integer({ min: 0, max: 1_000_000 }), (rfrEuros) => {
         const rfr = Money.depuisEuros(rfrEuros);
         const foyer = foyerInitial().actualiserRfr(rfr);
-        expect(foyer.tranche.egale(Tranche.depuisRfr(rfr))).toBe(true);
+        expect(
+          foyer.trancheSelon(BAREME).egale(Tranche.depuisRfr(rfr, BAREME)),
+        ).toBe(true);
       }),
     );
   });

@@ -15,6 +15,9 @@ export interface SaisieFoyer {
   readonly rfr: number;
   readonly nbEnfantsACharge: number;
   readonly nbParts: number;
+  /** Date d'effet des ressources (SFD 30, DV-03), optionnelle (défaut aujourd'hui). */
+  readonly dateEffet?: string | undefined;
+  readonly motif?: string | undefined;
 }
 
 /**
@@ -77,6 +80,23 @@ const foyerVueSchema = z.object({
 });
 
 export type FoyerVue = z.infer<typeof foyerVueSchema>;
+
+/** Une version de ressources d'un foyer (historique à date d'effet, SFD 30). */
+const foyerVersionVueSchema = z.object({
+  id: z.string(),
+  dateEffet: z.string(),
+  ressourcesMensuellesCentimes: z.number(),
+  ressourcesMensuellesEuros: z.number(),
+  rfrCentimes: z.number(),
+  rfrEuros: z.number(),
+  nbEnfantsACharge: z.number(),
+  nbParts: z.number(),
+  tranche: z.number(),
+  saisiLe: z.string(),
+  motif: z.string().nullable(),
+});
+
+export type FoyerVersionVue = z.infer<typeof foyerVersionVueSchema>;
 
 /** Vue lecture d'un enfant rattaché à un foyer. */
 const enfantVueSchema = z.object({
@@ -280,6 +300,15 @@ export class FoyerClient {
       methode: 'GET',
       chemin: `/api/foyers/${encodeURIComponent(foyerId)}`,
       schema: foyerVueSchema,
+    });
+  }
+
+  /** GET `/api/foyers/:id/versions` — historique des versions de ressources. */
+  async versions(foyerId: string): Promise<FoyerVersionVue[]> {
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/foyers/${encodeURIComponent(foyerId)}/versions`,
+      schema: z.array(foyerVersionVueSchema),
     });
   }
 

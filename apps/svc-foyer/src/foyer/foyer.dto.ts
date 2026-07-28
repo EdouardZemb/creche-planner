@@ -9,12 +9,19 @@ import {
   typeNotificationSchema,
 } from '@creche-planner/contracts-foyer';
 
-/** Création/mise à jour des finances d'un foyer. Montants saisis en **euros**. */
+/**
+ * Création/mise à jour des finances d'un foyer. Montants saisis en **euros**.
+ * `dateEffet` (SFD 30, DV-03) est **optionnelle** (défaut : aujourd'hui côté service)
+ * — un client v1 qui ne l'envoie pas reste valide (rétrocompatible) ; réutiliser une
+ * date existante = correction. `motif` optionnel (traçabilité).
+ */
 export const ecrireFoyerSchema = z.object({
   ressourcesMensuelles: z.number().nonnegative(),
   rfr: z.number().nonnegative(),
   nbEnfantsACharge: z.number().int().min(1),
   nbParts: z.number().positive(),
+  dateEffet: z.iso.date('date ISO YYYY-MM-DD attendue').optional(),
+  motif: z.string().min(1).max(500).optional(),
 });
 export type EcrireFoyerDto = z.infer<typeof ecrireFoyerSchema>;
 

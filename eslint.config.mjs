@@ -60,7 +60,13 @@ export default [
             },
             {
               sourceTag: 'context:foyer',
-              onlyDependOnLibsWithTags: ['context:foyer', 'context:shared'],
+              // svc-foyer consomme le stream REFERENTIEL (barème de tranches
+              // versionné, SFD 30 D2) → dépendance aux contrats du référentiel.
+              onlyDependOnLibsWithTags: [
+                'context:foyer',
+                'context:shared',
+                'context:referentiel',
+              ],
             },
             {
               sourceTag: 'context:planification',

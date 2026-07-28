@@ -4,9 +4,11 @@ import {
   enfantAjouteEventSchema,
   foyerMisAJourEventSchema,
   foyerMisAJourEventV2Schema,
+  foyerMisAJourEventV3Schema,
   ENFANT_AJOUTE_TYPE,
   FOYER_MIS_A_JOUR_TYPE,
   FOYER_MIS_A_JOUR_V2_TYPE,
+  FOYER_MIS_A_JOUR_V3_TYPE,
 } from '@creche-planner/contracts-foyer';
 import {
   baremePsuPublieEventSchema,
@@ -35,6 +37,7 @@ import {
   contrat,
   enfant,
   foyer,
+  foyerVersion,
   grilleTarifaire,
   prestationMois,
   processedEvent,
@@ -78,6 +81,9 @@ export class ProjectionService {
         case FOYER_MIS_A_JOUR_TYPE:
         case FOYER_MIS_A_JOUR_V2_TYPE:
           await this.appliquerFoyerMisAJour(stream, donnees);
+          return 'TRAITE';
+        case FOYER_MIS_A_JOUR_V3_TYPE:
+          await this.appliquerFoyerVersion(stream, donnees);
           return 'TRAITE';
         case ENFANT_AJOUTE_TYPE:
           await this.appliquerEnfantAjoute(stream, donnees);
@@ -215,6 +221,59 @@ export class ProjectionService {
           // instant doit pouvoir s'appliquer). Une re-livraison tardive (NAK/backoff
           // JetStream) d'un événement périmé est ainsi ignorée.
           setWhere: sql`${foyer.occurredAt} is null or ${foyer.occurredAt} <= excluded.occurred_at`,
+        });
+    });
+  }
+
+  /**
+   * Projette `foyer.FoyerMisAJour.v3` (SFD 30, DV-03) dans le read-model
+   * `foyer_version` : une ligne par version de ressources, portant sa `date_effet` et
+   * la `tranche` déjà dérivée par svc-foyer. Le calcul résout la version applicable au
+   * 1er du mois. Upsert par `versionId` (PK) avec garde de monotonie `occurred_at`.
+   * La ligne « courante » de `foyer` n'est **pas** touchée ici (v1/v2 la maintiennent
+   * pour les foyers non versionnés — repli du calcul).
+   */
+  private async appliquerFoyerVersion(
+    stream: string,
+    donnees: unknown,
+  ): Promise<void> {
+    const evt = foyerMisAJourEventV3Schema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      const p = evt.payload;
+      await tx
+        .insert(foyerVersion)
+        .values({
+          id: p.versionId,
+          foyerId: p.foyerId,
+          dateEffet: p.dateEffet,
+          ressourcesMensuellesCentimes: p.ressourcesMensuellesCentimes,
+          rfrCentimes: p.rfrCentimes,
+          tranche: p.tranche,
+          nbEnfantsACharge: p.nbEnfantsACharge,
+          nbParts: String(p.nbParts),
+          eventId: evt.id,
+          occurredAt: new Date(evt.occurredAt),
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: foyerVersion.id,
+          set: {
+            foyerId: p.foyerId,
+            dateEffet: p.dateEffet,
+            ressourcesMensuellesCentimes: p.ressourcesMensuellesCentimes,
+            rfrCentimes: p.rfrCentimes,
+            tranche: p.tranche,
+            nbEnfantsACharge: p.nbEnfantsACharge,
+            nbParts: String(p.nbParts),
+            eventId: evt.id,
+            occurredAt: new Date(evt.occurredAt),
+            updatedAt: new Date(),
+          },
+          // Garde de monotonie (cf. appliquerFoyerMisAJour).
+          setWhere: sql`${foyerVersion.occurredAt} is null or ${foyerVersion.occurredAt} <= excluded.occurred_at`,
         });
     });
   }

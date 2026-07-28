@@ -13,16 +13,20 @@ import {
 } from '@creche-planner/referentiel-domain';
 import {
   BAREME_PSU_PUBLIE_TYPE,
+  BAREME_TRANCHES_PUBLIE_TYPE,
   GRILLE_PUBLIEE_V2_TYPE,
   MODES_ABCM_CONTRAT,
   type BaremePsuPubliePayload,
+  type BaremeTranchesPubliePayload,
   type GrillePublieeV2Payload,
   type ParametresGrille,
+  type SeuilTranchePayload,
 } from '@creche-planner/contracts-referentiel';
 import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   baremePsu,
+  baremeTranches,
   grilleAbcm,
   jourNonFacturable,
   outbox,
@@ -30,6 +34,7 @@ import {
 } from '../database/schema.js';
 import {
   publierBaremePsuSchema,
+  publierBaremeTranchesSchema,
   publierGrilleAbcmSchema,
 } from './referentiel.dto.js';
 
@@ -67,6 +72,14 @@ export interface BaremePsuVue {
   readonly taux: Record<string, number>;
   readonly plancherCentimes: number | null;
   readonly plafondCentimes: number | null;
+}
+
+/** Vue d'un barème de seuils de tranche publié (bornes hautes en centimes). */
+export interface BaremeTranchesVue {
+  readonly id: string;
+  readonly valideDu: string;
+  readonly valideAu: string | null;
+  readonly seuils: readonly SeuilTranchePayload[];
 }
 
 /** Réponse « grille applicable à (date, tranche, mode) » — discriminée par `mode`. */
@@ -340,6 +353,98 @@ export class ReferentielService {
           .update(baremePsu)
           .set({ versionPayload: 1 })
           .where(eq(baremePsu.id, bareme.id));
+      });
+    }
+    return aReemettre.length;
+  }
+
+  /**
+   * Publie un barème de **seuils de tranche** versionné (SFD 30, DV-03) : valide via
+   * Zod, refuse un chevauchement de période, convertit les bornes euros→centimes,
+   * insère et émet `BaremeTranchesPublie.v1` dans la même transaction. Le barème est
+   * marqué `version_payload = 1` (ne sera pas ré-émis au boot).
+   */
+  async publierBaremeTranches(entree: unknown): Promise<BaremeTranchesVue> {
+    const dto = publierBaremeTranchesSchema.parse(entree);
+    const periode = PeriodeValidite.creer(
+      dto.valideDu,
+      dto.valideAu ?? undefined,
+    );
+
+    const existants = await this.db.select().from(baremeTranches);
+    verifierAbsenceChevauchement([
+      ...existants.map((b) =>
+        PeriodeValidite.creer(b.valideDu, b.valideAu ?? undefined),
+      ),
+      periode,
+    ]);
+
+    const id = randomUUID();
+    const seuils: SeuilTranchePayload[] = dto.seuils.map((s) => ({
+      niveau: s.niveau,
+      rfrMaxCentimes:
+        s.rfrMax === null ? null : Money.depuisEuros(s.rfrMax).centimes,
+    }));
+    const vue: BaremeTranchesVue = {
+      id,
+      valideDu: dto.valideDu,
+      valideAu: dto.valideAu ?? null,
+      seuils,
+    };
+
+    await this.db.transaction(async (tx) => {
+      await tx.insert(baremeTranches).values({
+        id,
+        valideDu: vue.valideDu,
+        valideAu: vue.valideAu,
+        seuils,
+        versionPayload: 1,
+      });
+      const payload: BaremeTranchesPubliePayload = {
+        baremeId: id,
+        valideDu: vue.valideDu,
+        valideAu: vue.valideAu,
+        seuils,
+      };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: BAREME_TRANCHES_PUBLIE_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+    });
+
+    return vue;
+  }
+
+  /**
+   * Ré-émet en `BaremeTranchesPublie.v1` (une seule fois) les barèmes de tranches
+   * seedés avant ce lot (`version_payload < 1`). Idempotent. Renvoie le nombre
+   * de barèmes ré-émis.
+   */
+  async reemettreBaremeTranches(): Promise<number> {
+    const aReemettre = await this.db
+      .select()
+      .from(baremeTranches)
+      .where(lt(baremeTranches.versionPayload, 1));
+    for (const bareme of aReemettre) {
+      await this.db.transaction(async (tx) => {
+        const payload: BaremeTranchesPubliePayload = {
+          baremeId: bareme.id,
+          valideDu: bareme.valideDu,
+          valideAu: bareme.valideAu,
+          seuils: bareme.seuils as SeuilTranchePayload[],
+        };
+        await tx.insert(outbox).values({
+          id: randomUUID(),
+          type: BAREME_TRANCHES_PUBLIE_TYPE,
+          payload,
+          traceId: traceIdCourant(),
+        });
+        await tx
+          .update(baremeTranches)
+          .set({ versionPayload: 1 })
+          .where(eq(baremeTranches.id, bareme.id));
       });
     }
     return aReemettre.length;

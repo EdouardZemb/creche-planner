@@ -9,6 +9,7 @@ import { DRIZZLE } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   baremePsu,
+  baremeTranches,
   grilleAbcm,
   jourNonFacturable,
 } from '../database/schema.js';
@@ -65,6 +66,18 @@ const TAUX_EFFORT_PSU_2026 = {
   '8': 0.000206,
 };
 
+/**
+ * Barème des seuils de tranche RFR (doc 02 §1) : T1 < 20 000 €, 20 000 ≤ T2 ≤
+ * 50 000 €, T3 > 50 000 €. Exprimé en bornes hautes **inclusives** en euros (T1
+ * s'arrête à 19 999,99 € car 20 000 € appartient déjà à T2 ; T2 s'arrête à 50 000 €
+ * inclus ; T3 est ouverte). Unique porteur des seuils (RM-30-04).
+ */
+const SEUILS_TRANCHES_2026 = [
+  { niveau: 1, rfrMax: 19999.99 },
+  { niveau: 2, rfrMax: 50000 },
+  { niveau: 3, rfrMax: null },
+];
+
 /** Fermetures crèche 2026 (doc 02 §7), non facturables (INV-04). */
 const FERMETURES_2026: readonly string[] = [
   '2026-01-01',
@@ -113,6 +126,7 @@ export class SeedService
     try {
       await this.amorcerGrilles();
       await this.amorcerBaremePsu();
+      await this.amorcerBaremeTranches();
       await this.amorcerFermetures();
       // Rattrapage one-shot post-déploiement (SFD 30, lot 2) : ré-émet en v2 les
       // grilles/barèmes seedés avant ce lot (montants jamais transmis à Tarification).
@@ -134,6 +148,10 @@ export class SeedService
     const baremes = await this.referentiel.reemettreBaremesPsu();
     if (baremes > 0) {
       this.logger.log(`Barèmes PSU ré-émis : ${baremes}`);
+    }
+    const tranches = await this.referentiel.reemettreBaremeTranches();
+    if (tranches > 0) {
+      this.logger.log(`Barèmes de tranches ré-émis : ${tranches}`);
     }
   }
 
@@ -159,6 +177,19 @@ export class SeedService
       taux: TAUX_EFFORT_PSU_2026,
     });
     this.logger.log('Barème PSU 2026 amorcé + BaremePsuPublie');
+  }
+
+  private async amorcerBaremeTranches(): Promise<void> {
+    const dejaLa = await this.db.select().from(baremeTranches).limit(1);
+    if (dejaLa.length > 0) {
+      return;
+    }
+    await this.referentiel.publierBaremeTranches({
+      valideDu: '2026-01-01',
+      valideAu: null,
+      seuils: SEUILS_TRANCHES_2026,
+    });
+    this.logger.log('Barème de tranches 2026 amorcé + BaremeTranchesPublie');
   }
 
   private async amorcerFermetures(): Promise<void> {

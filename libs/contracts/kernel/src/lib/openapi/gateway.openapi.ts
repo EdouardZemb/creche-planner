@@ -50,6 +50,37 @@ export const gatewayOpenApiDocument = {
           'tranche',
         ],
       },
+      FoyerVersionVue: {
+        type: 'object',
+        description:
+          'Une version de ressources d’un foyer à date d’effet (SFD 30, DV-03).',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          dateEffet: { type: 'string', format: 'date' },
+          ressourcesMensuellesCentimes: { type: 'integer' },
+          ressourcesMensuellesEuros: { type: 'number' },
+          rfrCentimes: { type: 'integer' },
+          rfrEuros: { type: 'number' },
+          nbEnfantsACharge: { type: 'integer' },
+          nbParts: { type: 'number' },
+          tranche: { type: 'integer', minimum: 1, maximum: 3 },
+          saisiLe: { type: 'string', format: 'date-time' },
+          motif: { type: ['string', 'null'] },
+        },
+        required: [
+          'id',
+          'dateEffet',
+          'ressourcesMensuellesCentimes',
+          'ressourcesMensuellesEuros',
+          'rfrCentimes',
+          'rfrEuros',
+          'nbEnfantsACharge',
+          'nbParts',
+          'tranche',
+          'saisiLe',
+          'motif',
+        ],
+      },
       EnfantVue: {
         type: 'object',
         description: 'Vue projetée d’un enfant rattaché à un foyer.',
@@ -672,6 +703,8 @@ export const gatewayOpenApiDocument = {
                   rfr: { type: 'number' },
                   nbEnfantsACharge: { type: 'integer' },
                   nbParts: { type: 'number' },
+                  dateEffet: { type: 'string' },
+                  motif: { type: 'string' },
                 },
                 required: [
                   'ressourcesMensuelles',
@@ -689,6 +722,36 @@ export const gatewayOpenApiDocument = {
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/FoyerVue' },
+              },
+            },
+          },
+          '404': { description: 'Foyer inconnu.' },
+        },
+      },
+    },
+    '/api/v1/foyers/{id}/versions': {
+      get: {
+        summary: 'Historique des versions de ressources du foyer',
+        description:
+          'Liste les versions de ressources à date d’effet (SFD 30, DV-03), de ' +
+          'la plus récente à la plus ancienne, avec la tranche applicable à chacune.',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Versions de ressources du foyer.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/FoyerVersionVue' },
+                },
               },
             },
           },

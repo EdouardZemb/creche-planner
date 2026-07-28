@@ -24,6 +24,16 @@ export class MontantNonEntierError extends DomainError {
   }
 }
 
+/**
+ * Barème de tranches RFR incohérent : niveau inconnu, ou aucune tranche applicable
+ * (barème sans borne ouverte finale couvrant le RFR — SFD 30, DV-03).
+ */
+export class BaremeTranchesInvalideError extends DomainError {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
 /** Durée négative ou en minutes non entières (INV-01). */
 export class DureeInvalideError extends DomainError {
   constructor(message: string) {

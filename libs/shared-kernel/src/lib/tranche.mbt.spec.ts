@@ -5,11 +5,21 @@
  *   T3 > 50 000) ; BVA 3 points à CHAQUE borne (19999,99 / 20000,00 / 20000,01 et
  *   49999,99 / 50000,00 / 50000,01) ; propriété de monotonie : rfr1 ≤ rfr2 ⇒ niveau(T1) ≤ niveau(T2).
  * Traçabilité doc 17 : DT-01. SUT : tranche.ts (dépend de money.ts).
+ *
+ * Les seuils ne sont plus figés dans le SUT (SFD 30, DV-03) : ils sont fournis via un
+ * barème versionné. On reprend ici, en fixture de spec, le barème métier historique.
  */
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { Money } from './money.js';
-import { Tranche } from './tranche.js';
+import { Tranche, type BaremeTranches } from './tranche.js';
+
+/** Barème historique (T1 < 20 000, 20 000 ≤ T2 ≤ 50 000, T3 > 50 000), bornes hautes inclusives. */
+const BAREME: BaremeTranches = [
+  { niveau: 1, rfrMaxCentimes: 1999999 },
+  { niveau: 2, rfrMaxCentimes: 5000000 },
+  { niveau: 3, rfrMaxCentimes: null },
+];
 
 describe('MBT Tranche', () => {
   // --- DT-01 : arbre de classification depuisRfr + BVA aux bornes ----------
@@ -31,7 +41,7 @@ describe('MBT Tranche', () => {
       [1000000, Tranche.T3], // borne haute extrême
     ])('depuisRfr(%s €) → %s', (rfrEuros, attendue) => {
       expect(
-        Tranche.depuisRfr(Money.depuisEuros(rfrEuros)).egale(attendue),
+        Tranche.depuisRfr(Money.depuisEuros(rfrEuros), BAREME).egale(attendue),
       ).toBe(true);
     });
   });
@@ -42,8 +52,8 @@ describe('MBT Tranche', () => {
       fc.assert(
         fc.property(fc.nat(), fc.nat(), (c1, c2) => {
           const [petit, grand] = c1 <= c2 ? [c1, c2] : [c2, c1];
-          const t1 = Tranche.depuisRfr(Money.depuisCentimes(petit));
-          const t2 = Tranche.depuisRfr(Money.depuisCentimes(grand));
+          const t1 = Tranche.depuisRfr(Money.depuisCentimes(petit), BAREME);
+          const t2 = Tranche.depuisRfr(Money.depuisCentimes(grand), BAREME);
           return t1.niveau <= t2.niveau;
         }),
       );
@@ -52,7 +62,7 @@ describe('MBT Tranche', () => {
     it('totalité : depuisRfr renvoie toujours une des trois tranches canoniques', () => {
       fc.assert(
         fc.property(fc.nat(), (c) => {
-          const t = Tranche.depuisRfr(Money.depuisCentimes(c));
+          const t = Tranche.depuisRfr(Money.depuisCentimes(c), BAREME);
           return t === Tranche.T1 || t === Tranche.T2 || t === Tranche.T3;
         }),
       );

@@ -6,6 +6,7 @@ import { ReferentielService } from './referentiel.service.js';
 import type { Database } from '../database/database.types.js';
 import {
   baremePsu,
+  baremeTranches,
   grilleAbcm,
   jourNonFacturable,
 } from '../database/schema.js';
@@ -36,18 +37,23 @@ function fauxReferentiel(): {
   referentiel: ReferentielService;
   publier: ReturnType<typeof vi.fn>;
   publierBareme: ReturnType<typeof vi.fn>;
+  publierTranches: ReturnType<typeof vi.fn>;
 } {
   const publier = vi.fn(() => Promise.resolve());
   const publierBareme = vi.fn(() => Promise.resolve());
+  const publierTranches = vi.fn(() => Promise.resolve());
   return {
     referentiel: {
       publierGrilleAbcm: publier,
       publierBaremePsu: publierBareme,
+      publierBaremeTranches: publierTranches,
       reemettreGrillesEnV2: vi.fn(() => Promise.resolve(0)),
       reemettreBaremesPsu: vi.fn(() => Promise.resolve(0)),
+      reemettreBaremeTranches: vi.fn(() => Promise.resolve(0)),
     } as unknown as ReferentielService,
     publier,
     publierBareme,
+    publierTranches,
   };
 }
 
@@ -58,7 +64,12 @@ function fauxReferentiel(): {
  * l'ordre des appels — PSU puis fermetures — est déterministe).
  */
 function fauxDbSeed(
-  remplies: { grilles?: boolean; psu?: boolean; jours?: boolean } = {},
+  remplies: {
+    grilles?: boolean;
+    psu?: boolean;
+    tranches?: boolean;
+    jours?: boolean;
+  } = {},
 ): {
   db: Database;
   insert: ReturnType<typeof vi.fn>;
@@ -67,6 +78,7 @@ function fauxDbSeed(
   const rowsFor = (table: unknown): unknown[] => {
     if (table === grilleAbcm) return remplies.grilles ? [{ id: 'x' }] : [];
     if (table === baremePsu) return remplies.psu ? [{ id: 'x' }] : [];
+    if (table === baremeTranches) return remplies.tranches ? [{ id: 'x' }] : [];
     if (table === jourNonFacturable) return remplies.jours ? [{ id: 'x' }] : [];
     return [];
   };
@@ -92,15 +104,18 @@ describe('SeedService — idempotence', () => {
     const { db, insert } = fauxDbSeed({
       grilles: true,
       psu: true,
+      tranches: true,
       jours: true,
     });
-    const { referentiel, publier, publierBareme } = fauxReferentiel();
+    const { referentiel, publier, publierBareme, publierTranches } =
+      fauxReferentiel();
     const seed = new SeedService(db, referentiel);
 
     await amorcer(seed);
 
     expect(publier).not.toHaveBeenCalled();
     expect(publierBareme).not.toHaveBeenCalled();
+    expect(publierTranches).not.toHaveBeenCalled();
     expect(insert).not.toHaveBeenCalled();
   });
 });
@@ -109,7 +124,8 @@ describe('SeedService — premier boot (tables vides)', () => {
   it('publie les 3 grilles GRILLES_2026 (T1/T2/T3) + barème PSU + insère les jours non facturables', async () => {
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const { db, insert, insertValues } = fauxDbSeed();
-    const { referentiel, publier, publierBareme } = fauxReferentiel();
+    const { referentiel, publier, publierBareme, publierTranches } =
+      fauxReferentiel();
     const seed = new SeedService(db, referentiel);
 
     await amorcer(seed);
@@ -126,6 +142,14 @@ describe('SeedService — premier boot (tables vides)', () => {
     const psuDto = publierBareme.mock.calls[0]?.[0] as { taux: unknown };
     expect(psuDto).toMatchObject({ valideDu: '2026-01-01' });
     expect(psuDto.taux).toBeTypeOf('object');
+
+    // Barème de tranches publié via le service (émet BaremeTranchesPublie).
+    expect(publierTranches).toHaveBeenCalledTimes(1);
+    const tranchesDto = publierTranches.mock.calls[0]?.[0] as {
+      seuils: unknown;
+    };
+    expect(tranchesDto).toMatchObject({ valideDu: '2026-01-01' });
+    expect(Array.isArray(tranchesDto.seuils)).toBe(true);
 
     // Seuls les jours non facturables sont insérés directement (pas versionnés).
     expect(insert).toHaveBeenCalledTimes(1);
@@ -229,11 +253,12 @@ describe('SeedService — validation Zod des grilles/barème seedés', () => {
 
     await amorcer(seed);
 
-    // 3 grilles + 1 barème PSU publiés SANS rejet du parse (données seed valides).
-    expect(transaction).toHaveBeenCalledTimes(4);
-    // 3 × (grille + 1 événement par mode ABCM) + (barème + 1 événement PSU).
+    // 3 grilles + barème PSU + barème de tranches publiés SANS rejet du parse.
+    expect(transaction).toHaveBeenCalledTimes(5);
+    // 3 × (grille + 1 événement/mode ABCM) + (barème PSU + événement) +
+    // (barème tranches + événement).
     expect(insertValues).toHaveBeenCalledTimes(
-      3 * (1 + MODES_ABCM_CONTRAT.length) + 2,
+      3 * (1 + MODES_ABCM_CONTRAT.length) + 2 + 2,
     );
     // Rien à ré-émettre (base fraîche : version_payload posé à la publication).
     expect(setWhere).not.toHaveBeenCalled();

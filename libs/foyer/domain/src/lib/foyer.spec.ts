@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { Money, Tranche } from '@creche-planner/shared-kernel';
+import {
+  Money,
+  Tranche,
+  type BaremeTranches,
+} from '@creche-planner/shared-kernel';
 import { Foyer } from './foyer.js';
 import { Enfant } from './enfant.js';
 import {
@@ -34,15 +38,22 @@ describe('Foyer (composition + finances)', () => {
   });
 
   describe('tranche RFR déduite (doc 02 §0)', () => {
+    /** Barème métier historique (T1 < 20 000, 20 000 ≤ T2 ≤ 50 000, T3 > 50 000). */
+    const bareme: BaremeTranches = [
+      { niveau: 1, rfrMaxCentimes: 1999999 },
+      { niveau: 2, rfrMaxCentimes: 5000000 },
+      { niveau: 3, rfrMaxCentimes: null },
+    ];
+
     it('classe le foyer de référence (RFR 72 705 €) en T3', () => {
-      expect(foyerReel().tranche).toBe(Tranche.T3);
+      expect(foyerReel().trancheSelon(bareme)).toBe(Tranche.T3);
     });
 
     it('recalcule la tranche après réactualisation du RFR (Q-05)', () => {
       const apresBaisse = foyerReel().actualiserRfr(Money.depuisEuros(18000));
-      expect(apresBaisse.tranche).toBe(Tranche.T1);
+      expect(apresBaisse.trancheSelon(bareme)).toBe(Tranche.T1);
       // le foyer d'origine n'est pas muté
-      expect(foyerReel().tranche).toBe(Tranche.T3);
+      expect(foyerReel().trancheSelon(bareme)).toBe(Tranche.T3);
     });
   });
 

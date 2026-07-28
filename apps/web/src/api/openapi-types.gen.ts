@@ -235,6 +235,8 @@ export interface paths {
                         rfr: number;
                         nbEnfantsACharge: number;
                         nbParts: number;
+                        dateEffet?: string;
+                        motif?: string;
                     };
                 };
             };
@@ -257,6 +259,54 @@ export interface paths {
                 };
             };
         };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/foyers/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Historique des versions de ressources du foyer
+         * @description Liste les versions de ressources à date d’effet (SFD 30, DV-03), de la plus récente à la plus ancienne, avec la tranche applicable à chacune.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Versions de ressources du foyer. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["FoyerVersionVue"][];
+                    };
+                };
+                /** @description Foyer inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -1518,6 +1568,23 @@ export interface components {
             nbEnfantsACharge: number;
             nbParts: number;
             tranche: number;
+        };
+        /** @description Une version de ressources d’un foyer à date d’effet (SFD 30, DV-03). */
+        FoyerVersionVue: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date */
+            dateEffet: string;
+            ressourcesMensuellesCentimes: number;
+            ressourcesMensuellesEuros: number;
+            rfrCentimes: number;
+            rfrEuros: number;
+            nbEnfantsACharge: number;
+            nbParts: number;
+            tranche: number;
+            /** Format: date-time */
+            saisiLe: string;
+            motif: string | null;
         };
         /** @description Vue projetée d’un enfant rattaché à un foyer. */
         EnfantVue: {

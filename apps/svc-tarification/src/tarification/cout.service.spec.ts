@@ -6,6 +6,7 @@ import {
   baremePsu,
   contrat,
   foyer,
+  foyerVersion,
   grilleTarifaire,
 } from '../database/schema.js';
 import type { FoyerClient } from '../fallback/foyer.client.js';
@@ -94,6 +95,7 @@ function grilleCantine(
  */
 function fakeDb(donnees: {
   foyers?: readonly unknown[];
+  versions?: readonly unknown[];
   contrats?: readonly unknown[];
   prestations?: readonly unknown[];
   grilles?: readonly unknown[];
@@ -101,6 +103,7 @@ function fakeDb(donnees: {
 }): Database {
   const rowsFor = (table: unknown): readonly unknown[] => {
     if (table === foyer) return donnees.foyers ?? [];
+    if (table === foyerVersion) return donnees.versions ?? [];
     if (table === contrat) return donnees.contrats ?? [];
     if (table === grilleTarifaire) return donnees.grilles ?? [];
     if (table === baremePsu) return donnees.baremes ?? [];
@@ -175,6 +178,79 @@ function referentielClient(
     baremePsuApplicable: () => Promise.resolve(undefined),
   } as unknown as ReferentielClient;
 }
+
+describe('CoutService — foyer versionné à date d’effet (DV-03, US-30-03)', () => {
+  /** Version applicable en 2026 : tranche 3 (RFR 72 705 €). */
+  const versionT3 = {
+    id: 'a1111111-0000-4000-8000-000000000000',
+    foyerId: FOYER_ID,
+    dateEffet: '2026-01-01',
+    ressourcesMensuellesCentimes: 671692,
+    rfrCentimes: 7270500,
+    tranche: 3,
+    nbEnfantsACharge: 2,
+    nbParts: '2',
+    eventId: null,
+    occurredAt: null,
+    updatedAt: new Date(),
+  };
+  /** Nouvelle version au 1er janvier 2027 : RFR baissé → tranche 1. */
+  const versionT1 = {
+    ...versionT3,
+    id: 'a2222222-0000-4000-8000-000000000000',
+    dateEffet: '2027-01-01',
+    rfrCentimes: 1500000,
+    tranche: 1,
+  };
+  /** Grille cantine tranche 1 (montant distinct de la T3). */
+  const grilleCantineT1 = {
+    ...grilleCantine(),
+    id: 'c1111111-0000-4000-8000-000000000000',
+    tranche: 1,
+    parametres: { cantineTotalCentimes: 1050, cantinePartGardeCentimes: null },
+  };
+
+  it('RFR changé au 2027-01-01 : décembre 2026 inchangé (T3), janvier 2027 recalculé (T1)', async () => {
+    const db = fakeDb({
+      foyers: [],
+      versions: [versionT3, versionT1],
+      contrats: [CONTRAT_ROW],
+      prestations: [PRESTATION_ROW], // 16 jours cantine (fakeDb ignore le mois)
+      grilles: [grilleCantine(), grilleCantineT1],
+    });
+    const service = new CoutService(
+      db,
+      foyerClient('echec'),
+      planificationClient('echec'),
+      referentielClient('echec'),
+    );
+
+    const dec = await service.coutMois(FOYER_ID, '2026-12', false);
+    const jan = await service.coutMois(FOYER_ID, '2027-01', false);
+
+    // Décembre 2026 : version T3 → 16 × 12,68 € (inchangé).
+    expect(dec.totalCentimes).toBe(20288);
+    // Janvier 2027 : version T1 → 16 × 10,50 € (recalculé à la nouvelle tranche).
+    expect(jan.totalCentimes).toBe(16800);
+  });
+
+  it('foyer mono-version (aucune version projetée) : retombe sur la ligne courante — comportement inchangé', async () => {
+    const service = new CoutService(
+      fakeDb({
+        foyers: [FOYER_ROW],
+        versions: [],
+        contrats: [CONTRAT_ROW],
+        prestations: [PRESTATION_ROW],
+        grilles: [grilleCantine()],
+      }),
+      foyerClient('echec'),
+      planificationClient('echec'),
+      referentielClient('echec'),
+    );
+    const vue = await service.coutMois(FOYER_ID, '2026-10', false);
+    expect(vue.totalCentimes).toBe(20288);
+  });
+});
 
 describe('CoutService — sémantique d’erreur explicite (503, jamais de montant faux)', () => {
   it('read model chaud : calcule le mois sans repli (non-régression)', async () => {

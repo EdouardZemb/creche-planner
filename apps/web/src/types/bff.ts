@@ -27,6 +27,9 @@ import type {
 /** Vue projetée d'un foyer — dérivée de `components.schemas.FoyerVue`. */
 export type FoyerVue = SchemaComposant<'FoyerVue'>;
 
+/** Une version de ressources d'un foyer — dérivée de `components.schemas.FoyerVersionVue`. */
+export type FoyerVersionVue = SchemaComposant<'FoyerVersionVue'>;
+
 /** Vue projetée d'un enfant — dérivée de `components.schemas.EnfantVue`. */
 export type EnfantVue = SchemaComposant<'EnfantVue'>;
 

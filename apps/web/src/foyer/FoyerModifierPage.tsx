@@ -22,6 +22,7 @@ import {
 } from './FoyerScalairesForm';
 import { ParentsSection } from './ParentsSection';
 import { EnfantsSection } from './EnfantsSection';
+import { HistoriqueRessources } from './HistoriqueRessources';
 import { useContrats } from './useContrats';
 import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
 import { ChargementPage } from '../ui/ChargementPage';
@@ -108,6 +109,13 @@ function FormulaireEdition({
   const [scalaires, setScalaires] = useState<ValeursScalairesFoyer>(() =>
     valeursDepuisFoyer(foyer),
   );
+  // Date d'effet des ressources (SFD 30, DV-03) : défaut aujourd'hui. Une saisie
+  // au futur laisse les mois d'avant inchangés ; réutiliser une date existante
+  // corrige la version. Compteur pour forcer le rechargement de l'historique.
+  const [dateEffet, setDateEffet] = useState<string>(() =>
+    new Date().toISOString().slice(0, 10),
+  );
+  const [rechargesHisto, setRechargesHisto] = useState(0);
   const [etatSauvegarde, setEtatSauvegarde] = useState<EtatSauvegarde>('idle');
   const [enregistreA, setEnregistreA] = useState<string | null>(null);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
@@ -146,6 +154,7 @@ function FormulaireEdition({
         rfr: parseFloat(scalaires.rfr),
         nbEnfantsACharge: parseInt(scalaires.nbEnfantsACharge, 10),
         nbParts: parseFloat(scalaires.nbParts),
+        dateEffet,
       });
       // Le PUT renvoie la vue à jour : elle devient la base de « Rétablir » et
       // les valeurs affichées (montants normalisés côté serveur). On RESTE sur
@@ -159,6 +168,8 @@ function FormulaireEdition({
         }),
       );
       setEtatSauvegarde('enregistre');
+      // Rafraîchit l'historique (une version vient d'être créée/corrigée).
+      setRechargesHisto((n) => n + 1);
     } catch (err) {
       setEtatSauvegarde('erreur');
       if (err instanceof ApiError) {
@@ -217,6 +228,28 @@ function FormulaireEdition({
           idErreur={idErreur}
         />
 
+        {/* Date d'effet (SFD 30) : à partir de quand ces ressources s'appliquent.
+            Défaut aujourd'hui ; une date au futur préserve les mois passés. */}
+        <label
+          htmlFor={`${idBase}-dateEffet`}
+          style={{ marginTop: 'var(--esp-3)' }}
+        >
+          À partir du
+        </label>
+        <input
+          id={`${idBase}-dateEffet`}
+          type="date"
+          value={dateEffet}
+          onChange={(e) => {
+            setDateEffet(e.target.value);
+          }}
+          style={{ width: '100%' }}
+        />
+        <p className="muted" style={{ marginTop: 'var(--esp-1)' }}>
+          Les mois d’avant cette date gardent leurs montants ; ceux d’après sont
+          recalculés.
+        </p>
+
         <div className="actions-ligne" style={{ marginTop: 'var(--esp-5)' }}>
           <button
             type="submit"
@@ -238,6 +271,8 @@ function FormulaireEdition({
           <StatutSauvegarde etat={etatSauvegarde} enregistreA={enregistreA} />
         </div>
       </form>
+
+      <HistoriqueRessources key={rechargesHisto} foyerId={foyerId} />
     </div>
   );
 }

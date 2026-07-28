@@ -29,6 +29,13 @@
       "when": 1783771274963,
       "tag": "0003_parent_email_par_foyer",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785178964544,
+      "tag": "0004_foyer_versionne",
+      "breakpoints": true
     }
   ]
 }

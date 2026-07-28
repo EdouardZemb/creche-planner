@@ -72,6 +72,38 @@ export const foyerMisAJourEventV2Schema = integrationEventSchema(
 );
 export type FoyerMisAJourEventV2 = z.infer<typeof foyerMisAJourEventV2Schema>;
 
+// --- foyer.FoyerMisAJour.v3 (ressources versionnées à date d'effet) ---------
+
+/**
+ * **v3 additive** de `foyer.FoyerMisAJour` (SFD 30, D4/DV-03). Les ressources d'un
+ * foyer deviennent une **suite de versions à date d'effet** : chaque version émet un
+ * v3 portant, en plus du payload v2, l'identité de la version (`versionId`) et sa
+ * `dateEffet`. La `tranche` transportée est celle **dérivée du barème applicable à la
+ * date d'effet** — le consommateur (tarification) la projette telle quelle et la
+ * résout au mois calculé. Un payload v2 reste un payload v3 valide moins ces deux
+ * champs ; le dispatch se fait par `version` d'enveloppe (patron `decoderFoyerMisAJour`).
+ */
+export const FOYER_MIS_A_JOUR_V3_TYPE = 'foyer.FoyerMisAJour.v3';
+
+export const foyerMisAJourPayloadV3Schema = foyerMisAJourPayloadV2Schema.extend(
+  {
+    /** Identité stable de la version de ressources (une ligne `foyer_version`). */
+    versionId: z.string().uuid(),
+    /** Date d'effet de la version, ISO `YYYY-MM-DD` (granularité jour, H1). */
+    dateEffet: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'date ISO YYYY-MM-DD attendue'),
+  },
+);
+export type FoyerMisAJourPayloadV3 = z.infer<
+  typeof foyerMisAJourPayloadV3Schema
+>;
+
+export const foyerMisAJourEventV3Schema = integrationEventSchema(
+  foyerMisAJourPayloadV3Schema,
+);
+export type FoyerMisAJourEventV3 = z.infer<typeof foyerMisAJourEventV3Schema>;
+
 // --- foyer.EnfantAjoute.v1 --------------------------------------------------
 
 /** Nom métier versionné (champ `type` de l'enveloppe). */

@@ -3,6 +3,7 @@ import type {
   ModifierFoyer,
   DossierFoyerVue,
   FoyerVue,
+  FoyerVersionVue,
   EnfantVue,
   ParentVue,
   CreerEnfant,
@@ -343,6 +344,18 @@ export const api = {
       body: JSON.stringify(saisie),
       ...(opts.signal ? { signal: opts.signal } : {}),
     }).then((r) => lire<FoyerVue>(r));
+  },
+
+  /** Historique des versions de ressources d'un foyer — `GET /v1/foyers/:id/versions`. */
+  versionsFoyer(
+    id: string,
+    opts: RequeteOptions = {},
+  ): Promise<FoyerVersionVue[]> {
+    return requeteIdempotente(
+      `${BASE}/v1/foyers/${encodeURIComponent(id)}/versions`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<FoyerVersionVue[]>(r));
   },
 
   /** Rattache un parent au foyer — `POST /v1/foyers/:id/parents` (201 ; **409** si e-mail/principal en conflit). */
