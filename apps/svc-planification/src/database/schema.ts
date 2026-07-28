@@ -95,6 +95,82 @@ export const contrat = pgTable('contrat', {
 });
 
 /**
+ * **Version datée** d'un contrat de garde (SFD 30 « versionnement à date d'effet »).
+ * L'identité du contrat (mode, enfant, établissement, bornes de vie) reste dans
+ * `contrat` ; ses paramètres **versionnés** (semaine type / inscriptions, heures
+ * annuelles, nb mensualités) vivent ici, une ligne par **date d'effet**. Un avenant
+ * insère une nouvelle version qui clôt implicitement la précédente la veille (fin
+ * dérivée, jamais stockée — cf. `@creche-planner/shared-kernel`). La version dont
+ * la période couvre aujourd'hui est **projetée** sur les colonnes homonymes de
+ * `contrat` (lecteurs existants inchangés). `unique(contrat_id, date_effet)` refuse
+ * deux versions le même jour (avenant → 409).
+ */
+export const contratVersion = pgTable(
+  'contrat_version',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    contratId: uuid('contrat_id')
+      .notNull()
+      .references(() => contrat.id, { onDelete: 'cascade' }),
+    /** Date d'effet ISO `YYYY-MM-DD` (inclus) — début de la période de la version. */
+    dateEffet: varchar('date_effet', { length: 10 }).notNull(),
+    /** Heures annuelles contractualisées (crèche PSU) — `double precision`. */
+    heuresAnnuellesContractualisees: doublePrecision(
+      'heures_annuelles_contractualisees',
+    ),
+    /** Nombre de mensualités lissant l'année (crèche PSU). */
+    nbMensualites: integer('nb_mensualites'),
+    /** Semaine type crèche : jour → plages horaires (minutes). */
+    semaineType: jsonb('semaine_type'),
+    /** Semaine type ABCM : jour d'école → inscriptions péri/cantine. */
+    semaineAbcm: jsonb('semaine_abcm'),
+    /** Horodatage de saisie de la version (traçabilité, D6). */
+    saisiLe: timestamp('saisi_le', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** Motif optionnel de l'avenant/de la correction (traçabilité, D6). */
+    motif: varchar('motif', { length: 500 }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique('contrat_version_contrat_date_uq').on(
+      table.contratId,
+      table.dateEffet,
+    ),
+  ],
+);
+
+/**
+ * Journal des **corrections rétroactives** d'une version de contrat (D6, US-30-05).
+ * Chaque correction (écrasement d'une version existante) écrit une ligne avant/après
+ * (jsonb) + motif : trace complète de « qui a changé quoi » sans `saisi_par` en v1
+ * (mono-foyer, l'identité est dans les logs gateway). Aucune ligne pour un avenant
+ * (création d'une version nouvelle), seulement pour l'écrasement d'une version.
+ */
+export const correctionJournal = pgTable('correction_journal', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  contratId: uuid('contrat_id')
+    .notNull()
+    .references(() => contrat.id, { onDelete: 'cascade' }),
+  /** Version corrigée (référence de traçabilité, pas de FK — conservée si purge). */
+  versionId: uuid('version_id').notNull(),
+  /** État des paramètres versionnés **avant** correction. */
+  avant: jsonb('avant').notNull(),
+  /** État des paramètres versionnés **après** correction. */
+  apres: jsonb('apres').notNull(),
+  /** Motif optionnel de la correction. */
+  motif: varchar('motif', { length: 500 }),
+  corrigeLe: timestamp('corrige_le', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
  * Planning saisi d'un mois pour un contrat. Un même contrat porte au plus une
  * ligne par `(mois, simule)` : `simule = false` est le planning **réel**,
  * `simule = true` le planning **simulé** (delta, doc 05 Phase 8). La `saisie`
@@ -241,6 +317,8 @@ export const deadLetter = pgTable('dead_letter', {
 });
 
 export type ContratRow = typeof contrat.$inferSelect;
+export type ContratVersionRow = typeof contratVersion.$inferSelect;
+export type CorrectionJournalRow = typeof correctionJournal.$inferSelect;
 export type PlanningMoisRow = typeof planningMois.$inferSelect;
 export type EtablissementRow = typeof etablissement.$inferSelect;
 export type ProcessedEventRow = typeof processedEvent.$inferSelect;

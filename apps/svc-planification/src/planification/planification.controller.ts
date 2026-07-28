@@ -16,6 +16,8 @@ import { ScopeFoyerInterServices } from '@creche-planner/nest-commons';
 import type { PrestationMois } from '@creche-planner/planification-domain';
 import { estSemaineIso } from '@creche-planner/shared-semaine';
 import {
+  corrigerVersionSchema,
+  creerAvenantSchema,
   creerContratSchema,
   ecrirePlanningSchema,
   ecrireSemaineSchema,
@@ -24,6 +26,8 @@ import {
   rattacherEtablissementSchema,
   ISO_MOIS,
   ZodValidationPipe,
+  type CorrigerVersionDto,
+  type CreerAvenantDto,
   type CreerContratDto,
   type EcrirePlanningDto,
   type EcrireSemaineDto,
@@ -35,6 +39,7 @@ import {
   PlanificationService,
   type ContratVue,
   type ContratDetailVue,
+  type ContratVersionVue,
 } from './planification.service.js';
 
 /** Réponse « prestations du mois » sérialisée (Durée → minutes). */
@@ -78,14 +83,71 @@ export class PlanificationController {
     return this.planification.creerContrat(dto);
   }
 
-  /** Modifie un contrat de garde → met à jour + émet `ContratModifie`. */
+  /**
+   * Crée un **avenant** (nouvelle version datée du contrat) →
+   * `POST /contrats/:id/versions`. 201. Ne touche pas aux plannings saisis. 409 si
+   * une version existe déjà à la date d'effet ; 400 si date antérieure au contrat
+   * ou mode différent (H6).
+   */
   @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
-  @Put('contrats/:id')
-  modifierContrat(
+  @Post('contrats/:id/versions')
+  @HttpCode(HttpStatus.CREATED)
+  creerAvenant(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(creerAvenantSchema)) dto: CreerAvenantDto,
+  ): Promise<ContratVue> {
+    return this.planification.creerAvenant(id, dto);
+  }
+
+  /** Historique des versions d'un contrat → `GET /contrats/:id/versions`. */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
+  @Get('contrats/:id/versions')
+  listerVersions(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<ContratVersionVue[]> {
+    return this.planification.listerVersions(id);
+  }
+
+  /**
+   * Aperçu d'impact d'une version (mois recalculés) →
+   * `GET /contrats/:id/versions/:versionId/impact`. Lecture seule, avant correction.
+   */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
+  @Get('contrats/:id/versions/:versionId/impact')
+  apercuImpact(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+  ): Promise<{ versionId: string; moisCouverts: string[] }> {
+    return this.planification.apercuImpactVersion(id, versionId);
+  }
+
+  /**
+   * Corrige une version existante (geste rétroactif tracé) →
+   * `PUT /contrats/:id/versions/:versionId`. 404 si la version n'existe pas.
+   */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
+  @Put('contrats/:id/versions/:versionId')
+  corrigerVersion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+    @Body(new ZodValidationPipe(corrigerVersionSchema))
+    dto: CorrigerVersionDto,
+  ): Promise<ContratVue> {
+    return this.planification.corrigerVersion(id, versionId, dto);
+  }
+
+  /**
+   * Corrige les **paramètres versionnés courants** d'un contrat depuis son corps
+   * complet → `PUT /contrats/:id/version-courante` (façade de compatibilité de
+   * l'ancien `PUT /contrats/:id`, **non destructive** : les plannings survivent).
+   */
+  @ScopeFoyerInterServices({ resoudre: 'contrat', param: 'id' })
+  @Put('contrats/:id/version-courante')
+  corrigerVersionCourante(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(modifierContratSchema)) dto: ModifierContratDto,
   ): Promise<ContratVue> {
-    return this.planification.modifierContrat(id, dto);
+    return this.planification.corrigerVersionCourante(id, dto);
   }
 
   /**

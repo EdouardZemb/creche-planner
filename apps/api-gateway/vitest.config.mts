@@ -49,11 +49,14 @@ export default defineConfig(() => ({
       // `tarification.client.ts`, `notifications.client.ts` — succès, erreur
       // HTTP, timeout via `executerResilient`, assertion d'identité) — mesuré
       // 67,55 / 71,34 / 54,71 / 67,40, marge ~2 pts.
+      // Ratchet relevé au lot 4 « SFD 30 » (routes versionnement BFF + client :
+      // specs contrats.controller + client versions) — mesuré
+      // 71,9 / 72,8 / 61,2 / 71,8, marge ~2 pts.
       thresholds: {
-        statements: 65,
-        branches: 69,
-        functions: 52,
-        lines: 65,
+        statements: 69,
+        branches: 70,
+        functions: 59,
+        lines: 69,
       },
     },
   },

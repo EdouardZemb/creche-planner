@@ -40,8 +40,16 @@ const ETAT_PLANNING_SAISI =
 const ETAT_SANS_ETAB_CANTINE =
   'aucun établissement « Crèche Pact CANTINE » n existe';
 const ETAT_SANS_ETAB_ALSH = 'aucun établissement « Centre Pact ALSH » n existe';
-const ETAT_SANS_ETAB_MODIF =
-  'aucun établissement « Crèche Pact Modif » n existe';
+
+/**
+ * État versionné (SFD 30 lot 4) : contrat + version initiale d'id FIGÉ, cible
+ * des interactions correction/historique/impact (aligné consumer).
+ */
+const ETAT_CONTRAT_VERSIONNE =
+  'un contrat crèche avec une version initiale identifiée existe';
+
+/** Identifiant figé de la version initiale seedée (aligné consumer). */
+const VERSION_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 /** Identifiant figé du contrat (aligné avec le pact consumer). */
 const CONTRAT_ID = '11111111-1111-1111-1111-111111111111';
@@ -55,9 +63,11 @@ const FOYER_SEED = '22222222-2222-2222-2222-222222222222';
 /**
  * Établissement seedé : depuis P5 (`contrat.etablissement_id` NOT NULL), tout
  * contrat doit référencer un établissement existant (FK). On en sème un, fixe, que
- * les inserts de contrat ci-dessous rattachent.
+ * les inserts de contrat ci-dessous rattachent. UUID **v4 valide** : sa valeur
+ * repasse dans le corps `version-courante` côté consumer (`z.string().uuid()`
+ * Zod 4, strict version/variant).
  */
-const ETAB_SEED_ID = '99999999-9999-9999-9999-999999999999';
+const ETAB_SEED_ID = '99999999-9999-4999-8999-999999999999';
 
 /**
  * Enfant figé rattaché aux contrats seedés (aligné avec le pact consumer).
@@ -123,10 +133,52 @@ async function attendreReadiness(url: string, delaiMs = 40000): Promise<void> {
  * rattachent (FK `contrat.etablissement_id`, NOT NULL depuis P5).
  */
 async function seedEtablissement(db: Sql): Promise<void> {
+  // Purge un seed d'un ANCIEN run dont l'id différerait (l'id du seed a changé
+  // au lot 4 — v4 valide) : l'unicité (foyer_id, nom) ferait sinon échouer
+  // l'insert ci-dessous sur une base persistante, et tout l'état avec lui.
+  await db`
+    delete from planning_mois where contrat_id in (
+      select c.id from contrat c
+      join etablissement e on c.etablissement_id = e.id
+      where e.nom = 'Établissement Pact (seed)' and e.id <> ${ETAB_SEED_ID}
+    )
+  `;
+  await db`
+    delete from contrat where etablissement_id in (
+      select id from etablissement
+      where nom = 'Établissement Pact (seed)' and id <> ${ETAB_SEED_ID}
+    )
+  `;
+  await db`
+    delete from etablissement
+    where nom = 'Établissement Pact (seed)' and id <> ${ETAB_SEED_ID}
+  `;
   await db`
     insert into etablissement (id, foyer_id, nom)
     values (${ETAB_SEED_ID}, ${FOYER_SEED}, 'Établissement Pact (seed)')
     on conflict (id) do nothing
+  `;
+}
+
+/**
+ * Sème la **version initiale** du contrat seedé (SFD 30 lot 4) : depuis le
+ * versionnement, tout contrat porte au moins une `contrat_version` à
+ * `date_effet = valide_du` (le back-fill 0008 le garantit en prod ; ici on la
+ * pose explicitement, avec un id figé pour les interactions correction/impact).
+ */
+async function seedVersionInitiale(
+  db: Sql,
+  versionId: string = VERSION_ID,
+): Promise<void> {
+  await db`
+    insert into contrat_version (
+      id, contrat_id, date_effet,
+      heures_annuelles_contractualisees, nb_mensualites, semaine_type
+    ) values (
+      ${versionId}, ${CONTRAT_ID}, '2026-01-01',
+      763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
+    )
+    on conflict (contrat_id, date_effet) do nothing
   `;
 }
 
@@ -223,9 +275,6 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
         [ETAT_SANS_ETAB_ALSH]: async (): Promise<void> => {
           await purgerEtablissementParNom(db, 'Centre Pact ALSH');
         },
-        [ETAT_SANS_ETAB_MODIF]: async (): Promise<void> => {
-          await purgerEtablissementParNom(db, 'Crèche Pact Modif');
-        },
         [ETAT_CONTRAT_CRECHE]: async (): Promise<void> => {
           // Contrat crèche PSU de Mia (doc 02 §7) : 763 h / 7 mensualités.
           await db`delete from planning_mois where contrat_id = ${CONTRAT_ID}`;
@@ -241,6 +290,7 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )
           `;
+          await seedVersionInitiale(db);
           await db`
             insert into planning_mois (contrat_id, mois, simule, saisie)
             values (${CONTRAT_ID}, '2026-03', false, '{}'::jsonb)
@@ -261,6 +311,25 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )
           `;
+          await seedVersionInitiale(db);
+        },
+        [ETAT_CONTRAT_VERSIONNE]: async (): Promise<void> => {
+          // Contrat + version initiale d'id FIGÉ (`VERSION_ID`) : cible des
+          // interactions correction / historique / aperçu d'impact (SFD 30 lot 4).
+          await db`delete from planning_mois where contrat_id = ${CONTRAT_ID}`;
+          await db`delete from contrat where id = ${CONTRAT_ID}`;
+          await seedEtablissement(db);
+          await db`
+            insert into contrat (
+              id, foyer_id, etablissement_id, enfant, enfant_id, mode, valide_du, valide_au,
+              heures_annuelles_contractualisees, nb_mensualites, semaine_type
+            ) values (
+              ${CONTRAT_ID}, '22222222-2222-2222-2222-222222222222', ${ETAB_SEED_ID}, 'Mia', ${ENFANT_SEED_ID},
+              'CRECHE_PSU', '2026-01-01', '2026-07-31',
+              763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
+            )
+          `;
+          await seedVersionInitiale(db);
         },
         [ETAT_FOYER_AVEC_CONTRATS]: async (): Promise<void> => {
           // Le foyer porte au moins un contrat crèche → `GET /api/contrats?foyer=`
@@ -278,6 +347,7 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )
           `;
+          await seedVersionInitiale(db);
         },
         [ETAT_PLANNING_SAISI]: async (): Promise<void> => {
           // Contrat crèche + une saisie de planning enregistrée pour mars 2026 →
@@ -296,6 +366,7 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
               763, 7, ${JSON.stringify(SEMAINE_MIA)}::jsonb
             )
           `;
+          await seedVersionInitiale(db);
           await db`
             insert into planning_mois (contrat_id, mois, simule, saisie)
             values (

@@ -137,18 +137,72 @@ export const creerContratSchema = z
 export type CreerContratDto = z.infer<typeof creerContratSchema>;
 
 /**
- * Modification d'un contrat de garde : mêmes champs que la création (le mode peut
- * changer ; `foyerId` est conservé/réaffirmé). On réutilise la même union par mode.
+ * Correction des **paramètres versionnés courants** d'un contrat via le chemin de
+ * compatibilité `PUT /contrats/:id/version-courante` (façade de l'ancien
+ * `PUT /contrats/:id`). Le corps reste celui d'une création (le web « durcit » un
+ * contrat en renvoyant son état complet) mais **seuls les champs versionnés** sont
+ * appliqués à la version courante : l'identité (mode, enfant, établissement, bornes
+ * de vie) n'est pas versionnée (H6) — un mode différent est refusé (400).
  */
 export const modifierContratSchema = creerContratSchema;
 export type ModifierContratDto = z.infer<typeof modifierContratSchema>;
+
+/** Motif optionnel de traçabilité (avenant / correction, D6). */
+const motifChamp = { motif: z.string().min(1).max(500).optional() };
+
+/**
+ * Paramètres **versionnés** d'un contrat crèche PSU (H6 : sans l'identité). Base
+ * commune à l'avenant (avec `dateEffet`) et à la correction (sur une version
+ * existante, sans `dateEffet`).
+ */
+const versionCrecheChamps = {
+  mode: z.literal('CRECHE_PSU'),
+  heuresAnnuellesContractualisees: z.number().nonnegative(),
+  nbMensualites: z.number().int().min(1),
+  semaineType: semaineTypeSchema,
+  ...motifChamp,
+};
+
+/** Paramètres **versionnés** d'un contrat ABCM (cantine / périscolaire / ALSH). */
+const versionAbcmChamps = {
+  mode: z.enum(['CANTINE', 'PERISCOLAIRE', 'ALSH']),
+  semaineAbcm: semaineAbcmSchema,
+  ...motifChamp,
+};
+
+/** Date d'effet d'une version, ISO `YYYY-MM-DD`. */
+const dateEffetChamp = {
+  dateEffet: z.iso.date('date ISO YYYY-MM-DD attendue'),
+};
+
+/**
+ * Création d'un **avenant** (`POST /contrats/:id/versions`) : une nouvelle version
+ * à date d'effet, portant les seuls paramètres versionnés (l'identité vient du
+ * contrat, H6). La version précédente est close implicitement la veille.
+ */
+export const creerAvenantSchema = z.discriminatedUnion('mode', [
+  z.object({ ...dateEffetChamp, ...versionCrecheChamps }),
+  z.object({ ...dateEffetChamp, ...versionAbcmChamps }),
+]);
+export type CreerAvenantDto = z.infer<typeof creerAvenantSchema>;
+
+/**
+ * **Correction** d'une version existante (`PUT /contrats/:id/versions/:versionId`) :
+ * écrase les paramètres versionnés d'une version **sans déplacer sa date d'effet**
+ * (le geste rétroactif est tracé dans `correction_journal`).
+ */
+export const corrigerVersionSchema = z.discriminatedUnion('mode', [
+  z.object({ ...versionCrecheChamps }),
+  z.object({ ...versionAbcmChamps }),
+]);
+export type CorrigerVersionDto = z.infer<typeof corrigerVersionSchema>;
 
 /**
  * Rattachement **chirurgical** d'un contrat existant à un établissement de son
  * foyer (lien P2), pour le **back-fill P5** : ne porte QUE l'`etablissementId`, ne
  * remplace ni le mode/les dates ni la semaine type et **n'invalide pas** les
- * plannings saisis — à la différence de `modifierContratSchema` (remplacement
- * complet via le chemin `PUT /contrats/:id`).
+ * plannings saisis — à la différence du corps complet de
+ * `modifierContratSchema` (chemin `version-courante`).
  */
 export const rattacherEtablissementSchema = z.object({
   etablissementId: z.string().uuid(),

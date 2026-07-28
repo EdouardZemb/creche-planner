@@ -9,20 +9,27 @@ import {
 import { and, eq } from 'drizzle-orm';
 import {
   ContratCreche,
-  genererPrestationMois,
+  genererPrestationMoisSegments,
   semaineTypeDepuisJson,
+  type ContratPourGeneration,
   type PlanningMensuel,
   type SemaineTypeAbcm,
   type SemaineTypeJson,
 } from '@creche-planner/planification-domain';
 import {
-  CONTRAT_CREE_TYPE,
+  depuisSuite,
+  selectionnerVersionApplicable,
+} from '@creche-planner/shared-kernel';
+import {
+  CONTRAT_CREE_V2_TYPE,
   CONTRAT_MODIFIE_TYPE,
+  CONTRAT_MODIFIE_V2_TYPE,
   CONTRAT_SUPPRIME_TYPE,
   ETABLISSEMENT_CREE_TYPE,
   PLANNING_MODIFIE_TYPE,
-  type ContratCreePayload,
+  type ContratCreeV2Payload,
   type ContratModifiePayload,
+  type ContratModifieV2Payload,
   type ContratSupprimePayload,
   type EtablissementCreePayload,
   type ModeContrat,
@@ -32,10 +39,13 @@ import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   contrat,
+  contratVersion,
+  correctionJournal,
   etablissement,
   outbox,
   planningMois,
   type ContratRow,
+  type ContratVersionRow,
 } from '../database/schema.js';
 import {
   joursDeLaSemaine,
@@ -47,6 +57,8 @@ import {
   type BesoinsSemaine,
 } from './fusion-semaine.js';
 import type {
+  CorrigerVersionDto,
+  CreerAvenantDto,
   CreerContratDto,
   EcrirePlanningDto,
   ModifierContratDto,
@@ -96,8 +108,75 @@ export interface PrestationVue {
   readonly [cle: string]: unknown;
 }
 
+/**
+ * Vue d'une **version** d'un contrat (historique, US-30-04/06) : ses paramètres
+ * versionnés + sa période dérivée (`du`/`au`, `au = null` si ouverte) + sa
+ * traçabilité (`saisiLe`, `motif`).
+ */
+export interface ContratVersionVue {
+  readonly id: string;
+  readonly contratId: string;
+  readonly mode: string;
+  readonly dateEffet: string;
+  readonly du: string;
+  readonly au: string | null;
+  readonly heuresAnnuellesContractualisees: number | null;
+  readonly nbMensualites: number | null;
+  readonly semaineType: unknown;
+  readonly semaineAbcm: unknown;
+  readonly saisiLe: string;
+  readonly motif: string | null;
+}
+
+/** Paramètres **versionnés** d'un contrat (colonnes de `contrat_version`). */
+interface ChampsVersion {
+  readonly heuresAnnuellesContractualisees: number | null;
+  readonly nbMensualites: number | null;
+  readonly semaineType: unknown;
+  readonly semaineAbcm: unknown;
+}
+
 /** Transaction Drizzle (le `tx` passé au callback de `db.transaction`). */
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/** Lecteur (base ou transaction) — factorise lectures hors et dans transaction. */
+type Lecteur = Database | Tx;
+
+/** Date du jour au format ISO `YYYY-MM-DD` (comparaison lexicographique du socle). */
+function aujourdhuiIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Dernier jour du mois `YYYY-MM` au format ISO `YYYY-MM-DD`. */
+function derniereDateDuMois(mois: string): string {
+  const [a = 0, m = 0] = mois.split('-').map(Number);
+  // `Date.UTC(a, m, 0)` : jour 0 du mois suivant = dernier jour du mois `m` (1-based).
+  const jour = new Date(Date.UTC(a, m, 0)).getUTCDate();
+  return `${mois}-${String(jour).padStart(2, '0')}`;
+}
+
+/**
+ * Liste des mois `YYYY-MM` couverts par la période `[du, au]` (bornes ISO
+ * `YYYY-MM-DD` incluses). `au = null` (période ouverte) est plafonné au mois de
+ * `du` (une version ouverte « couvre » au moins son mois de départ — l'aperçu
+ * d'impact ne projette pas indéfiniment dans le futur).
+ */
+function moisEntre(du: string, au: string | null): string[] {
+  if (du === '') {
+    return [];
+  }
+  const borneHaute = au ?? du;
+  const mois: string[] = [];
+  let courant = du.slice(0, 7);
+  const fin = borneHaute.slice(0, 7);
+  while (courant <= fin) {
+    mois.push(courant);
+    const [a = 0, m = 0] = courant.split('-').map(Number);
+    const suivant = m === 12 ? { a: a + 1, m: 1 } : { a, m: m + 1 };
+    courant = `${String(suivant.a).padStart(4, '0')}-${String(suivant.m).padStart(2, '0')}`;
+  }
+  return mois;
+}
 
 @Injectable()
 export class PlanificationService {
@@ -182,7 +261,26 @@ export class PlanificationService {
         return this.versContratVue(ligne);
       }
 
-      const payload: ContratCreePayload = {
+      // Version initiale (SFD 30 lot 4) : `date_effet = valide_du`, portant les
+      // paramètres versionnés du contrat. Les colonnes de `contrat` en restent la
+      // projection (aucun lecteur à migrer). Même transaction que le contrat.
+      const versionId = randomUUID();
+      await tx.insert(contratVersion).values({
+        id: versionId,
+        contratId: id,
+        dateEffet: dto.valideDu,
+        heuresAnnuellesContractualisees:
+          dto.mode === 'CRECHE_PSU'
+            ? dto.heuresAnnuellesContractualisees
+            : null,
+        nbMensualites: dto.mode === 'CRECHE_PSU' ? dto.nbMensualites : null,
+        semaineType: dto.mode === 'CRECHE_PSU' ? dto.semaineType : null,
+        semaineAbcm: dto.mode === 'CRECHE_PSU' ? null : dto.semaineAbcm,
+      });
+
+      // v2 additive (RM-30-06) : payload v1 + versionId + dateEffet de la version
+      // initiale — les projections dispatchent v1 ET v2 (champs projetés inchangés).
+      const payload: ContratCreeV2Payload = {
         contratId: id,
         foyerId: dto.foyerId,
         enfant: dto.enfant,
@@ -192,10 +290,12 @@ export class PlanificationService {
         valideAu: dto.valideAu,
         etablissementId,
         premiereInscription,
+        versionId,
+        dateEffet: dto.valideDu,
       };
       await tx.insert(outbox).values({
         id: randomUUID(),
-        type: CONTRAT_CREE_TYPE,
+        type: CONTRAT_CREE_V2_TYPE,
         payload,
         traceId: traceIdCourant(),
       });
@@ -284,107 +384,200 @@ export class PlanificationService {
   }
 
   /**
-   * Met à jour les champs d'un contrat (enfant, mode, dates de validité, semaine
-   * type / inscriptions, heures, nbMensualités selon le mode) + émet `ContratModifie`
-   * dans la même transaction (outbox). **Cascade** : les plannings mensuels saisis
-   * (`planning_mois`) sont invalidés (supprimés), car le changement de mode/dates les
-   * rend incohérents — ils seront ressaisis. 404 si le contrat n'existe pas.
+   * Crée un **avenant** : une nouvelle version datée du contrat (SFD 30 lot 4,
+   * US-30-01). Insère la version à `dateEffet` — qui clôt implicitement la
+   * précédente la veille (fin dérivée) — **sans toucher** aux `planning_mois`
+   * saisis (fini le cascade-delete destructif), rafraîchit la projection de la
+   * version courante sur `contrat`, et émet `ContratModifie`. 404 si le contrat
+   * n'existe pas ; 400 si `dateEffet` précède le début du contrat ou si le mode
+   * diffère (l'identité n'est pas versionnée, H6) ; 409 si une version existe déjà
+   * à cette date.
    */
-  async modifierContrat(
-    id: string,
+  async creerAvenant(
+    contratId: string,
+    dto: CreerAvenantDto,
+  ): Promise<ContratVue> {
+    return this.db.transaction(async (tx) => {
+      const contratActuel = await this.exigerContrat(tx, contratId);
+      this.exigerModeIdentique(dto.mode, contratActuel.mode);
+      if (dto.dateEffet < contratActuel.valideDu) {
+        throw new BadRequestException(
+          `date d'effet (${dto.dateEffet}) antérieure au début du contrat (${contratActuel.valideDu})`,
+        );
+      }
+      const champs = this.champsVersionDepuisDto(dto);
+      this.validerVersionDomaine(contratActuel, dto.dateEffet, champs);
+      const versionId = randomUUID();
+      const insere = await tx
+        .insert(contratVersion)
+        .values({
+          id: versionId,
+          contratId,
+          dateEffet: dto.dateEffet,
+          ...champs,
+          motif: dto.motif ?? null,
+        })
+        .onConflictDoNothing({
+          target: [contratVersion.contratId, contratVersion.dateEffet],
+        })
+        .returning({ id: contratVersion.id });
+      if (insere.length === 0) {
+        throw new ConflictException(
+          `une version existe déjà à la date d'effet ${dto.dateEffet}`,
+        );
+      }
+      await this.rafraichirProjectionContrat(tx, contratId);
+      await this.emettreContratModifie(tx, contratActuel, {
+        id: versionId,
+        dateEffet: dto.dateEffet,
+      });
+      return this.versContratVue(await this.exigerContrat(tx, contratId));
+    });
+  }
+
+  /**
+   * **Corrige** une version existante (US-30-05) : écrase ses paramètres versionnés
+   * **sans déplacer sa date d'effet**, journalise l'avant/après (`correction_journal`),
+   * rafraîchit la projection si la version corrigée est courante, et émet
+   * `ContratModifie`. Geste rétroactif tracé, distinct de l'avenant. 404 si le
+   * contrat ou la version n'existe pas ; 400 si le mode diffère (H6).
+   */
+  async corrigerVersion(
+    contratId: string,
+    versionId: string,
+    dto: CorrigerVersionDto,
+  ): Promise<ContratVue> {
+    return this.db.transaction(async (tx) => {
+      const contratActuel = await this.exigerContrat(tx, contratId);
+      this.exigerModeIdentique(dto.mode, contratActuel.mode);
+      const version = await this.exigerVersion(tx, contratId, versionId);
+      const champs = this.champsVersionDepuisDto(dto);
+      this.validerVersionDomaine(contratActuel, version.dateEffet, champs);
+      await this.appliquerCorrection(
+        tx,
+        contratActuel,
+        version,
+        champs,
+        dto.motif ?? null,
+      );
+      return this.versContratVue(await this.exigerContrat(tx, contratId));
+    });
+  }
+
+  /**
+   * Corrige la **version courante** d'un contrat depuis le corps complet d'un
+   * contrat (façade de compatibilité `PUT /contrats/:id/version-courante`,
+   * remplaçant l'ancien `PUT /contrats/:id`). Seuls les champs versionnés sont
+   * appliqués : l'identité n'est pas versionnée (H6) et les `planning_mois` saisis
+   * **survivent** (plus de cascade-delete). 404 si le contrat n'existe pas ; 400 si
+   * le mode du corps diffère de celui du contrat.
+   */
+  async corrigerVersionCourante(
+    contratId: string,
     dto: ModifierContratDto,
   ): Promise<ContratVue> {
-    // Valide la cohérence métier via le domaine avant de persister (comme à la création).
-    if (dto.mode === 'CRECHE_PSU') {
-      ContratCreche.creer({
-        valideDu: dto.valideDu,
-        valideAu: dto.valideAu ?? dto.valideDu,
-        heuresAnnuellesContractualisees: dto.heuresAnnuellesContractualisees,
-        nbMensualites: dto.nbMensualites,
-        semaineType: semaineTypeDepuisJson(dto.semaineType),
-      });
-    }
-
-    // Remplacement complet : un DTO ABCM sans le champ (case décochée) ou un
-    // passage en crèche remettent `premiere_inscription` à `false` (lot 4a).
-    const premiereInscription =
-      dto.mode === 'CRECHE_PSU' ? false : (dto.premiereInscription ?? false);
-    await this.db.transaction(async (tx) => {
-      const lignes = await tx.select().from(contrat).where(eq(contrat.id, id));
-      const contratActuel = lignes[0];
-      if (!contratActuel) {
-        throw new NotFoundException(`contrat introuvable : ${id}`);
-      }
-      // Résout le lien établissement dans la même transaction (existant validé /
-      // nouvel établissement créé atomiquement). Le DTO étant un remplacement
-      // complet, l'absence des deux champs vaut « pas d'établissement » (null). On
-      // passe le lien ACTUEL du contrat pour tolérer un archivé **inchangé** (édition
-      // d'autres champs) tout en refusant un **changement** vers un archivé.
+    return this.db.transaction(async (tx) => {
+      const contratActuel = await this.exigerContrat(tx, contratId);
+      this.exigerModeIdentique(dto.mode, contratActuel.mode);
+      // Compatibilité web (formulaire d'édition pré-lot 5) : le corps complet
+      // porte aussi des champs NON versionnés — on les reconduit comme l'ancien
+      // `PUT /contrats/:id` (bornes de vie, enfant, établissement résolu avec la
+      // tolérance « archivé inchangé », 1ʳᵉ inscription), SANS toucher ni au
+      // `foyerId` (identité) ni aux plannings saisis (fini la cascade).
       const etablissementId = await this.resoudreEtablissement(
         tx,
-        dto.foyerId,
+        contratActuel.foyerId,
         dto,
         contratActuel.etablissementId,
       );
       await tx
         .update(contrat)
         .set({
-          foyerId: dto.foyerId,
           enfant: dto.enfant,
           enfantId: dto.enfantId,
-          mode: dto.mode,
           etablissementId,
           valideDu: dto.valideDu,
           valideAu: dto.valideAu,
-          premiereInscription,
-          heuresAnnuellesContractualisees:
+          premiereInscription:
             dto.mode === 'CRECHE_PSU'
-              ? dto.heuresAnnuellesContractualisees
-              : null,
-          nbMensualites: dto.mode === 'CRECHE_PSU' ? dto.nbMensualites : null,
-          semaineType: dto.mode === 'CRECHE_PSU' ? dto.semaineType : null,
-          semaineAbcm: dto.mode === 'CRECHE_PSU' ? null : dto.semaineAbcm,
+              ? false
+              : (dto.premiereInscription ?? false),
           updatedAt: new Date(),
         })
-        .where(eq(contrat.id, id));
-      // Invalide les plannings saisis : le changement de mode/dates les rend
-      // incohérents (un planning crèche n'a pas de sens pour un contrat cantine).
-      await tx.delete(planningMois).where(eq(planningMois.contratId, id));
-      const payload: ContratModifiePayload = {
-        contratId: id,
-        foyerId: dto.foyerId,
-        enfant: dto.enfant,
-        enfantId: dto.enfantId,
-        mode: dto.mode,
-        valideDu: dto.valideDu,
-        valideAu: dto.valideAu,
-        etablissementId,
-        premiereInscription,
-      };
-      await tx.insert(outbox).values({
-        id: randomUUID(),
-        type: CONTRAT_MODIFIE_TYPE,
-        payload,
-        traceId: traceIdCourant(),
-      });
+        .where(eq(contrat.id, contratId));
+      const contratMaj = await this.exigerContrat(tx, contratId);
+      const versions = await this.versionsDeContrat(tx, contratId);
+      const courante = this.resoudreVersionCourante(versions);
+      const champs = this.champsVersionDepuisDto(dto);
+      this.validerVersionDomaine(contratMaj, courante.dateEffet, champs);
+      await this.appliquerCorrection(tx, contratMaj, courante, champs, null);
+      return this.versContratVue(await this.exigerContrat(tx, contratId));
     });
+  }
 
-    return {
-      id,
-      foyerId: dto.foyerId,
-      enfant: dto.enfant,
-      enfantId: dto.enfantId,
-      mode: dto.mode,
-      valideDu: dto.valideDu,
-      valideAu: dto.valideAu,
-      premiereInscription,
-    };
+  /**
+   * Historique des versions d'un contrat (US-30-04/06), de la plus récente à la
+   * plus ancienne. Chaque entrée porte sa **période dérivée** (`du`/`au`, `au` =
+   * veille de la version suivante ou `null` si ouverte) reconstruite par le socle
+   * de versionnement. 404 si le contrat n'existe pas.
+   */
+  async listerVersions(contratId: string): Promise<ContratVersionVue[]> {
+    const contratActuel = await this.exigerContrat(this.db, contratId);
+    const versions = await this.versionsDeContrat(this.db, contratId);
+    const periodes = depuisSuite(
+      versions.map((v) => ({ dateEffet: v.dateEffet, valeur: v })),
+    );
+    const vues = periodes.map((p) => ({
+      id: p.valeur.id,
+      contratId,
+      mode: contratActuel.mode,
+      dateEffet: p.valeur.dateEffet,
+      du: p.periode.du,
+      au: p.periode.au ?? null,
+      heuresAnnuellesContractualisees: p.valeur.heuresAnnuellesContractualisees,
+      nbMensualites: p.valeur.nbMensualites,
+      semaineType: p.valeur.semaineType,
+      semaineAbcm: p.valeur.semaineAbcm,
+      saisiLe: p.valeur.saisiLe.toISOString(),
+      motif: p.valeur.motif,
+    }));
+    // Plus récente d'abord (historique lisible).
+    return vues.sort((a, b) => (a.dateEffet < b.dateEffet ? 1 : -1));
+  }
+
+  /**
+   * Aperçu d'impact d'une version (US-30-05) : liste des **mois** `YYYY-MM`
+   * couverts par sa période (intersectée avec la vie du contrat), du plus ancien au
+   * plus récent. Lecture seule, requise avant une correction rétroactive. 404 si le
+   * contrat ou la version n'existe pas.
+   */
+  async apercuImpactVersion(
+    contratId: string,
+    versionId: string,
+  ): Promise<{ versionId: string; moisCouverts: string[] }> {
+    const contratActuel = await this.exigerContrat(this.db, contratId);
+    await this.exigerVersion(this.db, contratId, versionId);
+    const versions = await this.versionsDeContrat(this.db, contratId);
+    const periodes = depuisSuite(
+      versions.map((v) => ({ dateEffet: v.dateEffet, valeur: v })),
+    );
+    const cible = periodes.find((p) => p.valeur.id === versionId);
+    // `cible` existe (exigerVersion a réussi) ; garde défensive de typage.
+    const du = cible?.periode.du ?? '';
+    // Borne haute = fin de la version, plafonnée à la fin de vie du contrat.
+    const finContrat = contratActuel.valideAu;
+    const auVersion = cible?.periode.au ?? null;
+    const au =
+      finContrat !== null && (auVersion === null || finContrat < auVersion)
+        ? finContrat
+        : auVersion;
+    return { versionId, moisCouverts: moisEntre(du, au) };
   }
 
   /**
    * Rattache le contrat `contratId` à l'établissement `etablissementId` (lien P2)
-   * **sans remplacer le reste du contrat ni invalider ses plannings** — à la
-   * différence de `modifierContrat` (remplacement complet + cascade `planning_mois`).
+   * **sans remplacer le reste du contrat ni invalider ses plannings** — sans
+   * remplacement complet du contrat (geste chirurgical dédié au back-fill).
    * Dédié au **back-fill P5** (migration du lien contrat→établissement sur des
    * contrats de production réels) : ne touche QUE `etablissement_id`.
    *
@@ -569,6 +762,243 @@ export class PlanificationService {
         payload,
         traceId: traceIdCourant(),
       });
+    });
+  }
+
+  /** Charge un contrat ou lève 404. Factorisé (lectures hors/dans transaction). */
+  private async exigerContrat(
+    lecteur: Lecteur,
+    contratId: string,
+  ): Promise<ContratRow> {
+    const lignes = await lecteur
+      .select()
+      .from(contrat)
+      .where(eq(contrat.id, contratId));
+    const ligne = lignes[0];
+    if (!ligne) {
+      throw new NotFoundException(`contrat introuvable : ${contratId}`);
+    }
+    return ligne;
+  }
+
+  /** Charge une version d'un contrat ou lève 404. */
+  private async exigerVersion(
+    lecteur: Lecteur,
+    contratId: string,
+    versionId: string,
+  ): Promise<ContratVersionRow> {
+    const lignes = await lecteur
+      .select()
+      .from(contratVersion)
+      .where(
+        and(
+          eq(contratVersion.id, versionId),
+          eq(contratVersion.contratId, contratId),
+        ),
+      );
+    const ligne = lignes[0];
+    if (!ligne) {
+      throw new NotFoundException(`version introuvable : ${versionId}`);
+    }
+    return ligne;
+  }
+
+  /** Versions d'un contrat, triées par date d'effet croissante. */
+  private async versionsDeContrat(
+    lecteur: Lecteur,
+    contratId: string,
+  ): Promise<ContratVersionRow[]> {
+    return lecteur
+      .select()
+      .from(contratVersion)
+      .where(eq(contratVersion.contratId, contratId))
+      .orderBy(contratVersion.dateEffet);
+  }
+
+  /**
+   * Refuse un changement de mode (l'identité n'est pas versionnée, H6) : un
+   * avenant/une correction opèrent sur les paramètres, pas sur le mode.
+   */
+  private exigerModeIdentique(modeDto: string, modeContrat: string): void {
+    if (modeDto !== modeContrat) {
+      throw new BadRequestException(
+        `le mode d'un contrat ne se change pas par avenant (${modeContrat} attendu)`,
+      );
+    }
+  }
+
+  /** Extrait les paramètres versionnés d'un DTO (avenant/correction/corps complet). */
+  private champsVersionDepuisDto(dto: {
+    mode: ModeContrat;
+    heuresAnnuellesContractualisees?: number;
+    nbMensualites?: number;
+    semaineType?: unknown;
+    semaineAbcm?: unknown;
+  }): ChampsVersion {
+    if (dto.mode === 'CRECHE_PSU') {
+      return {
+        heuresAnnuellesContractualisees:
+          dto.heuresAnnuellesContractualisees ?? null,
+        nbMensualites: dto.nbMensualites ?? null,
+        semaineType: dto.semaineType ?? null,
+        semaineAbcm: null,
+      };
+    }
+    return {
+      heuresAnnuellesContractualisees: null,
+      nbMensualites: null,
+      semaineType: null,
+      semaineAbcm: dto.semaineAbcm ?? null,
+    };
+  }
+
+  /**
+   * Valide la cohérence métier des paramètres d'une version via le domaine (comme
+   * à la création). Pour la crèche, on reconstruit un `ContratCreche` sur la
+   * période `[dateEffet, valideAu]` — toute violation d'invariant (INV-01, heures,
+   * mensualités) est levée en `DomainError` → 400 par le filtre global.
+   */
+  private validerVersionDomaine(
+    contratActuel: ContratRow,
+    dateEffet: string,
+    champs: ChampsVersion,
+  ): void {
+    if (contratActuel.mode === 'CRECHE_PSU') {
+      ContratCreche.creer({
+        valideDu: dateEffet,
+        // Borne haute de vie du contrat, ou la date d'effet si contrat mono-jour.
+        valideAu:
+          contratActuel.valideAu !== null && contratActuel.valideAu >= dateEffet
+            ? contratActuel.valideAu
+            : dateEffet,
+        heuresAnnuellesContractualisees:
+          champs.heuresAnnuellesContractualisees ?? 0,
+        nbMensualites: champs.nbMensualites ?? 1,
+        semaineType: semaineTypeDepuisJson(
+          (champs.semaineType as SemaineTypeJson | null) ?? {},
+        ),
+      });
+    }
+  }
+
+  /**
+   * Résout la version **courante** (applicable aujourd'hui) d'une suite non vide,
+   * ou, si toutes sont futures (contrat pas encore commencé), la plus proche (la
+   * première par date d'effet). Sert la projection sur `contrat` et la façade
+   * `version-courante`.
+   */
+  private resoudreVersionCourante(
+    versions: readonly ContratVersionRow[],
+  ): ContratVersionRow {
+    const suite = depuisSuite(
+      versions.map((v) => ({ dateEffet: v.dateEffet, valeur: v })),
+    );
+    try {
+      return selectionnerVersionApplicable(suite, aujourdhuiIso()).valeur;
+    } catch {
+      // Aujourd'hui antérieur à la 1ʳᵉ date d'effet : projeter la plus proche.
+      return [...versions].sort((a, b) =>
+        a.dateEffet < b.dateEffet ? -1 : 1,
+      )[0]!;
+    }
+  }
+
+  /**
+   * **Piège du lot** : réécrit les colonnes-projection de `contrat` (paramètres
+   * versionnés) depuis la version courante — à appeler après toute création/
+   * correction de version dont la période peut couvrir aujourd'hui, sinon les
+   * read-models aval et l'UI listent des paramètres périmés. No-op si le contrat
+   * n'a aucune version (défensif — n'arrive pas après le back-fill).
+   */
+  private async rafraichirProjectionContrat(
+    tx: Tx,
+    contratId: string,
+  ): Promise<void> {
+    const versions = await this.versionsDeContrat(tx, contratId);
+    if (versions.length === 0) {
+      return;
+    }
+    const courante = this.resoudreVersionCourante(versions);
+    await tx
+      .update(contrat)
+      .set({
+        heuresAnnuellesContractualisees:
+          courante.heuresAnnuellesContractualisees,
+        nbMensualites: courante.nbMensualites,
+        semaineType: courante.semaineType,
+        semaineAbcm: courante.semaineAbcm,
+        updatedAt: new Date(),
+      })
+      .where(eq(contrat.id, contratId));
+  }
+
+  /**
+   * Écrase les paramètres versionnés d'une version (correction), journalise
+   * l'avant/après (`correction_journal`, D6), rafraîchit la projection de la
+   * version courante et émet `ContratModifie`. Partagé par `corrigerVersion` et
+   * `corrigerVersionCourante`.
+   */
+  private async appliquerCorrection(
+    tx: Tx,
+    contratActuel: ContratRow,
+    version: ContratVersionRow,
+    champs: ChampsVersion,
+    motif: string | null,
+  ): Promise<void> {
+    const avant: ChampsVersion = {
+      heuresAnnuellesContractualisees: version.heuresAnnuellesContractualisees,
+      nbMensualites: version.nbMensualites,
+      semaineType: version.semaineType,
+      semaineAbcm: version.semaineAbcm,
+    };
+    await tx
+      .update(contratVersion)
+      .set({ ...champs, motif, updatedAt: new Date() })
+      .where(eq(contratVersion.id, version.id));
+    await tx.insert(correctionJournal).values({
+      id: randomUUID(),
+      contratId: contratActuel.id,
+      versionId: version.id,
+      avant,
+      apres: champs,
+      motif,
+    });
+    await this.rafraichirProjectionContrat(tx, contratActuel.id);
+    await this.emettreContratModifie(tx, contratActuel, {
+      id: version.id,
+      dateEffet: version.dateEffet,
+    });
+  }
+
+  /**
+   * Émet `ContratModifie.v2` (état cœur + `versionId`/`dateEffet` de la version
+   * créée ou corrigée, RM-30-06) via l'outbox pour que les read-models aval
+   * (`svc-tarification`, `svc-notifications`) se mettent à jour. Le payload ne
+   * transporte pas les paramètres versionnés (les projections n'en ont pas besoin).
+   */
+  private async emettreContratModifie(
+    tx: Tx,
+    contratActuel: ContratRow,
+    version: { id: string; dateEffet: string },
+  ): Promise<void> {
+    const payload: ContratModifieV2Payload = {
+      contratId: contratActuel.id,
+      foyerId: contratActuel.foyerId,
+      enfant: contratActuel.enfant,
+      enfantId: contratActuel.enfantId,
+      mode: contratActuel.mode as ModeContrat,
+      valideDu: contratActuel.valideDu,
+      valideAu: contratActuel.valideAu,
+      etablissementId: contratActuel.etablissementId,
+      premiereInscription: contratActuel.premiereInscription,
+      versionId: version.id,
+      dateEffet: version.dateEffet,
+    };
+    await tx.insert(outbox).values({
+      id: randomUUID(),
+      type: CONTRAT_MODIFIE_V2_TYPE,
+      payload,
+      traceId: traceIdCourant(),
     });
   }
 
@@ -891,22 +1321,105 @@ export class PlanificationService {
       (plannings[0]?.saisie as EcrirePlanningDto | undefined) ?? {};
     const joursNonFacturables = await this.referentiel.joursNonFacturables();
 
-    // La génération est pure (domaine) : le service ne fait que relire la ligne
-    // et lui passer sa forme brute persistée (colonnes JSON typées `unknown`).
-    const prestation = genererPrestationMois(
-      {
-        mode: ligne.mode,
-        valideDu: ligne.valideDu,
-        valideAu: ligne.valideAu,
-        heuresAnnuellesContractualisees: ligne.heuresAnnuellesContractualisees,
-        nbMensualites: ligne.nbMensualites,
-        semaineType: ligne.semaineType as SemaineTypeJson | null,
-        semaineAbcm: ligne.semaineAbcm as SemaineTypeAbcm | null,
-      },
+    // Résolution temporelle (SFD 30 lot 4) : construit les **segments** (versions)
+    // couvrant le mois, chacun restreint à sa période effective, puis délègue la
+    // génération segmentée au domaine pur (semaine type jour par jour, mensualité
+    // au 1er du mois — H7). Un seul segment = comportement historique inchangé.
+    const versions = await this.versionsDeContrat(this.db, contratId);
+    const segments = this.construireSegments(ligne, versions, mois);
+    const prestation = genererPrestationMoisSegments(
+      segments,
       mois,
       saisie,
       joursNonFacturables,
     );
     return { mois, prestations: [prestation] };
+  }
+
+  /**
+   * Construit les segments de génération d'un mois : une entrée par version dont
+   * la période (dérivée par le socle : `[dateEffet, veille de la suivante]`, dernière
+   * ouverte) **intersecte** à la fois la vie du contrat et le mois. Chaque segment
+   * porte un `ContratPourGeneration` dont `valideDu`/`valideAu` sont l'intersection
+   * (le domaine ne génère alors que les jours du segment). Repli **défensif** : un
+   * contrat sans version (jamais après le back-fill) retombe sur ses colonnes-
+   * projection en un unique segment (comportement d'avant le versionnement).
+   */
+  private construireSegments(
+    ligne: ContratRow,
+    versions: readonly ContratVersionRow[],
+    mois: string,
+  ): ContratPourGeneration[] {
+    const base = (champs: ChampsVersion): ContratPourGeneration => ({
+      mode: ligne.mode,
+      valideDu: ligne.valideDu,
+      valideAu: ligne.valideAu,
+      heuresAnnuellesContractualisees: champs.heuresAnnuellesContractualisees,
+      nbMensualites: champs.nbMensualites,
+      semaineType: champs.semaineType as SemaineTypeJson | null,
+      semaineAbcm: champs.semaineAbcm as SemaineTypeAbcm | null,
+    });
+
+    if (versions.length === 0) {
+      return [
+        base({
+          heuresAnnuellesContractualisees:
+            ligne.heuresAnnuellesContractualisees,
+          nbMensualites: ligne.nbMensualites,
+          semaineType: ligne.semaineType,
+          semaineAbcm: ligne.semaineAbcm,
+        }),
+      ];
+    }
+
+    const finContrat = ligne.valideAu; // borne haute de vie (null = ouvert)
+    const debutMois = `${mois}-01`;
+    const finMois = derniereDateDuMois(mois);
+    const periodes = depuisSuite(
+      versions.map((v) => ({ dateEffet: v.dateEffet, valeur: v })),
+    );
+
+    const segments: ContratPourGeneration[] = [];
+    for (const p of periodes) {
+      // Intersection période de version × vie du contrat × mois.
+      const finVersion = p.periode.au; // null = ouvert
+      const bornesHautes = [finMois, finContrat, finVersion].filter(
+        (d): d is string => d !== null,
+      );
+      const au = bornesHautes.reduce((min, d) => (d < min ? d : min));
+      const du = [debutMois, ligne.valideDu, p.periode.du].reduce((max, d) =>
+        d > max ? d : max,
+      );
+      if (du > au) {
+        continue; // ce segment ne couvre aucun jour du mois
+      }
+      segments.push({
+        ...base({
+          heuresAnnuellesContractualisees:
+            p.valeur.heuresAnnuellesContractualisees,
+          nbMensualites: p.valeur.nbMensualites,
+          semaineType: p.valeur.semaineType,
+          semaineAbcm: p.valeur.semaineAbcm,
+        }),
+        valideDu: du,
+        valideAu: au,
+      });
+    }
+
+    // Aucun segment ne couvre le mois (mois hors vie du contrat) : un segment
+    // « courant » vide donne les quantités nulles attendues (couvreMois faux).
+    if (segments.length === 0) {
+      const courante = this.resoudreVersionCourante(versions);
+      return [
+        base({
+          heuresAnnuellesContractualisees:
+            courante.heuresAnnuellesContractualisees,
+          nbMensualites: courante.nbMensualites,
+          semaineType: courante.semaineType,
+          semaineAbcm: courante.semaineAbcm,
+        }),
+      ];
+    }
+    return segments;
   }
 }

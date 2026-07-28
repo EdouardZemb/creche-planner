@@ -18,7 +18,9 @@ import {
   contratSupprimeEventSchema,
   planningModifieEventSchema,
   CONTRAT_CREE_TYPE,
+  CONTRAT_CREE_V2_TYPE,
   CONTRAT_MODIFIE_TYPE,
+  CONTRAT_MODIFIE_V2_TYPE,
   CONTRAT_SUPPRIME_TYPE,
   PLANNING_MODIFIE_TYPE,
 } from '@creche-planner/contracts-planification';
@@ -78,10 +80,14 @@ export class ProjectionService {
         case GRILLE_PUBLIEE_TYPE:
           await this.appliquerGrillePubliee(stream, donnees);
           return 'TRAITE';
+        // v2 additive (SFD 30 lot 4) : versionId/dateEffet en plus, ignorés par
+        // la projection (schema v1, strip) — champs projetés inchangés.
         case CONTRAT_CREE_TYPE:
+        case CONTRAT_CREE_V2_TYPE:
           await this.appliquerContratCree(stream, donnees);
           return 'TRAITE';
         case CONTRAT_MODIFIE_TYPE:
+        case CONTRAT_MODIFIE_V2_TYPE:
           await this.appliquerContratModifie(stream, donnees);
           return 'TRAITE';
         case CONTRAT_SUPPRIME_TYPE:
