@@ -88,8 +88,32 @@ describe('PanneauCoutMois', () => {
     expect(screen.queryByText('PSU')).not.toBeInTheDocument();
     expect(screen.queryByText('CRECHE_PSU')).not.toBeInTheDocument();
     expect(screen.getByText(/Mensualité crèche/)).toBeInTheDocument();
+    // US-30-04 : sans dates de version, aucune ligne « Calculé avec ».
+    expect(screen.queryByText(/Calculé avec/i)).not.toBeInTheDocument();
     expect(screen.getByText(/Aide CAF/)).toBeInTheDocument();
     expect(screen.getByText(/Total net/)).toBeInTheDocument();
+  });
+
+  it('affiche « Calculé avec : grille du … · contrat du … » quand les dates sont fournies (US-30-04)', async () => {
+    vi.mocked(api.lireCoutMois).mockResolvedValue({
+      ...coutMoisFactice,
+      prestations: [
+        {
+          ...coutMoisFactice.prestations[0]!,
+          grilleValideDu: '2026-01-01',
+          contratValideDu: '2025-09-01',
+        },
+      ],
+    });
+
+    render(<PanneauCoutMois foyerId="foyer-1" mois="2026-06" simule={false} />);
+
+    await screen.findByText(/Mensualité crèche/);
+    expect(
+      screen.getByText(
+        /Calculé avec : grille du 01\/01\/2026 · contrat du 01\/09\/2025/i,
+      ),
+    ).toBeInTheDocument();
   });
 
   it('affiche les lignes avec les classes debit/credit correctes', async () => {

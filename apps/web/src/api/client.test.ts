@@ -292,3 +292,78 @@ describe('client API — résilience réseau (retry borné + timeout)', () => {
     expect(init.signal).toBeUndefined();
   });
 });
+
+// --- Versionnement du contrat (SFD 30 lot 5) --------------------------------
+
+describe('client API — avenants, historique, correction (SFD 30)', () => {
+  it('creerAvenant : POST /contrats/:id/versions avec le corps JSON', async () => {
+    const vue = { id: 'c-1', mode: 'CRECHE_PSU' };
+    fetchMock.mockResolvedValue(reponse(201, vue));
+
+    await expect(
+      api.creerAvenant('c-1', {
+        mode: 'CRECHE_PSU',
+        dateEffet: '2026-09-01',
+        heuresAnnuellesContractualisees: 700,
+        nbMensualites: 7,
+        semaineType: {},
+      }),
+    ).resolves.toEqual(vue);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/contrats/c-1/versions');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toMatchObject({
+      dateEffet: '2026-09-01',
+    });
+  });
+
+  it('creerAvenant : un 409 remonte en ApiError (date déjà prise)', async () => {
+    fetchMock.mockResolvedValue(reponse(409, { message: 'conflit' }));
+    await expect(
+      api.creerAvenant('c-1', {
+        mode: 'CRECHE_PSU',
+        dateEffet: '2026-09-01',
+        heuresAnnuellesContractualisees: 700,
+        nbMensualites: 7,
+        semaineType: {},
+      }),
+    ).rejects.toMatchObject({ name: 'ApiError', status: 409 });
+  });
+
+  it('listerVersions : GET /contrats/:id/versions', async () => {
+    fetchMock.mockResolvedValue(reponse(200, [{ id: 'v-1' }]));
+    await expect(api.listerVersions('c-1')).resolves.toEqual([{ id: 'v-1' }]);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/contrats/c-1/versions');
+  });
+
+  it('apercuImpact : GET /contrats/:id/versions/:versionId/impact', async () => {
+    const impact = {
+      versionId: 'v-1',
+      moisCouverts: ['2026-06'],
+      moisCommuniques: [],
+    };
+    fetchMock.mockResolvedValue(reponse(200, impact));
+    await expect(api.apercuImpact('c-1', 'v-1')).resolves.toEqual(impact);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/contrats/c-1/versions/v-1/impact');
+  });
+
+  it('corrigerVersion : PUT /contrats/:id/versions/:versionId', async () => {
+    const vue = { id: 'c-1' };
+    fetchMock.mockResolvedValue(reponse(200, vue));
+    await expect(
+      api.corrigerVersion('c-1', 'v-1', {
+        mode: 'CRECHE_PSU',
+        heuresAnnuellesContractualisees: 700,
+        nbMensualites: 7,
+        semaineType: {},
+        motif: 'oubli',
+      }),
+    ).resolves.toEqual(vue);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/contrats/c-1/versions/v-1');
+    expect(init.method).toBe('PUT');
+  });
+});

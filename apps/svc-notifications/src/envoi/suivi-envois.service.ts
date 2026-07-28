@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import { DRIZZLE } from '@creche-planner/nest-commons';
+import { moisDeLaSemaine } from '@creche-planner/shared-semaine';
 import type { Database } from '../database/database.types.js';
 import {
   envoiEtablissement,
@@ -106,6 +107,40 @@ export class SuiviEnvoisService {
         // Ordre déterministe (id d'établissement) pour une liste stable et testable.
         .sort((a, b) => a.etablissementId.localeCompare(b.etablissementId)),
     };
+  }
+
+  /**
+   * Mois **communiqués** d'un foyer (SFD 30, US-30-05) : la liste des mois `YYYY-MM`
+   * pour lesquels **au moins un** récap a réellement été envoyé à un établissement
+   * (`envoi_etablissement.statut = 'ENVOYE'`). Chaque semaine envoyée est projetée sur
+   * le/les mois qu'elle recouvre (`moisDeLaSemaine`, 1 ou 2 mois à cheval). Sert à
+   * signaler « déjà envoyé à la crèche » avant une correction rétroactive. Bornage
+   * optionnel `[du, au]` (mois `YYYY-MM` inclus) pour limiter à la période d'impact.
+   * **Lecture seule.** DRY_RUN/ECHEC/EN_COURS ne comptent pas (rien n'a été communiqué).
+   */
+  async moisCommuniques(
+    foyerId: string,
+    du?: string,
+    au?: string,
+  ): Promise<{ mois: string[] }> {
+    const lignes = await this.db
+      .select({ semaineIso: envoiEtablissement.semaineIso })
+      .from(envoiEtablissement)
+      .where(
+        and(
+          eq(envoiEtablissement.foyerId, foyerId),
+          eq(envoiEtablissement.statut, 'ENVOYE'),
+        ),
+      );
+    const mois = new Set<string>();
+    for (const ligne of lignes) {
+      for (const m of moisDeLaSemaine(ligne.semaineIso)) {
+        if ((du === undefined || m >= du) && (au === undefined || m <= au)) {
+          mois.add(m);
+        }
+      }
+    }
+    return { mois: [...mois].sort() };
   }
 
   /** Renarrow d'un statut lu en base contre son ensemble de valeurs connues. */

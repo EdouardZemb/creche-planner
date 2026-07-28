@@ -80,6 +80,25 @@ export type InboxVue = ReponseJson<'/api/v1/moi/notifications', 'get', 200>;
 /** Vue projetée d'un contrat — dérivée de `components.schemas.ContratVue`. */
 export type ContratVue = SchemaComposant<'ContratVue'>;
 
+/**
+ * Une **version datée** d'un contrat (SFD 30, historique) — dérivée de
+ * `components.schemas.ContratVersionVue`. Les paramètres mode-spécifiques
+ * (`semaineType`/`semaineAbcm`) voyagent en `passthrough` (index signature ouverte du
+ * schéma) : on les re-type ici pour un accès sûr côté écran d'historique.
+ */
+export type ContratVersionVue = SchemaComposant<'ContratVersionVue'> & {
+  semaineType?: SemaineTypeCreche;
+  semaineAbcm?: SemaineAbcm;
+};
+
+/**
+ * Aperçu d'impact d'une version (SFD 30, US-30-05) — dérivé de
+ * `components.schemas.ImpactVersionVue`. `moisCouverts` = mois recalculés par une
+ * correction ; `moisCommuniques` ⊆ `moisCouverts` = ceux déjà envoyés à un
+ * établissement (avertissement « déjà envoyé »).
+ */
+export type ImpactVersion = SchemaComposant<'ImpactVersionVue'>;
+
 /** Ligne de coût — dérivée de `components.schemas.Ligne`. */
 export type Ligne = SchemaComposant<'Ligne'>;
 
@@ -277,6 +296,46 @@ export interface LienEtablissementSaisie {
 
 export type CreerContrat = (CreerContratCreche | CreerContratAbcm) &
   LienEtablissementSaisie;
+
+// ---- Versionnement du contrat (SFD 30) : avenant & correction --------------
+//
+// Un avenant / une correction ne portent QUE les paramètres versionnés (H6 :
+// l'enfant, le mode et l'établissement ne sont PAS versionnables — jamais dans ces
+// corps). Le `mode` reste présent comme discriminant (fixé = celui du contrat).
+
+/** Paramètres versionnés d'un contrat crèche (semaine type + heures + mensualités). */
+export interface ParametresVersionCreche {
+  mode: 'CRECHE_PSU';
+  heuresAnnuellesContractualisees: number;
+  nbMensualites: number;
+  semaineType: SemaineTypeCreche;
+}
+
+/** Paramètres versionnés d'un contrat ABCM (semaine d'inscriptions). */
+export interface ParametresVersionAbcm {
+  mode: 'CANTINE' | 'PERISCOLAIRE' | 'ALSH';
+  semaineAbcm: SemaineAbcm;
+}
+
+/** Paramètres versionnés d'un contrat (union par mode). */
+export type ParametresVersion = ParametresVersionCreche | ParametresVersionAbcm;
+
+/**
+ * Corps d'un **avenant** (`POST /contrats/:id/versions`) : paramètres versionnés +
+ * date d'effet (`YYYY-MM-DD`) + motif optionnel. Aucune identité (H6).
+ */
+export type SaisieAvenant = ParametresVersion & {
+  dateEffet: string;
+  motif?: string;
+};
+
+/**
+ * Corps d'une **correction** de version (`PUT /contrats/:id/versions/:versionId`) :
+ * mêmes paramètres versionnés, **sans** date d'effet (la version garde sa date).
+ */
+export type SaisieCorrectionVersion = ParametresVersion & {
+  motif?: string;
+};
 
 // Écriture de planning (PUT /contrats/:id/plannings/:mois?simule=).
 // Crèche : la saisie d'une présence/absence se fait en heures d'arrivée/départ

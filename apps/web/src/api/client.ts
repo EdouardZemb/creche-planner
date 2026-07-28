@@ -19,6 +19,10 @@ import type {
   CreerContrat,
   ContratVue,
   ContratLocal,
+  ContratVersionVue,
+  ImpactVersion,
+  SaisieAvenant,
+  SaisieCorrectionVersion,
   EcrirePlanning,
   EcrireSemaineBesoins,
   LirePlanningReponse,
@@ -501,6 +505,75 @@ export const api = {
       headers: entetes(false),
       ...(opts.signal ? { signal: opts.signal } : {}),
     }).then((r) => lire<void>(r));
+  },
+
+  /**
+   * Crée un **avenant** (SFD 30, US-30-01) : nouvelle version du contrat à date d'effet
+   * — `POST /contrats/:id/versions`. 409 si une version existe déjà à cette date, 400 si
+   * la date précède le début du contrat (corps d'erreur `[{champ,message}]` via `lire`).
+   */
+  creerAvenant(
+    id: string,
+    saisie: SaisieAvenant,
+    opts: RequeteOptions = {},
+  ): Promise<ContratVue> {
+    return requete(`${BASE}/v1/contrats/${encodeURIComponent(id)}/versions`, {
+      method: 'POST',
+      headers: entetes(true),
+      body: JSON.stringify(saisie),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<ContratVue>(r));
+  },
+
+  /** Historique des versions d'un contrat — `GET /contrats/:id/versions`. */
+  listerVersions(
+    id: string,
+    opts: RequeteOptions = {},
+  ): Promise<ContratVersionVue[]> {
+    return requeteIdempotente(
+      `${BASE}/v1/contrats/${encodeURIComponent(id)}/versions`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<ContratVersionVue[]>(r));
+  },
+
+  /**
+   * Aperçu d'impact d'une version (SFD 30, US-30-05) — `GET
+   * /contrats/:id/versions/:versionId/impact` : les mois recalculés (`moisCouverts`) et
+   * ceux déjà communiqués à un établissement (`moisCommuniques`).
+   */
+  apercuImpact(
+    id: string,
+    versionId: string,
+    opts: RequeteOptions = {},
+  ): Promise<ImpactVersion> {
+    return requeteIdempotente(
+      `${BASE}/v1/contrats/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/impact`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<ImpactVersion>(r));
+  },
+
+  /**
+   * **Corrige** une version existante (SFD 30, US-30-05) — `PUT
+   * /contrats/:id/versions/:versionId` : écrase ses paramètres versionnés sans déplacer
+   * sa date d'effet (journalisé côté service). 404 si la version est inconnue.
+   */
+  corrigerVersion(
+    id: string,
+    versionId: string,
+    saisie: SaisieCorrectionVersion,
+    opts: RequeteOptions = {},
+  ): Promise<ContratVue> {
+    return requete(
+      `${BASE}/v1/contrats/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+      {
+        method: 'PUT',
+        headers: entetes(true),
+        body: JSON.stringify(saisie),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<ContratVue>(r));
   },
 
   ecrirePlanning(

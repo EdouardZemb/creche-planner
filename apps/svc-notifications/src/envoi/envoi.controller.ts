@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -7,6 +8,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ScopeFoyerInterServices } from '@creche-planner/nest-commons';
 import {
@@ -75,6 +77,40 @@ export class EnvoiController {
     @Param('semaineIso', SemaineIsoPipe) semaineIso: string,
   ): Promise<SuiviEnvoisVue> {
     return this.suivis.lire(foyerId, semaineIso);
+  }
+
+  /**
+   * Mois **communiqués** d'un foyer (SFD 30, US-30-05, **lecture seule**) : les mois
+   * `YYYY-MM` pour lesquels un récap a réellement été envoyé à un établissement. Bornage
+   * optionnel `?du=YYYY-MM&au=YYYY-MM` (mois inclus) pour se limiter à la période
+   * d'impact d'une correction. Sert l'avertissement « déjà envoyé à la crèche ».
+   */
+  @ScopeFoyerInterServices({ param: 'foyerId' })
+  @Get('foyers/:foyerId/mois-communiques')
+  moisCommuniques(
+    @Param('foyerId', ParseUUIDPipe) foyerId: string,
+    @Query('du') du?: string,
+    @Query('au') au?: string,
+  ): Promise<{ mois: string[] }> {
+    return this.suivis.moisCommuniques(
+      foyerId,
+      this.moisOuRejeter(du, 'du'),
+      this.moisOuRejeter(au, 'au'),
+    );
+  }
+
+  /** Valide un mois `YYYY-MM` optionnel (400 si présent mais mal formé). */
+  private moisOuRejeter(
+    valeur: string | undefined,
+    champ: string,
+  ): string | undefined {
+    if (valeur === undefined) return undefined;
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(valeur)) {
+      throw new BadRequestException([
+        { champ, message: `mois invalide (attendu YYYY-MM) : ${valeur}` },
+      ]);
+    }
+    return valeur;
   }
 
   /** Envoie réellement le récap agrégé au service (après relecture). Idempotent. */

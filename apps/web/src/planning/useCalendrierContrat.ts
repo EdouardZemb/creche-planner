@@ -205,10 +205,13 @@ export function useCalendrierContrat<P>({
           reinitialiserSaisie();
           // Message visible détaillé ; l'annonce lecteur d'écran (AQ-05) reste
           // courte et passe par la région live existante (pas de double live).
+          // SFD 30 lot 4 : la modification durable est désormais NON destructive
+          // (correction de la version courante) — les saisies mensuelles survivent
+          // et sont réinterprétées par le nouveau contrat.
           setSuccesDurable(
-            `Contrat modifié à ${formaterHeureFr(new Date())}. Les saisies de ce mois ont été effacées : le calendrier repart du nouveau contrat.`,
+            `Contrat modifié à ${formaterHeureFr(new Date())}. Vos saisies de ce mois sont conservées ; le calendrier applique le nouveau contrat.`,
           );
-          annoncer('Contrat modifié, saisies du mois réinitialisées');
+          annoncer('Contrat modifié, saisies du mois conservées');
           onContratModifie?.();
         })
         .catch((e: unknown) => {

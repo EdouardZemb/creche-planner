@@ -22,6 +22,10 @@ const coutPrestationVueSchema = z.object({
   mode: z.string(),
   totalCentimes: z.number(),
   lignes: z.array(ligneVueSchema),
+  // « Calculé avec » (SFD 30, US-30-04) : dates d'effet du tarif résolu et du contrat
+  // ayant servi. Additifs/optionnels (`optional()`) — relayés tels quels au front.
+  grilleValideDu: z.string().optional(),
+  contratValideDu: z.string().optional(),
 });
 
 /** Coût d'un mois pour un foyer (agrégat des prestations). */

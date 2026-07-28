@@ -10,6 +10,10 @@ vi.mock('../api/client', () => ({
     listerContrats: vi.fn(),
     supprimerContrat: vi.fn(),
     listerEtablissements: vi.fn(),
+    listerVersions: vi.fn(),
+    apercuImpact: vi.fn(),
+    creerAvenant: vi.fn(),
+    corrigerVersion: vi.fn(),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -32,6 +36,10 @@ const mockedApi = api as unknown as {
   listerContrats: ReturnType<typeof vi.fn>;
   supprimerContrat: ReturnType<typeof vi.fn>;
   listerEtablissements: ReturnType<typeof vi.fn>;
+  listerVersions: ReturnType<typeof vi.fn>;
+  apercuImpact: ReturnType<typeof vi.fn>;
+  creerAvenant: ReturnType<typeof vi.fn>;
+  corrigerVersion: ReturnType<typeof vi.fn>;
 };
 
 const FOYER_ID = 'f1';
@@ -89,6 +97,28 @@ describe('ContratsPage', () => {
     mockedApi.listerContrats.mockResolvedValue([contratFactice]);
     // Établissements du foyer (sélecteur du formulaire de contrat).
     mockedApi.listerEtablissements.mockResolvedValue([]);
+    // Versionnement (SFD 30 lot 5) : une version courante ouverte par défaut.
+    mockedApi.listerVersions.mockResolvedValue([
+      {
+        id: 'v1',
+        contratId: 'c1',
+        mode: 'CRECHE_PSU',
+        dateEffet: '2026-01-01',
+        du: '2026-01-01',
+        au: null,
+        heuresAnnuellesContractualisees: 763,
+        nbMensualites: 7,
+        saisiLe: '2026-01-01T09:00:00.000Z',
+        motif: null,
+      },
+    ]);
+    mockedApi.apercuImpact.mockResolvedValue({
+      versionId: 'v1',
+      moisCouverts: ['2026-06'],
+      moisCommuniques: [],
+    });
+    mockedApi.creerAvenant.mockResolvedValue(contratFactice);
+    mockedApi.corrigerVersion.mockResolvedValue(contratFactice);
   });
 
   it('liste les contrats avec boutons Modifier et Supprimer', async () => {
@@ -125,7 +155,7 @@ describe('ContratsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('ouvre le formulaire pré-rempli en cliquant sur Modifier', async () => {
+  it('ouvre le choix de modification (avenant / correction / historique) au clic Modifier', async () => {
     rendu();
     await waitFor(() => {
       expect(screen.getByText('Mia')).toBeInTheDocument();
@@ -135,10 +165,127 @@ describe('ContratsPage', () => {
       screen.getByRole('button', { name: /Modifier le contrat de Mia/i }),
     );
 
-    expect(screen.getByText(/Modifier le contrat/i)).toBeInTheDocument();
+    // Le menu (bottom-sheet) propose les trois gestes en langage parent.
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toBeInTheDocument();
     expect(
-      (screen.getByLabelText(/Valide du/i) as HTMLInputElement).value,
-    ).toBe('2026-01-01');
+      screen.getByRole('button', { name: /Changer à partir d’une date/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Corriger les paramètres actuels/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Voir l’historique/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('« Changer à partir d’une date » ouvre le formulaire d’avenant (avec date d’effet, sans identité — H6)', async () => {
+    rendu();
+    await waitFor(() => {
+      expect(screen.getByText('Mia')).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Modifier le contrat de Mia/i }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /Changer à partir d’une date/i }),
+    );
+
+    // Champ « À partir du » présent ; aucun sélecteur d'enfant/mode (H6 : l'identité
+    // ne se versionne pas — les champs sont ABSENTS, pas seulement désactivés).
+    expect(screen.getByLabelText(/À partir du/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Enfant/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Mode/i)).not.toBeInTheDocument();
+  });
+
+  it('« Corriger les paramètres actuels » charge la version courante puis ouvre l’aperçu d’impact', async () => {
+    rendu();
+    await waitFor(() => {
+      expect(screen.getByText('Mia')).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Modifier le contrat de Mia/i }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /Corriger les paramètres actuels/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApi.listerVersions).toHaveBeenCalledWith('c1');
+    });
+    // Le formulaire de correction s'ouvre (pas de champ date d'effet).
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: /Voir l’impact et corriger/i }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText(/À partir du/i)).not.toBeInTheDocument();
+  });
+
+  it('« Voir l’historique » liste les versions du contrat', async () => {
+    rendu();
+    await waitFor(() => {
+      expect(screen.getByText('Mia')).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Modifier le contrat de Mia/i }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Voir l’historique/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.listerVersions).toHaveBeenCalled();
+    });
+    expect(await screen.findByText(/Historique — Mia/i)).toBeInTheDocument();
+    expect(screen.getByText(/À partir du/i)).toBeInTheDocument();
+  });
+
+  it('avenant : enregistre puis affiche le succès et recharge la liste', async () => {
+    rendu();
+    await waitFor(() => {
+      expect(screen.getByText('Mia')).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Modifier le contrat de Mia/i }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /Changer à partir d’une date/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/À partir du/i), {
+      target: { value: '2027-09-01' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Enregistrer le changement' }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApi.creerAvenant).toHaveBeenCalled();
+    });
+    expect(
+      await screen.findByText(/Changement enregistré pour le contrat de Mia/i),
+    ).toBeInTheDocument();
+  });
+
+  it('correction : une erreur de chargement de la version courante est signalée', async () => {
+    mockedApi.listerVersions.mockRejectedValueOnce(new Error('svc down'));
+    rendu();
+    await waitFor(() => {
+      expect(screen.getByText('Mia')).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Modifier le contrat de Mia/i }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /Corriger les paramètres actuels/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/svc down/i)).toBeInTheDocument();
+    });
   });
 
   // UT-03 : la confirmation passe désormais par la Modale accessible

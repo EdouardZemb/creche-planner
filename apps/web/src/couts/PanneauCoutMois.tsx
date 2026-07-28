@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { api } from '../api/client';
 import type { Ligne, PrestationCout } from '../types/bff';
 import { centimesEnEuros, deltaEnEuros, repereDelta } from '../utils/money';
+import { formaterDateFr } from '../utils/dates';
 import { titrePrestationCout } from '../utils/libelles';
 import { estSigleConnu } from '../utils/glossaire';
 import { useAsync } from '../hooks/useAsync';
@@ -75,7 +76,29 @@ function SectionPrestation({ prestation }: { prestation: PrestationCout }) {
       {prestation.lignes.map((l, i) => (
         <LigneCout key={i} ligne={l} avecSigne={false} />
       ))}
+      <CalculeAvec prestation={prestation} />
     </div>
+  );
+}
+
+/**
+ * Ligne discrète « Calculé avec : grille du … · contrat du … » (SFD 30, US-30-04) :
+ * quelles versions ont servi à chiffrer ce mois. Rien n'est affiché si le BFF ne
+ * transporte aucune de ces dates (rétrocompatible : champs additifs optionnels).
+ */
+function CalculeAvec({ prestation }: { prestation: PrestationCout }) {
+  const morceaux: string[] = [];
+  if (prestation.grilleValideDu) {
+    morceaux.push(`grille du ${formaterDateFr(prestation.grilleValideDu)}`);
+  }
+  if (prestation.contratValideDu) {
+    morceaux.push(`contrat du ${formaterDateFr(prestation.contratValideDu)}`);
+  }
+  if (morceaux.length === 0) return null;
+  return (
+    <p className="muted" style={{ fontSize: '0.75rem', margin: '0.15rem 0 0' }}>
+      Calculé avec : {morceaux.join(' · ')}
+    </p>
   );
 }
 

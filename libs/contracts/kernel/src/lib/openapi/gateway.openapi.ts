@@ -308,15 +308,25 @@ export const gatewayOpenApiDocument = {
         type: 'object',
         description:
           'Aperçu d’impact d’une version : les mois (YYYY-MM) qui seraient ' +
-          'recalculés par une correction, du plus ancien au plus récent.',
+          'recalculés par une correction, du plus ancien au plus récent, et — ' +
+          'parmi eux — ceux déjà communiqués à un établissement (récap envoyé), ' +
+          'pour l’avertissement « déjà envoyé » (US-30-05).',
         properties: {
           versionId: { type: 'string', format: 'uuid' },
           moisCouverts: {
             type: 'array',
             items: { type: 'string', pattern: '^\\d{4}-\\d{2}$' },
           },
+          moisCommuniques: {
+            type: 'array',
+            description:
+              'Sous-ensemble de `moisCouverts` dont le récap a déjà été envoyé ' +
+              'à un établissement (croisé avec le suivi des envois). Vide si ' +
+              'aucun, ou si le suivi est momentanément indisponible.',
+            items: { type: 'string', pattern: '^\\d{4}-\\d{2}$' },
+          },
         },
-        required: ['versionId', 'moisCouverts'],
+        required: ['versionId', 'moisCouverts', 'moisCommuniques'],
       },
       PreavisRegle: {
         description:
@@ -460,6 +470,21 @@ export const gatewayOpenApiDocument = {
                 lignes: {
                   type: 'array',
                   items: { $ref: '#/components/schemas/Ligne' },
+                },
+                grilleValideDu: {
+                  type: 'string',
+                  format: 'date',
+                  description:
+                    'Date d’effet (YYYY-MM-DD) du tarif résolu pour ce mois ' +
+                    '(grille ABCM ou barème PSU) — « Calculé avec » (US-30-04). ' +
+                    'Optionnel (absent si non résolu, ex. frais fixes).',
+                },
+                contratValideDu: {
+                  type: 'string',
+                  format: 'date',
+                  description:
+                    'Date de début (YYYY-MM-DD) du contrat ayant servi au ' +
+                    'calcul — « contrat du … » (US-30-04). Optionnel.',
                 },
               },
               required: ['enfant', 'mode', 'totalCentimes', 'lignes'],

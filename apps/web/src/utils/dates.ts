@@ -158,6 +158,22 @@ export function libelleDate(iso: string): string {
 }
 
 /**
+ * Date « YYYY-MM-DD » → « 1 septembre 2026 » : quantième + mois + année, sans le nom
+ * du jour (repères d'historique/versionnement où l'année compte, langage parent). En
+ * UTC pour ne pas décaler le jour ; repli sur la chaîne brute si la forme est invalide.
+ */
+export function dateJourMoisAnneeFr(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const [y, m, d] = partsIso(iso);
+  return new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(Date.UTC(y, m - 1, d)));
+}
+
+/**
  * Date « YYYY-MM-DD » → « mardi 1 juillet » : jour nommé + quantième + mois, sans
  * année (relecture d'envoi — la semaine notifiée tient sur un horizon court). Le
  * quantième reste en chiffres (« 1 juillet », pas « 1er ») pour coller au delta figé.
