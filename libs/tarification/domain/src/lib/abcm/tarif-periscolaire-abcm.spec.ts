@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Tranche } from '@creche-planner/shared-kernel';
-import { GrilleAbcm } from './grille-abcm.js';
+import { grilleAbcm2026 } from './grille-abcm.fixtures.js';
 import { TarifPeriscolaireAbcm } from './tarif-periscolaire-abcm.js';
 import { QuantiteInvalideError } from '../core/tarification-error.js';
 
-const peri = new TarifPeriscolaireAbcm(GrilleAbcm.pour(Tranche.T3));
+const peri = new TarifPeriscolaireAbcm(grilleAbcm2026(Tranche.T3));
 
 describe('TarifPeriscolaireAbcm (doc 02 §4.2)', () => {
   it('CT-11 — soir ×12 (7,05) + matin ×8 (3,33) = 111,24 €', () => {

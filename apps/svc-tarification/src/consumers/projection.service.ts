@@ -9,8 +9,12 @@ import {
   FOYER_MIS_A_JOUR_V2_TYPE,
 } from '@creche-planner/contracts-foyer';
 import {
+  baremePsuPublieEventSchema,
   grillePublieeEventSchema,
+  grillePublieeV2EventSchema,
+  BAREME_PSU_PUBLIE_TYPE,
   GRILLE_PUBLIEE_TYPE,
+  GRILLE_PUBLIEE_V2_TYPE,
 } from '@creche-planner/contracts-referentiel';
 import {
   contratCreeEventSchema,
@@ -27,6 +31,7 @@ import {
 import { DRIZZLE, type ResultatTraitement } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
+  baremePsu,
   contrat,
   enfant,
   foyer,
@@ -78,7 +83,11 @@ export class ProjectionService {
           await this.appliquerEnfantAjoute(stream, donnees);
           return 'TRAITE';
         case GRILLE_PUBLIEE_TYPE:
-          await this.appliquerGrillePubliee(stream, donnees);
+        case GRILLE_PUBLIEE_V2_TYPE:
+          await this.appliquerGrillePubliee(stream, donnees, type);
+          return 'TRAITE';
+        case BAREME_PSU_PUBLIE_TYPE:
+          await this.appliquerBaremePsuPublie(stream, donnees);
           return 'TRAITE';
         // v2 additive (SFD 30 lot 4) : versionId/dateEffet en plus, ignorés par
         // la projection (schema v1, strip) — champs projetés inchangés.
@@ -241,16 +250,30 @@ export class ProjectionService {
     });
   }
 
+  /**
+   * Projette `referentiel.GrillePubliee`. **Dispatch par type** (v1 / v2) : la v2
+   * (SFD 30, D1) transporte les **montants** du mode dans `payload.parametres` —
+   * c'est cette colonne `parametres` que le calcul lit désormais (RM-30-04). La v1
+   * historique n'a aucun montant : elle est projetée avec `parametres = {}` (ligne
+   * tolérée mais **ignorée par le calcul**, faute de tarif). Garde de monotonie
+   * conservée.
+   */
   private async appliquerGrillePubliee(
     stream: string,
     donnees: unknown,
+    type: string,
   ): Promise<void> {
-    const evt = grillePublieeEventSchema.parse(donnees);
+    const evt =
+      type === GRILLE_PUBLIEE_V2_TYPE
+        ? grillePublieeV2EventSchema.parse(donnees)
+        : grillePublieeEventSchema.parse(donnees);
+    const p = evt.payload;
+    // Montants du mode (v2) ou aucun (v1 historique → ligne ignorée au calcul).
+    const parametres = 'parametres' in p ? p.parametres : {};
     await this.db.transaction(async (tx) => {
       if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
         return;
       }
-      const p = evt.payload;
       await tx
         .insert(grilleTarifaire)
         .values({
@@ -259,7 +282,7 @@ export class ProjectionService {
           tranche: p.tranche,
           valideDu: p.valideDu,
           valideAu: p.valideAu,
-          parametres: p,
+          parametres,
           eventId: evt.id,
           occurredAt: new Date(evt.occurredAt),
           updatedAt: new Date(),
@@ -272,13 +295,59 @@ export class ProjectionService {
           ],
           set: {
             valideAu: p.valideAu,
-            parametres: p,
+            parametres,
             eventId: evt.id,
             occurredAt: new Date(evt.occurredAt),
             updatedAt: new Date(),
           },
           // Garde de monotonie (cf. appliquerFoyerMisAJour).
           setWhere: sql`${grilleTarifaire.occurredAt} is null or ${grilleTarifaire.occurredAt} <= excluded.occurred_at`,
+        });
+    });
+  }
+
+  /**
+   * Projette `referentiel.BaremePsuPublie.v1` (SFD 30, D2) dans le read-model local
+   * `bareme_psu` : le taux d'effort et les bornes CNAF, versionnés par période,
+   * résolus **à date** par le calcul PSU. Upsert par `valide_du` avec la même garde
+   * de monotonie que les autres projections.
+   */
+  private async appliquerBaremePsuPublie(
+    stream: string,
+    donnees: unknown,
+  ): Promise<void> {
+    const evt = baremePsuPublieEventSchema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      const p = evt.payload;
+      await tx
+        .insert(baremePsu)
+        .values({
+          id: p.baremeId,
+          valideDu: p.valideDu,
+          valideAu: p.valideAu,
+          taux: p.taux,
+          plancherCentimes: p.plancherCentimes,
+          plafondCentimes: p.plafondCentimes,
+          eventId: evt.id,
+          occurredAt: new Date(evt.occurredAt),
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: baremePsu.valideDu,
+          set: {
+            valideAu: p.valideAu,
+            taux: p.taux,
+            plancherCentimes: p.plancherCentimes,
+            plafondCentimes: p.plafondCentimes,
+            eventId: evt.id,
+            occurredAt: new Date(evt.occurredAt),
+            updatedAt: new Date(),
+          },
+          // Garde de monotonie (cf. appliquerFoyerMisAJour).
+          setWhere: sql`${baremePsu.occurredAt} is null or ${baremePsu.occurredAt} <= excluded.occurred_at`,
         });
     });
   }

@@ -114,11 +114,26 @@ export class SeedService
       await this.amorcerGrilles();
       await this.amorcerBaremePsu();
       await this.amorcerFermetures();
+      // Rattrapage one-shot post-déploiement (SFD 30, lot 2) : ré-émet en v2 les
+      // grilles/barèmes seedés avant ce lot (montants jamais transmis à Tarification).
+      // Idempotent : ne fait rien une fois les `version_payload` remontés.
+      await this.rattraperEmissionsV2();
     } catch (erreur) {
       this.logger.warn(
         `Amorçage du catalogue impossible (${(erreur as Error).message}) — nouvel essai dans 5 s`,
       );
       this.retry = setTimeout(() => void this.amorcer(), 5000);
+    }
+  }
+
+  private async rattraperEmissionsV2(): Promise<void> {
+    const grilles = await this.referentiel.reemettreGrillesEnV2();
+    if (grilles > 0) {
+      this.logger.log(`Grilles ré-émises en v2 : ${grilles}`);
+    }
+    const baremes = await this.referentiel.reemettreBaremesPsu();
+    if (baremes > 0) {
+      this.logger.log(`Barèmes PSU ré-émis : ${baremes}`);
     }
   }
 
@@ -138,14 +153,12 @@ export class SeedService
     if (dejaLa.length > 0) {
       return;
     }
-    await this.db.insert(baremePsu).values({
+    await this.referentiel.publierBaremePsu({
       valideDu: '2026-01-01',
       valideAu: null,
       taux: TAUX_EFFORT_PSU_2026,
-      plancherCentimes: null,
-      plafondCentimes: null,
     });
-    this.logger.log('Barème PSU 2026 amorcé');
+    this.logger.log('Barème PSU 2026 amorcé + BaremePsuPublie');
   }
 
   private async amorcerFermetures(): Promise<void> {

@@ -8,6 +8,10 @@ import {
   CONTRAT_SUPPRIME_TYPE,
   PLANNING_MODIFIE_TYPE,
 } from '@creche-planner/contracts-planification';
+import {
+  BAREME_PSU_PUBLIE_TYPE,
+  GRILLE_PUBLIEE_V2_TYPE,
+} from '@creche-planner/contracts-referentiel';
 import { ProjectionService } from './projection.service.js';
 import type { Database } from '../database/database.types.js';
 import type { PlanificationClient } from '../fallback/planification.client.js';
@@ -162,6 +166,44 @@ function evenementFoyerV2(id: string): unknown {
   };
 }
 
+function evenementGrilleV2(id: string): unknown {
+  return {
+    id,
+    type: GRILLE_PUBLIEE_V2_TYPE,
+    source: 'svc-referentiel',
+    version: 1,
+    occurredAt: '2026-01-01T00:00:00.000Z',
+    traceId: 'trace-g',
+    payload: {
+      grilleId: '44444444-0000-4000-8000-000000000000',
+      mode: 'CANTINE',
+      tranche: 3,
+      valideDu: '2026-01-01',
+      valideAu: null,
+      parametres: { cantineTotalCentimes: 1268, cantinePartGardeCentimes: 801 },
+    },
+  };
+}
+
+function evenementBaremePsu(id: string): unknown {
+  return {
+    id,
+    type: BAREME_PSU_PUBLIE_TYPE,
+    source: 'svc-referentiel',
+    version: 1,
+    occurredAt: '2026-01-01T00:00:00.000Z',
+    traceId: 'trace-b',
+    payload: {
+      baremeId: '55555555-0000-4000-8000-000000000000',
+      valideDu: '2026-01-01',
+      valideAu: null,
+      taux: { '1': 0.000619, '2': 0.000516 },
+      plancherCentimes: null,
+      plafondCentimes: null,
+    },
+  };
+}
+
 describe('ProjectionService.traiter', () => {
   it('acquitte une enveloppe non reconnue sans toucher la base', async () => {
     const db = fakeDb(true);
@@ -258,6 +300,30 @@ describe('ProjectionService.traiter', () => {
         evenementFoyer('11111111-1111-4111-8111-111111111111'),
       ),
     ).resolves.toBe('TRAITE');
+  });
+
+  it('projette un GrillePubliee.v2 (montants) et acquitte', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db, clientStub);
+    await expect(
+      projection.traiter(
+        'REFERENTIEL',
+        evenementGrilleV2('99999999-9999-4999-8999-999999999999'),
+      ),
+    ).resolves.toBe('TRAITE');
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('projette un BaremePsuPublie.v1 et acquitte', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db, clientStub);
+    await expect(
+      projection.traiter(
+        'REFERENTIEL',
+        evenementBaremePsu('aaaaaaaa-0000-4000-8000-000000000000'),
+      ),
+    ).resolves.toBe('TRAITE');
+    expect(db.transaction).toHaveBeenCalledTimes(1);
   });
 
   it('projette un ContratModifie valide (met à jour identité) et acquitte', async () => {

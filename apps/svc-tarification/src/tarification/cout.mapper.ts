@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { Duree, Money, Tranche } from '@creche-planner/shared-kernel';
+import { Duree, Money } from '@creche-planner/shared-kernel';
 import {
+  BaremeEffortPsu,
   CoutMois,
   GrilleAbcm,
   TarifAlshAbcm,
@@ -22,6 +23,19 @@ export interface FoyerCalcul {
   readonly ressourcesMensuellesCentimes: number;
   readonly nbEnfantsACharge: number;
   readonly tranche: 1 | 2 | 3;
+}
+
+/**
+ * Paramètres tarifaires **résolus à la date du mois** (SFD 30, D1/D2), fournis par
+ * `cout.service` depuis le read-model (repli REST sinon). Le mapper reste pur : il
+ * ne fait plus aucune résolution — il reçoit la grille ABCM et/ou le barème PSU
+ * déjà résolus. `grille` est requise pour un mode ABCM, `baremePsu` pour la crèche.
+ */
+export interface ContexteTarif {
+  readonly grille?: GrilleAbcm;
+  readonly baremePsu?: BaremeEffortPsu;
+  readonly plancher?: Money;
+  readonly plafond?: Money;
 }
 
 /**
@@ -98,28 +112,33 @@ export function parsePrestationRm(valeur: unknown): PrestationRM {
 
 /**
  * Valorise une prestation projetée en `CoutMois` via la stratégie du mode.
- * - PSU : ressources/effort viennent du foyer ; heures et déductions du read model.
- * - ABCM : grille de la tranche du foyer ; quantités du read model.
+ * - PSU : ressources/effort du foyer + **barème résolu à date** (`contexte`).
+ * - ABCM : **grille résolue à date** (`contexte.grille`) ; quantités du read model.
+ * Les tarifs viennent tous du `contexte` (Référentiel projeté) — plus aucune valeur
+ * figée (RM-30-04).
  */
 export function valoriserPrestation(
   prestation: PrestationRM,
   foyer: FoyerCalcul,
+  contexte: ContexteTarif,
 ): CoutMois {
   switch (prestation.mode) {
     case 'CRECHE_PSU':
-      return valoriserCreche(prestation, foyer);
+      return valoriserCreche(prestation, foyer, contexte);
     case 'CANTINE':
-      return new TarifCantineAbcm(grillePour(foyer)).calculerCoutMois({
+      return new TarifCantineAbcm(exigerGrille(contexte)).calculerCoutMois({
         nbJours: prestation.nbJours,
         ...(prestation.pai !== undefined ? { pai: prestation.pai } : {}),
       });
     case 'PERISCOLAIRE':
-      return new TarifPeriscolaireAbcm(grillePour(foyer)).calculerCoutMois({
-        nbMatins: prestation.nbMatins,
-        nbSoirs: prestation.nbSoirs,
-      });
+      return new TarifPeriscolaireAbcm(exigerGrille(contexte)).calculerCoutMois(
+        {
+          nbMatins: prestation.nbMatins,
+          nbSoirs: prestation.nbSoirs,
+        },
+      );
     case 'ALSH':
-      return new TarifAlshAbcm(grillePour(foyer)).calculerCoutMois({
+      return new TarifAlshAbcm(exigerGrille(contexte)).calculerCoutMois({
         nbJourneesCompletes: prestation.nbJourneesCompletes,
         ...(prestation.nbDemiJournees !== undefined
           ? { nbDemiJournees: prestation.nbDemiJournees }
@@ -131,15 +150,30 @@ export function valoriserPrestation(
   }
 }
 
+/** Exige une grille ABCM résolue dans le contexte (garantie par `cout.service`). */
+function exigerGrille(contexte: ContexteTarif): GrilleAbcm {
+  if (contexte.grille === undefined) {
+    throw new Error('grille ABCM non résolue pour cette prestation');
+  }
+  return contexte.grille;
+}
+
 function valoriserCreche(
   prestation: PrestationCrecheRM,
   foyer: FoyerCalcul,
+  contexte: ContexteTarif,
 ): CoutMois {
+  if (contexte.baremePsu === undefined) {
+    throw new Error('barème PSU non résolu pour cette prestation');
+  }
   const tarif = new TarifCrechePsu({
     ressourcesMensuelles: Money.depuisCentimes(
       foyer.ressourcesMensuellesCentimes,
     ),
     nbEnfantsACharge: foyer.nbEnfantsACharge,
+    bareme: contexte.baremePsu,
+    ...(contexte.plancher !== undefined ? { plancher: contexte.plancher } : {}),
+    ...(contexte.plafond !== undefined ? { plafond: contexte.plafond } : {}),
   });
   const complementMinutes = prestation.complementMinutes ?? 0;
   const heuresDeduitesMinutes = prestation.heuresDeduitesMinutes ?? 0;
@@ -164,13 +198,4 @@ function valoriserCreche(
         }
       : {}),
   });
-}
-
-/** Instance canonique de `Tranche` (T1/T2/T3) depuis le niveau projeté. */
-function trancheDepuisNiveau(niveau: 1 | 2 | 3): Tranche {
-  return niveau === 1 ? Tranche.T1 : niveau === 2 ? Tranche.T2 : Tranche.T3;
-}
-
-function grillePour(foyer: FoyerCalcul): GrilleAbcm {
-  return GrilleAbcm.pour(trancheDepuisNiveau(foyer.tranche));
 }

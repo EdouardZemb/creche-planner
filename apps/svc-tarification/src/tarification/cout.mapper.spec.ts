@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { consoliderCoutMoisFoyer } from '@creche-planner/tarification-domain';
+import {
+  BaremeEffortPsu,
+  GrilleAbcm,
+  consoliderCoutMoisFoyer,
+} from '@creche-planner/tarification-domain';
 import {
   parsePrestationRm,
   valoriserPrestation,
+  type ContexteTarif,
   type FoyerCalcul,
   type PrestationRM,
 } from './cout.mapper.js';
@@ -13,6 +18,10 @@ import {
  * écriraient dans le read model (`foyer`, `prestation_mois`) → mapper → domaine →
  * coût consolidé. On n'assert que des montants en centimes (cohérent `Money`).
  *
+ * Depuis SFD 30 (D1/D2), le mapper ne détient plus aucun tarif : il reçoit un
+ * **contexte** (grille ABCM + barème PSU) résolu à date par `cout.service`. Ici,
+ * ce contexte reprend les valeurs 2026 T3 pour retrouver les oracles historiques.
+ *
  * Foyer de référence (doc 02 §0) : ressources 6 716,92 € (671 692 c.), 2 enfants à charge,
  * RFR ⇒ Tranche 3.
  */
@@ -21,6 +30,32 @@ const FOYER: FoyerCalcul = {
   nbEnfantsACharge: 2,
   tranche: 3,
 };
+
+/** Grille ABCM 2026 T3 (comme résolue par le service depuis la projection). */
+const GRILLE_T3 = GrilleAbcm.depuisParametres({
+  cantineTotalCentimes: 1268,
+  cantinePartGardeCentimes: 801,
+  periMatinCentimes: 333,
+  periSoirCentimes: 705,
+  alshJourneeCompleteCentimes: 2650,
+  alshDemiJourneeCentimes: 950,
+  alshRepasCentimes: 750,
+});
+
+/** Barème d'effort PSU 2026 (comme résolu par le service depuis la projection). */
+const BAREME = new BaremeEffortPsu({
+  '1': 0.000619,
+  '2': 0.000516,
+  '3': 0.000413,
+  '4': 0.00031,
+  '5': 0.00031,
+  '6': 0.00031,
+  '7': 0.00031,
+  '8': 0.000206,
+});
+
+/** Contexte tarifaire 2026 T3 (grille ABCM + barème PSU). */
+const CONTEXTE: ContexteTarif = { grille: GRILLE_T3, baremePsu: BAREME };
 
 /** Prestation crèche projetée pour un enfant (heures annuelles / mensualités). */
 function creche(heuresAnnuelles: number): PrestationRM {
@@ -33,13 +68,17 @@ function creche(heuresAnnuelles: number): PrestationRM {
 
 describe('Orchestration Tarification — read model → domaine → coût', () => {
   it('CT-04 — total foyer crèche (Mia 885,5 h + Zoé 831,5 h) = 851,16 €', () => {
-    const mia = valoriserPrestation(creche(885.5), FOYER);
-    const zoe = valoriserPrestation(creche(831.5), FOYER);
+    const mia = valoriserPrestation(creche(885.5), FOYER, CONTEXTE);
+    const zoe = valoriserPrestation(creche(831.5), FOYER, CONTEXTE);
     expect(consoliderCoutMoisFoyer([mia, zoe]).total.centimes).toBe(85116);
   });
 
   it('CT-10 — cantine 16 jours (T3) = 202,88 €', () => {
-    const cout = valoriserPrestation({ mode: 'CANTINE', nbJours: 16 }, FOYER);
+    const cout = valoriserPrestation(
+      { mode: 'CANTINE', nbJours: 16 },
+      FOYER,
+      CONTEXTE,
+    );
     expect(cout.total.centimes).toBe(20288);
   });
 
@@ -47,20 +86,23 @@ describe('Orchestration Tarification — read model → domaine → coût', () =
     const cout = valoriserPrestation(
       { mode: 'PERISCOLAIRE', nbMatins: 8, nbSoirs: 12 },
       FOYER,
+      CONTEXTE,
     );
     expect(cout.total.centimes).toBe(11124);
   });
 
   it('CT-20 — mois mixte (crèche Mia + cantine + péri Zoé) = 753,08 € hors frais', () => {
     // Σ sans frais fixes : 438,96 + 202,88 + 111,24 = 753,08 €.
-    const miaCreche = valoriserPrestation(creche(885.5), FOYER);
+    const miaCreche = valoriserPrestation(creche(885.5), FOYER, CONTEXTE);
     const zoeCantine = valoriserPrestation(
       { mode: 'CANTINE', nbJours: 16 },
       FOYER,
+      CONTEXTE,
     );
     const zoePeri = valoriserPrestation(
       { mode: 'PERISCOLAIRE', nbMatins: 8, nbSoirs: 12 },
       FOYER,
+      CONTEXTE,
     );
     expect(
       consoliderCoutMoisFoyer([miaCreche, zoeCantine, zoePeri]).total.centimes,
@@ -71,6 +113,7 @@ describe('Orchestration Tarification — read model → domaine → coût', () =
     const cout = valoriserPrestation(
       { mode: 'CANTINE', nbJours: 16, pai: true },
       FOYER,
+      CONTEXTE,
     );
     expect(cout.total.centimes).toBe(12816);
   });
@@ -79,6 +122,7 @@ describe('Orchestration Tarification — read model → domaine → coût', () =
     const cout = valoriserPrestation(
       { mode: 'ALSH', nbJourneesCompletes: 5 },
       FOYER,
+      CONTEXTE,
     );
     expect(cout.total.centimes).toBe(13250);
   });
@@ -92,6 +136,7 @@ describe('Orchestration Tarification — read model → domaine → coût', () =
         heuresDeduitesMinutes: 480,
       },
       FOYER,
+      CONTEXTE,
     );
     expect(cout.total.centimes).toBe(38444);
   });
@@ -105,8 +150,23 @@ describe('Orchestration Tarification — read model → domaine → coût', () =
         complementMinutes: 83,
       },
       FOYER,
+      CONTEXTE,
     );
     expect(cout.total.centimes).toBe(44376);
+  });
+
+  it('lève si la grille ABCM n’est pas résolue dans le contexte (bug de résolution)', () => {
+    expect(() =>
+      valoriserPrestation({ mode: 'CANTINE', nbJours: 16 }, FOYER, {
+        baremePsu: BAREME,
+      }),
+    ).toThrow('grille ABCM non résolue');
+  });
+
+  it('lève si le barème PSU n’est pas résolu dans le contexte (bug de résolution)', () => {
+    expect(() =>
+      valoriserPrestation(creche(885.5), FOYER, { grille: GRILLE_T3 }),
+    ).toThrow('barème PSU non résolu');
   });
 });
 
@@ -131,7 +191,9 @@ describe('parsePrestationRm (AQ-03)', () => {
     // Les champs hors schéma sont transportés tels quels (looseObject).
     expect(prestation['heuresMensualisees']).toBe(126.5);
     // Et la prestation validée se valorise normalement (CT-04 enfant 1).
-    expect(valoriserPrestation(prestation, FOYER).total.centimes).toBe(43896);
+    expect(
+      valoriserPrestation(prestation, FOYER, CONTEXTE).total.centimes,
+    ).toBe(43896);
   });
 
   it('rejette une prestation au mode inconnu avec une erreur explicite', () => {

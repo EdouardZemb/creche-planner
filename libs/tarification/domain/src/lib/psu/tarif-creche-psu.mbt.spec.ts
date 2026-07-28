@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { Duree, Money } from '@creche-planner/shared-kernel';
 import { TarifCrechePsu } from './tarif-creche-psu.js';
-import { BaremeEffortPsu } from './bareme-effort-psu.js';
+import { baremeEffortPsu2026 } from './bareme-effort-psu.fixtures.js';
 
 /**
  * Modèle DT-07 — bornage des ressources (tarif-creche-psu.ts L135-149).
@@ -35,6 +35,7 @@ function tarif(opts: {
   return new TarifCrechePsu({
     ressourcesMensuelles: opts.ressources,
     nbEnfantsACharge: 2,
+    bareme: baremeEffortPsu2026(),
     // exactOptionalPropertyTypes : omettre la clé plutôt que passer `undefined`.
     ...(opts.plancher !== undefined ? { plancher: opts.plancher } : {}),
     ...(opts.plafond !== undefined ? { plafond: opts.plafond } : {}),
@@ -255,6 +256,7 @@ describe('MBT property-based — bornage : ressource appliquée ∈ [plancher, p
           const t = new TarifCrechePsu({
             ressourcesMensuelles: Money.depuisCentimes(rc),
             nbEnfantsACharge: 2,
+            bareme: baremeEffortPsu2026(),
             plancher: Money.depuisCentimes(plancherC),
             plafond: Money.depuisCentimes(plafondC),
           });
@@ -279,6 +281,7 @@ describe('MBT property-based — monotonie du tarif PSU (taux fixe)', () => {
     const t = new TarifCrechePsu({
       ressourcesMensuelles: ressources,
       nbEnfantsACharge: 2,
+      bareme: baremeEffortPsu2026(),
     });
     fc.assert(
       fc.property(
@@ -306,6 +309,7 @@ describe('MBT property-based — monotonie du tarif PSU (taux fixe)', () => {
       new TarifCrechePsu({
         ressourcesMensuelles: Money.depuisCentimes(ressourcesCentimes),
         nbEnfantsACharge: 2,
+        bareme: baremeEffortPsu2026(),
         plafond: PLAFOND,
       }).calculerCoutMois({
         heuresAnnuellesContractualisees: 885.5,
@@ -330,7 +334,7 @@ describe('MBT — taux explicite (barème) influe linéairement', () => {
     const t = new TarifCrechePsu({
       ressourcesMensuelles: Money.depuisEuros(6716.92),
       nbEnfantsACharge: 1,
-      bareme: new BaremeEffortPsu(),
+      bareme: baremeEffortPsu2026(),
     });
     expect(t.tarifHoraire.centimes).toBe(416);
   });

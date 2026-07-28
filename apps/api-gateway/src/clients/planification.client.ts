@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { z } from 'zod';
+import { MODES_CONTRAT } from '@creche-planner/contracts-kernel';
 import { loadConfig } from '../config.js';
 import {
   CircuitBreaker,
@@ -114,7 +115,7 @@ const prestationsReponseSchema = z.object({
   prestations: z.array(
     z
       .object({
-        mode: z.enum(['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH']),
+        mode: z.enum(MODES_CONTRAT),
       })
       .passthrough(),
   ),

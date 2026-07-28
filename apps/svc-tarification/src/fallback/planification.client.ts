@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { metrics } from '@opentelemetry/api';
 import { z } from 'zod';
+import { MODES_CONTRAT } from '@creche-planner/contracts-kernel';
 import { entetesAssertionMachine } from '@creche-planner/nest-commons';
 import { loadConfig } from '../config.js';
 import {
@@ -37,7 +38,7 @@ const compteurRepliPlanification = meter.createCounter(
  */
 const prestationSchema = z
   .object({
-    mode: z.enum(['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH']),
+    mode: z.enum(MODES_CONTRAT),
   })
   .passthrough();
 
