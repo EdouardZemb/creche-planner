@@ -242,6 +242,52 @@ describe('ContratsPage', () => {
     expect(screen.getByText(/À partir du/i)).toBeInTheDocument();
   });
 
+  it('avenant : enregistre puis affiche le succès et recharge la liste', async () => {
+    rendu();
+    await waitFor(() => {
+      expect(screen.getByText('Mia')).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Modifier le contrat de Mia/i }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /Changer à partir d’une date/i }),
+    );
+    fireEvent.change(screen.getByLabelText(/À partir du/i), {
+      target: { value: '2027-09-01' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Enregistrer le changement' }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApi.creerAvenant).toHaveBeenCalled();
+    });
+    expect(
+      await screen.findByText(/Changement enregistré pour le contrat de Mia/i),
+    ).toBeInTheDocument();
+  });
+
+  it('correction : une erreur de chargement de la version courante est signalée', async () => {
+    mockedApi.listerVersions.mockRejectedValueOnce(new Error('svc down'));
+    rendu();
+    await waitFor(() => {
+      expect(screen.getByText('Mia')).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Modifier le contrat de Mia/i }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: /Corriger les paramètres actuels/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/svc down/i)).toBeInTheDocument();
+    });
+  });
+
   // UT-03 : la confirmation passe désormais par la Modale accessible
   // (role="dialog"), plus par window.confirm natif.
   it('ouvre une modale de confirmation accessible (pas de window.confirm) au clic Supprimer', async () => {

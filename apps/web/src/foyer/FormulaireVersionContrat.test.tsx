@@ -116,6 +116,60 @@ describe('FormulaireVersionContrat', () => {
     ).toBeInTheDocument();
   });
 
+  it('avenant ABCM (CANTINE) : éditeur d’inscriptions, envoie semaineAbcm (pas de mensualités)', async () => {
+    const onEnregistre = vi.fn();
+    mockedApi.creerAvenant.mockResolvedValue({ ...CONTRAT, mode: 'CANTINE' });
+    rendre({
+      variante: 'avenant',
+      contrat: { ...CONTRAT, mode: 'CANTINE', semaineAbcm: {} },
+      onEnregistre,
+    });
+
+    // Section ABCM (inscriptions hebdomadaires) ; pas de « Nombre de mensualités ».
+    expect(screen.getByText(/Inscriptions hebdomadaires/i)).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(/Nombre de mensualités/i),
+    ).not.toBeInTheDocument();
+    // Coche la cantine du lundi.
+    fireEvent.click(screen.getByLabelText(/Cantine Lundi/i));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Enregistrer le changement/i }),
+    );
+
+    await waitFor(() => {
+      expect(mockedApi.creerAvenant).toHaveBeenCalledWith(
+        'c1',
+        expect.objectContaining({ mode: 'CANTINE' }),
+      );
+    });
+    const corps = mockedApi.creerAvenant.mock.calls[0]?.[1] as {
+      semaineAbcm?: unknown;
+      nbMensualites?: unknown;
+    };
+    expect(corps.semaineAbcm).toBeDefined();
+    expect(corps.nbMensualites).toBeUndefined();
+    expect(onEnregistre).toHaveBeenCalled();
+  });
+
+  it('correction : une erreur d’enregistrement s’affiche dans la modale', async () => {
+    mockedApi.apercuImpact.mockResolvedValue({
+      versionId: 'v1',
+      moisCouverts: ['2026-06'],
+      moisCommuniques: [],
+    });
+    mockedApi.corrigerVersion.mockRejectedValue(new Error('réseau'));
+    rendre({ variante: 'correction', versionId: 'v1' });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Voir l’impact et corriger/i }),
+    );
+    await screen.findByText(/1 mois sera recalculé/i);
+    fireEvent.click(
+      screen.getByRole('button', { name: /Enregistrer la correction/i }),
+    );
+    expect(await screen.findByText(/réseau/i)).toBeInTheDocument();
+  });
+
   it('correction : ouvre l’aperçu d’impact puis corrige avec motif', async () => {
     const onEnregistre = vi.fn();
     mockedApi.apercuImpact.mockResolvedValue({

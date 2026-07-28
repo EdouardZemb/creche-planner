@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { HistoriqueContrat } from './HistoriqueContrat';
 import type { ContratVersionVue } from '../types/bff';
@@ -76,6 +76,50 @@ describe('HistoriqueContrat', () => {
     expect(screen.getByText(/10 mensualités/)).toBeInTheDocument();
     // Le motif d'une correction est visible.
     expect(screen.getByText(/correction horaires/)).toBeInTheDocument();
+  });
+
+  it('résume une version ABCM par ses jours d’inscription', async () => {
+    const versionAbcm: ContratVersionVue = {
+      id: 'v3',
+      contratId: 'c2',
+      mode: 'CANTINE',
+      dateEffet: '2026-09-01',
+      du: '2026-09-01',
+      au: null,
+      heuresAnnuellesContractualisees: null,
+      nbMensualites: null,
+      saisiLe: '2026-08-20T09:00:00.000Z',
+      motif: null,
+      semaineAbcm: {
+        LUNDI: { cantine: true },
+        MARDI: {},
+        MERCREDI: {},
+        JEUDI: { cantine: true },
+        VENDREDI: {},
+        SAMEDI: {},
+        DIMANCHE: {},
+      },
+    };
+    mockedApi.listerVersions.mockResolvedValue([versionAbcm]);
+    render(
+      <HistoriqueContrat contratId="c2" enfant="Zoé" onFermer={vi.fn()} />,
+    );
+
+    expect(await screen.findByText(/Historique — Zoé/i)).toBeInTheDocument();
+    // Résumé ABCM : les jours inscrits (Lun. + Jeu.), pas d'heures/mensualités.
+    expect(screen.getByText(/Lun\. Jeu\./)).toBeInTheDocument();
+    expect(screen.queryByText(/h\/an/)).not.toBeInTheDocument();
+  });
+
+  it('ferme au clic sur « Fermer »', async () => {
+    const onFermer = vi.fn();
+    mockedApi.listerVersions.mockResolvedValue([VERSION_CRECHE]);
+    render(
+      <HistoriqueContrat contratId="c1" enfant="Mia" onFermer={onFermer} />,
+    );
+    await screen.findByText(/Historique — Mia/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Fermer' }));
+    expect(onFermer).toHaveBeenCalled();
   });
 
   it('affiche un état vide quand aucune version', async () => {
