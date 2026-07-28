@@ -243,6 +243,50 @@ export const gatewayOpenApiDocument = {
           'valideAu',
         ],
       },
+      ContratVersionVue: {
+        type: 'object',
+        description:
+          'Version datée d’un contrat de garde (SFD 30, versionnement à date ' +
+          'd’effet) : paramètres versionnés + période dérivée (`du`/`au`, `au` ' +
+          'null si ouverte) + traçabilité. Les paramètres mode-spécifiques ' +
+          '(`semaineType`/`semaineAbcm`) sont relayés tels quels.',
+        additionalProperties: true,
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          contratId: { type: 'string', format: 'uuid' },
+          mode: { type: 'string' },
+          dateEffet: { type: 'string', format: 'date' },
+          du: { type: 'string', format: 'date' },
+          au: { type: ['string', 'null'], format: 'date' },
+          heuresAnnuellesContractualisees: { type: ['number', 'null'] },
+          nbMensualites: { type: ['integer', 'null'] },
+          saisiLe: { type: 'string', format: 'date-time' },
+          motif: { type: ['string', 'null'] },
+        },
+        required: [
+          'id',
+          'contratId',
+          'mode',
+          'dateEffet',
+          'du',
+          'au',
+          'saisiLe',
+        ],
+      },
+      ImpactVersionVue: {
+        type: 'object',
+        description:
+          'Aperçu d’impact d’une version : les mois (YYYY-MM) qui seraient ' +
+          'recalculés par une correction, du plus ancien au plus récent.',
+        properties: {
+          versionId: { type: 'string', format: 'uuid' },
+          moisCouverts: {
+            type: 'array',
+            items: { type: 'string', pattern: '^\\d{4}-\\d{2}$' },
+          },
+        },
+        required: ['versionId', 'moisCouverts'],
+      },
       PreavisRegle: {
         description:
           'Règle de préavis d’un établissement (union discriminée par `type`).',
@@ -1206,6 +1250,191 @@ export const gatewayOpenApiDocument = {
               },
             },
           },
+        },
+      },
+    },
+    '/api/v1/contrats/{id}/versions': {
+      get: {
+        summary: 'Historique des versions d’un contrat',
+        description:
+          'Versions datées du contrat (SFD 30, US-30-04/06), de la plus récente ' +
+          'à la plus ancienne, avec leur période dérivée.',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Versions du contrat.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/ContratVersionVue' },
+                },
+              },
+            },
+          },
+          '404': { description: 'Contrat inconnu.' },
+        },
+      },
+      post: {
+        summary: 'Créer un avenant (nouvelle version à date d’effet)',
+        description:
+          'Insère une nouvelle version du contrat à `dateEffet` (SFD 30, ' +
+          'US-30-01) ; la version précédente est close implicitement la veille. ' +
+          'Les plannings mensuels saisis SURVIVENT (aucune cascade). Seuls les ' +
+          'paramètres versionnés sont acceptés — l’identité (mode, enfant, ' +
+          'établissement) ne change pas par avenant (H6).',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Paramètres versionnés du mode (semaineType / semaineAbcm, ' +
+                  'heuresAnnuellesContractualisees, nbMensualites, motif) laissés ' +
+                  'ouverts via additionalProperties (validation profonde ' +
+                  'svc-planification).',
+                additionalProperties: true,
+                properties: {
+                  mode: {
+                    type: 'string',
+                    enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+                  },
+                  dateEffet: { type: 'string', format: 'date' },
+                  motif: { type: 'string' },
+                },
+                required: ['mode', 'dateEffet'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Avenant créé (contrat à jour renvoyé).',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ContratVue' },
+              },
+            },
+          },
+          '400': {
+            description:
+              'Date d’effet antérieure au début du contrat, mode différent ' +
+              '(l’identité n’est pas versionnée) ou paramètres invalides.',
+          },
+          '404': { description: 'Contrat inconnu.' },
+          '409': {
+            description: 'Une version existe déjà à cette date d’effet.',
+          },
+        },
+      },
+    },
+    '/api/v1/contrats/{id}/versions/{versionId}': {
+      put: {
+        summary: 'Corriger une version existante (geste rétroactif tracé)',
+        description:
+          'Écrase les paramètres versionnés d’une version SANS déplacer sa date ' +
+          'd’effet (SFD 30, US-30-05). La correction est journalisée ' +
+          '(avant/après + motif) côté service. Consulter l’aperçu d’impact avant ' +
+          'de corriger une version passée.',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Paramètres versionnés du mode (mêmes champs que l’avenant, ' +
+                  'sans dateEffet).',
+                additionalProperties: true,
+                properties: {
+                  mode: {
+                    type: 'string',
+                    enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+                  },
+                  motif: { type: 'string' },
+                },
+                required: ['mode'],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Version corrigée (contrat à jour renvoyé).',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ContratVue' },
+              },
+            },
+          },
+          '400': {
+            description: 'Mode différent ou paramètres invalides.',
+          },
+          '404': { description: 'Contrat ou version inconnus.' },
+        },
+      },
+    },
+    '/api/v1/contrats/{id}/versions/{versionId}/impact': {
+      get: {
+        summary: 'Aperçu d’impact d’une version (mois recalculés)',
+        description:
+          'Liste les mois couverts par la période de la version (plafonnée à la ' +
+          'vie du contrat) — les mois dont les coûts seraient recalculés par une ' +
+          'correction. Lecture seule.',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Mois couverts par la version.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ImpactVersionVue' },
+              },
+            },
+          },
+          '404': { description: 'Contrat ou version inconnus.' },
         },
       },
     },

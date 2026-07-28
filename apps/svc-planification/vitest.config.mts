@@ -49,11 +49,13 @@ export default defineConfig(() => ({
       // Ratchet relevé au lot 4 « Fondations » (scoping : résolveur foyer +
       // décorateurs sur les 2 controllers + specs resolver/intégration enforce) —
       // mesuré 85,0/84,8/70,4/86,0.
+      // Ratchet relevé au lot 4 « SFD 30 » (contrat versionné : avenants/corrections
+      // + spec contrôleur dédiée) — mesuré 93,8/85,9/89,8/94,7, ~2 pts de marge.
       thresholds: {
-        statements: 83,
-        branches: 82,
-        functions: 68,
-        lines: 83,
+        statements: 91,
+        branches: 83,
+        functions: 87,
+        lines: 92,
       },
     },
     testTimeout: 60000,

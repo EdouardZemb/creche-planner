@@ -95,10 +95,36 @@ export const creerContratSchema = z
   .passthrough();
 
 /**
- * Modification d'un contrat de garde : mêmes champs communs que la création ; les
- * champs spécifiques au mode passent via `passthrough()` et sont validés en amont.
+ * Modification (correction de la version courante) d'un contrat de garde : mêmes
+ * champs communs que la création ; les champs spécifiques au mode passent via
+ * `passthrough()` et sont validés en amont. Depuis le lot 4 (SFD 30), le relais
+ * vise `PUT /contrats/:id/version-courante` côté service — **non destructif** (les
+ * plannings saisis survivent) et limité aux paramètres versionnés (H6).
  */
 export const modifierContratSchema = creerContratSchema;
+
+/**
+ * **Avenant** (SFD 30 lot 4) : nouvelle version d'un contrat à date d'effet. Forme
+ * minimale à la frontière (mode + dateEffet) ; les paramètres versionnés
+ * (`semaineType`/`semaineAbcm`, heures, mensualités, motif) passent via
+ * `passthrough()` et sont validés par `svc-planification`.
+ */
+export const creerAvenantSchema = z
+  .object({
+    mode: z.enum(['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH']),
+    dateEffet: z.string().min(1),
+  })
+  .passthrough();
+
+/**
+ * **Correction** d'une version existante (SFD 30 lot 4) : mêmes paramètres
+ * versionnés que l'avenant, sans `dateEffet` (la version garde sa date).
+ */
+export const corrigerVersionSchema = z
+  .object({
+    mode: z.enum(['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH']),
+  })
+  .passthrough();
 
 /** Corps d'écriture de planning : relayé tel quel au service propriétaire. */
 export const ecrirePlanningSchema = z.object({}).passthrough();

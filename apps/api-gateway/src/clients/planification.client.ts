@@ -65,6 +65,45 @@ const contratVueSchema = z.object({
 export type ContratVue = z.infer<typeof contratVueSchema>;
 
 /**
+ * Corps d'un **avenant** (SFD 30 lot 4) : paramètres versionnés + date d'effet.
+ * Union discriminée par `mode` côté service ; la gateway relaie la forme validée
+ * a minima (`creerAvenantSchema` BFF).
+ */
+export type SaisieAvenant = Readonly<Record<string, unknown>>;
+
+/** Corps d'une **correction** de version : paramètres versionnés, sans date. */
+export type SaisieCorrectionVersion = Readonly<Record<string, unknown>>;
+
+/**
+ * Vue d'une **version** d'un contrat (historique, SFD 30 lot 4) renvoyée par
+ * `svc-planification` : paramètres versionnés + période dérivée + traçabilité.
+ */
+const contratVersionVueSchema = z
+  .object({
+    id: z.string(),
+    contratId: z.string(),
+    mode: z.string(),
+    dateEffet: z.string(),
+    du: z.string(),
+    au: z.string().nullable(),
+    heuresAnnuellesContractualisees: z.number().nullable(),
+    nbMensualites: z.number().nullable(),
+    saisiLe: z.string(),
+    motif: z.string().nullable(),
+  })
+  .passthrough(); // semaineType / semaineAbcm relayés tels quels
+
+export type ContratVersionVue = z.infer<typeof contratVersionVueSchema>;
+
+/** Réponse de l'aperçu d'impact d'une version : les mois à recalculer. */
+const impactVersionSchema = z.object({
+  versionId: z.string(),
+  moisCouverts: z.array(z.string()),
+});
+
+export type ImpactVersion = z.infer<typeof impactVersionSchema>;
+
+/**
  * Réponse `GET /api/prestations` : prestations du mois (quantités, sans
  * montant). On valide a minima le `mode` et on conserve le reste
  * (`passthrough`).
@@ -224,13 +263,124 @@ export class PlanificationClient {
     );
   }
 
-  /** PUT `/api/contrats/:id` — modifie un contrat. */
+  /**
+   * PUT `/api/contrats/:id/version-courante` — corrige les **paramètres versionnés
+   * courants** d'un contrat (SFD 30 lot 4). Remplace l'ancien `PUT /contrats/:id`
+   * (supprimé côté service, avec sa cascade destructive sur `planning_mois`) : le
+   * corps reste le contrat complet, mais seuls les champs versionnés sont écrits
+   * et les plannings saisis **survivent**.
+   */
   async modifierContrat(
     id: string,
     saisie: SaisieContrat,
   ): Promise<ContratVue> {
     const base = loadConfig().planificationUrl;
-    const url = `${base}/api/contrats/${encodeURIComponent(id)}`;
+    const url = `${base}/api/contrats/${encodeURIComponent(id)}/version-courante`;
+    this.logger.debug(`PUT ${url}`);
+    return executerResilient(
+      'svc-planification',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...entetesAval() },
+          body: JSON.stringify(saisie),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return contratVueSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** POST `/api/contrats/:id/versions` — crée un **avenant** (201 attendu). */
+  async creerAvenant(id: string, saisie: SaisieAvenant): Promise<ContratVue> {
+    const base = loadConfig().planificationUrl;
+    const url = `${base}/api/contrats/${encodeURIComponent(id)}/versions`;
+    this.logger.debug(`POST ${url}`);
+    return executerResilient(
+      'svc-planification',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...entetesAval() },
+          body: JSON.stringify(saisie),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return contratVueSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /** GET `/api/contrats/:id/versions` — historique des versions d'un contrat. */
+  async listerVersions(id: string): Promise<ContratVersionVue[]> {
+    const base = loadConfig().planificationUrl;
+    const url = `${base}/api/contrats/${encodeURIComponent(id)}/versions`;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-planification',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return z.array(contratVersionVueSchema).parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /**
+   * GET `/api/contrats/:id/versions/:versionId/impact` — aperçu d'impact (mois
+   * recalculés) d'une version, requis avant correction rétroactive.
+   */
+  async apercuImpactVersion(
+    id: string,
+    versionId: string,
+  ): Promise<ImpactVersion> {
+    const base = loadConfig().planificationUrl;
+    const url =
+      `${base}/api/contrats/${encodeURIComponent(id)}` +
+      `/versions/${encodeURIComponent(versionId)}/impact`;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-planification',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return impactVersionSchema.parse(await reponse.json());
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /**
+   * PUT `/api/contrats/:id/versions/:versionId` — **corrige** une version
+   * existante (geste rétroactif tracé côté service, `correction_journal`).
+   */
+  async corrigerVersion(
+    id: string,
+    versionId: string,
+    saisie: SaisieCorrectionVersion,
+  ): Promise<ContratVue> {
+    const base = loadConfig().planificationUrl;
+    const url =
+      `${base}/api/contrats/${encodeURIComponent(id)}` +
+      `/versions/${encodeURIComponent(versionId)}`;
     this.logger.debug(`PUT ${url}`);
     return executerResilient(
       'svc-planification',

@@ -40,6 +40,7 @@ export type {
 export {
   dureeDePlage,
   genererPrestationMois,
+  genererPrestationMoisSegments,
   semaineTypeDepuisJson,
 } from './lib/generation-prestations.js';
 export type {

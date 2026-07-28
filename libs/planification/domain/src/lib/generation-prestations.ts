@@ -18,7 +18,14 @@ import {
 } from './inscription-abcm.js';
 import { PlageHoraire } from './plage-horaire.js';
 import { SemaineType, type SaisieSemaineType } from './semaine-type.js';
-import type { PrestationMois } from './prestations-mois.types.js';
+import type {
+  PrestationMois,
+  PrestationsMoisAlsh,
+  PrestationsMoisCantine,
+  PrestationsMoisCreche,
+  PrestationsMoisPeriscolaire,
+} from './prestations-mois.types.js';
+import { ParametreContratInvalideError } from './planification-error.js';
 
 /**
  * Génération des prestations du mois depuis la **forme brute persistée** d'un
@@ -228,4 +235,194 @@ export function genererPrestationMois(
     joursNonFacturables,
   };
   return inscription.genererPrestationsAlsh(saisieAlsh);
+}
+
+/**
+ * Vrai si `date` (ISO `YYYY-MM-DD`) tombe dans la période effective d'un segment
+ * (`valideDu`/`valideAu` déjà restreints par le service à la version × la vie du
+ * contrat × le mois). `valideAu === null` = période ouverte (borne haute absente).
+ */
+function couvreDate(segment: ContratPourGeneration, date: string): boolean {
+  return (
+    date >= segment.valideDu &&
+    (segment.valideAu === null || date <= segment.valideAu)
+  );
+}
+
+/**
+ * Répartit une saisie mensuelle entre les segments (versions) d'un mois. Les items
+ * **datés** (jours supplémentaires, absences datées, ajustements, exceptions, jours
+ * ALSH) vont au segment dont la période couvre leur date — à défaut, au segment
+ * « mensuel » ; les scalaires **non datés** (complément, PAI, absences sans date)
+ * relèvent des paramètres mensuels et vont au seul segment mensuel (H7) — jamais
+ * comptés plusieurs fois.
+ */
+interface PartSaisie {
+  complementMinutes?: number;
+  joursSupplementaires: JourSupplementaireJson[];
+  absences: AbsenceCrecheJson[];
+  ajustements: AjustementJson[];
+  pai?: boolean;
+  exceptions: ExceptionJourJson[];
+  joursAlsh: JourAlshJson[];
+}
+
+function repartirSaisie(
+  segments: readonly ContratPourGeneration[],
+  saisie: SaisiePlanningJson,
+  idxMensuel: number,
+): SaisiePlanningJson[] {
+  const parts: PartSaisie[] = segments.map(() => ({
+    joursSupplementaires: [],
+    absences: [],
+    ajustements: [],
+    exceptions: [],
+    joursAlsh: [],
+  }));
+
+  // `idxMensuel` est toujours un index valide (0..n-1) → cast sûr, sans branche.
+  const partMensuel = parts[idxMensuel]!;
+
+  /** Part du segment couvrant `date`, ou la part mensuelle à défaut (trou). */
+  const cibleDe = (date: string): PartSaisie => {
+    const idx = segments.findIndex((s) => couvreDate(s, date));
+    return parts[idx] ?? partMensuel;
+  };
+
+  // Scalaires mensuels : rattachés au seul segment mensuel (jamais dupliqués).
+  if (saisie.complementMinutes !== undefined) {
+    partMensuel.complementMinutes = saisie.complementMinutes;
+  }
+  if (saisie.pai !== undefined) {
+    partMensuel.pai = saisie.pai;
+  }
+
+  for (const j of saisie.joursSupplementaires ?? []) {
+    cibleDe(j.date).joursSupplementaires.push(j);
+  }
+  for (const a of saisie.absences ?? []) {
+    // Absence datée → segment couvrant sa date ; sans date → paramètre mensuel.
+    (a.date !== undefined ? cibleDe(a.date) : partMensuel).absences.push(a);
+  }
+  for (const a of saisie.ajustements ?? []) {
+    cibleDe(a.date).ajustements.push(a);
+  }
+  for (const e of saisie.exceptions ?? []) {
+    cibleDe(e.date).exceptions.push(e);
+  }
+  for (const j of saisie.joursAlsh ?? []) {
+    cibleDe(j.date).joursAlsh.push(j);
+  }
+
+  return parts.map((p) => ({
+    ...(p.complementMinutes !== undefined
+      ? { complementMinutes: p.complementMinutes }
+      : {}),
+    joursSupplementaires: p.joursSupplementaires,
+    absences: p.absences,
+    ajustements: p.ajustements,
+    ...(p.pai !== undefined ? { pai: p.pai } : {}),
+    exceptions: p.exceptions,
+    joursAlsh: p.joursAlsh,
+  }));
+}
+
+/** Fusionne des prestations crèche par segment (H7 : mensualité du segment du 1er). */
+function fusionnerCreche(
+  parts: readonly PrestationsMoisCreche[],
+  mensuel: PrestationsMoisCreche,
+): PrestationsMoisCreche {
+  return {
+    mode: 'CRECHE_PSU',
+    // Mensualité (H7) : celle du segment couvrant le 1er du mois.
+    heuresAnnuellesContractualisees: mensuel.heuresAnnuellesContractualisees,
+    nbMensualites: mensuel.nbMensualites,
+    heuresMensualisees: mensuel.heuresMensualisees,
+    // Quantités journalières : sommées sur tous les segments.
+    complement: parts.reduce((t, p) => t.plus(p.complement), Duree.zero()),
+    heuresReservees: parts.reduce(
+      (t, p) => t.plus(p.heuresReservees),
+      Duree.zero(),
+    ),
+    heuresDeduites: parts.reduce(
+      (t, p) => t.plus(p.heuresDeduites),
+      Duree.zero(),
+    ),
+  };
+}
+
+/**
+ * Génère la prestation d'un mois à partir d'une **suite de segments** (versions du
+ * contrat couvrant le mois). Un seul segment = comportement historique inchangé ;
+ * plusieurs = génération par segment (chacun restreint à sa période effective) puis
+ * fusion des prestations. Les paramètres **journaliers** (semaine type/inscriptions)
+ * se résolvent jour par jour via la période de chaque segment ; les paramètres
+ * **mensuels** (mensualité crèche, PAI cantine) suivent le segment couvrant le 1er
+ * du mois (H7). Tous les segments partagent le même `mode` (l'identité n'est pas
+ * versionnée, H6).
+ */
+export function genererPrestationMoisSegments(
+  segments: readonly ContratPourGeneration[],
+  mois: string,
+  saisie: SaisiePlanningJson,
+  joursNonFacturables: readonly string[],
+): PrestationMois {
+  const [premier] = segments;
+  if (premier === undefined) {
+    throw new ParametreContratInvalideError(
+      'au moins un segment de contrat attendu pour générer les prestations',
+    );
+  }
+  if (segments.length === 1) {
+    return genererPrestationMois(premier, mois, saisie, joursNonFacturables);
+  }
+
+  // Segment « mensuel » (H7) : celui couvrant le 1er du mois ; à défaut (contrat
+  // débutant en cours de mois), le premier segment actif (segments triés par
+  // date d'effet croissante côté service).
+  const premierJour = `${mois}-01`;
+  const trouve = segments.findIndex((s) => couvreDate(s, premierJour));
+  const idxMensuel = trouve >= 0 ? trouve : 0;
+
+  const saisieParSegment = repartirSaisie(segments, saisie, idxMensuel);
+  // `saisieParSegment` a exactement une entrée par segment → indexation sûre.
+  const prestations = segments.map((segment, i) =>
+    genererPrestationMois(
+      segment,
+      mois,
+      saisieParSegment[i]!,
+      joursNonFacturables,
+    ),
+  );
+
+  // `idxMensuel` ∈ [0, n) → indexation sûre par cast (aucune branche morte).
+  const mode = premier.mode;
+  if (mode === 'CRECHE_PSU') {
+    const creche = prestations as PrestationsMoisCreche[];
+    return fusionnerCreche(creche, creche[idxMensuel]!);
+  }
+  if (mode === 'CANTINE') {
+    const cantine = prestations as PrestationsMoisCantine[];
+    return {
+      mode: 'CANTINE',
+      nbJours: cantine.reduce((t, p) => t + p.nbJours, 0),
+      // PAI : scalaire mensuel → porté par le segment mensuel.
+      pai: cantine[idxMensuel]!.pai,
+    };
+  }
+  if (mode === 'PERISCOLAIRE') {
+    const peri = prestations as PrestationsMoisPeriscolaire[];
+    return {
+      mode: 'PERISCOLAIRE',
+      nbMatins: peri.reduce((t, p) => t + p.nbMatins, 0),
+      nbSoirs: peri.reduce((t, p) => t + p.nbSoirs, 0),
+    };
+  }
+  const alsh = prestations as PrestationsMoisAlsh[];
+  return {
+    mode: 'ALSH',
+    nbJourneesCompletes: alsh.reduce((t, p) => t + p.nbJourneesCompletes, 0),
+    nbDemiJournees: alsh.reduce((t, p) => t + p.nbDemiJournees, 0),
+    nbRepas: alsh.reduce((t, p) => t + p.nbRepas, 0),
+  };
 }

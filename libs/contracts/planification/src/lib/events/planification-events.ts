@@ -77,6 +77,32 @@ export const contratCreeEventSchema = integrationEventSchema(
 );
 export type ContratCreeEvent = z.infer<typeof contratCreeEventSchema>;
 
+// --- planification.ContratCree.v2 -------------------------------------------
+
+/**
+ * Nom métier versionné (champ `type` de l'enveloppe). **v2 additive** (SFD 30,
+ * RM-30-06) : payload v1 + `versionId` + `dateEffet` de la **version initiale**
+ * du contrat (le contrat de garde est versionné à date d'effet depuis le lot 4).
+ * Les consommateurs v1 (projections tarification/notifications) restent valides :
+ * les champs ajoutés sont ignorés par leur schéma (strip).
+ */
+export const CONTRAT_CREE_V2_TYPE = 'planification.ContratCree.v2';
+
+export const contratCreeV2PayloadSchema = contratCreePayloadSchema.extend({
+  /** Identifiant de la version initiale (`contrat_version`). */
+  versionId: z.string().uuid(),
+  /** Date d'effet de la version initiale, ISO `YYYY-MM-DD` (= `valideDu`). */
+  dateEffet: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'date ISO YYYY-MM-DD attendue'),
+});
+export type ContratCreeV2Payload = z.infer<typeof contratCreeV2PayloadSchema>;
+
+export const contratCreeV2EventSchema = integrationEventSchema(
+  contratCreeV2PayloadSchema,
+);
+export type ContratCreeV2Event = z.infer<typeof contratCreeV2EventSchema>;
+
 // --- planification.PlanningModifie.v1 ---------------------------------------
 
 /** Nom métier versionné (champ `type` de l'enveloppe). */
@@ -135,6 +161,36 @@ export const contratModifieEventSchema = integrationEventSchema(
   contratModifiePayloadSchema,
 );
 export type ContratModifieEvent = z.infer<typeof contratModifieEventSchema>;
+
+// --- planification.ContratModifie.v2 ----------------------------------------
+
+/**
+ * Nom métier versionné (champ `type` de l'enveloppe). **v2 additive** (SFD 30,
+ * RM-30-06) : payload v1 + `versionId` + `dateEffet` de la version **créée ou
+ * corrigée** par le geste (avenant, correction). Les gestes chirurgicaux non
+ * versionnés (`rattacherEtablissement`/`rattacherEnfant`, projection prénom)
+ * continuent d'émettre la v1 — les projections acceptent les deux.
+ */
+export const CONTRAT_MODIFIE_V2_TYPE = 'planification.ContratModifie.v2';
+
+export const contratModifieV2PayloadSchema = contratModifiePayloadSchema.extend(
+  {
+    /** Identifiant de la version concernée (`contrat_version`). */
+    versionId: z.string().uuid(),
+    /** Date d'effet de la version concernée, ISO `YYYY-MM-DD`. */
+    dateEffet: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'date ISO YYYY-MM-DD attendue'),
+  },
+);
+export type ContratModifieV2Payload = z.infer<
+  typeof contratModifieV2PayloadSchema
+>;
+
+export const contratModifieV2EventSchema = integrationEventSchema(
+  contratModifieV2PayloadSchema,
+);
+export type ContratModifieV2Event = z.infer<typeof contratModifieV2EventSchema>;
 
 // --- planification.ContratSupprime.v1 ---------------------------------------
 

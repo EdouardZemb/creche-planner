@@ -29,7 +29,7 @@ const FOYER_ID = '22222222-2222-2222-2222-222222222222';
 const CONTRAT_ID = '33333333-3333-3333-3333-333333333333';
 
 /**
- * Nombre de `PUT /api/contrats/:id` effectivement reçus par le service aval
+ * Nombre de `PUT /api/contrats/:id/version-courante` effectivement reçus par le service aval
  * (simulé). Sert à vérifier l'invariant MBT : un 429 du rate-limit gateway
  * court-circuite AVANT le contrôleur, donc le service aval n'est jamais appelé
  * (le contrat ne peut pas être modifié/supprimé par un PUT « fantôme »).
@@ -145,7 +145,10 @@ function gererAval(req: IncomingMessage, res: ServerResponse): void {
       });
       return;
     }
-    if (methode === 'PUT' && /^\/api\/contrats\/[^/]+$/.test(url)) {
+    if (
+      methode === 'PUT' &&
+      /^\/api\/contrats\/[^/]+\/version-courante$/.test(url)
+    ) {
       // Compte les modifications de contrat qui atteignent VRAIMENT l'aval.
       putContratsRecus += 1;
       envoyer(200, {

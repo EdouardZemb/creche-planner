@@ -8,7 +8,9 @@ import {
   etablissementModifieEventSchema,
   etablissementSupprimeEventSchema,
   CONTRAT_CREE_TYPE,
+  CONTRAT_CREE_V2_TYPE,
   CONTRAT_MODIFIE_TYPE,
+  CONTRAT_MODIFIE_V2_TYPE,
   CONTRAT_SUPPRIME_TYPE,
   ETABLISSEMENT_CREE_TYPE,
   ETABLISSEMENT_MODIFIE_TYPE,
@@ -89,10 +91,14 @@ export class ProjectionService {
         return 'IGNORE_ENVELOPPE_INVALIDE'; // pas une enveloppe reconnue
       }
       switch (type) {
+        // v2 additive (SFD 30 lot 4) : versionId/dateEffet en plus, ignorés par
+        // la projection (schema v1, strip) — champs projetés inchangés.
         case CONTRAT_CREE_TYPE:
+        case CONTRAT_CREE_V2_TYPE:
           await this.appliquerContratCree(stream, donnees);
           return 'TRAITE';
         case CONTRAT_MODIFIE_TYPE:
+        case CONTRAT_MODIFIE_V2_TYPE:
           await this.appliquerContratModifie(stream, donnees);
           return 'TRAITE';
         case CONTRAT_SUPPRIME_TYPE:

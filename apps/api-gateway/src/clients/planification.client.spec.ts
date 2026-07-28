@@ -138,6 +138,134 @@ describe('PlanificationClient (gateway→svc-planification)', () => {
     });
   });
 
+  describe('versionnement (SFD 30 lot 4)', () => {
+    const VERSION_VUE = {
+      id: 'v-1',
+      contratId: 'c-1',
+      mode: 'CRECHE_PSU',
+      dateEffet: '2026-01-01',
+      du: '2026-01-01',
+      au: null,
+      heuresAnnuellesContractualisees: 763,
+      nbMensualites: 7,
+      saisiLe: '2026-01-01T00:00:00.000Z',
+      motif: null,
+    };
+
+    function urlAppel(fetchMock: ReturnType<typeof vi.fn>): string {
+      return String(fetchMock.mock.calls[0]?.[0]);
+    }
+
+    it('modifierContrat vise PUT /contrats/:id/version-courante (correction non destructive)', async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => CONTRAT_OK,
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+      const vue = await new PlanificationClient().modifierContrat('c-1', {
+        mode: 'CRECHE_PSU',
+        foyerId: 'f-1',
+        enfant: 'Mia',
+        enfantId: 'e-1',
+        valideDu: '2026-01-01',
+        valideAu: null,
+      });
+      expect(vue.id).toBe('c-1');
+      expect(urlAppel(fetchMock)).toMatch(
+        /\/api\/contrats\/c-1\/version-courante$/,
+      );
+    });
+
+    it('creerAvenant → POST /contrats/:id/versions, renvoie la vue contrat', async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        status: 201,
+        json: async () => CONTRAT_OK,
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+      const vue = await new PlanificationClient().creerAvenant('c-1', {
+        mode: 'CRECHE_PSU',
+        dateEffet: '2026-09-01',
+      });
+      expect(vue.id).toBe('c-1');
+      expect(urlAppel(fetchMock)).toMatch(/\/api\/contrats\/c-1\/versions$/);
+    });
+
+    it('creerAvenant erreur HTTP (409) → propage Error(HTTP 409)', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ ok: false, status: 409, json: async () => ({}) })),
+      );
+      await expect(
+        new PlanificationClient().creerAvenant('c-1', {
+          mode: 'CRECHE_PSU',
+          dateEffet: '2026-09-01',
+        }),
+      ).rejects.toThrow('HTTP 409');
+    });
+
+    it('listerVersions → GET /contrats/:id/versions, renvoie les versions parsées', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => [VERSION_VUE],
+        })),
+      );
+      const versions = await new PlanificationClient().listerVersions('c-1');
+      expect(versions).toHaveLength(1);
+      expect(versions[0]?.dateEffet).toBe('2026-01-01');
+      expect(versions[0]?.au).toBeNull();
+    });
+
+    it('apercuImpactVersion → GET .../versions/:versionId/impact', async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ versionId: 'v-1', moisCouverts: ['2026-06'] }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+      const impact = await new PlanificationClient().apercuImpactVersion(
+        'c-1',
+        'v-1',
+      );
+      expect(impact.moisCouverts).toEqual(['2026-06']);
+      expect(urlAppel(fetchMock)).toMatch(
+        /\/api\/contrats\/c-1\/versions\/v-1\/impact$/,
+      );
+    });
+
+    it('corrigerVersion → PUT .../versions/:versionId, renvoie la vue contrat', async () => {
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => CONTRAT_OK,
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+      const vue = await new PlanificationClient().corrigerVersion(
+        'c-1',
+        'v-1',
+        { mode: 'CRECHE_PSU' },
+      );
+      expect(vue.id).toBe('c-1');
+      expect(urlAppel(fetchMock)).toMatch(
+        /\/api\/contrats\/c-1\/versions\/v-1$/,
+      );
+    });
+
+    it('listerVersions erreur HTTP → propage Error(HTTP 503)', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({ ok: false, status: 503, json: async () => ({}) })),
+      );
+      await expect(
+        new PlanificationClient().listerVersions('c-1'),
+      ).rejects.toThrow('HTTP 503');
+    });
+  });
+
   describe('creerContrat (idempotence de création, lot 3 — C1)', () => {
     const REGEX_UUID_V4 =
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

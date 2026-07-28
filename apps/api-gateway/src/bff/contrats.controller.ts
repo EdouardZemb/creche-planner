@@ -12,11 +12,17 @@ import {
 } from '@nestjs/common';
 import {
   PlanificationClient,
+  type ContratVersionVue,
   type ContratVue,
+  type ImpactVersion,
   type LirePlanningReponse,
+  type SaisieAvenant,
   type SaisieContrat,
+  type SaisieCorrectionVersion,
 } from '../clients/planification.client.js';
 import {
+  corrigerVersionSchema,
+  creerAvenantSchema,
   creerContratSchema,
   ecrirePlanningSchema,
   modifierContratSchema,
@@ -57,7 +63,12 @@ export class ContratsController {
     );
   }
 
-  /** Modifie un contrat de garde existant. */
+  /**
+   * Modifie les **paramètres versionnés courants** d'un contrat (SFD 30 lot 4).
+   * URL BFF inchangée (le web « durcit » un contrat par ce chemin) mais le relais
+   * vise `PUT /contrats/:id/version-courante` amont : correction **non
+   * destructive** (les plannings saisis survivent), limitée aux champs versionnés.
+   */
   @Put(':id')
   @FoyerScope('contrat:id')
   modifier(
@@ -67,6 +78,64 @@ export class ContratsController {
     const saisie = valider(modifierContratSchema, corps);
     return relayer(() =>
       this.planification.modifierContrat(id, saisie as SaisieContrat),
+    );
+  }
+
+  /**
+   * Crée un **avenant** : nouvelle version du contrat à date d'effet (SFD 30
+   * lot 4, US-30-01). 201 ; 409 si une version existe déjà à cette date ; 400 si
+   * la date précède le début du contrat.
+   */
+  @Post(':id/versions')
+  @FoyerScope('contrat:id')
+  creerAvenant(
+    @Param('id') id: string,
+    @Body() corps: unknown,
+  ): Promise<ContratVue> {
+    const saisie = valider(creerAvenantSchema, corps);
+    return relayer(() =>
+      this.planification.creerAvenant(id, saisie as SaisieAvenant),
+    );
+  }
+
+  /** Historique des versions d'un contrat (US-30-04/06). */
+  @Get(':id/versions')
+  @FoyerScope('contrat:id')
+  listerVersions(@Param('id') id: string): Promise<ContratVersionVue[]> {
+    return relayer(() => this.planification.listerVersions(id));
+  }
+
+  /**
+   * Aperçu d'impact d'une version : les mois qui seraient recalculés par une
+   * correction (US-30-05). Lecture seule.
+   */
+  @Get(':id/versions/:versionId/impact')
+  @FoyerScope('contrat:id')
+  apercuImpact(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+  ): Promise<ImpactVersion> {
+    return relayer(() => this.planification.apercuImpactVersion(id, versionId));
+  }
+
+  /**
+   * **Corrige** une version existante (geste rétroactif tracé, US-30-05) : écrase
+   * ses paramètres versionnés sans déplacer sa date d'effet.
+   */
+  @Put(':id/versions/:versionId')
+  @FoyerScope('contrat:id')
+  corrigerVersion(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @Body() corps: unknown,
+  ): Promise<ContratVue> {
+    const saisie = valider(corrigerVersionSchema, corps);
+    return relayer(() =>
+      this.planification.corrigerVersion(
+        id,
+        versionId,
+        saisie as SaisieCorrectionVersion,
+      ),
     );
   }
 

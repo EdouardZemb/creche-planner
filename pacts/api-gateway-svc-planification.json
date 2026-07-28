@@ -4,6 +4,179 @@
   },
   "interactions": [
     {
+      "description": "une correction de la version courante d’un contrat crèche",
+      "providerStates": [
+        {
+          "name": "un contrat de garde modifiable existe"
+        }
+      ],
+      "request": {
+        "body": {
+          "enfant": "Mia",
+          "enfantId": "77777777-7777-4777-8777-777777777777",
+          "etablissementId": "99999999-9999-4999-8999-999999999999",
+          "foyerId": "22222222-2222-4222-8222-222222222222",
+          "heuresAnnuellesContractualisees": 763,
+          "mode": "CRECHE_PSU",
+          "nbMensualites": 7,
+          "semaineType": {
+            "DIMANCHE": [],
+            "JEUDI": [],
+            "LUNDI": [
+              {
+                "debutHeures": 8,
+                "debutMinutes": 30,
+                "finHeures": 17,
+                "finMinutes": 0
+              }
+            ],
+            "MARDI": [],
+            "MERCREDI": [],
+            "SAMEDI": [],
+            "VENDREDI": []
+          },
+          "valideAu": "2026-07-31",
+          "valideDu": "2026-01-01"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "PUT",
+        "path": "/api/contrats/11111111-1111-1111-1111-111111111111/version-courante"
+      },
+      "response": {
+        "body": {
+          "enfant": "Mia",
+          "enfantId": "77777777-7777-4777-8777-777777777777",
+          "foyerId": "22222222-2222-2222-2222-222222222222",
+          "id": "11111111-1111-1111-1111-111111111111",
+          "mode": "CRECHE_PSU",
+          "premiereInscription": false,
+          "valideAu": "2026-07-31",
+          "valideDu": "2026-01-01"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.enfantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une correction d’une version existante d’un contrat",
+      "providerStates": [
+        {
+          "name": "un contrat crèche avec une version initiale identifiée existe"
+        }
+      ],
+      "request": {
+        "body": {
+          "heuresAnnuellesContractualisees": 700,
+          "mode": "CRECHE_PSU",
+          "motif": "erreur de saisie",
+          "nbMensualites": 7,
+          "semaineType": {
+            "DIMANCHE": [],
+            "JEUDI": [],
+            "LUNDI": [
+              {
+                "debutHeures": 8,
+                "debutMinutes": 30,
+                "finHeures": 17,
+                "finMinutes": 0
+              }
+            ],
+            "MARDI": [],
+            "MERCREDI": [],
+            "SAMEDI": [],
+            "VENDREDI": []
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "PUT",
+        "path": "/api/contrats/11111111-1111-1111-1111-111111111111/versions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+      },
+      "response": {
+        "body": {
+          "enfant": "Mia",
+          "enfantId": "77777777-7777-4777-8777-777777777777",
+          "foyerId": "22222222-2222-2222-2222-222222222222",
+          "id": "11111111-1111-1111-1111-111111111111",
+          "mode": "CRECHE_PSU",
+          "premiereInscription": false,
+          "valideAu": "2026-07-31",
+          "valideDu": "2026-01-01"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.enfantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "une création de contrat ALSH avec récurrence hebdomadaire",
       "providerStates": [
         {
@@ -165,6 +338,91 @@
           "premiereInscription": true,
           "valideAu": null,
           "valideDu": "2026-09-01"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.enfantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.foyerId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      }
+    },
+    {
+      "description": "une création d’avenant sur un contrat crèche",
+      "providerStates": [
+        {
+          "name": "un contrat de garde modifiable existe"
+        }
+      ],
+      "request": {
+        "body": {
+          "dateEffet": "2026-06-01",
+          "heuresAnnuellesContractualisees": 700,
+          "mode": "CRECHE_PSU",
+          "motif": "changement de rentrée",
+          "nbMensualites": 7,
+          "semaineType": {
+            "DIMANCHE": [],
+            "JEUDI": [],
+            "LUNDI": [
+              {
+                "debutHeures": 8,
+                "debutMinutes": 30,
+                "finHeures": 17,
+                "finMinutes": 0
+              }
+            ],
+            "MARDI": [],
+            "MERCREDI": [],
+            "SAMEDI": [],
+            "VENDREDI": []
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "method": "POST",
+        "path": "/api/contrats/11111111-1111-1111-1111-111111111111/versions"
+      },
+      "response": {
+        "body": {
+          "enfant": "Mia",
+          "enfantId": "77777777-7777-4777-8777-777777777777",
+          "foyerId": "22222222-2222-2222-2222-222222222222",
+          "id": "11111111-1111-1111-1111-111111111111",
+          "mode": "CRECHE_PSU",
+          "premiereInscription": false,
+          "valideAu": "2026-07-31",
+          "valideDu": "2026-01-01"
         },
         "headers": {
           "Content-Type": "application/json; charset=utf-8"
@@ -388,6 +646,172 @@
       }
     },
     {
+      "description": "une lecture de l’aperçu d’impact d’une version",
+      "providerStates": [
+        {
+          "name": "un contrat crèche avec une version initiale identifiée existe"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/contrats/11111111-1111-1111-1111-111111111111/versions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/impact"
+      },
+      "response": {
+        "body": {
+          "moisCouverts": [
+            "2026-01"
+          ],
+          "versionId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.moisCouverts": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.moisCouverts[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.versionId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une lecture de l’historique des versions d’un contrat",
+      "providerStates": [
+        {
+          "name": "un contrat crèche avec une version initiale identifiée existe"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/contrats/11111111-1111-1111-1111-111111111111/versions"
+      },
+      "response": {
+        "body": [
+          {
+            "au": null,
+            "contratId": "11111111-1111-1111-1111-111111111111",
+            "dateEffet": "2026-01-01",
+            "du": "2026-01-01",
+            "heuresAnnuellesContractualisees": 763,
+            "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "mode": "CRECHE_PSU",
+            "motif": null,
+            "nbMensualites": 7,
+            "saisiLe": "2026-01-01T00:00:00.000Z"
+          }
+        ],
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].contratId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$[*].dateEffet": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].du": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].heuresAnnuellesContractualisees": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                }
+              ]
+            },
+            "$[*].mode": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].nbMensualites": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].saisiLe": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "format": "yyyy-MM-dd'T'HH:mm:ss.SSSX",
+                  "match": "datetime"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "une lecture des prestations crèche du mois (réel)",
       "providerStates": [
         {
@@ -566,100 +990,6 @@
               "matchers": [
                 {
                   "match": "type"
-                }
-              ]
-            }
-          }
-        },
-        "status": 200
-      }
-    },
-    {
-      "description": "une modification de contrat crèche",
-      "providerStates": [
-        {
-          "name": "un contrat de garde modifiable existe"
-        },
-        {
-          "name": "aucun établissement « Crèche Pact Modif » n existe"
-        }
-      ],
-      "request": {
-        "body": {
-          "enfant": "Mia",
-          "enfantId": "77777777-7777-4777-8777-777777777777",
-          "foyerId": "22222222-2222-4222-8222-222222222222",
-          "heuresAnnuellesContractualisees": 763,
-          "mode": "CRECHE_PSU",
-          "nbMensualites": 7,
-          "nouvelEtablissement": {
-            "nom": "Crèche Pact Modif"
-          },
-          "semaineType": {
-            "DIMANCHE": [],
-            "JEUDI": [],
-            "LUNDI": [
-              {
-                "debutHeures": 8,
-                "debutMinutes": 30,
-                "finHeures": 17,
-                "finMinutes": 0
-              }
-            ],
-            "MARDI": [],
-            "MERCREDI": [],
-            "SAMEDI": [],
-            "VENDREDI": []
-          },
-          "valideAu": "2026-12-31",
-          "valideDu": "2026-01-01"
-        },
-        "headers": {
-          "Content-Type": "application/json; charset=utf-8"
-        },
-        "method": "PUT",
-        "path": "/api/contrats/11111111-1111-1111-1111-111111111111"
-      },
-      "response": {
-        "body": {
-          "enfant": "Mia",
-          "enfantId": "77777777-7777-4777-8777-777777777777",
-          "foyerId": "22222222-2222-4222-8222-222222222222",
-          "id": "11111111-1111-1111-1111-111111111111",
-          "mode": "CRECHE_PSU",
-          "premiereInscription": false,
-          "valideAu": "2026-12-31",
-          "valideDu": "2026-01-01"
-        },
-        "headers": {
-          "Content-Type": "application/json; charset=utf-8"
-        },
-        "matchingRules": {
-          "body": {
-            "$.enfantId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-                }
-              ]
-            },
-            "$.foyerId": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-                }
-              ]
-            },
-            "$.id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
                 }
               ]
             }

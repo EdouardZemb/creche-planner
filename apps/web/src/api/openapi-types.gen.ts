@@ -992,6 +992,227 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/contrats/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Historique des versions d’un contrat
+         * @description Versions datées du contrat (SFD 30, US-30-04/06), de la plus récente à la plus ancienne, avec leur période dérivée.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Versions du contrat. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ContratVersionVue"][];
+                    };
+                };
+                /** @description Contrat inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Créer un avenant (nouvelle version à date d’effet)
+         * @description Insère une nouvelle version du contrat à `dateEffet` (SFD 30, US-30-01) ; la version précédente est close implicitement la veille. Les plannings mensuels saisis SURVIVENT (aucune cascade). Seuls les paramètres versionnés sont acceptés — l’identité (mode, enfant, établissement) ne change pas par avenant (H6).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        mode: "CRECHE_PSU" | "CANTINE" | "PERISCOLAIRE" | "ALSH";
+                        /** Format: date */
+                        dateEffet: string;
+                        motif?: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description Avenant créé (contrat à jour renvoyé). */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ContratVue"];
+                    };
+                };
+                /** @description Date d’effet antérieure au début du contrat, mode différent (l’identité n’est pas versionnée) ou paramètres invalides. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Contrat inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Une version existe déjà à cette date d’effet. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contrats/{id}/versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Corriger une version existante (geste rétroactif tracé)
+         * @description Écrase les paramètres versionnés d’une version SANS déplacer sa date d’effet (SFD 30, US-30-05). La correction est journalisée (avant/après + motif) côté service. Consulter l’aperçu d’impact avant de corriger une version passée.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    versionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        mode: "CRECHE_PSU" | "CANTINE" | "PERISCOLAIRE" | "ALSH";
+                        motif?: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description Version corrigée (contrat à jour renvoyé). */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ContratVue"];
+                    };
+                };
+                /** @description Mode différent ou paramètres invalides. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Contrat ou version inconnus. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contrats/{id}/versions/{versionId}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Aperçu d’impact d’une version (mois recalculés)
+         * @description Liste les mois couverts par la période de la version (plafonnée à la vie du contrat) — les mois dont les coûts seraient recalculés par une correction. Lecture seule.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    versionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Mois couverts par la version. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ImpactVersionVue"];
+                    };
+                };
+                /** @description Contrat ou version inconnus. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/contrats/{id}/plannings/{mois}": {
         parameters: {
             query?: never;
@@ -1390,6 +1611,33 @@ export interface components {
             /** Format: date */
             valideAu: string | null;
             premiereInscription?: boolean;
+        };
+        /** @description Version datée d’un contrat de garde (SFD 30, versionnement à date d’effet) : paramètres versionnés + période dérivée (`du`/`au`, `au` null si ouverte) + traçabilité. Les paramètres mode-spécifiques (`semaineType`/`semaineAbcm`) sont relayés tels quels. */
+        ContratVersionVue: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            contratId: string;
+            mode: string;
+            /** Format: date */
+            dateEffet: string;
+            /** Format: date */
+            du: string;
+            /** Format: date */
+            au: string | null;
+            heuresAnnuellesContractualisees?: number | null;
+            nbMensualites?: number | null;
+            /** Format: date-time */
+            saisiLe: string;
+            motif?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description Aperçu d’impact d’une version : les mois (YYYY-MM) qui seraient recalculés par une correction, du plus ancien au plus récent. */
+        ImpactVersionVue: {
+            /** Format: uuid */
+            versionId: string;
+            moisCouverts: string[];
         };
         /** @description Règle de préavis d’un établissement (union discriminée par `type`). */
         PreavisRegle: {

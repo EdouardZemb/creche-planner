@@ -6,8 +6,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
-  CONTRAT_CREE_TYPE,
+  CONTRAT_CREE_V2_TYPE,
   CONTRAT_MODIFIE_TYPE,
+  CONTRAT_MODIFIE_V2_TYPE,
   CONTRAT_SUPPRIME_TYPE,
   ETABLISSEMENT_CREE_TYPE,
   PLANNING_MODIFIE_TYPE,
@@ -19,10 +20,19 @@ import type {
 } from '@creche-planner/planification-domain';
 import { PlanificationService } from './planification.service.js';
 import type { Database } from '../database/database.types.js';
-import { contrat, etablissement, outbox } from '../database/schema.js';
-import type { ContratRow } from '../database/schema.js';
+import {
+  contrat,
+  contratVersion,
+  correctionJournal,
+  etablissement,
+  outbox,
+  planningMois,
+} from '../database/schema.js';
+import type { ContratRow, ContratVersionRow } from '../database/schema.js';
 import type { ReferentielClient } from './referentiel.client.js';
 import type {
+  CorrigerVersionDto,
+  CreerAvenantDto,
   EcrirePlanningDto,
   ModifierContratDto,
 } from './planification.dto.js';
@@ -276,6 +286,80 @@ describe('PlanificationService.prestationsMois (ABCM / exceptions)', () => {
     expect(presta.mode).toBe('PERISCOLAIRE');
     expect(presta.nbMatins).toBe(4); // 4 lundis, héritage conservé.
     expect(presta.nbSoirs).toBe(1); // un seul soir ajouté par l'exception.
+  });
+});
+
+describe('PlanificationService.prestationsMois (résolution temporelle, SFD 30 lot 4)', () => {
+  // Octobre 2026 : lundis 05, 12, 19, 26.
+  it('avenant à cheval (effet 2026-10-15) : jours par version, mensualité du 1er (H7)', async () => {
+    const versions = [
+      versionRow({ dateEffet: '2026-01-01' }), // lundi 8h30→17h00 (510 min)
+      versionRow({
+        id: '10000000-0000-4000-8000-000000000002',
+        dateEffet: '2026-10-15',
+        heuresAnnuellesContractualisees: 700,
+        semaineType: {
+          LUNDI: [
+            { debutHeures: 8, debutMinutes: 30, finHeures: 12, finMinutes: 30 },
+          ],
+        },
+      }),
+    ];
+    const db = fakeDbLecture([ligneCreche()], [], versions);
+    const service = new PlanificationService(db, referentielVide);
+
+    const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
+    const presta = resultat.prestations[0] as PrestationsMoisCreche;
+    // Lundis 05 et 12 selon l'ancienne version (510), 19 et 26 selon la
+    // nouvelle (240) — les jours 1-14 restent générés par l'ancienne (CA US-30-01).
+    expect(presta.heuresReservees.enMinutes).toBe(2 * 510 + 2 * 240);
+    // Mensualité (H7) : celle de la version applicable au 1er du mois.
+    expect(presta.heuresMensualisees).toBe(126.5); // 885.5 / 7
+  });
+
+  it('avenant à effet futur (2026-11-01) : le mois courant reste généré par la version en vigueur', async () => {
+    const versions = [
+      versionRow({ dateEffet: '2026-01-01' }),
+      versionRow({
+        id: '10000000-0000-4000-8000-000000000003',
+        dateEffet: '2026-11-01',
+        heuresAnnuellesContractualisees: 700,
+        semaineType: { MARDI: [] },
+      }),
+    ];
+    const db = fakeDbLecture([ligneCreche()], [], versions);
+    const service = new PlanificationService(db, referentielVide);
+
+    const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
+    const presta = resultat.prestations[0] as PrestationsMoisCreche;
+    // Octobre entier généré par la version du 01/01 : 4 lundis × 510 min.
+    expect(presta.heuresReservees.enMinutes).toBe(4 * 510);
+    expect(presta.heuresMensualisees).toBe(126.5);
+  });
+
+  it('contrat sans version (repli défensif) : colonnes-projection en un seul segment', async () => {
+    const db = fakeDbLecture([ligneCreche()], [], []);
+    const service = new PlanificationService(db, referentielVide);
+
+    const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
+    const presta = resultat.prestations[0] as PrestationsMoisCreche;
+    expect(presta.heuresReservees.enMinutes).toBe(4 * 510);
+  });
+
+  it('mois hors vie du contrat : quantités nulles (segment courant vide)', async () => {
+    // Contrat clos au 2026-07-31 : octobre est hors période, même versionné.
+    const versions = [versionRow({ dateEffet: '2026-01-01' })];
+    const db = fakeDbLecture(
+      [ligneCreche({ valideAu: '2026-07-31' })],
+      [],
+      versions,
+    );
+    const service = new PlanificationService(db, referentielVide);
+
+    const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
+    const presta = resultat.prestations[0] as PrestationsMoisCreche;
+    expect(presta.heuresReservees.enMinutes).toBe(0);
+    expect(presta.heuresMensualisees).toBe(0);
   });
 });
 
@@ -714,7 +798,7 @@ describe('PlanificationService.creerContrat', () => {
     expect(db.transaction).toHaveBeenCalledTimes(1);
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: CONTRAT_CREE_TYPE,
+        type: CONTRAT_CREE_V2_TYPE,
         payload: expect.objectContaining({
           foyerId: FOYER_ID,
           enfant: 'Mia',
@@ -825,7 +909,7 @@ describe('PlanificationService.creerContrat (lien établissement, P2)', () => {
     expect(contratInsert).toMatchObject({ etablissementId: ETAB_ID });
     expect(outboxDeType(inserts, ETABLISSEMENT_CREE_TYPE)).toBeUndefined();
     // L'événement ContratCree porte le lien.
-    const cree = outboxDeType(inserts, CONTRAT_CREE_TYPE);
+    const cree = outboxDeType(inserts, CONTRAT_CREE_V2_TYPE);
     expect(cree?.['payload']).toMatchObject({ etablissementId: ETAB_ID });
   });
 
@@ -872,7 +956,7 @@ describe('PlanificationService.creerContrat (lien établissement, P2)', () => {
     // Le contrat est rattaché à l'établissement fraîchement créé.
     const contratInsert = inserts.find((i) => i['mode'] === 'CRECHE_PSU');
     expect(contratInsert).toMatchObject({ etablissementId: 'new-etab-id' });
-    const contratCree = outboxDeType(inserts, CONTRAT_CREE_TYPE);
+    const contratCree = outboxDeType(inserts, CONTRAT_CREE_V2_TYPE);
     expect(contratCree?.['payload']).toMatchObject({
       etablissementId: 'new-etab-id',
     });
@@ -1035,7 +1119,7 @@ describe('PlanificationService.creerContrat (idempotence de création, Lot 3 —
     // Une seule ligne contrat, un seul événement ContratCree (pas de double projection).
     expect(lignesDe(contrat)).toHaveLength(1);
     expect(
-      lignesDe(outbox).filter((o) => o['type'] === CONTRAT_CREE_TYPE),
+      lignesDe(outbox).filter((o) => o['type'] === CONTRAT_CREE_V2_TYPE),
     ).toHaveLength(1);
     // Les deux appels renvoient exactement la même vue (rejeu = relecture à l'identique).
     expect(vue2).toEqual(vue1);
@@ -1067,7 +1151,7 @@ describe('PlanificationService.creerContrat (idempotence de création, Lot 3 —
       lignesDe(outbox).filter((o) => o['type'] === ETABLISSEMENT_CREE_TYPE),
     ).toHaveLength(0);
     expect(
-      lignesDe(outbox).filter((o) => o['type'] === CONTRAT_CREE_TYPE),
+      lignesDe(outbox).filter((o) => o['type'] === CONTRAT_CREE_V2_TYPE),
     ).toHaveLength(1);
   });
 
@@ -1126,7 +1210,7 @@ describe('PlanificationService (première inscription ABCM, lot 4a)', () => {
     expect(vue.premiereInscription).toBe(true);
     const contratInsert = inserts.find((i) => i['mode'] === 'CANTINE');
     expect(contratInsert).toMatchObject({ premiereInscription: true });
-    const cree = outboxDeType(inserts, CONTRAT_CREE_TYPE);
+    const cree = outboxDeType(inserts, CONTRAT_CREE_V2_TYPE);
     expect(cree?.['payload']).toMatchObject({ premiereInscription: true });
   });
 
@@ -1140,9 +1224,9 @@ describe('PlanificationService (première inscription ABCM, lot 4a)', () => {
     expect(inserts.find((i) => i['mode'] === 'CANTINE')).toMatchObject({
       premiereInscription: false,
     });
-    expect(outboxDeType(inserts, CONTRAT_CREE_TYPE)?.['payload']).toMatchObject(
-      { premiereInscription: false },
-    );
+    expect(
+      outboxDeType(inserts, CONTRAT_CREE_V2_TYPE)?.['payload'],
+    ).toMatchObject({ premiereInscription: false });
   });
 
   it('création crèche : toujours false (le DTO crèche n’expose pas le champ)', async () => {
@@ -1155,9 +1239,9 @@ describe('PlanificationService (première inscription ABCM, lot 4a)', () => {
     });
 
     expect(vue.premiereInscription).toBe(false);
-    expect(outboxDeType(inserts, CONTRAT_CREE_TYPE)?.['payload']).toMatchObject(
-      { premiereInscription: false },
-    );
+    expect(
+      outboxDeType(inserts, CONTRAT_CREE_V2_TYPE)?.['payload'],
+    ).toMatchObject({ premiereInscription: false });
   });
 });
 
@@ -1201,242 +1285,565 @@ function fakeDbModif(options: {
   return { db, transaction, updateSet, deleteWhere, insertValues };
 }
 
-/** DTO de modification valide (crèche PSU) — les 7 jours, comme l'envoie le front. */
-const DTO_MODIF_VALIDE: ModifierContratDto = {
-  mode: 'CRECHE_PSU',
-  foyerId: FOYER_ID,
-  enfant: 'Mia',
-  enfantId: ENFANT_ID,
-  // Établissement obligatoire (P5) ; le faux `tx` valide son existence/foyer.
-  etablissementId: ETAB_ID,
-  valideDu: '2026-01-01',
-  valideAu: '2026-12-31',
-  heuresAnnuellesContractualisees: 885.5,
-  nbMensualites: 7,
-  semaineType: {
-    LUNDI: [{ debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 }],
+/** Ligne `contrat_version` de test (crèche par défaut). */
+function versionRow(
+  overrides: Partial<ContratVersionRow> = {},
+): ContratVersionRow {
+  return {
+    id: '10000000-0000-4000-8000-000000000001',
+    contratId: CONTRAT_ID,
+    dateEffet: '2026-01-01',
+    heuresAnnuellesContractualisees: 885.5,
+    nbMensualites: 7,
+    semaineType: {
+      LUNDI: [
+        { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
+      ],
+    },
+    semaineAbcm: null,
+    saisiLe: new Date('2026-01-01T00:00:00Z'),
+    motif: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+/**
+ * Faux `db` **en mémoire** pour le versionnement (SFD 30 lot 4) : un magasin par
+ * table (contrat / contrat_version / correction_journal / outbox / planning_mois),
+ * `select`/`insert`/`update`/`delete` opérant dessus (les `where` sont ignorés — un
+ * seul contrat par test). Permet d'observer que l'avenant/la correction insèrent une
+ * version, rafraîchissent la projection de `contrat`, journalisent, émettent
+ * `ContratModifie` et **ne suppriment jamais** les `planning_mois`.
+ */
+function fakeDbVersionnee(seed: {
+  contrat?: ContratRow;
+  versions?: ContratVersionRow[];
+  plannings?: Record<string, unknown>[];
+}): {
+  db: Database;
+  store: {
+    contrat: Record<string, unknown>[];
+    contratVersion: Record<string, unknown>[];
+    correctionJournal: Record<string, unknown>[];
+    outbox: Record<string, unknown>[];
+    planningMois: Record<string, unknown>[];
+  };
+  supprime: Table[];
+} {
+  const store = {
+    contrat: (seed.contrat ? [{ ...seed.contrat }] : []) as Record<
+      string,
+      unknown
+    >[],
+    contratVersion: (seed.versions ?? []).map((v) => ({ ...v })),
+    correctionJournal: [] as Record<string, unknown>[],
+    outbox: [] as Record<string, unknown>[],
+    planningMois: (seed.plannings ?? []).map((p) => ({ ...p })),
+    // Établissement rattaché aux contrats seedés (résolution du lien au chemin
+    // de compat `corrigerVersionCourante`).
+    etablissement: [{ id: ETAB_ID, foyerId: FOYER_ID, actif: true }] as Record<
+      string,
+      unknown
+    >[],
+  };
+  const supprime: Table[] = [];
+  const rowsFor = (t: Table): Record<string, unknown>[] => {
+    if (t === contrat) return store.contrat;
+    if (t === contratVersion) return store.contratVersion;
+    if (t === correctionJournal) return store.correctionJournal;
+    if (t === outbox) return store.outbox;
+    if (t === etablissement) return store.etablissement;
+    return store.planningMois;
+  };
+  const ops = {
+    select: () => ({
+      from: (t: Table) => {
+        const rows = rowsFor(t);
+        return {
+          where: () =>
+            Object.assign(Promise.resolve(rows), {
+              orderBy: () => Promise.resolve(rows),
+            }),
+          orderBy: () => Promise.resolve(rows),
+        };
+      },
+    }),
+    insert: (t: Table) => ({
+      values: (v: Record<string, unknown>) => ({
+        // Insert « à plat » (outbox, correction_journal, version initiale).
+        then: (
+          resoudre: (u: undefined) => void,
+          rejeter: (e: unknown) => void,
+        ) => {
+          try {
+            rowsFor(t).push({ ...v });
+            resoudre(undefined);
+          } catch (e) {
+            rejeter(e);
+          }
+        },
+        // Insert avenant : dédup (contrat_id, date_effet) → [] si conflit (409).
+        onConflictDoNothing: () => ({
+          returning: () => {
+            const doublon = store.contratVersion.some(
+              (x) =>
+                x.contratId === v['contratId'] &&
+                x.dateEffet === v['dateEffet'],
+            );
+            if (doublon) {
+              return Promise.resolve([]);
+            }
+            rowsFor(t).push({ ...v });
+            return Promise.resolve([{ id: v['id'] }]);
+          },
+        }),
+      }),
+    }),
+    update: (t: Table) => ({
+      set: (vals: Record<string, unknown>) => ({
+        where: () => {
+          for (const row of rowsFor(t)) {
+            Object.assign(row, vals);
+          }
+          return Promise.resolve();
+        },
+      }),
+    }),
+    delete: (t: Table) => ({
+      where: () => {
+        supprime.push(t);
+        rowsFor(t).length = 0;
+        return Promise.resolve();
+      },
+    }),
+  };
+  const db = {
+    ...ops,
+    transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
+      cb(ops),
+    ),
+  } as unknown as Database;
+  return { db, store, supprime };
+}
+
+/** Semaine type crèche complète (7 jours, comme l'exige `z.record` exhaustif). */
+function semaine7(lundi: {
+  debutHeures: number;
+  debutMinutes: number;
+  finHeures: number;
+  finMinutes: number;
+}): Record<
+  string,
+  {
+    debutHeures: number;
+    debutMinutes: number;
+    finHeures: number;
+    finMinutes: number;
+  }[]
+> {
+  return {
+    LUNDI: [lundi],
     MARDI: [],
     MERCREDI: [],
     JEUDI: [],
     VENDREDI: [],
     SAMEDI: [],
     DIMANCHE: [],
-  },
+  };
+}
+
+const AVENANT_CRECHE: CreerAvenantDto = {
+  mode: 'CRECHE_PSU',
+  dateEffet: '2026-09-01',
+  heuresAnnuellesContractualisees: 700,
+  nbMensualites: 7,
+  semaineType: semaine7({
+    debutHeures: 8,
+    debutMinutes: 30,
+    finHeures: 12,
+    finMinutes: 30,
+  }),
 };
 
-describe('PlanificationService.modifierContrat (atomicité / invariant contrat)', () => {
-  it('update contrat + delete planning_mois + outbox dans UNE seule transaction', async () => {
-    const { db, transaction, updateSet, deleteWhere, insertValues } =
-      fakeDbModif({ contratPresent: true });
+describe('PlanificationService.creerAvenant (SFD 30 lot 4)', () => {
+  it('insère une version, rafraîchit la projection, émet ContratModifie et PRÉSERVE les planning_mois', async () => {
+    const { db, store, supprime } = fakeDbVersionnee({
+      contrat: ligneCreche(),
+      versions: [versionRow()],
+      plannings: [{ contratId: CONTRAT_ID, mois: '2026-03', saisie: {} }],
+    });
     const service = new PlanificationService(db, referentielVide);
 
-    await service.modifierContrat(CONTRAT_ID, DTO_MODIF_VALIDE);
+    await service.creerAvenant(CONTRAT_ID, AVENANT_CRECHE);
 
-    // Tout est groupé dans une transaction unique (atomicité Drizzle) : pas de
-    // suppression « hors transaction » qui pourrait survivre à un échec partiel.
-    expect(transaction).toHaveBeenCalledTimes(1);
-    expect(updateSet).toHaveBeenCalledTimes(1);
-    expect(deleteWhere).toHaveBeenCalledTimes(1); // cascade planning_mois
-    expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: CONTRAT_MODIFIE_TYPE,
-        payload: expect.objectContaining({ contratId: CONTRAT_ID }),
-      }),
-    );
+    // La version est ajoutée (2 au total), sans toucher aux plannings saisis.
+    expect(store.contratVersion).toHaveLength(2);
+    expect(store.planningMois).toHaveLength(1); // survivent à l'avenant
+    expect(supprime).not.toContain(planningMois); // JAMAIS de cascade-delete
+    // Projection rafraîchie : la version du 2026-09-01 est courante (après auj.
+    // dans les tests figés) OU la précédente — dans tous les cas une écriture a eu
+    // lieu et un ContratModifie est émis.
+    expect(
+      store.outbox.some((o) => o['type'] === CONTRAT_MODIFIE_V2_TYPE),
+    ).toBe(true);
   });
 
-  it('édition ABCM cochée → update + ContratModifie avec premiereInscription: true', async () => {
-    const { db, updateSet, insertValues } = fakeDbModif({
-      contratPresent: true,
+  it('refuse un mode différent (H6 : l’identité n’est pas versionnée) → 400', async () => {
+    const { db } = fakeDbVersionnee({
+      contrat: ligneCreche(),
+      versions: [versionRow()],
     });
     const service = new PlanificationService(db, referentielVide);
-
-    const vue = await service.modifierContrat(CONTRAT_ID, {
-      mode: 'CANTINE',
-      foyerId: FOYER_ID,
-      enfant: 'Zoé',
-      enfantId: ENFANT_ID,
-      etablissementId: ETAB_ID,
-      valideDu: '2026-09-01',
-      valideAu: null,
-      semaineAbcm: SEMAINE_ABCM_COMPLETE,
-      premiereInscription: true,
-    });
-
-    expect(vue.premiereInscription).toBe(true);
-    expect(updateSet).toHaveBeenCalledWith(
-      expect.objectContaining({ premiereInscription: true }),
-    );
-    expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: CONTRAT_MODIFIE_TYPE,
-        payload: expect.objectContaining({ premiereInscription: true }),
-      }),
-    );
-  });
-
-  it('édition ABCM décochée (champ absent) → premiereInscription remis à false', async () => {
-    const { db, updateSet, insertValues } = fakeDbModif({
-      contratPresent: true,
-    });
-    const service = new PlanificationService(db, referentielVide);
-
-    const vue = await service.modifierContrat(CONTRAT_ID, {
-      mode: 'CANTINE',
-      foyerId: FOYER_ID,
-      enfant: 'Zoé',
-      enfantId: ENFANT_ID,
-      etablissementId: ETAB_ID,
-      valideDu: '2026-09-01',
-      valideAu: null,
-      semaineAbcm: SEMAINE_ABCM_COMPLETE,
-    });
-
-    expect(vue.premiereInscription).toBe(false);
-    expect(updateSet).toHaveBeenCalledWith(
-      expect.objectContaining({ premiereInscription: false }),
-    );
-    expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: CONTRAT_MODIFIE_TYPE,
-        payload: expect.objectContaining({ premiereInscription: false }),
-      }),
-    );
-  });
-
-  it('INVARIANT : une validation domaine en échec ne touche JAMAIS la base (aucune transaction ouverte)', async () => {
-    const { db, transaction, updateSet, deleteWhere } = fakeDbModif({
-      contratPresent: true,
-    });
-    const service = new PlanificationService(db, referentielVide);
-
-    // valideAu < valideDu → PeriodeContratInvalideError AVANT toute écriture.
     await expect(
-      service.modifierContrat(CONTRAT_ID, {
-        ...DTO_MODIF_VALIDE,
-        valideDu: '2026-12-31',
-        valideAu: '2026-01-01',
+      service.creerAvenant(CONTRAT_ID, {
+        mode: 'CANTINE',
+        dateEffet: '2026-09-01',
+        semaineAbcm: SEMAINE_ABCM_COMPLETE,
       }),
-    ).rejects.toThrow();
-
-    // Le contrat existant n'est ni mis à jour ni supprimé : il reste intact.
-    expect(transaction).not.toHaveBeenCalled();
-    expect(updateSet).not.toHaveBeenCalled();
-    expect(deleteWhere).not.toHaveBeenCalled();
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('INVARIANT : un échec EN COURS de transaction se propage (rollback) → le contrat n’est jamais supprimé', async () => {
-    const { db, transaction, deleteWhere } = fakeDbModif({
-      contratPresent: true,
-      echecOutbox: true,
+  it('refuse une date d’effet antérieure au début du contrat → 400', async () => {
+    const { db } = fakeDbVersionnee({
+      contrat: ligneCreche({ valideDu: '2026-01-01' }),
+      versions: [versionRow()],
     });
     const service = new PlanificationService(db, referentielVide);
-
     await expect(
-      service.modifierContrat(CONTRAT_ID, DTO_MODIF_VALIDE),
-    ).rejects.toThrow('outbox indisponible');
-
-    // L'échec survient DANS l'unique transaction : sur une vraie base, update +
-    // delete sont annulés ensemble (le delete a été *tenté* mais sera rollback).
-    expect(transaction).toHaveBeenCalledTimes(1);
-    expect(deleteWhere).toHaveBeenCalledTimes(1);
+      service.creerAvenant(CONTRAT_ID, {
+        ...AVENANT_CRECHE,
+        dateEffet: '2025-12-31',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('lève NotFoundException si le contrat est introuvable, sans rien modifier ni supprimer', async () => {
-    const { db, updateSet, deleteWhere } = fakeDbModif({
-      contratPresent: false,
+  it('refuse une seconde version à la même date d’effet → 409', async () => {
+    const { db } = fakeDbVersionnee({
+      contrat: ligneCreche(),
+      versions: [versionRow({ dateEffet: '2026-09-01' })],
     });
     const service = new PlanificationService(db, referentielVide);
-
     await expect(
-      service.modifierContrat(CONTRAT_ID, DTO_MODIF_VALIDE),
+      service.creerAvenant(CONTRAT_ID, AVENANT_CRECHE),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('lève NotFoundException si le contrat est introuvable', async () => {
+    const { db } = fakeDbVersionnee({ versions: [] });
+    const service = new PlanificationService(db, referentielVide);
+    await expect(
+      service.creerAvenant(CONTRAT_ID, AVENANT_CRECHE),
     ).rejects.toBeInstanceOf(NotFoundException);
-    expect(updateSet).not.toHaveBeenCalled();
-    expect(deleteWhere).not.toHaveBeenCalled();
   });
 });
 
-/**
- * Faux `db` transactionnel pour `modifierContrat` avec **résolution d'établissement**
- * (Lot 3) : deux `select` successifs — 1ᵉʳ = contrat actuel (porte le lien courant,
- * `etablissementActuel`), 2ᵉ = établissement CIBLE résolu (`etabActif`). Permet de
- * vérifier la tolérance « lien inchangé » vs le rejet d'un **changement** vers un archivé.
- */
-function fakeDbModifAvecEtab(options: {
-  etablissementActuel: string;
-  etabActif: boolean;
-}): {
-  db: Database;
-  updateSet: ReturnType<typeof vi.fn>;
-  insertValues: ReturnType<typeof vi.fn>;
-} {
-  const updateSet = vi.fn(() => ({ where: () => Promise.resolve() }));
-  const deleteWhere = vi.fn(() => Promise.resolve());
-  const insertValues = vi.fn(() => Promise.resolve());
-  let selectCall = 0;
-  const tx = {
-    select: () => ({
-      from: () => ({
-        where: () => {
-          selectCall += 1;
-          if (selectCall === 1) {
-            return Promise.resolve([
-              ligneCreche({ etablissementId: options.etablissementActuel }),
-            ]);
-          }
-          return Promise.resolve([
-            { id: ETAB_ID, foyerId: FOYER_ID, actif: options.etabActif },
-          ]);
-        },
-      }),
-    }),
-    update: () => ({ set: updateSet }),
-    delete: () => ({ where: deleteWhere }),
-    insert: () => ({ values: insertValues }),
-  };
-  const db = {
-    transaction: vi.fn(async (cb: (t: unknown) => Promise<void>) => {
-      await cb(tx);
-    }),
-  } as unknown as Database;
-  return { db, updateSet, insertValues };
-}
-
-describe('PlanificationService.modifierContrat (archivage réel, Lot 3)', () => {
-  it('tolère un archivé INCHANGÉ : le contrat pointait déjà dessus → update OK (édition d’autres champs)', async () => {
-    // Lien actuel = ETAB_ID (archivé) ; DTO_MODIF_VALIDE re-pointe sur ETAB_ID (même) :
-    // lien inchangé → toléré malgré l'archivage (on ne casse pas un contrat existant).
-    const { db, updateSet, insertValues } = fakeDbModifAvecEtab({
-      etablissementActuel: ETAB_ID,
-      etabActif: false,
+describe('PlanificationService.corrigerVersion / corrigerVersionCourante', () => {
+  it('corrige une version : écrase, journalise (correction_journal), émet, ne supprime rien', async () => {
+    const version = versionRow({ dateEffet: '2026-01-01' });
+    const { db, store, supprime } = fakeDbVersionnee({
+      contrat: ligneCreche(),
+      versions: [version],
+      plannings: [{ contratId: CONTRAT_ID, mois: '2026-03', saisie: {} }],
     });
     const service = new PlanificationService(db, referentielVide);
 
-    await service.modifierContrat(CONTRAT_ID, DTO_MODIF_VALIDE);
+    const dto: CorrigerVersionDto = {
+      mode: 'CRECHE_PSU',
+      heuresAnnuellesContractualisees: 600,
+      nbMensualites: 7,
+      semaineType: semaine7({
+        debutHeures: 9,
+        debutMinutes: 0,
+        finHeures: 16,
+        finMinutes: 0,
+      }),
+      motif: 'erreur de saisie',
+    };
+    await service.corrigerVersion(CONTRAT_ID, version.id, dto);
 
-    expect(updateSet).toHaveBeenCalledTimes(1);
-    expect(updateSet).toHaveBeenCalledWith(
-      expect.objectContaining({ etablissementId: ETAB_ID }),
-    );
-    expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({ type: CONTRAT_MODIFIE_TYPE }),
-    );
+    expect(store.correctionJournal).toHaveLength(1);
+    expect(store.correctionJournal[0]).toMatchObject({
+      motif: 'erreur de saisie',
+    });
+    expect(store.contratVersion[0]).toMatchObject({
+      heuresAnnuellesContractualisees: 600,
+    });
+    expect(store.planningMois).toHaveLength(1); // survivent
+    expect(supprime).not.toContain(planningMois);
+    expect(
+      store.outbox.some((o) => o['type'] === CONTRAT_MODIFIE_V2_TYPE),
+    ).toBe(true);
   });
 
-  it('refuse un CHANGEMENT vers un archivé (409) : le contrat pointait ailleurs → rien n’est écrit', async () => {
-    // Lien actuel = AUTRE_ETAB_ID ; DTO_MODIF_VALIDE pointe sur ETAB_ID (archivé) :
-    // c'est un changement vers un archivé → refusé, aucune écriture.
-    const { db, updateSet, insertValues } = fakeDbModifAvecEtab({
-      etablissementActuel: AUTRE_ETAB_ID,
-      etabActif: false,
+  it('lève NotFoundException si la version est introuvable', async () => {
+    const { db } = fakeDbVersionnee({
+      contrat: ligneCreche(),
+      versions: [],
+    });
+    const service = new PlanificationService(db, referentielVide);
+    await expect(
+      service.corrigerVersion(
+        CONTRAT_ID,
+        '10000000-0000-4000-8000-000000000009',
+        {
+          mode: 'CRECHE_PSU',
+          heuresAnnuellesContractualisees: 600,
+          nbMensualites: 7,
+          semaineType: semaine7({
+            debutHeures: 9,
+            debutMinutes: 0,
+            finHeures: 16,
+            finMinutes: 0,
+          }),
+        },
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('corrigerVersionCourante : applique le corps complet à la version courante, PRÉSERVE les plannings', async () => {
+    const { db, store, supprime } = fakeDbVersionnee({
+      contrat: ligneCreche(),
+      versions: [versionRow({ dateEffet: '2026-01-01' })],
+      plannings: [{ contratId: CONTRAT_ID, mois: '2026-03', saisie: {} }],
     });
     const service = new PlanificationService(db, referentielVide);
 
+    const corps: ModifierContratDto = {
+      mode: 'CRECHE_PSU',
+      foyerId: FOYER_ID,
+      enfant: 'Mia',
+      enfantId: ENFANT_ID,
+      etablissementId: ETAB_ID,
+      valideDu: '2026-01-01',
+      valideAu: '2026-12-31',
+      heuresAnnuellesContractualisees: 500,
+      nbMensualites: 7,
+      semaineType: {
+        LUNDI: [
+          { debutHeures: 8, debutMinutes: 0, finHeures: 12, finMinutes: 0 },
+        ],
+        MARDI: [],
+        MERCREDI: [],
+        JEUDI: [],
+        VENDREDI: [],
+        SAMEDI: [],
+        DIMANCHE: [],
+      },
+    };
+    await service.corrigerVersionCourante(CONTRAT_ID, corps);
+
+    expect(store.contratVersion[0]).toMatchObject({
+      heuresAnnuellesContractualisees: 500,
+    });
+    expect(store.correctionJournal).toHaveLength(1);
+    expect(store.planningMois).toHaveLength(1);
+    expect(supprime).not.toContain(planningMois);
+  });
+
+  it('corrigerVersionCourante refuse un mode différent (H6) → 400', async () => {
+    const { db } = fakeDbVersionnee({
+      contrat: ligneCreche(),
+      versions: [versionRow()],
+    });
+    const service = new PlanificationService(db, referentielVide);
     await expect(
-      service.modifierContrat(CONTRAT_ID, DTO_MODIF_VALIDE),
-    ).rejects.toBeInstanceOf(ConflictException);
-    expect(updateSet).not.toHaveBeenCalled();
-    expect(insertValues).not.toHaveBeenCalled();
+      service.corrigerVersionCourante(CONTRAT_ID, {
+        mode: 'CANTINE',
+        foyerId: FOYER_ID,
+        enfant: 'Zoé',
+        enfantId: ENFANT_ID,
+        etablissementId: ETAB_ID,
+        valideDu: '2026-01-01',
+        valideAu: null,
+        semaineAbcm: SEMAINE_ABCM_COMPLETE,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('PlanificationService (versionnement ABCM + cas limites)', () => {
+  it('avenant ABCM : les paramètres versionnés sont la semaine ABCM seule', async () => {
+    const contratCantine = ligneAbcm('CANTINE', { LUNDI: { cantine: true } });
+    const { db, store } = fakeDbVersionnee({
+      contrat: contratCantine,
+      versions: [
+        versionRow({
+          dateEffet: '2026-01-01',
+          heuresAnnuellesContractualisees: null,
+          nbMensualites: null,
+          semaineType: null,
+          semaineAbcm: { LUNDI: { cantine: true } },
+        }),
+      ],
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    await service.creerAvenant(CONTRAT_ID, {
+      mode: 'CANTINE',
+      dateEffet: '2026-09-01',
+      semaineAbcm: SEMAINE_ABCM_COMPLETE,
+    });
+
+    expect(store.contratVersion).toHaveLength(2);
+    const nouvelle = store.contratVersion.find(
+      (v) => v['dateEffet'] === '2026-09-01',
+    );
+    expect(nouvelle).toMatchObject({
+      heuresAnnuellesContractualisees: null,
+      nbMensualites: null,
+      semaineType: null,
+    });
+    expect(nouvelle?.['semaineAbcm']).toBeTruthy();
+  });
+
+  it('versions toutes futures : la projection retombe sur la plus proche (contrat pas commencé)', async () => {
+    const { db, store } = fakeDbVersionnee({
+      contrat: ligneCreche({ valideDu: '2099-01-01', valideAu: null }),
+      versions: [versionRow({ dateEffet: '2099-01-01' })],
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    await service.creerAvenant(CONTRAT_ID, {
+      ...AVENANT_CRECHE,
+      dateEffet: '2099-06-01',
+    });
+
+    // Aucune version applicable aujourd'hui → la projection reflète la version
+    // la plus proche (2099-01-01), pas un état vide.
+    expect(store.contrat[0]).toMatchObject({
+      heuresAnnuellesContractualisees: 885.5,
+    });
+  });
+
+  it('prestations ABCM versionnées : segments cantine sommés sur le mois', async () => {
+    const versions = [
+      versionRow({
+        dateEffet: '2026-01-01',
+        heuresAnnuellesContractualisees: null,
+        nbMensualites: null,
+        semaineType: null,
+        semaineAbcm: { LUNDI: { cantine: true } },
+      }),
+      versionRow({
+        id: '10000000-0000-4000-8000-000000000004',
+        dateEffet: '2026-10-15',
+        heuresAnnuellesContractualisees: null,
+        nbMensualites: null,
+        semaineType: null,
+        semaineAbcm: {},
+      }),
+    ];
+    const db = fakeDbLecture(
+      [ligneAbcm('CANTINE', { LUNDI: { cantine: true } })],
+      [],
+      versions,
+    );
+    const service = new PlanificationService(db, referentielVide);
+
+    const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
+    const presta = resultat.prestations[0] as PrestationsMoisCantine;
+    // Lundis 05 et 12 (ancienne semaine) ; 19 et 26 retirés par l'avenant.
+    expect(presta.nbJours).toBe(2);
+  });
+});
+
+describe('PlanificationService.listerVersions / apercuImpactVersion', () => {
+  it('historique : versions de la plus récente à la plus ancienne, périodes dérivées', async () => {
+    const { db } = fakeDbVersionnee({
+      contrat: ligneCreche({ valideDu: '2026-01-01', valideAu: '2026-12-31' }),
+      versions: [
+        versionRow({
+          id: '10000000-0000-4000-8000-00000000000a',
+          dateEffet: '2026-01-01',
+        }),
+        versionRow({
+          id: '10000000-0000-4000-8000-00000000000b',
+          dateEffet: '2026-09-01',
+        }),
+      ],
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const historique = await service.listerVersions(CONTRAT_ID);
+    expect(historique.map((v) => v.dateEffet)).toEqual([
+      '2026-09-01',
+      '2026-01-01',
+    ]);
+    // La 1ʳᵉ version est close la veille de la 2ᵉ (fin dérivée) ; la 2ᵉ est ouverte.
+    const premiere = historique.find((v) => v.dateEffet === '2026-01-01');
+    expect(premiere?.au).toBe('2026-08-31');
+    const seconde = historique.find((v) => v.dateEffet === '2026-09-01');
+    expect(seconde?.au).toBeNull();
+  });
+
+  it('aperçu d’impact d’une version ouverte sur contrat ouvert : plafonné à son mois de départ', async () => {
+    // Version [2026-12-15, ouverte], contrat sans fin : l'aperçu ne projette pas
+    // indéfiniment — il liste le mois de départ (décembre, franchit l'année via
+    // moisEntre pour un éventuel plafond ultérieur).
+    const version = versionRow({
+      id: '10000000-0000-4000-8000-00000000000e',
+      dateEffet: '2026-12-15',
+    });
+    const { db } = fakeDbVersionnee({
+      contrat: ligneCreche({ valideDu: '2026-01-01', valideAu: null }),
+      versions: [
+        versionRow({
+          id: '10000000-0000-4000-8000-00000000000f',
+          dateEffet: '2026-01-01',
+        }),
+        version,
+      ],
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const impact = await service.apercuImpactVersion(CONTRAT_ID, version.id);
+    expect(impact.moisCouverts).toEqual(['2026-12']);
+  });
+
+  it('aperçu d’impact à cheval sur l’année : décembre → janvier (bascule moisEntre)', async () => {
+    const version = versionRow({
+      id: '10000000-0000-4000-8000-000000000010',
+      dateEffet: '2026-12-01',
+    });
+    const { db } = fakeDbVersionnee({
+      contrat: ligneCreche({ valideDu: '2026-01-01', valideAu: '2027-01-31' }),
+      versions: [
+        versionRow({
+          id: '10000000-0000-4000-8000-000000000011',
+          dateEffet: '2026-01-01',
+        }),
+        version,
+      ],
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const impact = await service.apercuImpactVersion(CONTRAT_ID, version.id);
+    // Version ouverte plafonnée à valideAu 2027-01-31 → décembre puis janvier.
+    expect(impact.moisCouverts).toEqual(['2026-12', '2027-01']);
+  });
+
+  it('aperçu d’impact : liste les mois couverts par la version (plafonné à la vie du contrat)', async () => {
+    const version = versionRow({
+      id: '10000000-0000-4000-8000-00000000000c',
+      dateEffet: '2026-06-01',
+    });
+    const { db } = fakeDbVersionnee({
+      contrat: ligneCreche({ valideDu: '2026-01-01', valideAu: '2026-07-31' }),
+      versions: [
+        versionRow({
+          id: '10000000-0000-4000-8000-00000000000d',
+          dateEffet: '2026-01-01',
+        }),
+        version,
+      ],
+    });
+    const service = new PlanificationService(db, referentielVide);
+
+    const impact = await service.apercuImpactVersion(CONTRAT_ID, version.id);
+    // Version [2026-06-01, ouverte] plafonnée à valideAu 2026-07-31 → juin, juillet.
+    expect(impact.moisCouverts).toEqual(['2026-06', '2026-07']);
   });
 });
 
