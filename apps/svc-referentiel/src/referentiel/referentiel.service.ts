@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { asc, eq, lt } from 'drizzle-orm';
+import { asc, desc, eq, lt } from 'drizzle-orm';
 import { Money } from '@creche-planner/shared-kernel';
 import {
   estModeAbcm,
@@ -36,6 +36,7 @@ import {
   publierBaremePsuSchema,
   publierBaremeTranchesSchema,
   publierGrilleAbcmSchema,
+  publierGrilleSchema,
 } from './referentiel.dto.js';
 
 /** Postes tarifaires ABCM (centimes) partagés par une vue et une ligne de grille. */
@@ -224,6 +225,118 @@ export class ReferentielService {
     });
 
     return vue;
+  }
+
+  /**
+   * Publie une **grille complète** (SFD 30, US-30-02, lot 6) : une période de
+   * validité et une ligne par tranche (montants euros), depuis l'écran « Tarifs ».
+   * Vérifie l'absence de chevauchement **pour chaque tranche** (contre les grilles
+   * existantes de la même tranche et les autres lignes du même niveau) **avant**
+   * toute écriture, puis insère toutes les lignes et émet un `GrillePubliee.v2` par
+   * `(mode, tranche)` dans **une seule transaction** — une période chevauchante
+   * échoue donc sans aucune écriture partielle (« rien d'écrit »). Chaque ligne est
+   * marquée `version_payload = 2` (jamais ré-émise au boot).
+   */
+  async publierGrille(entree: unknown): Promise<GrilleAbcmVue[]> {
+    const dto = publierGrilleSchema.parse(entree);
+    const periode = PeriodeValidite.creer(
+      dto.valideDu,
+      dto.valideAu ?? undefined,
+    );
+
+    // Vues à insérer + vérification anti-chevauchement par niveau de tranche.
+    // On regroupe les lignes saisies par niveau : deux lignes d'un même niveau
+    // (même période) se chevauchent → refus (aucune écriture).
+    const vues: GrilleAbcmVue[] = [];
+    const periodesParNiveau = new Map<number, PeriodeValidite[]>();
+    for (const ligne of dto.tranches) {
+      const tranche = trancheDepuisNiveau(ligne.tranche);
+      const liste = periodesParNiveau.get(tranche.niveau) ?? [];
+      liste.push(periode);
+      periodesParNiveau.set(tranche.niveau, liste);
+      vues.push({
+        id: randomUUID(),
+        tranche: tranche.niveau,
+        valideDu: dto.valideDu,
+        valideAu: dto.valideAu ?? null,
+        cantineTotalCentimes: Money.depuisEuros(ligne.cantineTotal).centimes,
+        cantinePartGardeCentimes:
+          ligne.cantinePartGarde === undefined
+            ? null
+            : Money.depuisEuros(ligne.cantinePartGarde).centimes,
+        periMatinCentimes: Money.depuisEuros(ligne.periMatin).centimes,
+        periSoirCentimes: Money.depuisEuros(ligne.periSoir).centimes,
+        alshJourneeCompleteCentimes: Money.depuisEuros(
+          ligne.alshJourneeComplete,
+        ).centimes,
+        alshDemiJourneeCentimes: Money.depuisEuros(ligne.alshDemiJournee)
+          .centimes,
+        alshRepasCentimes: Money.depuisEuros(ligne.alshRepas).centimes,
+      });
+    }
+
+    for (const [niveau, nouvellesPeriodes] of periodesParNiveau) {
+      const existantes = await this.db
+        .select()
+        .from(grilleAbcm)
+        .where(eq(grilleAbcm.tranche, niveau));
+      verifierAbsenceChevauchement([
+        ...existantes.map((g) =>
+          PeriodeValidite.creer(g.valideDu, g.valideAu ?? undefined),
+        ),
+        ...nouvellesPeriodes,
+      ]);
+    }
+
+    await this.db.transaction(async (tx) => {
+      for (const vue of vues) {
+        await tx.insert(grilleAbcm).values({ ...vue, versionPayload: 2 });
+        for (const mode of MODES_ABCM_CONTRAT) {
+          const payload: GrillePublieeV2Payload = {
+            grilleId: vue.id,
+            mode,
+            tranche: vue.tranche,
+            valideDu: vue.valideDu,
+            valideAu: vue.valideAu,
+            parametres: this.projeterParametresGrille(vue, mode),
+          };
+          await tx.insert(outbox).values({
+            id: randomUUID(),
+            type: GRILLE_PUBLIEE_V2_TYPE,
+            payload,
+            traceId: traceIdCourant(),
+          });
+        }
+      }
+    });
+
+    return vues;
+  }
+
+  /**
+   * Liste **toutes** les grilles ABCM publiées (SFD 30, lot 6), de la période la
+   * plus récente à la plus ancienne (tranche croissante à période égale), pour
+   * l'écran « Tarifs » : le parent regroupe les lignes par période et voit chaque
+   * grille « en préparation / active / passée ». Lecture seule.
+   */
+  async listerGrilles(): Promise<GrilleAbcmVue[]> {
+    const rows = await this.db
+      .select()
+      .from(grilleAbcm)
+      .orderBy(desc(grilleAbcm.valideDu), asc(grilleAbcm.tranche));
+    return rows.map((r) => ({
+      id: r.id,
+      tranche: trancheDepuisNiveau(r.tranche).niveau,
+      valideDu: r.valideDu,
+      valideAu: r.valideAu,
+      cantineTotalCentimes: r.cantineTotalCentimes,
+      cantinePartGardeCentimes: r.cantinePartGardeCentimes,
+      periMatinCentimes: r.periMatinCentimes,
+      periSoirCentimes: r.periSoirCentimes,
+      alshJourneeCompleteCentimes: r.alshJourneeCompleteCentimes,
+      alshDemiJourneeCentimes: r.alshDemiJourneeCentimes,
+      alshRepasCentimes: r.alshRepasCentimes,
+    }));
   }
 
   /**

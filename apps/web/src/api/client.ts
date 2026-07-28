@@ -34,6 +34,8 @@ import type {
   EnvoiEtablissementResultat,
   SemaineBesoins,
   SuiviEnvois,
+  GrilleAbcmVue,
+  PublierGrille,
 } from '../types/bff';
 
 // Client HTTP du BFF. Base URL configurable via VITE_API_BASE_URL (défaut '/api',
@@ -722,6 +724,36 @@ export const api = {
       { headers: entetes(false) },
       opts,
     ).then((r) => lire<SuiviEnvois>(r));
+  },
+
+  /**
+   * Grilles ABCM publiées (catalogue global) — `GET /v1/referentiel/grilles`.
+   * Écran « Tarifs » (SFD 30, US-30-02) : le front regroupe les lignes par période.
+   */
+  listerGrilles(opts: RequeteOptions = {}): Promise<GrilleAbcmVue[]> {
+    return requeteIdempotente(
+      `${BASE}/v1/referentiel/grilles`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<GrilleAbcmVue[]>(r));
+  },
+
+  /**
+   * Publie une grille ABCM complète (montants EUROS) — `POST /v1/referentiel/grilles`
+   * (201 = lignes créées). **409** si la période chevauche une grille existante :
+   * l'appelant lit `ApiError.status === 409` (corps `{ code: 'PERIODE_CHEVAUCHANTE' }`)
+   * pour afficher un message clair. Non idempotente (publication) → pas de rejeu.
+   */
+  publierGrille(
+    corps: PublierGrille,
+    opts: RequeteOptions = {},
+  ): Promise<GrilleAbcmVue[]> {
+    return requete(`${BASE}/v1/referentiel/grilles`, {
+      method: 'POST',
+      headers: entetes(true),
+      body: JSON.stringify(corps),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+    }).then((r) => lire<GrilleAbcmVue[]>(r));
   },
 
   envoyerRecapEtablissement(

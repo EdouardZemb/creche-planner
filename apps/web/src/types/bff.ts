@@ -124,6 +124,25 @@ export type ModifierEtablissement = CorpsRequeteJson<
   'put'
 >;
 
+/**
+ * Ligne de grille ABCM publiée (une tranche, une période) — dérivée de
+ * `components.schemas.GrilleAbcmVue`. Montants en CENTIMES (lecture). L'écran
+ * « Tarifs » (SFD 30, US-30-02) regroupe les lignes par période.
+ */
+export type GrilleAbcmVue = SchemaComposant<'GrilleAbcmVue'>;
+
+/**
+ * Corps de **publication d'une grille** (EUROS) — dérivé du requestBody de
+ * `POST /api/v1/referentiel/grilles` : une période + une ligne par tranche.
+ */
+export type PublierGrille = CorpsRequeteJson<
+  '/api/v1/referentiel/grilles',
+  'post'
+>;
+
+/** Une ligne de tranche saisie à l'écran — dérivée de `PublierGrille['tranches'][number]`. */
+export type PublierGrilleTranche = PublierGrille['tranches'][number];
+
 // ---- Saisies d'écriture dérivables : corps de création de foyer ------------
 
 /** Corps de création d'un foyer (EUROS) — dérivé du requestBody de `POST /api/v1/foyers`. */

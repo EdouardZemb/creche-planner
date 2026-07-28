@@ -1,7 +1,19 @@
-import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  ConflictException,
+  Controller,
+  Get,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { z } from 'zod';
+import { ChevauchementVersionsError } from '@creche-planner/shared-kernel';
 import {
   ReferentielService,
+  type BaremePsuVue,
+  type BaremeTranchesVue,
+  type GrilleAbcmVue,
   type GrilleApplicable,
   type JourNonFacturableVue,
 } from './referentiel.service.js';
@@ -37,6 +49,69 @@ export class ReferentielController {
   @Get('calendrier/jours-non-facturables')
   joursNonFacturables(): Promise<JourNonFacturableVue[]> {
     return this.referentiel.listerJoursNonFacturables();
+  }
+
+  /**
+   * Liste des grilles ABCM publiées (SFD 30, lot 6) — écran « Tarifs ». Route
+   * **sécurisée** (assertion inter-services, référentiel global : pas de scoping
+   * foyer). Lecture seule.
+   */
+  @Get('grilles')
+  listerGrilles(): Promise<GrilleAbcmVue[]> {
+    return this.referentiel.listerGrilles();
+  }
+
+  /**
+   * Publie une grille ABCM complète (période + tranches, montants euros) saisie à
+   * l'écran (SFD 30, US-30-02). Route **sécurisée** (assertion inter-services, pas
+   * de scoping foyer : le catalogue est global). Une période chevauchant une grille
+   * existante → **409** (rien d'écrit) ; les autres invariants → 400 (filtre
+   * `DomainExceptionFilter`).
+   */
+  @Post('grilles/abcm')
+  publierGrille(@Body() corps: unknown): Promise<GrilleAbcmVue[]> {
+    return this.traduireChevauchement(() =>
+      this.referentiel.publierGrille(corps),
+    );
+  }
+
+  /** Publie un barème PSU versionné (SFD 30, lot 6). 409 si période chevauchante. */
+  @Post('baremes/psu')
+  publierBaremePsu(@Body() corps: unknown): Promise<BaremePsuVue> {
+    return this.traduireChevauchement(() =>
+      this.referentiel.publierBaremePsu(corps),
+    );
+  }
+
+  /** Publie un barème de seuils de tranche versionné (SFD 30, lot 6). 409 si chevauchement. */
+  @Post('baremes/tranches')
+  publierBaremeTranches(@Body() corps: unknown): Promise<BaremeTranchesVue> {
+    return this.traduireChevauchement(() =>
+      this.referentiel.publierBaremeTranches(corps),
+    );
+  }
+
+  /**
+   * Traduit un `ChevauchementVersionsError` (garde-fou de publication) en **409
+   * structuré** (`{ statusCode, code, message }`) pour que le BFF le relaie tel quel
+   * et que l'écran affiche un message clair. Les autres `DomainError` retombent sur
+   * le `DomainExceptionFilter` global (400).
+   */
+  private async traduireChevauchement<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (erreur) {
+      if (erreur instanceof ChevauchementVersionsError) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'PERIODE_CHEVAUCHANTE',
+          message: erreur.message,
+        });
+      }
+      throw erreur;
+    }
   }
 
   private exigerDate(date: string | undefined): string {

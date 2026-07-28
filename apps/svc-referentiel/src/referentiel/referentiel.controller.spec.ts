@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import { ChevauchementVersionsError } from '@creche-planner/shared-kernel';
 import { ReferentielController } from './referentiel.controller.js';
 import { type ReferentielService } from './referentiel.service.js';
 
@@ -62,4 +63,64 @@ describe('ReferentielController — validation calendaire des dates (AQ-04)', ()
       expect(grilleApplicable).toHaveBeenCalledWith(date, 'CANTINE', 3);
     },
   );
+});
+
+describe('ReferentielController — publication du catalogue (SFD 30, lot 6)', () => {
+  const CORPS = { valideDu: '2026-09-01', tranches: [] };
+
+  it('transmet le corps de publication de grille au service', async () => {
+    const publierGrille = vi
+      .fn<ReferentielService['publierGrille']>()
+      .mockResolvedValue([]);
+    await controleur({ publierGrille }).publierGrille(CORPS);
+    expect(publierGrille).toHaveBeenCalledWith(CORPS);
+  });
+
+  it('traduit un chevauchement en 409 structuré (grille)', async () => {
+    const publierGrille = vi
+      .fn<ReferentielService['publierGrille']>()
+      .mockRejectedValue(new ChevauchementVersionsError('chevauchement'));
+    const ctrl = controleur({ publierGrille });
+    await expect(ctrl.publierGrille(CORPS)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    await expect(ctrl.publierGrille(CORPS)).rejects.toMatchObject({
+      response: { code: 'PERIODE_CHEVAUCHANTE', statusCode: 409 },
+    });
+  });
+
+  it('traduit un chevauchement en 409 (barème PSU et tranches)', async () => {
+    const erreur = new ChevauchementVersionsError('chevauchement');
+    const publierBaremePsu = vi
+      .fn<ReferentielService['publierBaremePsu']>()
+      .mockRejectedValue(erreur);
+    const publierBaremeTranches = vi
+      .fn<ReferentielService['publierBaremeTranches']>()
+      .mockRejectedValue(erreur);
+    const ctrl = controleur({ publierBaremePsu, publierBaremeTranches });
+    await expect(ctrl.publierBaremePsu({})).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    await expect(ctrl.publierBaremeTranches({})).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+  });
+
+  it('laisse remonter les autres erreurs (ex. validation → 400 via le filtre global)', async () => {
+    const erreur = new Error('validation');
+    const publierGrille = vi
+      .fn<ReferentielService['publierGrille']>()
+      .mockRejectedValue(erreur);
+    await expect(
+      controleur({ publierGrille }).publierGrille(CORPS),
+    ).rejects.toBe(erreur);
+  });
+
+  it('liste les grilles via le service', async () => {
+    const listerGrilles = vi
+      .fn<ReferentielService['listerGrilles']>()
+      .mockResolvedValue([]);
+    await controleur({ listerGrilles }).listerGrilles();
+    expect(listerGrilles).toHaveBeenCalledOnce();
+  });
 });

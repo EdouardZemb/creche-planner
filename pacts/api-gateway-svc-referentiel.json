@@ -59,6 +59,304 @@
         },
         "status": 200
       }
+    },
+    {
+      "description": "une lecture de la liste des grilles publiées",
+      "providerStates": [
+        {
+          "name": "une grille ABCM T3 applicable en 2026 existe"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/grilles"
+      },
+      "response": {
+        "body": [
+          {
+            "alshDemiJourneeCentimes": 950,
+            "alshJourneeCompleteCentimes": 2650,
+            "alshRepasCentimes": 750,
+            "cantineTotalCentimes": 1268,
+            "id": "44444444-0000-4000-8000-000000000000",
+            "periMatinCentimes": 333,
+            "periSoirCentimes": 705,
+            "tranche": 3,
+            "valideDu": "2026-01-01"
+          }
+        ],
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].alshDemiJourneeCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].alshJourneeCompleteCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].alshRepasCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].cantineTotalCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].periMatinCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].periSoirCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].tranche": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].valideDu": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une publication de grille chevauchant la grille 2026",
+      "providerStates": [
+        {
+          "name": "une grille ABCM T3 applicable en 2026 existe"
+        }
+      ],
+      "request": {
+        "body": {
+          "tranches": [
+            {
+              "alshDemiJournee": 9.5,
+              "alshJourneeComplete": 26.5,
+              "alshRepas": 7.5,
+              "cantinePartGarde": 8.01,
+              "cantineTotal": 12.68,
+              "periMatin": 3.33,
+              "periSoir": 7.05,
+              "tranche": 3
+            }
+          ],
+          "valideAu": null,
+          "valideDu": "2026-09-01"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/grilles/abcm"
+      },
+      "response": {
+        "body": {
+          "code": "PERIODE_CHEVAUCHANTE",
+          "message": "chevauchement de périodes de validité",
+          "statusCode": 409
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 409
+      }
+    },
+    {
+      "description": "une publication de grille sur un créneau libre",
+      "providerStates": [
+        {
+          "name": "le créneau de grille 2019 est libre"
+        }
+      ],
+      "request": {
+        "body": {
+          "tranches": [
+            {
+              "alshDemiJournee": 8.5,
+              "alshJourneeComplete": 23.5,
+              "alshRepas": 6.5,
+              "cantineTotal": 10.5,
+              "periMatin": 2.31,
+              "periSoir": 5.01,
+              "tranche": 1
+            }
+          ],
+          "valideAu": "2020-08-31",
+          "valideDu": "2019-09-01"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/grilles/abcm"
+      },
+      "response": {
+        "body": [
+          {
+            "alshDemiJourneeCentimes": 850,
+            "alshJourneeCompleteCentimes": 2350,
+            "alshRepasCentimes": 650,
+            "cantinePartGardeCentimes": null,
+            "cantineTotalCentimes": 1050,
+            "id": "44444444-0000-4000-8000-000000000000",
+            "periMatinCentimes": 231,
+            "periSoirCentimes": 501,
+            "tranche": 1,
+            "valideAu": "2020-08-31",
+            "valideDu": "2019-09-01"
+          }
+        ],
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$[*].alshDemiJourneeCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].alshJourneeCompleteCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].alshRepasCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].cantineTotalCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$[*].periMatinCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].periSoirCentimes": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$[*].tranche": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      }
     }
   ],
   "metadata": {
