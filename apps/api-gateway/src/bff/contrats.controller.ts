@@ -20,6 +20,7 @@ import {
   type SaisieContrat,
   type SaisieCorrectionVersion,
 } from '../clients/planification.client.js';
+import { NotificationsClient } from '../clients/notifications.client.js';
 import {
   corrigerVersionSchema,
   creerAvenantSchema,
@@ -37,9 +38,22 @@ import { relayer } from './relais.js';
  * Façade BFF `/api/v1/contrats` : relaie `svc-planification` (création de contrat
  * crèche/ABCM et écriture du planning mensuel réel ou simulé).
  */
+/**
+ * Aperçu d'impact d'une version **enrichi** (SFD 30, US-30-05) : les mois recalculés
+ * (`moisCouverts`, de svc-planification) et, parmi eux, ceux déjà **communiqués** à un
+ * établissement (`moisCommuniques`, croisé avec le suivi des envois de svc-notifications).
+ * `moisCommuniques ⊆ moisCouverts`. Sert l'avertissement « déjà envoyé » avant correction.
+ */
+export interface ImpactVersionEnrichi extends ImpactVersion {
+  readonly moisCommuniques: string[];
+}
+
 @Controller({ path: 'contrats', version: '1' })
 export class ContratsController {
-  constructor(private readonly planification: PlanificationClient) {}
+  constructor(
+    private readonly planification: PlanificationClient,
+    private readonly notifications: NotificationsClient,
+  ) {}
 
   /** Liste les contrats d'un foyer : `?foyer=<uuid>`. */
   @Get()
@@ -114,8 +128,45 @@ export class ContratsController {
   apercuImpact(
     @Param('id') id: string,
     @Param('versionId') versionId: string,
-  ): Promise<ImpactVersion> {
-    return relayer(() => this.planification.apercuImpactVersion(id, versionId));
+  ): Promise<ImpactVersionEnrichi> {
+    return relayer(async () => {
+      const impact = await this.planification.apercuImpactVersion(
+        id,
+        versionId,
+      );
+      const moisCommuniques = await this.moisDejaCommuniques(id, impact);
+      return { ...impact, moisCommuniques };
+    });
+  }
+
+  /**
+   * Croise les mois recalculés (`impact.moisCouverts`) avec ceux déjà **communiqués** à
+   * un établissement (suivi des envois de svc-notifications). Dégradation gracieuse : si
+   * svc-notifications est indisponible, on renvoie `[]` (l'avertissement ne s'affiche pas)
+   * plutôt que de faire échouer tout l'aperçu — la correction reste possible.
+   */
+  private async moisDejaCommuniques(
+    contratId: string,
+    impact: ImpactVersion,
+  ): Promise<string[]> {
+    if (impact.moisCouverts.length === 0) {
+      return [];
+    }
+    const bornes = [...impact.moisCouverts].sort();
+    const du = bornes[0];
+    const au = bornes[bornes.length - 1];
+    try {
+      const contrat = await this.planification.contrat(contratId);
+      const communiques = await this.notifications.moisCommuniques(
+        contrat.foyerId,
+        du,
+        au,
+      );
+      const couverts = new Set(impact.moisCouverts);
+      return communiques.filter((m) => couverts.has(m)).sort();
+    } catch {
+      return [];
+    }
   }
 
   /**

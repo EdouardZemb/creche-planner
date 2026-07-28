@@ -134,6 +134,17 @@ export interface CoutPrestationVue {
   readonly mode: string;
   readonly totalCentimes: number;
   readonly lignes: readonly LigneVue[];
+  /**
+   * Date d'effet (`YYYY-MM-DD`) du **tarif résolu** pour ce mois — grille ABCM ou barème
+   * PSU applicable (SFD 30, US-30-04, « Calculé avec »). Additif/optionnel : absent quand
+   * aucun tarif daté n'est résolu (ex. frais fixes ABCM, pseudo-prestation sans grille).
+   */
+  readonly grilleValideDu?: string;
+  /**
+   * Date de début (`YYYY-MM-DD`) du **contrat** ayant servi au calcul (SFD 30, US-30-04,
+   * « contrat du … »). Additif/optionnel : absent si le contrat n'est pas connu localement.
+   */
+  readonly contratValideDu?: string;
 }
 
 /** Coût consolidé d'un foyer pour un mois. */
@@ -160,6 +171,18 @@ interface PrestationProjetee {
   readonly enfant: string;
   readonly mode: string;
   readonly prestation: PrestationRM;
+  /** Début du contrat associé (read model `contrat`), pour « contrat du … » (US-30-04). */
+  readonly contratValideDu?: string;
+}
+
+/**
+ * Contexte tarifaire résolu à date : le `contexte` passé au domaine (barème PSU ou
+ * grille ABCM) et la **date d'effet** du tarif retenu (`valideDu`, US-30-04). `valideDu`
+ * peut être `undefined` si la résolution passe par un repli sans date exploitable.
+ */
+interface ContexteTarifResolu {
+  readonly contexte: ContexteTarif;
+  readonly valideDu: string | undefined;
 }
 
 /**
@@ -273,7 +296,7 @@ export class CoutService {
       if (MODES_ABCM_SET.has(projection.mode)) {
         auMoinsUnAbcm = true;
       }
-      const contexte = await this.resoudreContexteTarif(
+      const { contexte, valideDu } = await this.resoudreContexteTarif(
         projection.mode,
         donneesFoyer.tranche,
         dateResolution,
@@ -291,6 +314,13 @@ export class CoutService {
         mode: projection.mode,
         totalCentimes: cout.total.centimes,
         lignes: this.serialiserLignes(cout),
+        // « Calculé avec » (US-30-04) : date d'effet du tarif résolu + début du
+        // contrat. Spread conditionnel (exactOptionalPropertyTypes) : jamais de clé
+        // à `undefined` dans la réponse relayée telle quelle par la gateway.
+        ...(valideDu !== undefined ? { grilleValideDu: valideDu } : {}),
+        ...(projection.contratValideDu !== undefined
+          ? { contratValideDu: projection.contratValideDu }
+          : {}),
       });
     }
 
@@ -556,11 +586,17 @@ export class CoutService {
     date: string,
     grilles: readonly GrilleTarifaireRow[],
     baremes: readonly BaremePsuRow[],
-  ): Promise<ContexteTarif> {
+  ): Promise<ContexteTarifResolu> {
     if (mode === 'CRECHE_PSU') {
       return this.resoudreBaremePsu(date, baremes);
     }
-    return { grille: await this.resoudreGrille(mode, tranche, date, grilles) };
+    const { grille, valideDu } = await this.resoudreGrille(
+      mode,
+      tranche,
+      date,
+      grilles,
+    );
+    return { contexte: { grille }, valideDu };
   }
 
   /** Grille ABCM applicable à `(mode, tranche, date)` — read-model puis repli REST. */
@@ -569,7 +605,7 @@ export class CoutService {
     tranche: 1 | 2 | 3,
     date: string,
     grilles: readonly GrilleTarifaireRow[],
-  ): Promise<GrilleAbcm> {
+  ): Promise<{ grille: GrilleAbcm; valideDu: string | undefined }> {
     const versions = grilles
       .filter((g) => g.mode === mode && g.tranche === tranche)
       .map((g) => ({
@@ -578,8 +614,11 @@ export class CoutService {
         valeur: g.parametres as ParametresGrilleAbcm,
       }));
     const local = this.selectionner(versions, date);
-    if (local && aMontantsGrille(local, mode)) {
-      return GrilleAbcm.depuisParametres(local);
+    if (local && aMontantsGrille(local.valeur, mode)) {
+      return {
+        grille: GrilleAbcm.depuisParametres(local.valeur),
+        valideDu: local.valideDu,
+      };
     }
     this.logger.warn(
       `Grille ${mode}/T${tranche} au ${date} absente du read model — repli svc-referentiel`,
@@ -590,7 +629,10 @@ export class CoutService {
       mode,
     );
     if (repli) {
-      return GrilleAbcm.depuisParametres(parametresDepuisRepli(repli, mode));
+      return {
+        grille: GrilleAbcm.depuisParametres(parametresDepuisRepli(repli, mode)),
+        valideDu: repli.valideDu,
+      };
     }
     this.logger.error(
       `Grille ${mode}/T${tranche} au ${date} indisponible : read model froid et repli svc-referentiel en échec`,
@@ -604,7 +646,7 @@ export class CoutService {
   private async resoudreBaremePsu(
     date: string,
     baremes: readonly BaremePsuRow[],
-  ): Promise<ContexteTarif> {
+  ): Promise<ContexteTarifResolu> {
     const versions = baremes.map((b) => ({
       valideDu: b.valideDu,
       valideAu: b.valideAu,
@@ -612,11 +654,14 @@ export class CoutService {
     }));
     const local = this.selectionner(versions, date);
     if (local) {
-      return contexteBaremePsu(
-        local.taux as Record<string, number>,
-        local.plancherCentimes,
-        local.plafondCentimes,
-      );
+      return {
+        contexte: contexteBaremePsu(
+          local.valeur.taux as Record<string, number>,
+          local.valeur.plancherCentimes,
+          local.valeur.plafondCentimes,
+        ),
+        valideDu: local.valideDu,
+      };
     }
     this.logger.warn(
       `Barème PSU au ${date} absent du read model — repli svc-referentiel`,
@@ -624,11 +669,14 @@ export class CoutService {
     const repli: BaremePsuFallback | undefined =
       await this.referentielClient.baremePsuApplicable(date);
     if (repli) {
-      return contexteBaremePsu(
-        repli.taux,
-        repli.plancherCentimes,
-        repli.plafondCentimes,
-      );
+      return {
+        contexte: contexteBaremePsu(
+          repli.taux,
+          repli.plancherCentimes,
+          repli.plafondCentimes,
+        ),
+        valideDu: repli.valideDu,
+      };
     }
     this.logger.error(
       `Barème PSU au ${date} indisponible : read model froid et repli svc-referentiel en échec`,
@@ -639,8 +687,9 @@ export class CoutService {
   }
 
   /**
-   * Sélectionne la valeur de la version applicable à `date` via le socle
-   * versionné (lot 1) ; `undefined` si aucune version ne couvre la date.
+   * Sélectionne la version applicable à `date` via le socle versionné (lot 1),
+   * en conservant sa **date d'effet** (`valideDu`, pour « Calculé avec » US-30-04) ;
+   * `undefined` si aucune version ne couvre la date.
    */
   private selectionner<T>(
     versions: readonly {
@@ -649,9 +698,13 @@ export class CoutService {
       valeur: T;
     }[],
     date: string,
-  ): T | undefined {
+  ): { valeur: T; valideDu: string } | undefined {
     try {
-      return selectionnerVersionApplicable(depuisBornes(versions), date).valeur;
+      const version = selectionnerVersionApplicable(
+        depuisBornes(versions),
+        date,
+      );
+      return { valeur: version.valeur, valideDu: version.periode.du };
     } catch (erreur) {
       if (erreur instanceof AucuneVersionApplicableError) {
         return undefined;
@@ -687,6 +740,9 @@ export class CoutService {
           enfant: projetee.enfant,
           mode: projetee.mode,
           prestation: parsePrestationRm(projetee.prestations),
+          // `valideDu` du read-model peut être null (historique) : spread
+          // conditionnel (exactOptionalPropertyTypes) — jamais de clé à undefined.
+          ...(c.valideDu !== null ? { contratValideDu: c.valideDu } : {}),
         });
         continue;
       }
@@ -713,6 +769,7 @@ export class CoutService {
           // reste est revalidé ici — payload non conforme = contrat amont
           // rompu, erreur explicite (≠ échec réseau du repli, qui omet).
           prestation: parsePrestationRm(prestation),
+          ...(c.valideDu !== null ? { contratValideDu: c.valideDu } : {}),
         });
       }
     }

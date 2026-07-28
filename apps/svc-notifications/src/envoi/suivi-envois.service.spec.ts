@@ -232,3 +232,70 @@ describe('SuiviEnvoisService.lire', () => {
     expect(vue.etablissements).toEqual([]);
   });
 });
+
+describe('SuiviEnvoisService.moisCommuniques', () => {
+  // Semaines choisies dans des mois distincts pour des assertions lisibles.
+  const SEMAINE_JUIN = '2026-W25'; // courant juin 2026
+  const SEMAINE_JUILLET = '2026-W30'; // courant juillet 2026
+
+  function ligneEtab(
+    semaineIso: string,
+    statut: string,
+    etablissementId = ETAB_A,
+  ): Ligne {
+    return {
+      id: `e-${semaineIso}-${statut}`,
+      foyerId: FOYER_ID,
+      semaineIso,
+      etablissementId,
+      destinataire: 'creche@ex.org',
+      sujet: 'Sujet',
+      corps: '<p>x</p>',
+      statut,
+      messageId: null,
+      erreur: null,
+      envoyeLe: null,
+      createdAt: new Date(),
+    };
+  }
+
+  it('retourne les mois des semaines réellement ENVOYÉES (DRY_RUN/ECHEC exclus)', async () => {
+    const s = stores();
+    s.get(envoiEtablissement)?.push(ligneEtab(SEMAINE_JUIN, 'ENVOYE'));
+    s.get(envoiEtablissement)?.push(ligneEtab(SEMAINE_JUILLET, 'DRY_RUN'));
+    s.get(envoiEtablissement)?.push(
+      ligneEtab(SEMAINE_JUILLET, 'ECHEC', ETAB_B),
+    );
+
+    const { mois } = await new SuiviEnvoisService(fakeBase(s)).moisCommuniques(
+      FOYER_ID,
+    );
+
+    // Juin communiqué (ENVOYE) ; juillet non (DRY_RUN + ECHEC).
+    expect(mois).toContain('2026-06');
+    expect(mois).not.toContain('2026-07');
+  });
+
+  it('borne le résultat à [du, au] quand fourni', async () => {
+    const s = stores();
+    s.get(envoiEtablissement)?.push(ligneEtab(SEMAINE_JUIN, 'ENVOYE'));
+    s.get(envoiEtablissement)?.push(
+      ligneEtab(SEMAINE_JUILLET, 'ENVOYE', ETAB_B),
+    );
+
+    const { mois } = await new SuiviEnvoisService(fakeBase(s)).moisCommuniques(
+      FOYER_ID,
+      '2026-07',
+      '2026-07',
+    );
+
+    expect(mois).toEqual(['2026-07']);
+  });
+
+  it('aucun envoi → liste vide', async () => {
+    const { mois } = await new SuiviEnvoisService(
+      fakeBase(stores()),
+    ).moisCommuniques(FOYER_ID);
+    expect(mois).toEqual([]);
+  });
+});

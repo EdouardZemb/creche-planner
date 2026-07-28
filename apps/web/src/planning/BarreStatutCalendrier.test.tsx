@@ -55,9 +55,9 @@ describe('BarreStatutCalendrier', () => {
   });
 
   it('affiche la confirmation d’une modification durable aboutie (UX lot 4)', () => {
-    rendre({ succesDurable: 'Contrat modifié à 21:43. Saisies effacées.' });
+    rendre({ succesDurable: 'Contrat modifié à 21:43. Saisies conservées.' });
     expect(
-      screen.getByText('Contrat modifié à 21:43. Saisies effacées.'),
+      screen.getByText('Contrat modifié à 21:43. Saisies conservées.'),
     ).toBeInTheDocument();
   });
 });

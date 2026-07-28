@@ -11,9 +11,9 @@ export interface ModaleContratDurableProps<P> {
  * Confirmation d'une modification durable du contrat (portée « toutes les
  * semaines »), commune aux calendriers mensuels : même titre, libellé et
  * caractère destructif — seul le message mode-spécifique (« ce qui change
- * chaque semaine ») varie ; les conséquences communes (contrat modifié
- * durablement + saisies du mois effacées) sont rappelées ici en termes
- * concrets pour le parent (UX lot 4).
+ * chaque semaine ») varie ; la conséquence commune (contrat modifié
+ * durablement, mais saisies du mois **conservées** depuis SFD 30 lot 4) est
+ * rappelée ici en termes concrets pour le parent (UX lot 4).
  */
 export function ModaleContratDurable<P>({
   confirmation,
@@ -42,8 +42,8 @@ export function ModaleContratDurable<P>({
           ce mois-ci.
         </p>
         <p style={{ margin: '0.4rem 0 0' }}>
-          Les saisies déjà faites ce mois-ci (absences, jours ajoutés,
-          ajustements) seront effacées : il faudra les ressaisir si besoin.
+          Vos saisies déjà faites ce mois-ci (absences, jours ajoutés,
+          ajustements) sont conservées et restent modifiables.
         </p>
       </div>
     </ModaleConfirmation>

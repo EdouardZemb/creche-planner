@@ -184,14 +184,14 @@ describe('useCalendrierContrat', () => {
     });
     expect(onContratModifie).toHaveBeenCalledTimes(1);
     expect(result.current.erreurDurable).toBeNull();
-    // Confirmation VISIBLE du succès (UX lot 4) : horodatée + conséquence
-    // de la cascade (saisies du mois effacées), sinon réinitialisation muette.
+    // Confirmation VISIBLE du succès (UX lot 4) : horodatée + conséquence exacte
+    // (SFD 30 lot 4 : saisies CONSERVÉES, la modification n'est plus destructive).
     expect(result.current.succesDurable).toMatch(
-      /^Contrat modifié à \d{2}:\d{2}\. Les saisies de ce mois ont été effacées/,
+      /^Contrat modifié à \d{2}:\d{2}\. Vos saisies de ce mois sont conservées/,
     );
-    // AQ-05 : la réinitialisation est annoncée aux lecteurs d'écran.
+    // AQ-05 : la modification est annoncée aux lecteurs d'écran.
     expect(result.current.regionLiveProps.children).toContain(
-      'Contrat modifié, saisies du mois réinitialisées',
+      'Contrat modifié, saisies du mois conservées',
     );
   });
 

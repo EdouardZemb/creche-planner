@@ -335,6 +335,14 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
     // la ligne cantine de la nouvelle grille.
     const cantineSept = septembre.prestations.find((p) => p.mode === 'CANTINE');
     expect(cantineSept?.totalCentimes).toBe(20288); // 16 × 12,68 €
+    // US-30-04 « Calculé avec » : la date d'effet de la grille résolue et du
+    // contrat remontent avec chaque prestation (juin = ancienne grille, sept = nouvelle).
+    const cantineJuin = juin.prestations.find((p) => p.mode === 'CANTINE');
+    expect(cantineJuin?.grilleValideDu).toBe('2026-01-01');
+    expect(cantineSept?.grilleValideDu).toBe('2026-09-01');
+    // Le contrat ayant servi (read-model `contrat`, début '2026-09-01').
+    expect(cantineJuin?.contratValideDu).toBe('2026-09-01');
+    expect(cantineSept?.contratValideDu).toBe('2026-09-01');
   });
 
   it('foyer absent du read model + repli OK : calcul normal', async () => {

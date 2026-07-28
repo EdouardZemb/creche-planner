@@ -294,6 +294,44 @@ export class NotificationsClient {
   }
 
   /**
+   * GET `/api/foyers/:foyerId/mois-communiques?du=&au=` (SFD 30, US-30-05) — mois
+   * `YYYY-MM` d'un foyer pour lesquels un récap a réellement été envoyé à un
+   * établissement. Sert l'avertissement « déjà envoyé » avant une correction rétroactive.
+   * Bornage optionnel `[du, au]` (mois inclus). Lecture seule.
+   */
+  async moisCommuniques(
+    foyerId: string,
+    du?: string,
+    au?: string,
+  ): Promise<string[]> {
+    const base = loadConfig().notificationsUrl;
+    const params = new URLSearchParams();
+    if (du !== undefined) params.set('du', du);
+    if (au !== undefined) params.set('au', au);
+    const suffixe = params.toString() ? `?${params.toString()}` : '';
+    const url =
+      `${base}/api/foyers/${encodeURIComponent(foyerId)}/mois-communiques` +
+      suffixe;
+    this.logger.debug(`GET ${url}`);
+    return executerResilient(
+      'svc-notifications',
+      async () => {
+        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
+          headers: entetesAval(),
+        });
+        if (!reponse.ok) {
+          throw new Error('HTTP ' + reponse.status);
+        }
+        return z
+          .object({ mois: z.array(z.string()) })
+          .parse(await reponse.json()).mois;
+      },
+      this.breaker,
+      OPTIONS,
+    );
+  }
+
+  /**
    * GET `/api/moi/notifications?parent=` — inbox in-app d'un parent (liste récente +
    * compteur de non-lus). Le `parentId` est résolu **côté BFF** depuis l'identité
    * (jamais fourni par le navigateur), puis relayé ici comme un `foyer` de la validation.

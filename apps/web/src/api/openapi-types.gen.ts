@@ -1924,11 +1924,13 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** @description Aperçu d’impact d’une version : les mois (YYYY-MM) qui seraient recalculés par une correction, du plus ancien au plus récent. */
+        /** @description Aperçu d’impact d’une version : les mois (YYYY-MM) qui seraient recalculés par une correction, du plus ancien au plus récent, et — parmi eux — ceux déjà communiqués à un établissement (récap envoyé), pour l’avertissement « déjà envoyé » (US-30-05). */
         ImpactVersionVue: {
             /** Format: uuid */
             versionId: string;
             moisCouverts: string[];
+            /** @description Sous-ensemble de `moisCouverts` dont le récap a déjà été envoyé à un établissement (croisé avec le suivi des envois). Vide si aucun, ou si le suivi est momentanément indisponible. */
+            moisCommuniques: string[];
         };
         /** @description Règle de préavis d’un établissement (union discriminée par `type`). */
         PreavisRegle: {
@@ -1990,6 +1992,16 @@ export interface components {
                 mode: string;
                 totalCentimes: number;
                 lignes: components["schemas"]["Ligne"][];
+                /**
+                 * Format: date
+                 * @description Date d’effet (YYYY-MM-DD) du tarif résolu pour ce mois (grille ABCM ou barème PSU) — « Calculé avec » (US-30-04). Optionnel (absent si non résolu, ex. frais fixes).
+                 */
+                grilleValideDu?: string;
+                /**
+                 * Format: date
+                 * @description Date de début (YYYY-MM-DD) du contrat ayant servi au calcul — « contrat du … » (US-30-04). Optionnel.
+                 */
+                contratValideDu?: string;
             }[];
             lignes: components["schemas"]["Ligne"][];
         };

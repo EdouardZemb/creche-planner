@@ -73,8 +73,8 @@ export function ChoixPortee({ valeur, onChange, nom }: ChoixPorteeProps) {
               marginLeft: '1.4rem',
             }}
           >
-            Ce jour changera chaque semaine, et les saisies déjà faites ce
-            mois-ci seront effacées.
+            Ce jour changera chaque semaine ; vos saisies déjà faites ce mois-ci
+            sont conservées.
           </div>
         </div>
       </div>

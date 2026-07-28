@@ -49,9 +49,9 @@ describe('ChoixPortee', () => {
     render(<ChoixPortee valeur="mois" onChange={vi.fn()} nom="test" />);
     const radio = screen.getByRole('radio', { name: /Toutes les semaines/i });
     // Le radio engageant porte une description accessible qui annonce les
-    // conséquences concrètes (changement hebdomadaire + saisies effacées).
+    // conséquences concrètes (changement hebdomadaire + saisies conservées).
     expect(radio).toHaveAccessibleDescription(
-      /chaque semaine.*saisies déjà faites ce mois-ci seront effacées/i,
+      /chaque semaine.*saisies déjà faites ce mois-ci sont conservées/i,
     );
     // Le choix ponctuel, lui, n'a pas d'avertissement.
     expect(
