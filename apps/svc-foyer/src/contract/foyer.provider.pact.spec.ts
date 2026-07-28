@@ -86,6 +86,27 @@ async function seedFoyer(db: Sql, id: string): Promise<void> {
   `;
 }
 
+/**
+ * Seede (idempotent) le read-model `bareme_tranches` (SFD 30, lot 3) : svc-foyer
+ * dérive désormais la tranche RFR d'un barème projeté du Référentiel. Sans lui, les
+ * lectures/écritures de foyer répondraient 503 (jamais de tranche fausse). Mêmes
+ * seuils métier : T1 < 20 000 €, 20 000 ≤ T2 ≤ 50 000 €, T3 > 50 000 €.
+ */
+async function seedBaremeTranches(db: Sql): Promise<void> {
+  await db`
+    insert into bareme_tranches (id, valide_du, valide_au, seuils)
+    values (
+      '00000000-0000-4000-8000-000000000001', '2020-01-01', null,
+      ${db.json([
+        { niveau: 1, rfrMaxCentimes: 1999999 },
+        { niveau: 2, rfrMaxCentimes: 5000000 },
+        { niveau: 3, rfrMaxCentimes: null },
+      ])}
+    )
+    on conflict (valide_du) do update set seuils = excluded.seuils
+  `;
+}
+
 async function baseJoignable(): Promise<boolean> {
   const sql = postgres(DATABASE_URL, { max: 1, onnotice: () => undefined });
   try {
@@ -167,6 +188,9 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
       ctx.skip();
       return;
     }
+    // Read-model barème de tranches disponible pour toutes les interactions (les
+    // lectures/écritures de foyer en dépendent depuis le lot 3).
+    await seedBaremeTranches(db);
     await new Verifier({
       provider: 'svc-foyer',
       providerBaseUrl: `http://localhost:${PORT}`,

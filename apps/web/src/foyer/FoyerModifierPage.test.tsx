@@ -10,6 +10,8 @@ vi.mock('../api/client', () => ({
     modifierFoyer: vi.fn(),
     // Chargé par `useContrats` (avertissement de suppression d'enfant).
     listerContrats: vi.fn(() => Promise.resolve([])),
+    // Chargé par `HistoriqueRessources` (historique des versions de ressources).
+    versionsFoyer: vi.fn(() => Promise.resolve([])),
   },
   ApiError: class ApiError extends Error {
     status: number;
@@ -105,6 +107,10 @@ describe('FoyerModifierPage', () => {
       rfr: 72705,
       nbEnfantsACharge: 2,
       nbParts: 2.5,
+      // Date d'effet (SFD 30) : par défaut aujourd'hui (ISO YYYY-MM-DD).
+      dateEffet: expect.stringMatching(
+        /^\d{4}-\d{2}-\d{2}$/,
+      ) as unknown as string,
     });
 
     // Aucune redirection : on reste sur la page et un statut « Enregistré à … »

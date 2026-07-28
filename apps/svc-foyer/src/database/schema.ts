@@ -7,7 +7,9 @@ import {
   integer,
   jsonb,
   pgTable,
+  text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   varchar,
@@ -34,6 +36,87 @@ export const foyer = pgTable('foyer', {
     .notNull()
     .defaultNow(),
 });
+
+/**
+ * **Version des ressources** d'un foyer à une date d'effet (SFD 30, DV-03/D4). Les
+ * ressources deviennent une **suite de versions contiguës** `[dateEffet → fin)` : la
+ * fin est **dérivée** (veille de la date d'effet suivante, socle lot 1), jamais
+ * stockée. La table `foyer` reste la projection de la version applicable
+ * **aujourd'hui** (identité + FK enfants/parents inchangées). `nb_parts` en
+ * `double precision` (quotient familial fractionnaire). Unique `(foyer_id, date_effet)` :
+ * réécrire la même date = **correction** (tracée dans `correction_journal`).
+ */
+export const foyerVersion = pgTable(
+  'foyer_version',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    foyerId: uuid('foyer_id')
+      .notNull()
+      .references(() => foyer.id, { onDelete: 'cascade' }),
+    /** Date d'effet ISO `YYYY-MM-DD` (granularité jour, H1). */
+    dateEffet: date('date_effet').notNull(),
+    ressourcesMensuellesCentimes: bigint('ressources_mensuelles_centimes', {
+      mode: 'number',
+    }).notNull(),
+    rfrCentimes: bigint('rfr_centimes', { mode: 'number' }).notNull(),
+    nbEnfantsACharge: integer('nb_enfants_a_charge').notNull(),
+    nbParts: doublePrecision('nb_parts').notNull(),
+    /** Instant de saisie (traçabilité, D6). */
+    saisiLe: timestamp('saisi_le', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    /** Motif optionnel de la saisie/correction (D6). */
+    motif: varchar('motif', { length: 500 }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique('foyer_version_foyer_date_uq').on(table.foyerId, table.dateEffet),
+  ],
+);
+
+/**
+ * Journal des **corrections rétroactives** d'une version de ressources (SFD 30, D6) :
+ * réécrire une version existante (même date d'effet) écrit une ligne avant/après avec
+ * un motif optionnel. Trace d'audit, jamais relue par le calcul.
+ */
+export const correctionJournal = pgTable('correction_journal', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  foyerId: uuid('foyer_id')
+    .notNull()
+    .references(() => foyer.id, { onDelete: 'cascade' }),
+  versionId: uuid('version_id').notNull(),
+  /** État de la version avant correction (jsonb). */
+  avant: jsonb('avant').notNull(),
+  /** État de la version après correction (jsonb). */
+  apres: jsonb('apres').notNull(),
+  motif: varchar('motif', { length: 500 }),
+  creeLe: timestamp('cree_le', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Read-model du **barème de seuils de tranche** projeté depuis le stream
+ * `REFERENTIEL` (`referentiel.BaremeTranchesPublie.v1`, SFD 30, D2). `svc-foyer`
+ * devient consommateur (sa **première** infra de consommation) pour dériver la
+ * tranche **à la date d'effet** d'une version. Versionné par période ; `seuils` =
+ * liste ordonnée `[{niveau, rfrMaxCentimes|null}]`.
+ */
+export const baremeTranches = pgTable(
+  'bareme_tranches',
+  {
+    id: uuid('id').primaryKey(),
+    valideDu: varchar('valide_du', { length: 10 }).notNull(),
+    valideAu: varchar('valide_au', { length: 10 }),
+    seuils: jsonb('seuils').notNull(),
+    eventId: uuid('event_id'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [unique('bareme_tranches_du_uq').on(table.valideDu)],
+);
 
 export const enfant = pgTable('enfant', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -170,7 +253,45 @@ export const outbox = pgTable('outbox', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
 });
 
+/**
+ * Journal des événements déjà consommés (clé = `id` d'enveloppe) — idempotence de
+ * consommation (SFD 30, D2 : svc-foyer devient consommateur du stream REFERENTIEL).
+ * Copie structurelle du modèle svc-tarification.
+ */
+export const processedEvent = pgTable('processed_event', {
+  id: uuid('id').primaryKey(),
+  stream: varchar('stream', { length: 32 }).notNull(),
+  type: varchar('type', { length: 200 }).notNull(),
+  processedAt: timestamp('processed_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * Dead-letter (fondations backend, lot 1) : une ligne par message non traité. Copie
+ * **structurelle** de `libs/nest-commons/.../dead-letter.options.ts` (le typecheck de
+ * `ConsumerModule.forRoot({ tableDeadLetter })` échoue si le service dérive).
+ */
+export const deadLetter = pgTable('dead_letter', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  envelopeId: uuid('envelope_id'),
+  stream: varchar('stream', { length: 32 }).notNull(),
+  sujet: varchar('sujet', { length: 200 }).notNull(),
+  raison: varchar('raison', { length: 32 }).notNull(),
+  payload: text('payload').notNull(),
+  erreur: text('erreur'),
+  livraisons: integer('livraisons').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export type FoyerRow = typeof foyer.$inferSelect;
+export type FoyerVersionRow = typeof foyerVersion.$inferSelect;
+export type BaremeTranchesRow = typeof baremeTranches.$inferSelect;
+export type CorrectionJournalRow = typeof correctionJournal.$inferSelect;
+export type ProcessedEventRow = typeof processedEvent.$inferSelect;
+export type DeadLetterRow = typeof deadLetter.$inferSelect;
 export type EnfantRow = typeof enfant.$inferSelect;
 export type ParentRow = typeof parent.$inferSelect;
 export type PreferenceNotificationRow =

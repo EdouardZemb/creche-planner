@@ -3,12 +3,13 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   ENFANT_AJOUTE_TYPE,
   ENFANT_MODIFIE_TYPE,
   ENFANT_RETIRE_TYPE,
-  FOYER_MIS_A_JOUR_TYPE,
+  FOYER_MIS_A_JOUR_V3_TYPE,
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
@@ -16,12 +17,53 @@ import {
 } from '@creche-planner/contracts-foyer';
 import { FoyerService } from './foyer.service.js';
 import type { Database } from '../database/database.types.js';
-import type {
-  FoyerRow,
-  ParentRow,
-  PreferenceNotificationRow,
+import {
+  baremeTranches,
+  foyer as foyerTable,
+  foyerVersion,
+  type BaremeTranchesRow,
+  type FoyerRow,
+  type FoyerVersionRow,
+  type ParentRow,
+  type PreferenceNotificationRow,
 } from '../database/schema.js';
 import type { CreerFoyerDto, EcrireFoyerDto } from './foyer.dto.js';
+
+/** Barème de tranches projeté (mêmes seuils métier), applicable depuis 2020. */
+function ligneBaremeTranches(): BaremeTranchesRow {
+  return {
+    id: 'aaaaaaaa-0000-4000-8000-000000000000',
+    valideDu: '2020-01-01',
+    valideAu: null,
+    seuils: [
+      { niveau: 1, rfrMaxCentimes: 1999999 },
+      { niveau: 2, rfrMaxCentimes: 5000000 },
+      { niveau: 3, rfrMaxCentimes: null },
+    ],
+    eventId: null,
+    occurredAt: null,
+    updatedAt: new Date('2026-01-01T00:00:00Z'),
+  };
+}
+
+/** Ligne `foyer_version` de référence (RFR 72 705 € ⇒ tranche 3). */
+function ligneFoyerVersion(
+  overrides: Partial<FoyerVersionRow> = {},
+): FoyerVersionRow {
+  return {
+    id: 'bbbbbbbb-0000-4000-8000-000000000000',
+    foyerId: FOYER_ID,
+    dateEffet: '2026-01-01',
+    ressourcesMensuellesCentimes: 350000,
+    rfrCentimes: 7270500,
+    nbEnfantsACharge: 2,
+    nbParts: 3,
+    saisiLe: new Date('2026-01-01T00:00:00Z'),
+    motif: null,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
 
 /**
  * Tests unitaires du `FoyerService` SANS infra (Postgres mocké), AQ-08. Même motif
@@ -71,32 +113,70 @@ function ligneFoyer(overrides: Partial<FoyerRow> = {}): FoyerRow {
 function fakeDbTransaction(
   options: {
     foyerPresent?: boolean;
-    lignesUpdate?: FoyerRow[];
     echecOutbox?: boolean;
+    /** Barème de tranches projeté (défaut : seuils métier depuis 2020). */
+    baremes?: BaremeTranchesRow[];
+    /** Versions pré-existantes du foyer (défaut : aucune → accumulées par insert). */
+    versions?: FoyerVersionRow[];
   } = {},
 ): {
   db: Database;
   transaction: ReturnType<typeof vi.fn>;
   insertValues: ReturnType<typeof vi.fn>;
   updateSet: ReturnType<typeof vi.fn>;
+  versionsAccum: FoyerVersionRow[];
 } {
+  const baremes = options.baremes ?? [ligneBaremeTranches()];
+  const foyerPresent = options.foyerPresent ?? true;
+  const foyers = foyerPresent ? [ligneFoyer()] : [];
+  // Le fake **accumule** les versions insérées : la vérif d'existence à la date
+  // d'effet (avant insert) voit l'accumulateur vide, la ré-émission (après insert)
+  // voit la version fraîche — sans filtrer par `where` (le fake ne le sait pas).
+  const versionsAccum: FoyerVersionRow[] = [...(options.versions ?? [])];
   const insertValues = vi.fn((valeurs: Record<string, unknown>) => {
+    if (
+      typeof valeurs['dateEffet'] === 'string' &&
+      typeof valeurs['rfrCentimes'] === 'number'
+    ) {
+      // Mime `onConflictDoUpdate` (clé `foyer_id,date_effet`) : remplace si la date
+      // d'effet existe déjà, sinon ajoute — pas de doublon de date d'effet.
+      const row = ligneFoyerVersion(valeurs);
+      const idx = versionsAccum.findIndex((v) => v.dateEffet === row.dateEffet);
+      if (idx >= 0) {
+        versionsAccum[idx] = row;
+      } else {
+        versionsAccum.push(row);
+      }
+    }
     const promesse =
       options.echecOutbox && typeof valeurs['type'] === 'string'
         ? Promise.reject(new Error('outbox indisponible'))
         : Promise.resolve();
     return Object.assign(promesse, {
       returning: () => Promise.resolve([valeurs]),
+      onConflictDoUpdate: () => Promise.resolve(),
     });
   });
   const updateSet = vi.fn(() => ({
-    where: () => ({
-      returning: () => Promise.resolve(options.lignesUpdate ?? []),
-    }),
+    where: () =>
+      Object.assign(Promise.resolve([]), {
+        returning: () => Promise.resolve([]),
+      }),
   }));
-  const lignes = options.foyerPresent ? [ligneFoyer()] : [];
+  const rowsPour = (table: unknown): unknown[] => {
+    if (table === baremeTranches) return baremes;
+    if (table === foyerVersion) return versionsAccum;
+    if (table === foyerTable) return foyers;
+    return [];
+  };
+  const from = (table: unknown) => {
+    const rows = rowsPour(table);
+    return Object.assign(Promise.resolve(rows), {
+      where: () => Promise.resolve(rows),
+    });
+  };
   const tx = {
-    select: () => ({ from: () => ({ where: () => Promise.resolve(lignes) }) }),
+    select: () => ({ from }),
     insert: () => ({ values: insertValues }),
     update: () => ({ set: updateSet }),
   };
@@ -104,7 +184,7 @@ function fakeDbTransaction(
     cb(tx),
   );
   const db = { transaction } as unknown as Database;
-  return { db, transaction, insertValues, updateSet };
+  return { db, transaction, insertValues, updateSet, versionsAccum };
 }
 
 /**
@@ -117,11 +197,12 @@ function fakeDbLecture(...reponses: unknown[][]): Database {
   let i = 0;
   const select = vi.fn(() => {
     const lignes = reponses[i++] ?? [];
-    const chaine = {
-      where: vi.fn(() => Object.assign(Promise.resolve(lignes), chaine)),
-      orderBy: vi.fn(() => Promise.resolve(lignes)),
-      from: vi.fn(() => chaine),
-    };
+    const chaine: Record<string, unknown> = {};
+    // `from()` doit être **awaitable** (lectures table entière : barème, sans `where`).
+    const maillon = () => Object.assign(Promise.resolve(lignes), chaine);
+    chaine['where'] = vi.fn(maillon);
+    chaine['orderBy'] = vi.fn(maillon);
+    chaine['from'] = vi.fn(maillon);
     return chaine;
   });
   return { select } as unknown as Database;
@@ -138,8 +219,16 @@ function fakeDbCreationRollback(): {
   transaction: ReturnType<typeof vi.fn>;
   insertValues: ReturnType<typeof vi.fn>;
 } {
+  const baremes = [ligneBaremeTranches()];
+  const versionsAccum: FoyerVersionRow[] = [];
   let parentInserts = 0;
   const insertValues = vi.fn((valeurs: Record<string, unknown>) => {
+    if (
+      typeof valeurs['dateEffet'] === 'string' &&
+      typeof valeurs['rfrCentimes'] === 'number'
+    ) {
+      versionsAccum.push(ligneFoyerVersion(valeurs));
+    }
     if (typeof valeurs['email'] === 'string') {
       parentInserts += 1;
       if (parentInserts === 2) {
@@ -156,7 +245,22 @@ function fakeDbCreationRollback(): {
       returning: () => Promise.resolve([valeurs]),
     });
   });
-  const tx = { insert: () => ({ values: insertValues }) };
+  const from = (table: unknown) => {
+    const rows =
+      table === baremeTranches
+        ? baremes
+        : table === foyerVersion
+          ? versionsAccum
+          : [];
+    return Object.assign(Promise.resolve(rows), {
+      where: () => Promise.resolve(rows),
+    });
+  };
+  const tx = {
+    select: () => ({ from }),
+    insert: () => ({ values: insertValues }),
+    update: () => ({ set: () => ({ where: () => Promise.resolve([]) }) }),
+  };
   const transaction = vi.fn(async (cb: (t: unknown) => Promise<unknown>) =>
     cb(tx),
   );
@@ -165,7 +269,7 @@ function fakeDbCreationRollback(): {
 }
 
 describe('FoyerService.creer (transactionnalité outbox)', () => {
-  it('insère le foyer + l’outbox FoyerMisAJour dans UNE seule transaction (centimes, tranche dérivée)', async () => {
+  it('insère le foyer + la version initiale + l’outbox FoyerMisAJour.v3 dans UNE transaction (centimes, tranche dérivée)', async () => {
     const { db, transaction, insertValues } = fakeDbTransaction();
     const service = new FoyerService(db);
 
@@ -182,18 +286,28 @@ describe('FoyerService.creer (transactionnalité outbox)', () => {
         nbParts: 3,
       }),
     );
-    // L'événement : même transaction, payload complet, tranche dérivée du RFR.
+    // La version initiale des ressources (date d'effet = aujourd'hui par défaut).
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: FOYER_MIS_A_JOUR_TYPE,
-        payload: {
+        foyerId: dossier.foyer.id,
+        dateEffet: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        rfrCentimes: 7270500,
+      }),
+    );
+    // L'événement v3 : même transaction, tranche dérivée du barème, versionId + dateEffet.
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: FOYER_MIS_A_JOUR_V3_TYPE,
+        payload: expect.objectContaining({
           foyerId: dossier.foyer.id,
           ressourcesMensuellesCentimes: 350000,
           rfrCentimes: 7270500,
           nbEnfantsACharge: 2,
           nbParts: 3,
           tranche: 3,
-        },
+          versionId: expect.any(String),
+          dateEffet: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        }),
       }),
     );
     expect(dossier.foyer).toMatchObject({
@@ -249,7 +363,7 @@ describe('FoyerService.creer (dossier atomique : enfants + parents + créateur)'
       .map((c) => (c[0] as { type?: unknown }).type)
       .filter((t): t is string => typeof t === 'string');
     expect(typesOutbox).toEqual([
-      FOYER_MIS_A_JOUR_TYPE,
+      FOYER_MIS_A_JOUR_V3_TYPE,
       ENFANT_AJOUTE_TYPE,
       PARENT_AJOUTE_TYPE,
       PARENT_AJOUTE_TYPE,
@@ -318,46 +432,97 @@ describe('FoyerService.creer (dossier atomique : enfants + parents + créateur)'
   });
 });
 
-describe('FoyerService.mettreAJour', () => {
-  it('met à jour le foyer + ré-émet FoyerMisAJour dans la même transaction', async () => {
-    const { db, transaction, updateSet, insertValues } = fakeDbTransaction({
-      lignesUpdate: [ligneFoyer()],
-    });
+describe('FoyerService.mettreAJour (versions à date d’effet)', () => {
+  it('crée une version + ré-émet FoyerMisAJour.v3 + rafraîchit la ligne foyer courante', async () => {
+    const { db, transaction, updateSet, insertValues } = fakeDbTransaction();
     const service = new FoyerService(db);
 
     const vue = await service.mettreAJour(FOYER_ID, DTO_FOYER);
 
     expect(transaction).toHaveBeenCalledTimes(1);
+    // La version applicable aujourd'hui rafraîchit la ligne foyer courante.
     expect(updateSet).toHaveBeenCalledWith(
       expect.objectContaining({
         ressourcesMensuellesCentimes: 350000,
         rfrCentimes: 7270500,
       }),
     );
+    // Une nouvelle version de ressources est insérée à la date d'effet (aujourd'hui).
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: FOYER_MIS_A_JOUR_TYPE,
+        foyerId: FOYER_ID,
+        dateEffet: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        rfrCentimes: 7270500,
+      }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: FOYER_MIS_A_JOUR_V3_TYPE,
         payload: expect.objectContaining({ foyerId: FOYER_ID, tranche: 3 }),
       }),
     );
     expect(vue.id).toBe(FOYER_ID);
   });
 
+  it('date d’effet future : la version est créée à cette date', async () => {
+    const { db, insertValues } = fakeDbTransaction();
+    const service = new FoyerService(db);
+
+    await service.mettreAJour(FOYER_ID, {
+      ...DTO_FOYER,
+      dateEffet: '2027-01-01',
+    });
+
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dateEffet: '2027-01-01',
+        rfrCentimes: 7270500,
+      }),
+    );
+  });
+
+  it('réutiliser une date existante = correction (journalisée, avant/après)', async () => {
+    // Une version existe déjà au 2026-01-01 : ré-écrire cette date journalise.
+    const { db, insertValues } = fakeDbTransaction({
+      versions: [ligneFoyerVersion({ dateEffet: '2026-01-01' })],
+    });
+    const service = new FoyerService(db);
+
+    await service.mettreAJour(FOYER_ID, {
+      ...DTO_FOYER,
+      rfr: 18000,
+      dateEffet: '2026-01-01',
+      motif: 'avis rectifié',
+    });
+
+    // Une ligne de correction_journal (avant/après) est écrite.
+    const correction = insertValues.mock.calls.find(
+      (c) => (c[0] as { avant?: unknown }).avant !== undefined,
+    );
+    expect(correction).toBeDefined();
+    expect((correction?.[0] as { motif?: unknown }).motif).toBe(
+      'avis rectifié',
+    );
+  });
+
   it('lève NotFoundException si le foyer est introuvable — AUCUN événement émis', async () => {
-    const { db, insertValues } = fakeDbTransaction({ lignesUpdate: [] });
+    const { db, insertValues } = fakeDbTransaction({ foyerPresent: false });
     const service = new FoyerService(db);
 
     await expect(
       service.mettreAJour(FOYER_ID, DTO_FOYER),
     ).rejects.toBeInstanceOf(NotFoundException);
-    // Le 404 est détecté AVANT l'insert outbox : pas d'événement fantôme.
+    // Le 404 est détecté AVANT toute écriture : pas d'événement fantôme.
     expect(insertValues).not.toHaveBeenCalled();
   });
 });
 
-describe('FoyerService.obtenir / lister (tranche dérivée à la lecture)', () => {
+describe('FoyerService.obtenir / lister (tranche dérivée du barème versionné)', () => {
   it('dérive la tranche 1 d’un RFR < 20 000 €', async () => {
-    const db = fakeDbLecture([ligneFoyer({ rfrCentimes: 1500000 })]);
+    const db = fakeDbLecture(
+      [ligneFoyer({ rfrCentimes: 1500000 })],
+      [ligneBaremeTranches()],
+    );
     const service = new FoyerService(db);
 
     const vue = await service.obtenir(FOYER_ID);
@@ -365,15 +530,26 @@ describe('FoyerService.obtenir / lister (tranche dérivée à la lecture)', () =
   });
 
   it('BVA : un RFR exactement au seuil de 20 000 € tombe en tranche 2', async () => {
-    const db = fakeDbLecture([ligneFoyer({ rfrCentimes: 2000000 })]);
+    const db = fakeDbLecture(
+      [ligneFoyer({ rfrCentimes: 2000000 })],
+      [ligneBaremeTranches()],
+    );
     const service = new FoyerService(db);
 
     const vue = await service.obtenir(FOYER_ID);
     expect(vue.tranche).toBe(2);
   });
 
+  it('503 si le barème de tranches est froid (read-model vide) — jamais de tranche fausse', async () => {
+    const db = fakeDbLecture([ligneFoyer()], []);
+    const service = new FoyerService(db);
+    await expect(service.obtenir(FOYER_ID)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+  });
+
   it('lève NotFoundException si le foyer est introuvable', async () => {
-    const db = fakeDbLecture([]);
+    const db = fakeDbLecture([], [ligneBaremeTranches()]);
     const service = new FoyerService(db);
     await expect(service.obtenir(FOYER_ID)).rejects.toBeInstanceOf(
       NotFoundException,
@@ -385,13 +561,42 @@ describe('FoyerService.obtenir / lister (tranche dérivée à la lecture)', () =
       id: '33333333-3333-4333-8333-333333333333',
       rfrCentimes: 1000000,
     });
-    const db = fakeDbLecture([ligneFoyer(), autre]);
+    const db = fakeDbLecture([ligneFoyer(), autre], [ligneBaremeTranches()]);
     const service = new FoyerService(db);
 
     const vues = await service.lister();
     expect(vues).toHaveLength(2);
     expect(vues[0]).toMatchObject({ id: FOYER_ID, tranche: 3 });
     expect(vues[1]).toMatchObject({ rfrEuros: 10000, tranche: 1 });
+  });
+});
+
+describe('FoyerService.listerVersions (historique des ressources)', () => {
+  it('projette chaque version, plus récente d’abord, avec la tranche à sa date d’effet', async () => {
+    const db = fakeDbLecture(
+      [
+        ligneFoyerVersion({
+          id: 'v1',
+          dateEffet: '2026-01-01',
+          rfrCentimes: 7270500,
+        }),
+        ligneFoyerVersion({
+          id: 'v2',
+          dateEffet: '2027-01-01',
+          rfrCentimes: 1500000,
+        }),
+      ],
+      [ligneBaremeTranches()],
+    );
+    const service = new FoyerService(db);
+
+    const versions = await service.listerVersions(FOYER_ID);
+    expect(versions.map((v) => v.dateEffet)).toEqual([
+      '2027-01-01',
+      '2026-01-01',
+    ]);
+    expect(versions[0]).toMatchObject({ tranche: 1, rfrEuros: 15000 });
+    expect(versions[1]).toMatchObject({ tranche: 3, rfrEuros: 72705 });
   });
 });
 

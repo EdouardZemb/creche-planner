@@ -9,14 +9,20 @@ import {
 } from '@creche-planner/referentiel-domain';
 import {
   BAREME_PSU_PUBLIE_TYPE,
+  BAREME_TRANCHES_PUBLIE_TYPE,
   GRILLE_PUBLIEE_V2_TYPE,
   MODES_ABCM_CONTRAT,
 } from '@creche-planner/contracts-referentiel';
 import { ReferentielService } from './referentiel.service.js';
 import type { Database } from '../database/database.types.js';
-import type { BaremePsuRow, GrilleAbcmRow } from '../database/schema.js';
+import type {
+  BaremePsuRow,
+  BaremeTranchesRow,
+  GrilleAbcmRow,
+} from '../database/schema.js';
 import type {
   PublierBaremePsuDto,
+  PublierBaremeTranchesDto,
   PublierGrilleAbcmDto,
 } from './referentiel.dto.js';
 
@@ -516,6 +522,108 @@ describe('ReferentielService — ré-émission one-shot (rattrapage prod)', () =
     const service = new ReferentielService(db);
 
     expect(await service.reemettreBaremesPsu()).toBe(0);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+});
+
+/** DTO de publication d'un barème de tranches (bornes hautes en euros). */
+const DTO_TRANCHES: PublierBaremeTranchesDto = {
+  valideDu: '2026-01-01',
+  valideAu: null,
+  seuils: [
+    { niveau: 1, rfrMax: 19999.99 },
+    { niveau: 2, rfrMax: 50000 },
+    { niveau: 3, rfrMax: null },
+  ],
+};
+
+function ligneTranches(
+  overrides: Partial<BaremeTranchesRow> = {},
+): BaremeTranchesRow {
+  return {
+    id: '66666666-0000-4000-8000-000000000000',
+    valideDu: '2026-01-01',
+    valideAu: null,
+    seuils: [
+      { niveau: 1, rfrMaxCentimes: 1999999 },
+      { niveau: 2, rfrMaxCentimes: 5000000 },
+      { niveau: 3, rfrMaxCentimes: null },
+    ],
+    versionPayload: 1,
+    createdAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+describe('ReferentielService.publierBaremeTranches (versionnement + outbox)', () => {
+  it('insère le barème + un BaremeTranchesPublie dans UNE transaction (bornes euros → centimes)', async () => {
+    const { db, transaction, insertValues } = fakeDbBareme([]);
+    const service = new ReferentielService(db);
+
+    const vue = await service.publierBaremeTranches(DTO_TRANCHES);
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(vue.seuils).toEqual([
+      { niveau: 1, rfrMaxCentimes: 1999999 },
+      { niveau: 2, rfrMaxCentimes: 5000000 },
+      { niveau: 3, rfrMaxCentimes: null },
+    ]);
+    // 1 insert barème (version_payload = 1) + 1 événement BaremeTranchesPublie.
+    expect(insertValues).toHaveBeenCalledTimes(2);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ versionPayload: 1 }),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: BAREME_TRANCHES_PUBLIE_TYPE,
+        payload: expect.objectContaining({
+          baremeId: vue.id,
+          seuils: [
+            { niveau: 1, rfrMaxCentimes: 1999999 },
+            { niveau: 2, rfrMaxCentimes: 5000000 },
+            { niveau: 3, rfrMaxCentimes: null },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('REFUSE un chevauchement de période avec un barème existant — aucune écriture', async () => {
+    const { db, transaction } = fakeDbBareme([
+      ligneTranches() as unknown as BaremePsuRow,
+    ]);
+    const service = new ReferentielService(db);
+
+    await expect(
+      service.publierBaremeTranches({
+        ...DTO_TRANCHES,
+        valideDu: '2026-09-01',
+      }),
+    ).rejects.toThrow();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it('reemettreBaremeTranches : ré-émet le barème + remonte version_payload à 1', async () => {
+    const { db, insertValues, setWhere } = fakeDbReemission([
+      ligneTranches({ versionPayload: 0 }),
+    ]);
+    const service = new ReferentielService(db);
+
+    const n = await service.reemettreBaremeTranches();
+
+    expect(n).toBe(1);
+    expect(insertValues).toHaveBeenCalledTimes(1);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ type: BAREME_TRANCHES_PUBLIE_TYPE }),
+    );
+    expect(setWhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('reemettreBaremeTranches : rien à ré-émettre → 0', async () => {
+    const { db, transaction } = fakeDbReemission([]);
+    const service = new ReferentielService(db);
+
+    expect(await service.reemettreBaremeTranches()).toBe(0);
     expect(transaction).not.toHaveBeenCalled();
   });
 });

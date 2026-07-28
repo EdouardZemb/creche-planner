@@ -1,4 +1,8 @@
-import { Money, Tranche } from '@creche-planner/shared-kernel';
+import {
+  Money,
+  Tranche,
+  type BaremeTranches,
+} from '@creche-planner/shared-kernel';
 import { Enfant } from './enfant.js';
 import {
   EnfantsAChargeInvalideError,
@@ -54,9 +58,13 @@ export class Foyer {
     );
   }
 
-  /** Tranche RFR ABCM déduite du revenu fiscal de référence (doc 02 §0, INV-03). */
-  get tranche(): Tranche {
-    return Tranche.depuisRfr(this.rfr);
+  /**
+   * Tranche RFR ABCM déduite du revenu fiscal de référence selon un **barème
+   * versionné** (doc 02 §0, INV-03 ; SFD 30, DV-03). Les seuils ne sont plus figés :
+   * le service résout le barème applicable à la date d'effet et le passe ici.
+   */
+  trancheSelon(bareme: BaremeTranches): Tranche {
+    return Tranche.depuisRfr(this.rfr, bareme);
   }
 
   /** Rattache un enfant → nouveau Foyer (l'original n'est pas muté). */

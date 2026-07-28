@@ -126,3 +126,50 @@ export const baremePsuPublieEventSchema = integrationEventSchema(
   baremePsuPubliePayloadSchema,
 );
 export type BaremePsuPublieEvent = z.infer<typeof baremePsuPublieEventSchema>;
+
+// --- referentiel.BaremeTranchesPublie.v1 ------------------------------------
+
+/**
+ * Nom métier versionné (champ `type` de l'enveloppe). Les **seuils de tranche RFR**
+ * (20 000/50 000 €…) deviennent un **événement** versionné (SFD 30, D2/DV-03) : ils
+ * étaient jusqu'ici figés dans `shared-kernel`. `svc-foyer` le projette et dérive la
+ * tranche **à la date d'effet** d'une version de ressources (RM-30-04).
+ */
+export const BAREME_TRANCHES_PUBLIE_TYPE =
+  'referentiel.BaremeTranchesPublie.v1';
+
+/**
+ * Un seuil du barème : `niveau` (1/2/3…) et `rfrMaxCentimes`, borne **haute
+ * inclusive** de RFR (centimes) ; `null` = tranche ouverte (dernière). La liste est
+ * ordonnée du plus bas au plus haut niveau ; le nombre de tranches est libre.
+ */
+export const seuilTrancheSchema = z.object({
+  niveau: z.number().int().positive(),
+  rfrMaxCentimes: z.number().int().nonnegative().nullable(),
+});
+export type SeuilTranchePayload = z.infer<typeof seuilTrancheSchema>;
+
+export const baremeTranchesPubliePayloadSchema = z.object({
+  baremeId: z.string().uuid(),
+  /** Début de validité, ISO `YYYY-MM-DD`. */
+  valideDu: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'date ISO YYYY-MM-DD attendue'),
+  /** Fin de validité, ISO `YYYY-MM-DD`, ou `null` si période ouverte. */
+  valideAu: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'date ISO YYYY-MM-DD attendue')
+    .nullable(),
+  /** Seuils ordonnés (croissant), nombre de tranches libre. */
+  seuils: z.array(seuilTrancheSchema).min(1),
+});
+export type BaremeTranchesPubliePayload = z.infer<
+  typeof baremeTranchesPubliePayloadSchema
+>;
+
+export const baremeTranchesPublieEventSchema = integrationEventSchema(
+  baremeTranchesPubliePayloadSchema,
+);
+export type BaremeTranchesPublieEvent = z.infer<
+  typeof baremeTranchesPublieEventSchema
+>;

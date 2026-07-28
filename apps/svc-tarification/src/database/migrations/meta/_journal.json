@@ -43,6 +43,13 @@
       "when": 1784492847942,
       "tag": "0005_bareme_psu_readmodel",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785231670967,
+      "tag": "0006_foyer_version_readmodel",
+      "breakpoints": true
     }
   ]
 }

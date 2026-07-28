@@ -22,6 +22,13 @@
       "when": 1784490986934,
       "tag": "0002_grille_bareme_version_payload",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785177980065,
+      "tag": "0003_bareme_tranches",
+      "breakpoints": true
     }
   ]
 }

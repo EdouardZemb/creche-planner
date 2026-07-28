@@ -5,15 +5,24 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { and, asc, eq, sql } from 'drizzle-orm';
-import { Money, Tranche } from '@creche-planner/shared-kernel';
+import {
+  AucuneVersionApplicableError,
+  Money,
+  Tranche,
+  depuisBornes,
+  depuisSuite,
+  selectionnerVersionApplicable,
+  type BaremeTranches,
+} from '@creche-planner/shared-kernel';
 import { Enfant, Foyer } from '@creche-planner/foyer-domain';
 import {
   ENFANT_AJOUTE_TYPE,
   ENFANT_MODIFIE_TYPE,
   ENFANT_RETIRE_TYPE,
-  FOYER_MIS_A_JOUR_TYPE,
+  FOYER_MIS_A_JOUR_V3_TYPE,
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
@@ -25,20 +34,24 @@ import {
   type EnfantModifiePayload,
   type EnfantRetirePayload,
   type FoyerId,
-  type FoyerMisAJourPayload,
+  type FoyerMisAJourPayloadV3,
   type ParentAjoutePayload,
   type ParentRetirePayload,
 } from '@creche-planner/contracts-foyer';
 import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
+  baremeTranches,
+  correctionJournal,
   enfant,
   foyer,
+  foyerVersion,
   outbox,
   parent,
   preferenceNotification,
+  type BaremeTranchesRow,
   type EnfantRow,
-  type FoyerRow,
+  type FoyerVersionRow,
   type ParentRow,
 } from '../database/schema.js';
 import type {
@@ -73,6 +86,21 @@ export interface FoyerVue {
   readonly nbEnfantsACharge: number;
   readonly nbParts: number;
   readonly tranche: 1 | 2 | 3;
+}
+
+/** Une version de ressources d'un foyer (historique à date d'effet, SFD 30). */
+export interface FoyerVersionVue {
+  readonly id: string;
+  readonly dateEffet: string;
+  readonly ressourcesMensuellesCentimes: number;
+  readonly ressourcesMensuellesEuros: number;
+  readonly rfrCentimes: number;
+  readonly rfrEuros: number;
+  readonly nbEnfantsACharge: number;
+  readonly nbParts: number;
+  readonly tranche: 1 | 2 | 3;
+  readonly saisiLe: string;
+  readonly motif: string | null;
 }
 
 export interface EnfantVue {
@@ -128,6 +156,77 @@ function violationUnicite(
 export class FoyerService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
+  /** Date du jour ISO `YYYY-MM-DD` (défaut de date d'effet, H1 granularité jour). */
+  private aujourdHui(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  /**
+   * Barème de tranches applicable à `date` depuis le read-model local (projeté du
+   * stream REFERENTIEL, SFD 30 D2). **503** si aucune version n'est résoluble : une
+   * tranche fausse serait de la donnée fausse (c'est de l'argent). Le read-model est
+   * amorcé par la ré-émission one-shot du Référentiel, ce cas reste transitoire.
+   */
+  private trancheDepuisBareme(
+    lignes: readonly BaremeTranchesRow[],
+    rfrCentimes: number,
+    date: string,
+  ): Tranche {
+    const versions = lignes.map((b) => ({
+      valideDu: b.valideDu,
+      valideAu: b.valideAu,
+      valeur: b.seuils as BaremeTranches,
+    }));
+    let bareme: BaremeTranches;
+    try {
+      bareme = selectionnerVersionApplicable(
+        depuisBornes(versions),
+        date,
+      ).valeur;
+    } catch (erreur) {
+      if (erreur instanceof AucuneVersionApplicableError) {
+        throw new ServiceUnavailableException(
+          `barème de tranches indisponible au ${date} — read-model froid`,
+        );
+      }
+      throw erreur;
+    }
+    return Tranche.depuisRfr(Money.depuisCentimes(rfrCentimes), bareme);
+  }
+
+  /** Charge tout le barème de tranches (table petite, versions rares). */
+  private lireBaremes(
+    db: Database | DbTransaction,
+  ): Promise<BaremeTranchesRow[]> {
+    return db.select().from(baremeTranches);
+  }
+
+  /**
+   * Version de ressources applicable à `date` parmi une suite de versions (fin
+   * dérivée, socle lot 1). Une date antérieure à la plus ancienne version se
+   * **rabat** sur celle-ci (les ressources initiales valent aussi pour le passé —
+   * comportement inchangé du mono-version).
+   */
+  private versionApplicable(
+    versions: readonly FoyerVersionRow[],
+    date: string,
+  ): FoyerVersionRow {
+    const triees = [...versions].sort((a, b) =>
+      a.dateEffet < b.dateEffet ? -1 : a.dateEffet > b.dateEffet ? 1 : 0,
+    );
+    const premiere = triees[0];
+    if (premiere === undefined) {
+      throw new Error('foyer sans version de ressources');
+    }
+    if (date < premiere.dateEffet) {
+      return premiere;
+    }
+    return selectionnerVersionApplicable(
+      depuisSuite(triees.map((v) => ({ dateEffet: v.dateEffet, valeur: v }))),
+      date,
+    ).valeur;
+  }
+
   /**
    * Crée un foyer **et son dossier** (enfants + parents) dans **une seule
    * transaction** : soit le dossier complet existe, soit rien (atomicité, doc 06
@@ -152,9 +251,11 @@ export class FoyerService {
     }));
     // Le créateur non-admin devient parent (dédoublonnage insensible à la casse).
     const parentsFinal = parentsAvecCreateur(dto.parents, dto.createurEmail);
+    const dateEffet = dto.dateEffet ?? this.aujourdHui();
     try {
       return await this.db.transaction(async (tx) => {
-        // 1) foyer + FoyerMisAJour.
+        // 1) foyer + version initiale de ressources + FoyerMisAJour.v3.
+        const baremes = await this.lireBaremes(tx);
         await tx.insert(foyer).values({
           id: foyerId,
           ressourcesMensuellesCentimes: domaine.ressourcesMensuelles.centimes,
@@ -162,7 +263,21 @@ export class FoyerService {
           nbEnfantsACharge: domaine.nbEnfantsACharge,
           nbParts: domaine.nbParts,
         });
-        await tx.insert(outbox).values(this.evenementFoyer(foyerId, domaine));
+        await tx.insert(foyerVersion).values({
+          id: randomUUID(),
+          foyerId,
+          dateEffet,
+          ressourcesMensuellesCentimes: domaine.ressourcesMensuelles.centimes,
+          rfrCentimes: domaine.rfr.centimes,
+          nbEnfantsACharge: domaine.nbEnfantsACharge,
+          nbParts: domaine.nbParts,
+          motif: dto.motif ?? null,
+        });
+        const { ligne: courante, tranche } = await this.rafraichirEtEmettre(
+          tx,
+          foyerId,
+          baremes,
+        );
         // 2) enfants + EnfantAjoute.
         const enfants: EnfantVue[] = [];
         for (const prepare of enfantsPrepares) {
@@ -221,13 +336,7 @@ export class FoyerService {
             .values(this.evenementParentEtat(PARENT_AJOUTE_TYPE, ligne));
           parents.push(this.versParentVue(ligne));
         }
-        const foyerVue = this.versVue({
-          id: foyerId,
-          ressourcesMensuellesCentimes: domaine.ressourcesMensuelles.centimes,
-          rfrCentimes: domaine.rfr.centimes,
-          nbEnfantsACharge: domaine.nbEnfantsACharge,
-          nbParts: domaine.nbParts,
-        });
+        const foyerVue = this.versVue(foyerId, courante, tranche);
         return { foyer: foyerVue, enfants, parents };
       });
     } catch (erreur) {
@@ -235,48 +344,118 @@ export class FoyerService {
     }
   }
 
-  /** Met à jour les finances d'un foyer + ré-émet `FoyerMisAJour`. */
+  /**
+   * Enregistre les ressources d'un foyer **à une date d'effet** (SFD 30, DV-03) :
+   * crée ou écrase la version à `dateEffet` (défaut aujourd'hui). Réutiliser la même
+   * date = **correction** rétroactive (tracée dans `correction_journal`, D6). La
+   * clôture de la version précédente est implicite (fin dérivée). L'historique
+   * complet est ré-émis en `FoyerMisAJour.v3` (tarification projette chaque version)
+   * et la ligne `foyer` courante est rafraîchie sur la version applicable aujourd'hui.
+   */
   async mettreAJour(id: string, dto: EcrireFoyerDto): Promise<FoyerVue> {
     const domaine = this.versDomaine(dto);
-    const vue = await this.db.transaction(async (tx) => {
-      const maj = await tx
-        .update(foyer)
-        .set({
-          ressourcesMensuellesCentimes: domaine.ressourcesMensuelles.centimes,
-          rfrCentimes: domaine.rfr.centimes,
-          nbEnfantsACharge: domaine.nbEnfantsACharge,
-          nbParts: domaine.nbParts,
-          updatedAt: new Date(),
-        })
-        .where(eq(foyer.id, id))
-        .returning();
-      const ligne = maj[0];
-      if (!ligne) {
+    const dateEffet = dto.dateEffet ?? this.aujourdHui();
+    const { ligne, tranche } = await this.db.transaction(async (tx) => {
+      const foyers = await tx.select().from(foyer).where(eq(foyer.id, id));
+      if (!foyers[0]) {
         throw new NotFoundException(`foyer introuvable : ${id}`);
       }
-      await tx.insert(outbox).values(this.evenementFoyer(id, domaine));
-      return ligne;
+      const baremes = await this.lireBaremes(tx);
+      // Version existante à cette date d'effet ? → correction (avant/après tracé).
+      const existantes = await tx
+        .select()
+        .from(foyerVersion)
+        .where(
+          and(
+            eq(foyerVersion.foyerId, id),
+            eq(foyerVersion.dateEffet, dateEffet),
+          ),
+        );
+      const existante = existantes[0];
+      const versionId = existante?.id ?? randomUUID();
+      const valeurs = {
+        ressourcesMensuellesCentimes: domaine.ressourcesMensuelles.centimes,
+        rfrCentimes: domaine.rfr.centimes,
+        nbEnfantsACharge: domaine.nbEnfantsACharge,
+        nbParts: domaine.nbParts,
+      };
+      await tx
+        .insert(foyerVersion)
+        .values({
+          id: versionId,
+          foyerId: id,
+          dateEffet,
+          ...valeurs,
+          motif: dto.motif ?? null,
+        })
+        .onConflictDoUpdate({
+          target: [foyerVersion.foyerId, foyerVersion.dateEffet],
+          set: { ...valeurs, motif: dto.motif ?? null, saisiLe: new Date() },
+        });
+      if (existante) {
+        // Correction rétroactive : journalise l'avant/après (D6).
+        await tx.insert(correctionJournal).values({
+          id: randomUUID(),
+          foyerId: id,
+          versionId,
+          avant: this.snapshotVersion(existante),
+          apres: { dateEffet, ...valeurs },
+          motif: dto.motif ?? null,
+        });
+      }
+      return this.rafraichirEtEmettre(tx, id, baremes);
     });
-    return this.versVue(vue);
+    return this.versVue(id, ligne, tranche);
   }
 
   /** Liste les foyers existants, du plus ancien au plus récent. */
   async lister(): Promise<FoyerVue[]> {
-    const lignes = await this.db
-      .select()
-      .from(foyer)
-      .orderBy(asc(foyer.createdAt));
-    return lignes.map((l) => this.versVue(l));
+    const [lignes, baremes] = await Promise.all([
+      this.db.select().from(foyer).orderBy(asc(foyer.createdAt)),
+      this.lireBaremes(this.db),
+    ]);
+    const aujourdHui = this.aujourdHui();
+    return lignes.map((l) =>
+      this.versVue(
+        l.id,
+        l,
+        this.trancheDepuisBareme(baremes, l.rfrCentimes, aujourdHui),
+      ),
+    );
   }
 
-  /** Lit un foyer ; la tranche RFR est dérivée à la lecture. */
+  /** Lit un foyer ; la tranche RFR est dérivée à la lecture depuis le barème versionné. */
   async obtenir(id: string): Promise<FoyerVue> {
-    const lignes = await this.db.select().from(foyer).where(eq(foyer.id, id));
+    const [lignes, baremes] = await Promise.all([
+      this.db.select().from(foyer).where(eq(foyer.id, id)),
+      this.lireBaremes(this.db),
+    ]);
     const ligne = lignes[0];
     if (!ligne) {
       throw new NotFoundException(`foyer introuvable : ${id}`);
     }
-    return this.versVue(ligne);
+    return this.versVue(
+      id,
+      ligne,
+      this.trancheDepuisBareme(baremes, ligne.rfrCentimes, this.aujourdHui()),
+    );
+  }
+
+  /**
+   * Historique des versions de ressources d'un foyer (SFD 30, CA2 US-30-03), de la
+   * plus récente à la plus ancienne. La tranche de chaque version est dérivée au
+   * **barème applicable à sa date d'effet** (« quelle tranche s'appliquait alors »).
+   */
+  async listerVersions(id: string): Promise<FoyerVersionVue[]> {
+    const [versions, baremes] = await Promise.all([
+      this.db
+        .select()
+        .from(foyerVersion)
+        .where(eq(foyerVersion.foyerId, id))
+        .orderBy(asc(foyerVersion.dateEffet)),
+      this.lireBaremes(this.db),
+    ]);
+    return versions.map((v) => this.versVersionVue(v, baremes)).reverse();
   }
 
   /** Rattache un enfant + émet `EnfantAjoute` dans la même transaction. */
@@ -677,47 +856,131 @@ export class FoyerService {
     });
   }
 
-  /** Construit la ligne d'outbox de `FoyerMisAJour` à partir du domaine. */
-  private evenementFoyer(
-    id: string,
-    domaine: Foyer,
+  /**
+   * Rafraîchit la ligne `foyer` **courante** (version applicable aujourd'hui) et
+   * ré-émet **l'historique complet** en `FoyerMisAJour.v3` (une émission par version,
+   * `tranche` dérivée au barème de la date d'effet de chaque version). Ré-émettre
+   * tout garantit à tarification un miroir complet des versions (résolution au mois).
+   * Renvoie la version courante et sa tranche pour construire la vue de réponse.
+   */
+  private async rafraichirEtEmettre(
+    tx: DbTransaction,
+    foyerId: string,
+    baremes: readonly BaremeTranchesRow[],
+  ): Promise<{ ligne: FoyerVersionRow; tranche: Tranche }> {
+    const versions = await tx
+      .select()
+      .from(foyerVersion)
+      .where(eq(foyerVersion.foyerId, foyerId));
+    const courante = this.versionApplicable(versions, this.aujourdHui());
+    const trancheCourante = this.trancheDepuisBareme(
+      baremes,
+      courante.rfrCentimes,
+      courante.dateEffet,
+    );
+    await tx
+      .update(foyer)
+      .set({
+        ressourcesMensuellesCentimes: courante.ressourcesMensuellesCentimes,
+        rfrCentimes: courante.rfrCentimes,
+        nbEnfantsACharge: courante.nbEnfantsACharge,
+        nbParts: courante.nbParts,
+        updatedAt: new Date(),
+      })
+      .where(eq(foyer.id, foyerId));
+    for (const v of versions) {
+      const tranche = this.trancheDepuisBareme(
+        baremes,
+        v.rfrCentimes,
+        v.dateEffet,
+      );
+      await tx
+        .insert(outbox)
+        .values(this.evenementFoyerV3(foyerId, v, tranche));
+    }
+    return { ligne: courante, tranche: trancheCourante };
+  }
+
+  /** Ligne d'outbox `FoyerMisAJour.v3` d'une version (tranche dérivée à sa date d'effet). */
+  private evenementFoyerV3(
+    foyerId: string,
+    v: FoyerVersionRow,
+    tranche: Tranche,
   ): typeof outbox.$inferInsert {
-    const payload: FoyerMisAJourPayload = {
-      foyerId: foyerIdSchema.parse(id),
-      ressourcesMensuellesCentimes: domaine.ressourcesMensuelles.centimes,
-      rfrCentimes: domaine.rfr.centimes,
-      nbEnfantsACharge: domaine.nbEnfantsACharge,
-      nbParts: domaine.nbParts,
-      tranche: domaine.tranche.niveau,
+    const payload: FoyerMisAJourPayloadV3 = {
+      foyerId: foyerIdSchema.parse(foyerId),
+      versionId: v.id,
+      dateEffet: v.dateEffet,
+      ressourcesMensuellesCentimes: v.ressourcesMensuellesCentimes,
+      rfrCentimes: v.rfrCentimes,
+      nbEnfantsACharge: v.nbEnfantsACharge,
+      nbParts: v.nbParts,
+      tranche: tranche.niveau,
     };
     return {
       id: randomUUID(),
-      type: FOYER_MIS_A_JOUR_TYPE,
+      type: FOYER_MIS_A_JOUR_V3_TYPE,
       payload,
       traceId: traceIdCourant(),
     };
   }
 
+  /** Snapshot d'une version (jsonb avant/après du journal de correction). */
+  private snapshotVersion(v: FoyerVersionRow): Record<string, unknown> {
+    return {
+      dateEffet: v.dateEffet,
+      ressourcesMensuellesCentimes: v.ressourcesMensuellesCentimes,
+      rfrCentimes: v.rfrCentimes,
+      nbEnfantsACharge: v.nbEnfantsACharge,
+      nbParts: v.nbParts,
+    };
+  }
+
   private versVue(
-    ligne: Pick<
-      FoyerRow,
-      | 'id'
+    id: string,
+    valeurs: Pick<
+      FoyerVersionRow,
       | 'ressourcesMensuellesCentimes'
       | 'rfrCentimes'
       | 'nbEnfantsACharge'
       | 'nbParts'
     >,
+    tranche: Tranche,
   ): FoyerVue {
-    const tranche = Tranche.depuisRfr(Money.depuisCentimes(ligne.rfrCentimes));
     return {
-      id: ligne.id,
-      ressourcesMensuellesCentimes: ligne.ressourcesMensuellesCentimes,
-      ressourcesMensuellesEuros: ligne.ressourcesMensuellesCentimes / 100,
-      rfrCentimes: ligne.rfrCentimes,
-      rfrEuros: ligne.rfrCentimes / 100,
-      nbEnfantsACharge: ligne.nbEnfantsACharge,
-      nbParts: ligne.nbParts,
+      id,
+      ressourcesMensuellesCentimes: valeurs.ressourcesMensuellesCentimes,
+      ressourcesMensuellesEuros: valeurs.ressourcesMensuellesCentimes / 100,
+      rfrCentimes: valeurs.rfrCentimes,
+      rfrEuros: valeurs.rfrCentimes / 100,
+      nbEnfantsACharge: valeurs.nbEnfantsACharge,
+      nbParts: valeurs.nbParts,
       tranche: tranche.niveau,
+    };
+  }
+
+  /** Vue d'une version de ressources (tranche dérivée au barème de sa date d'effet). */
+  private versVersionVue(
+    v: FoyerVersionRow,
+    baremes: readonly BaremeTranchesRow[],
+  ): FoyerVersionVue {
+    const tranche = this.trancheDepuisBareme(
+      baremes,
+      v.rfrCentimes,
+      v.dateEffet,
+    );
+    return {
+      id: v.id,
+      dateEffet: v.dateEffet,
+      ressourcesMensuellesCentimes: v.ressourcesMensuellesCentimes,
+      ressourcesMensuellesEuros: v.ressourcesMensuellesCentimes / 100,
+      rfrCentimes: v.rfrCentimes,
+      rfrEuros: v.rfrCentimes / 100,
+      nbEnfantsACharge: v.nbEnfantsACharge,
+      nbParts: v.nbParts,
+      tranche: tranche.niveau,
+      saisiLe: v.saisiLe.toISOString(),
+      motif: v.motif,
     };
   }
 

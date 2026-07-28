@@ -76,6 +76,29 @@ export const baremePsu = pgTable('bareme_psu', {
     .defaultNow(),
 });
 
+/**
+ * Barème des **seuils de tranche RFR** (20 000/50 000 €…), versionné par période
+ * (SFD 30, DV-03/D2). Les seuils étaient figés dans `shared-kernel` ; ils
+ * deviennent une donnée du Référentiel, projetée par `svc-foyer` pour dériver la
+ * tranche à la date d'effet. `seuils` = liste ordonnée `[{niveau, rfrMaxCentimes|null}]`.
+ */
+export const baremeTranches = pgTable('bareme_tranches', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  valideDu: date('valide_du').notNull(),
+  valideAu: date('valide_au'),
+  /** Seuils ordonnés `[{niveau, rfrMaxCentimes|null}]` (borne haute inclusive, centimes). */
+  seuils: jsonb('seuils').notNull(),
+  /**
+   * Plus haute version d'événement `BaremeTranchesPublie` déjà émise (SFD 30, lot 3).
+   * Défaut `0` : le seed est ré-émis **une fois** (v1) au premier boot post-déploiement,
+   * puis cette borne passe à `1`.
+   */
+  versionPayload: integer('version_payload').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 /** Jour non facturable : férié, fermeture crèche, vacances (doc 02 §7, INV-04). */
 export const jourNonFacturable = pgTable('jour_non_facturable', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -106,5 +129,6 @@ export const outbox = pgTable('outbox', {
 
 export type GrilleAbcmRow = typeof grilleAbcm.$inferSelect;
 export type BaremePsuRow = typeof baremePsu.$inferSelect;
+export type BaremeTranchesRow = typeof baremeTranches.$inferSelect;
 export type JourNonFacturableRow = typeof jourNonFacturable.$inferSelect;
 export type OutboxRow = typeof outbox.$inferSelect;

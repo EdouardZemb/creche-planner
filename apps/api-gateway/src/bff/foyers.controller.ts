@@ -14,6 +14,7 @@ import {
   FoyerClient,
   type DossierFoyerVue,
   type EnfantVue,
+  type FoyerVersionVue,
   type FoyerVue,
   type ParentVue,
 } from '../clients/foyer.client.js';
@@ -146,6 +147,16 @@ export class FoyersController {
   ): Promise<FoyerVue> {
     const saisie = valider(ecrireFoyerScalairesSchema, corps);
     return relayer(() => this.foyers.mettreAJour(id, saisie));
+  }
+
+  /**
+   * Historique des **versions de ressources** du foyer (date d'effet, RFR, tranche)
+   * — SFD 30, CA2 US-30-03. `@FoyerScope` : lisible par le parent du foyer.
+   */
+  @Get(':id/versions')
+  @FoyerScope('param:id')
+  listerVersions(@Param('id') id: string): Promise<FoyerVersionVue[]> {
+    return relayer(() => this.foyers.versions(id));
   }
 
   /**

@@ -65,14 +65,15 @@ describe('frontières de contrats (DEC-01/CA2)', () => {
     expect(await allowList('context:foyer')).not.toContain(
       'context:planification',
     );
-    expect(await allowList('context:foyer')).not.toContain(
-      'context:referentiel',
-    );
   });
 
-  it('autorise context:foyer → context:foyer + context:shared (kernel) uniquement', async () => {
+  it('autorise context:foyer → context:foyer + context:shared + context:referentiel (consommateur du barème de tranches, SFD 30 D2)', async () => {
     expect(await allowList('context:foyer')).toEqual(
-      expect.arrayContaining(['context:foyer', 'context:shared']),
+      expect.arrayContaining([
+        'context:foyer',
+        'context:shared',
+        'context:referentiel',
+      ]),
     );
   });
 

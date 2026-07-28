@@ -10,6 +10,7 @@ import {
   AucuneVersionApplicableError,
   Money,
   depuisBornes,
+  depuisSuite,
   selectionnerVersionApplicable,
 } from '@creche-planner/shared-kernel';
 import {
@@ -27,9 +28,11 @@ import {
   baremePsu,
   contrat,
   foyer,
+  foyerVersion,
   grilleTarifaire,
   prestationMois,
   type BaremePsuRow,
+  type FoyerVersionRow,
   type GrilleTarifaireRow,
 } from '../database/schema.js';
 import { FoyerClient } from '../fallback/foyer.client.js';
@@ -159,6 +162,16 @@ interface PrestationProjetee {
   readonly prestation: PrestationRM;
 }
 
+/**
+ * Contexte foyer chargé **une fois** par requête coût : l'historique versionné
+ * (`versions`, v3) et la ligne « courante » de repli (`courant`, v1/v2 ou REST).
+ * `resoudreFoyerAuMois` en tire les ressources du mois demandé.
+ */
+interface FoyerContexte {
+  readonly versions: readonly FoyerVersionRow[];
+  readonly courant: FoyerCalcul | undefined;
+}
+
 /** Ligne de la table read-model `contrat` (identité foyer/enfant/mode). */
 type ContratRow = (typeof contrat)['$inferSelect'];
 
@@ -203,9 +216,9 @@ export class CoutService {
     mois: string,
     simule: boolean,
   ): Promise<CoutMoisVue> {
-    const [donneesFoyer, contrats, projetees, grilles, baremes] =
+    const [contexteFoyer, contrats, projetees, grilles, baremes] =
       await Promise.all([
-        this.chargerFoyer(foyerId),
+        this.chargerFoyerContexte(foyerId),
         this.chargerContrats(foyerId),
         this.chargerProjeteesMois(foyerId, mois, simule),
         this.chargerGrilles(),
@@ -215,7 +228,7 @@ export class CoutService {
       foyerId,
       mois,
       simule,
-      donneesFoyer,
+      contexteFoyer,
       contrats,
       projetees,
       grilles,
@@ -233,12 +246,14 @@ export class CoutService {
     foyerId: string,
     mois: string,
     simule: boolean,
-    donneesFoyer: FoyerCalcul,
+    contexteFoyer: FoyerContexte,
     contrats: readonly ContratRow[],
     projetees: readonly PrestationMoisRow[],
     grilles: readonly GrilleTarifaireRow[],
     baremes: readonly BaremePsuRow[],
   ): Promise<CoutMoisVue> {
+    // Ressources résolues à la version applicable au 1er du mois (SFD 30, DV-03).
+    const donneesFoyer = this.resoudreFoyerAuMois(contexteFoyer, mois);
     const projections = await this.assemblerPrestations(
       mois,
       simule,
@@ -345,9 +360,9 @@ export class CoutService {
     annee: number,
     simule: boolean,
   ): Promise<CoutAnnuelVue> {
-    const [donneesFoyer, contrats, projeteesAnnee, grilles, baremes] =
+    const [contexteFoyer, contrats, projeteesAnnee, grilles, baremes] =
       await Promise.all([
-        this.chargerFoyer(foyerId),
+        this.chargerFoyerContexte(foyerId),
         this.chargerContrats(foyerId),
         this.chargerProjeteesAnnee(foyerId, annee, simule),
         this.chargerGrilles(),
@@ -360,7 +375,7 @@ export class CoutService {
           foyerId,
           moisIso,
           simule,
-          donneesFoyer,
+          contexteFoyer,
           contrats,
           projeteesAnnee.get(moisIso) ?? [],
           grilles,
@@ -373,25 +388,33 @@ export class CoutService {
   }
 
   /**
-   * Charge le foyer depuis le read model ; si la projection est froide (absente),
-   * bascule sur le client de repli synchrone `svc-foyer`. Si le repli échoue à son
-   * tour, on répond **503 explicite** plutôt qu'un foyer « neutre » : un montant
-   * calculé sur des ressources fausses serait affiché avec assurance (0,00 € pour
-   * la crèche PSU) — c'est de l'argent, un chiffre affiché doit être un chiffre
-   * vrai. Le client web rejoue automatiquement les 503 transitoires.
+   * Charge le **contexte foyer** nécessaire pour résoudre les ressources **à chaque
+   * mois** (SFD 30, DV-03) : l'historique versionné `foyer_version` (v3) et, en repli,
+   * la ligne « courante » mono-version de `foyer` (v1/v2) ou le client REST svc-foyer.
+   * Si rien n'est résoluble → **503 explicite** (jamais de ressources fausses — c'est
+   * de l'argent). Chargé **une fois** ; `resoudreFoyerAuMois` en tire la version du mois.
    */
-  private async chargerFoyer(foyerId: string): Promise<FoyerCalcul> {
-    const lignes = await this.db
-      .select()
-      .from(foyer)
-      .where(eq(foyer.id, foyerId));
+  private async chargerFoyerContexte(foyerId: string): Promise<FoyerContexte> {
+    const [versions, lignes] = await Promise.all([
+      this.db
+        .select()
+        .from(foyerVersion)
+        .where(eq(foyerVersion.foyerId, foyerId)),
+      this.db.select().from(foyer).where(eq(foyer.id, foyerId)),
+    ]);
     const ligne = lignes[0];
-    if (ligne) {
-      return {
-        ressourcesMensuellesCentimes: ligne.ressourcesMensuellesCentimes,
-        nbEnfantsACharge: ligne.nbEnfantsACharge,
-        tranche: ligne.tranche as 1 | 2 | 3,
-      };
+    const courant: FoyerCalcul | undefined = ligne
+      ? {
+          ressourcesMensuellesCentimes: ligne.ressourcesMensuellesCentimes,
+          nbEnfantsACharge: ligne.nbEnfantsACharge,
+          tranche: ligne.tranche as 1 | 2 | 3,
+        }
+      : undefined;
+    if (versions.length > 0) {
+      return { versions, courant };
+    }
+    if (courant) {
+      return { versions: [], courant };
     }
     this.logger.warn(
       `Foyer ${foyerId} absent du read model — repli synchrone svc-foyer`,
@@ -399,9 +422,12 @@ export class CoutService {
     const repli = await this.foyerClient.foyer(foyerId);
     if (repli) {
       return {
-        ressourcesMensuellesCentimes: repli.ressourcesMensuellesCentimes,
-        nbEnfantsACharge: repli.nbEnfantsACharge,
-        tranche: repli.tranche,
+        versions: [],
+        courant: {
+          ressourcesMensuellesCentimes: repli.ressourcesMensuellesCentimes,
+          nbEnfantsACharge: repli.nbEnfantsACharge,
+          tranche: repli.tranche,
+        },
       };
     }
     this.logger.error(
@@ -410,6 +436,46 @@ export class CoutService {
     throw new ServiceUnavailableException(
       `foyer ${foyerId} indisponible : read model froid et repli svc-foyer en échec`,
     );
+  }
+
+  /**
+   * Résout les ressources applicables **au 1er du mois** (H7). Sur un foyer versionné
+   * (v3), sélectionne la version couvrant le mois — une date antérieure à la plus
+   * ancienne version se **rabat** dessus (comportement mono-version pour le passé).
+   * Sinon retombe sur la ligne « courante » (v1/v2 ou repli) : mêmes ressources tous
+   * les mois, comportement **inchangé** pour un foyer non versionné.
+   */
+  private resoudreFoyerAuMois(
+    contexte: FoyerContexte,
+    mois: string,
+  ): FoyerCalcul {
+    if (contexte.versions.length === 0) {
+      if (!contexte.courant) {
+        throw new ServiceUnavailableException(
+          `foyer indisponible pour le mois ${mois}`,
+        );
+      }
+      return contexte.courant;
+    }
+    const date = `${mois}-01`;
+    const triees = [...contexte.versions].sort((a, b) =>
+      a.dateEffet < b.dateEffet ? -1 : a.dateEffet > b.dateEffet ? 1 : 0,
+    );
+    const premiere = triees[0];
+    const v =
+      premiere && date < premiere.dateEffet
+        ? premiere
+        : selectionnerVersionApplicable(
+            depuisSuite(
+              triees.map((r) => ({ dateEffet: r.dateEffet, valeur: r })),
+            ),
+            date,
+          ).valeur;
+    return {
+      ressourcesMensuellesCentimes: v.ressourcesMensuellesCentimes,
+      nbEnfantsACharge: v.nbEnfantsACharge,
+      tranche: v.tranche as 1 | 2 | 3,
+    };
   }
 
   /** Identité des contrats du foyer (indépendante du mois). */

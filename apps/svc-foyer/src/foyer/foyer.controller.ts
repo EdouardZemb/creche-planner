@@ -34,6 +34,7 @@ import {
   FoyerService,
   type DossierFoyerVue,
   type EnfantVue,
+  type FoyerVersionVue,
   type FoyerVue,
   type ParentVue,
   type PreferenceVue,
@@ -93,6 +94,14 @@ export class FoyerController {
     @Body(new ZodValidationPipe(ecrireFoyerSchema)) dto: EcrireFoyerDto,
   ): Promise<FoyerVue> {
     return this.foyers.mettreAJour(id, dto);
+  }
+
+  /** Historique des versions de ressources du foyer (date d'effet, RFR, tranche). */
+  @Get(':id/versions')
+  listerVersions(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<FoyerVersionVue[]> {
+    return this.foyers.listerVersions(id);
   }
 
   @Post(':id/enfants')

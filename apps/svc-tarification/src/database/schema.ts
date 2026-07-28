@@ -62,6 +62,41 @@ export const foyer = pgTable('foyer', {
 });
 
 /**
+ * Projection des **versions de ressources** d'un foyer (event `foyer.FoyerMisAJour.v3`,
+ * SFD 30 DV-03). Chaque version porte sa `date_effet` et la `tranche` déjà dérivée
+ * par svc-foyer au barème de cette date : le calcul résout la version applicable **au
+ * 1er du mois** (H7). `id` = `versionId` amont (PK). Les v1/v2 continuent d'alimenter
+ * la ligne « courante » de `foyer` (compat) ; un foyer sans version projetée retombe
+ * dessus. Garde de monotonie `occurred_at` par version.
+ */
+export const foyerVersion = pgTable(
+  'foyer_version',
+  {
+    /** Identité de version amont (`versionId`, PK). */
+    id: uuid('id').primaryKey(),
+    foyerId: uuid('foyer_id').notNull(),
+    /** Date d'effet ISO `YYYY-MM-DD`. */
+    dateEffet: varchar('date_effet', { length: 10 }).notNull(),
+    ressourcesMensuellesCentimes: integer('ressources_mensuelles_centimes')
+      .notNull()
+      .default(0),
+    rfrCentimes: integer('rfr_centimes').notNull().default(0),
+    /** Tranche RFR ABCM dérivée au barème de la date d'effet (1/2/3). */
+    tranche: integer('tranche').notNull(),
+    nbEnfantsACharge: integer('nb_enfants_a_charge').notNull().default(0),
+    nbParts: numeric('nb_parts').notNull().default('0'),
+    eventId: uuid('event_id'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique('foyer_version_foyer_date_uq').on(table.foyerId, table.dateEffet),
+  ],
+);
+
+/**
  * Projection d'un enfant rattaché à un foyer (event `foyer.EnfantAjoute.v1`).
  * `prenom` sert de jointure faible avec les contrats/prestations (qui portent le
  * prénom de l'enfant côté Planification).
@@ -302,6 +337,7 @@ export const deadLetter = pgTable('dead_letter', {
 });
 
 export type FoyerRow = typeof foyer.$inferSelect;
+export type FoyerVersionRow = typeof foyerVersion.$inferSelect;
 export type EnfantRow = typeof enfant.$inferSelect;
 export type ContratRow = typeof contrat.$inferSelect;
 export type GrilleTarifaireRow = typeof grilleTarifaire.$inferSelect;

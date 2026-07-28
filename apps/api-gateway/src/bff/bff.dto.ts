@@ -74,6 +74,13 @@ export const ecrireFoyerScalairesSchema = z.object({
   rfr: z.number().nonnegative(),
   nbEnfantsACharge: z.number().int().min(1),
   nbParts: z.number().positive(),
+  // Date d'effet des ressources (SFD 30, DV-03) : optionnelle, défaut aujourd'hui
+  // côté svc-foyer — une saisie sans cette date reste valide (rétrocompatible).
+  dateEffet: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'date ISO YYYY-MM-DD attendue')
+    .optional(),
+  motif: z.string().min(1).max(500).optional(),
 });
 export type EcrireFoyerScalaires = z.infer<typeof ecrireFoyerScalairesSchema>;
 

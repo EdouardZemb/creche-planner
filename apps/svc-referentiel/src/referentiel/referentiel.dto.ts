@@ -37,3 +37,25 @@ export const publierBaremePsuSchema = z.object({
   plafond: z.number().nonnegative().optional(),
 });
 export type PublierBaremePsuDto = z.infer<typeof publierBaremePsuSchema>;
+
+/**
+ * Publication d'un barème de **seuils de tranche RFR** versionné (SFD 30, DV-03).
+ * `seuils` = liste ordonnée `[{niveau, rfrMax|null}]`, la borne haute **inclusive**
+ * de chaque tranche saisie en **euros** (convertie en centimes côté service) ;
+ * `null` = tranche ouverte. Validé en tête de `ReferentielService.publierBaremeTranches`.
+ */
+export const publierBaremeTranchesSchema = z.object({
+  valideDu: z.iso.date('date ISO YYYY-MM-DD attendue'),
+  valideAu: z.iso.date('date ISO YYYY-MM-DD attendue').nullable().optional(),
+  seuils: z
+    .array(
+      z.object({
+        niveau: z.number().int().positive(),
+        rfrMax: z.number().nonnegative().nullable(),
+      }),
+    )
+    .min(1),
+});
+export type PublierBaremeTranchesDto = z.infer<
+  typeof publierBaremeTranchesSchema
+>;

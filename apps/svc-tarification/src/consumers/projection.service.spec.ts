@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   FOYER_MIS_A_JOUR_TYPE,
   FOYER_MIS_A_JOUR_V2_TYPE,
+  FOYER_MIS_A_JOUR_V3_TYPE,
 } from '@creche-planner/contracts-foyer';
 import {
   CONTRAT_MODIFIE_TYPE,
@@ -166,6 +167,31 @@ function evenementFoyerV2(id: string): unknown {
   };
 }
 
+/**
+ * Variante **v3** de `foyer.FoyerMisAJour` (SFD 30, DV-03) : enveloppe `version: 3`,
+ * type `.v3`, payload v2 + `versionId` + `dateEffet` (projeté dans `foyer_version`).
+ */
+function evenementFoyerV3(id: string): unknown {
+  return {
+    id,
+    type: FOYER_MIS_A_JOUR_V3_TYPE,
+    source: 'svc-foyer',
+    version: 3,
+    occurredAt: '2027-01-01T00:00:00.000Z',
+    traceId: 'trace-1',
+    payload: {
+      foyerId: '22222222-2222-4222-8222-222222222222',
+      versionId: '99999999-1111-4111-8111-111111111111',
+      dateEffet: '2027-01-01',
+      ressourcesMensuellesCentimes: 200000,
+      rfrCentimes: 1500000,
+      nbEnfantsACharge: 2,
+      nbParts: 3,
+      tranche: 1,
+    },
+  };
+}
+
 function evenementGrilleV2(id: string): unknown {
   return {
     id,
@@ -298,6 +324,29 @@ describe('ProjectionService.traiter', () => {
       projection.traiter(
         'FOYER',
         evenementFoyer('11111111-1111-4111-8111-111111111111'),
+      ),
+    ).resolves.toBe('TRAITE');
+  });
+
+  it('projette un FoyerMisAJour.v3 dans foyer_version et acquitte', async () => {
+    const db = fakeDb(true);
+    const projection = new ProjectionService(db, clientStub);
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementFoyerV3('88888888-8888-4888-8888-888888888888'),
+      ),
+    ).resolves.toBe('TRAITE');
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('FoyerMisAJour.v3 : doublon (marqueur présent) acquitté sans upsert', async () => {
+    const db = fakeDb(false);
+    const projection = new ProjectionService(db, clientStub);
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementFoyerV3('88888888-8888-4888-8888-888888888889'),
       ),
     ).resolves.toBe('TRAITE');
   });

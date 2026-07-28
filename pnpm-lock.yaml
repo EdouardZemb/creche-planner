@@ -286,6 +286,9 @@ importers:
       '@creche-planner/contracts-foyer':
         specifier: workspace:*
         version: link:../../libs/contracts/foyer
+      '@creche-planner/contracts-referentiel':
+        specifier: workspace:*
+        version: link:../../libs/contracts/referentiel
       '@creche-planner/foyer-domain':
         specifier: workspace:*
         version: link:../../libs/foyer/domain
