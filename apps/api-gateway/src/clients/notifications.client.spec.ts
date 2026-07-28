@@ -225,11 +225,13 @@ describe('NotificationsClient (gateway→svc-notifications)', () => {
 
   describe('moisCommuniques (SFD 30, US-30-05)', () => {
     it('succès → renvoie les mois communiqués, bornes du/au en query', async () => {
-      const fetchMock = vi.fn(async () => ({
-        ok: true,
-        status: 200,
-        json: async () => ({ mois: ['2026-06'] }),
-      }));
+      const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ mois: ['2026-06'] }),
+        }),
+      );
       vi.stubGlobal('fetch', fetchMock);
 
       const mois = await new NotificationsClient().moisCommuniques(
@@ -238,23 +240,25 @@ describe('NotificationsClient (gateway→svc-notifications)', () => {
         '2026-08',
       );
       expect(mois).toEqual(['2026-06']);
-      const url = fetchMock.mock.calls[0]?.[0] as string;
+      const url = fetchMock.mock.calls[0]?.[0] ?? '';
       expect(url).toContain('/api/foyers/f-1/mois-communiques');
       expect(url).toContain('du=2026-06');
       expect(url).toContain('au=2026-08');
     });
 
     it('sans bornes → appelle la route sans query', async () => {
-      const fetchMock = vi.fn(async () => ({
-        ok: true,
-        status: 200,
-        json: async () => ({ mois: [] }),
-      }));
+      const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ mois: [] }),
+        }),
+      );
       vi.stubGlobal('fetch', fetchMock);
 
       const mois = await new NotificationsClient().moisCommuniques('f-1');
       expect(mois).toEqual([]);
-      const url = fetchMock.mock.calls[0]?.[0] as string;
+      const url = fetchMock.mock.calls[0]?.[0] ?? '';
       expect(url).not.toContain('?');
     });
 
