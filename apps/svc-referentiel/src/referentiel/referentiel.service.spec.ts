@@ -646,3 +646,92 @@ describe('ReferentielService.listerJoursNonFacturables', () => {
     ]);
   });
 });
+
+describe('ReferentielService.publierGrille (grille complète atomique, lot 6)', () => {
+  const GRILLE = {
+    valideDu: '2026-09-01',
+    valideAu: null,
+    tranches: [
+      {
+        tranche: 1,
+        cantineTotal: 10.5,
+        periMatin: 2.31,
+        periSoir: 5.01,
+        alshJourneeComplete: 23.5,
+        alshDemiJournee: 8.5,
+        alshRepas: 6.5,
+      },
+      {
+        tranche: 3,
+        cantineTotal: 12.68,
+        cantinePartGarde: 8.01,
+        periMatin: 3.33,
+        periSoir: 7.05,
+        alshJourneeComplete: 26.5,
+        alshDemiJournee: 9.5,
+        alshRepas: 7.5,
+      },
+    ],
+  };
+
+  it('insère chaque tranche + un GrillePubliee par mode, dans UNE transaction (rien de partiel)', async () => {
+    const { db, transaction, insertValues } = fakeDbPublication([]);
+    const service = new ReferentielService(db);
+
+    const vues = await service.publierGrille(GRILLE);
+
+    expect(vues).toHaveLength(2);
+    // Montants euros → centimes entiers (arrondi explicite à la saisie).
+    expect(vues[0]).toMatchObject({ tranche: 1, cantineTotalCentimes: 1050 });
+    expect(vues[1]).toMatchObject({
+      tranche: 3,
+      cantineTotalCentimes: 1268,
+      cantinePartGardeCentimes: 801,
+    });
+    expect(transaction).toHaveBeenCalledTimes(1);
+    // Par tranche : 1 insert grille + 1 événement par mode ABCM.
+    expect(insertValues).toHaveBeenCalledTimes(
+      2 * (1 + MODES_ABCM_CONTRAT.length),
+    );
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ versionPayload: 2, tranche: 1 }),
+    );
+  });
+
+  it('REFUSE une période chevauchant une grille existante — aucune écriture', async () => {
+    const { db, transaction, insertValues } = fakeDbPublication([
+      ligneGrille(),
+    ]);
+    const service = new ReferentielService(db);
+
+    await expect(service.publierGrille(GRILLE)).rejects.toBeInstanceOf(
+      VersionsChevauchantesError,
+    );
+    expect(transaction).not.toHaveBeenCalled();
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('REFUSE deux lignes de la même tranche (chevauchement interne) — aucune écriture', async () => {
+    const { db, transaction } = fakeDbPublication([]);
+    const service = new ReferentielService(db);
+
+    await expect(
+      service.publierGrille({
+        ...GRILLE,
+        tranches: [GRILLE.tranches[0], GRILLE.tranches[0]],
+      }),
+    ).rejects.toBeInstanceOf(VersionsChevauchantesError);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('ReferentielService.listerGrilles (lot 6)', () => {
+  it('projette les lignes en vues (montants en centimes)', async () => {
+    const db = fakeDbLecture([ligneGrille({ tranche: 2 })]);
+    const service = new ReferentielService(db);
+
+    await expect(service.listerGrilles()).resolves.toEqual([
+      expect.objectContaining({ tranche: 2, cantineTotalCentimes: 540 }),
+    ]);
+  });
+});

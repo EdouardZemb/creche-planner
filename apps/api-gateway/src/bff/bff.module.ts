@@ -5,6 +5,7 @@ import { DesabonnementController } from './desabonnement.controller.js';
 import { EtablissementsFoyerController } from './etablissements-foyer.controller.js';
 import { FoyersController } from './foyers.controller.js';
 import { MoiController } from './moi.controller.js';
+import { ReferentielBffController } from './referentiel.controller.js';
 import { ValidationsController } from './validations.controller.js';
 
 /**
@@ -20,6 +21,7 @@ import { ValidationsController } from './validations.controller.js';
     DesabonnementController,
     EtablissementsFoyerController,
     ValidationsController,
+    ReferentielBffController,
   ],
 })
 export class BffModule {}

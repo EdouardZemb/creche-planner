@@ -24,6 +24,36 @@ export const publierGrilleAbcmSchema = z.object({
 export type PublierGrilleAbcmDto = z.infer<typeof publierGrilleAbcmSchema>;
 
 /**
+ * Une **ligne de tranche** d'une grille saisie à l'écran (SFD 30, lot 6) : les
+ * postes tarifaires d'un niveau de tranche, montants en **euros**. Reprend les
+ * champs de `publierGrilleAbcmSchema` sans les bornes de période (portées une
+ * seule fois par la grille entière).
+ */
+export const trancheGrilleSchema = z.object({
+  tranche: z.number().int(),
+  cantineTotal: z.number().nonnegative(),
+  cantinePartGarde: z.number().nonnegative().optional(),
+  periMatin: z.number().nonnegative(),
+  periSoir: z.number().nonnegative(),
+  alshJourneeComplete: z.number().nonnegative(),
+  alshDemiJournee: z.number().nonnegative(),
+  alshRepas: z.number().nonnegative(),
+});
+
+/**
+ * Publication d'une **grille complète** (SFD 30, US-30-02, lot 6) : une période de
+ * validité + une ligne par tranche (montants en euros). Publiée **atomiquement**
+ * par `ReferentielService.publierGrille` — une période chevauchant une grille
+ * existante (de la même tranche) est refusée sans **aucune** écriture partielle.
+ */
+export const publierGrilleSchema = z.object({
+  valideDu: z.iso.date('date ISO YYYY-MM-DD attendue'),
+  valideAu: z.iso.date('date ISO YYYY-MM-DD attendue').nullable().optional(),
+  tranches: z.array(trancheGrilleSchema).min(1),
+});
+export type PublierGrilleDto = z.infer<typeof publierGrilleSchema>;
+
+/**
  * Publication d'un barème PSU versionné (SFD 30, D2). `taux` = map
  * `nbEnfantsACharge` (chaîne) → taux horaire CNAF. Bornes (plancher/plafond)
  * saisies en **euros**, converties en centimes côté service. Validé en tête de

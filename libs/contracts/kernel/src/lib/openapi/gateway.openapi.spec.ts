@@ -11,7 +11,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(gatewayOpenApiDocument.info.version).toBe('1.0.0');
   });
 
-  it('expose exactement les 24 routes attendues', () => {
+  it('expose exactement les 27 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -39,8 +39,26 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/contrats/{id}/plannings/{mois}',
         '/api/v1/couts',
         '/api/v1/couts/annuel',
+        '/api/v1/referentiel/grilles',
+        '/api/v1/referentiel/baremes/psu',
+        '/api/v1/referentiel/baremes/tranches',
       ].sort(),
     );
+  });
+
+  it('expose la publication de grille (GET/POST /referentiel/grilles) + 409 chevauchement', () => {
+    const route = gatewayOpenApiDocument.paths['/api/v1/referentiel/grilles'];
+    expect(
+      route.get.responses['200'].content['application/json'].schema,
+    ).toEqual({
+      type: 'array',
+      items: { $ref: '#/components/schemas/GrilleAbcmVue' },
+    });
+    expect(
+      route.post.requestBody.content['application/json'].schema.required,
+    ).toEqual(['valideDu', 'tranches']);
+    expect(route.post.responses['201']).toBeDefined();
+    expect(route.post.responses['409'].description).toMatch(/chevauche/i);
   });
 
   it('expose le profil du parent connecté + ses préférences (GET /moi/profil, PUT /moi/preferences)', () => {
@@ -166,6 +184,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(schemas.EtablissementFoyerVue).toBeDefined();
     expect(schemas.CreerEtablissementCorps).toBeDefined();
     expect(schemas.PreavisRegle).toBeDefined();
+    expect(schemas.GrilleAbcmVue).toBeDefined();
   });
 
   it('expose le serveur local de la gateway', () => {

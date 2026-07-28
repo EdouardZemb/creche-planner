@@ -495,6 +495,40 @@ export const gatewayOpenApiDocument = {
         },
         required: ['foyerId', 'annee', 'simule', 'totalCentimes', 'mois'],
       },
+      GrilleAbcmVue: {
+        type: 'object',
+        description:
+          'Ligne de grille ABCM publiée pour une tranche, versionnée par ' +
+          'période (SFD 30, US-30-02). Montants en CENTIMES entiers (fidèles à ' +
+          '`Money`). `valideAu` null = période ouverte ; `cantinePartGardeCentimes` ' +
+          'null quand la part « garde » n’est pas connue (surtout hors T3).',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          tranche: { type: 'integer', minimum: 1, maximum: 3 },
+          valideDu: { type: 'string', format: 'date' },
+          valideAu: { type: ['string', 'null'], format: 'date' },
+          cantineTotalCentimes: { type: 'integer' },
+          cantinePartGardeCentimes: { type: ['integer', 'null'] },
+          periMatinCentimes: { type: 'integer' },
+          periSoirCentimes: { type: 'integer' },
+          alshJourneeCompleteCentimes: { type: 'integer' },
+          alshDemiJourneeCentimes: { type: 'integer' },
+          alshRepasCentimes: { type: 'integer' },
+        },
+        required: [
+          'id',
+          'tranche',
+          'valideDu',
+          'valideAu',
+          'cantineTotalCentimes',
+          'cantinePartGardeCentimes',
+          'periMatinCentimes',
+          'periSoirCentimes',
+          'alshJourneeCompleteCentimes',
+          'alshDemiJourneeCentimes',
+          'alshRepasCentimes',
+        ],
+      },
     },
   },
   paths: {
@@ -1763,6 +1797,177 @@ export const gatewayOpenApiDocument = {
           '409': {
             description: 'Des contrats sont rattachés à l’établissement.',
           },
+        },
+      },
+    },
+    '/api/v1/referentiel/grilles': {
+      get: {
+        summary: 'Lister les grilles ABCM publiées (écran Tarifs)',
+        description:
+          'Toutes les grilles ABCM du catalogue (SFD 30, US-30-02), une ligne ' +
+          'par tranche et par période, montants en centimes. Le catalogue est ' +
+          'global (aucun scoping foyer). Le front regroupe par période et affiche ' +
+          'chaque grille « en préparation / active / passée ».',
+        responses: {
+          '200': {
+            description: 'Grilles publiées (liste vide si aucune).',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/GrilleAbcmVue' },
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        summary: 'Publier une grille ABCM complète (période + tranches)',
+        description:
+          'Saisit la grille d’une nouvelle année (SFD 30, US-30-02) : une période ' +
+          'de validité et une ligne par tranche (montants en EUROS, convertis en ' +
+          'centimes côté service). Route globale (aucun scoping foyer). Publication ' +
+          'ATOMIQUE : une période chevauchant une grille existante de la même ' +
+          'tranche est refusée sans aucune écriture (409).',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Grille à publier : bornes de période (`valideAu` null ou absent ' +
+                  '= ouverte) et lignes de tranche (montants EUROS).',
+                properties: {
+                  valideDu: { type: 'string', format: 'date' },
+                  valideAu: { type: ['string', 'null'], format: 'date' },
+                  tranches: {
+                    type: 'array',
+                    minItems: 1,
+                    items: {
+                      type: 'object',
+                      properties: {
+                        tranche: { type: 'integer', minimum: 1, maximum: 3 },
+                        cantineTotal: { type: 'number', minimum: 0 },
+                        cantinePartGarde: { type: 'number', minimum: 0 },
+                        periMatin: { type: 'number', minimum: 0 },
+                        periSoir: { type: 'number', minimum: 0 },
+                        alshJourneeComplete: { type: 'number', minimum: 0 },
+                        alshDemiJournee: { type: 'number', minimum: 0 },
+                        alshRepas: { type: 'number', minimum: 0 },
+                      },
+                      required: [
+                        'tranche',
+                        'cantineTotal',
+                        'periMatin',
+                        'periSoir',
+                        'alshJourneeComplete',
+                        'alshDemiJournee',
+                        'alshRepas',
+                      ],
+                    },
+                  },
+                },
+                required: ['valideDu', 'tranches'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Grille publiée (les lignes créées, une par tranche).',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: { $ref: '#/components/schemas/GrilleAbcmVue' },
+                },
+              },
+            },
+          },
+          '400': { description: 'Données invalides (tranche/période).' },
+          '409': {
+            description:
+              'La période chevauche une grille existante de la même tranche ' +
+              '(rien n’est écrit).',
+          },
+        },
+      },
+    },
+    '/api/v1/referentiel/baremes/psu': {
+      post: {
+        summary: 'Publier un barème PSU versionné',
+        description:
+          'Publie un barème PSU (taux CNAF par nombre d’enfants + bornes en ' +
+          'EUROS) sur une période (SFD 30). Route globale. 409 si la période ' +
+          'chevauche un barème existant (rien d’écrit).',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  valideDu: { type: 'string', format: 'date' },
+                  valideAu: { type: ['string', 'null'], format: 'date' },
+                  taux: {
+                    type: 'object',
+                    additionalProperties: { type: 'number' },
+                  },
+                  plancher: { type: 'number', minimum: 0 },
+                  plafond: { type: 'number', minimum: 0 },
+                },
+                required: ['valideDu', 'taux'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Barème PSU publié.' },
+          '400': { description: 'Données invalides.' },
+          '409': { description: 'Période chevauchante (rien d’écrit).' },
+        },
+      },
+    },
+    '/api/v1/referentiel/baremes/tranches': {
+      post: {
+        summary: 'Publier un barème de seuils de tranche RFR versionné',
+        description:
+          'Publie les seuils de tranche RFR (liste ordonnée `[{niveau, rfrMax|' +
+          'null}]`, bornes hautes inclusives en EUROS) sur une période (SFD 30, ' +
+          'DV-03). Route globale. 409 si période chevauchante (rien d’écrit).',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  valideDu: { type: 'string', format: 'date' },
+                  valideAu: { type: ['string', 'null'], format: 'date' },
+                  seuils: {
+                    type: 'array',
+                    minItems: 1,
+                    items: {
+                      type: 'object',
+                      properties: {
+                        niveau: { type: 'integer', minimum: 1 },
+                        rfrMax: { type: ['number', 'null'], minimum: 0 },
+                      },
+                      required: ['niveau', 'rfrMax'],
+                    },
+                  },
+                },
+                required: ['valideDu', 'seuils'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Barème de tranches publié.' },
+          '400': { description: 'Données invalides.' },
+          '409': { description: 'Période chevauchante (rien d’écrit).' },
         },
       },
     },

@@ -1553,6 +1553,230 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/referentiel/grilles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lister les grilles ABCM publiées (écran Tarifs)
+         * @description Toutes les grilles ABCM du catalogue (SFD 30, US-30-02), une ligne par tranche et par période, montants en centimes. Le catalogue est global (aucun scoping foyer). Le front regroupe par période et affiche chaque grille « en préparation / active / passée ».
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Grilles publiées (liste vide si aucune). */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GrilleAbcmVue"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Publier une grille ABCM complète (période + tranches)
+         * @description Saisit la grille d’une nouvelle année (SFD 30, US-30-02) : une période de validité et une ligne par tranche (montants en EUROS, convertis en centimes côté service). Route globale (aucun scoping foyer). Publication ATOMIQUE : une période chevauchant une grille existante de la même tranche est refusée sans aucune écriture (409).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        valideDu: string;
+                        /** Format: date */
+                        valideAu?: string | null;
+                        tranches: {
+                            tranche: number;
+                            cantineTotal: number;
+                            cantinePartGarde?: number;
+                            periMatin: number;
+                            periSoir: number;
+                            alshJourneeComplete: number;
+                            alshDemiJournee: number;
+                            alshRepas: number;
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Grille publiée (les lignes créées, une par tranche). */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["GrilleAbcmVue"][];
+                    };
+                };
+                /** @description Données invalides (tranche/période). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description La période chevauche une grille existante de la même tranche (rien n’est écrit). */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referentiel/baremes/psu": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publier un barème PSU versionné
+         * @description Publie un barème PSU (taux CNAF par nombre d’enfants + bornes en EUROS) sur une période (SFD 30). Route globale. 409 si la période chevauche un barème existant (rien d’écrit).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        valideDu: string;
+                        /** Format: date */
+                        valideAu?: string | null;
+                        taux: {
+                            [key: string]: number;
+                        };
+                        plancher?: number;
+                        plafond?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Barème PSU publié. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Données invalides. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Période chevauchante (rien d’écrit). */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/referentiel/baremes/tranches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publier un barème de seuils de tranche RFR versionné
+         * @description Publie les seuils de tranche RFR (liste ordonnée `[{niveau, rfrMax|null}]`, bornes hautes inclusives en EUROS) sur une période (SFD 30, DV-03). Route globale. 409 si période chevauchante (rien d’écrit).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        valideDu: string;
+                        /** Format: date */
+                        valideAu?: string | null;
+                        seuils: {
+                            niveau: number;
+                            rfrMax: number | null;
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Barème de tranches publié. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Données invalides. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Période chevauchante (rien d’écrit). */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1777,6 +2001,23 @@ export interface components {
             simule: boolean;
             totalCentimes: number;
             mois: components["schemas"]["CoutMoisVue"][];
+        };
+        /** @description Ligne de grille ABCM publiée pour une tranche, versionnée par période (SFD 30, US-30-02). Montants en CENTIMES entiers (fidèles à `Money`). `valideAu` null = période ouverte ; `cantinePartGardeCentimes` null quand la part « garde » n’est pas connue (surtout hors T3). */
+        GrilleAbcmVue: {
+            /** Format: uuid */
+            id: string;
+            tranche: number;
+            /** Format: date */
+            valideDu: string;
+            /** Format: date */
+            valideAu: string | null;
+            cantineTotalCentimes: number;
+            cantinePartGardeCentimes: number | null;
+            periMatinCentimes: number;
+            periSoirCentimes: number;
+            alshJourneeCompleteCentimes: number;
+            alshDemiJourneeCentimes: number;
+            alshRepasCentimes: number;
         };
     };
     responses: never;

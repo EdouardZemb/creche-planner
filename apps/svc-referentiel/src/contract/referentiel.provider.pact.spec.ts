@@ -17,6 +17,8 @@ import postgres, { type Sql } from 'postgres';
  * `stateHandler` (et redondamment par le seed de boot du service).
  */
 const ETAT_GRILLE_T3 = 'une grille ABCM T3 applicable en 2026 existe';
+/** État de publication : le créneau historique 2019-2020 est libre (idempotence). */
+const ETAT_CRENEAU_2019_LIBRE = 'le créneau de grille 2019 est libre';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-referentiel) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
@@ -176,6 +178,13 @@ describe('Pact provider · svc-referentiel honore le contrat api-gateway', () =>
               ) values (3, '2026-01-01', null, 1268, 801, 333, 705, 2650, 950, 750)
             `;
           }
+        },
+        // Publication de grille (lot 6) : on garantit que le créneau historique
+        // 2019-2020 est LIBRE pour que le POST /api/grilles/abcm réussisse en 201
+        // (idempotence des re-vérifications provider : une publication d'un run
+        // précédent aurait sinon fait échouer l'anti-chevauchement).
+        [ETAT_CRENEAU_2019_LIBRE]: async (): Promise<void> => {
+          await db`delete from grille_abcm where valide_du = '2019-09-01'`;
         },
       },
     }).verifyProvider();

@@ -19,6 +19,7 @@ import { PlanningPage } from './planning/PlanningPage';
 import { CoutsAnnuelsPage } from './couts/CoutsAnnuelsPage';
 import { EtablissementsPage } from './etablissements/EtablissementsPage';
 import { MonProfilPage } from './profil/MonProfilPage';
+import { TarifsPage } from './tarifs/TarifsPage';
 import { DesabonnementPage } from './desabonnement/DesabonnementPage';
 import { PastilleAValider } from './notifications/PastilleAValider';
 import { ClocheNotifications } from './notifications/ClocheNotifications';
@@ -349,6 +350,12 @@ function Entete() {
               <NavLink to={`/foyers/${id}/etablissements`} onClick={fermerPlus}>
                 Crèches & écoles
               </NavLink>
+              {/* Catalogue tarifaire GLOBAL (SFD 30, US-30-02) : saisie des grilles
+                  de l'association. Accessible à tout parent authentifié (pas de
+                  scoping foyer) ; lien global, hors segment :foyerId. */}
+              <NavLink to="/tarifs" onClick={fermerPlus}>
+                Tarifs
+              </NavLink>
               {/* Édition du foyer par son **propriétaire** (parent) : visible dès
                   qu'un foyer est actif, NON conditionnée à `moi.admin` (le BFF
                   borne l'écriture via `@FoyerScope`). */}
@@ -602,6 +609,7 @@ function Coquille() {
           <Route path="/" element={<Accueil />} />
           <Route path="/mes-foyers" element={<MesFoyersPage />} />
           <Route path="/mon-profil" element={<MonProfilPage />} />
+          <Route path="/tarifs" element={<TarifsPage />} />
           <Route path="/desabonnement" element={<DesabonnementPage />} />
           <Route path="/foyers/new" element={<FoyerFormPage />} />
           <Route path="/foyers/:foyerId" element={<GardeFoyer />}>
