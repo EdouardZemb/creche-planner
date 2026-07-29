@@ -141,6 +141,78 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
     expect(warn).toHaveBeenCalledOnce();
   });
 
+  describe("source 'identite' (routes « self », BFF /moi)", () => {
+    it('résout foyersParEmail, pose req.foyersAutorises et laisse passer', async () => {
+      const warn = vi.spyOn(Logger.prototype, 'warn');
+      const foyers = fakeFoyers(async () => ['f-1', 'f-2']);
+      const guard = new AppartenanceGuard(
+        fakeReflector('identite'),
+        foyers,
+        fakePlanification(async () => ({ foyerId: 'x' })),
+      );
+      const req = requete({ identite: { email: 'p@test.fr' } });
+      await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
+      // C'est le but de la source : l'interceptor de propagation reprend cette
+      // liste pour que l'assertion parent porte les foyers (refus fantômes A5).
+      expect(req.foyersAutorises).toEqual(['f-1', 'f-2']);
+      expect(foyers.foyersParEmail).toHaveBeenCalledWith('p@test.fr');
+      expect(warn).not.toHaveBeenCalled();
+      expect(addRefus).not.toHaveBeenCalled();
+    });
+
+    it('admin → bypass sans résolution (l’assertion admin bypasse le scoping aval)', async () => {
+      process.env['ADMIN_EMAILS'] = 'admin@test.fr';
+      const foyers = fakeFoyers(async () => []);
+      const guard = new AppartenanceGuard(
+        fakeReflector('identite'),
+        foyers,
+        fakePlanification(async () => ({ foyerId: 'x' })),
+      );
+      const req = requete({ identite: { email: 'admin@test.fr' } });
+      await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
+      expect(foyers.foyersParEmail).not.toHaveBeenCalled();
+      expect(req.estAdmin).toBe(true);
+    });
+
+    it('résolution en échec, observe → journalise et laisse passer', async () => {
+      const warn = vi.spyOn(Logger.prototype, 'warn');
+      const guard = new AppartenanceGuard(
+        fakeReflector('identite'),
+        fakeFoyers(async () => {
+          throw new Error('svc-foyer indisponible');
+        }),
+        fakePlanification(async () => ({ foyerId: 'x' })),
+      );
+      const req = requete({ identite: { email: 'p@test.fr' } });
+      await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
+      expect(req.foyersAutorises).toBeUndefined();
+      expect(warn).toHaveBeenCalledOnce();
+      expect(addRefus).toHaveBeenCalledWith(1, {
+        decision: 'aurait_refuse',
+        motif: 'resolution_impossible',
+      });
+    });
+
+    it('résolution en échec, enforce → fail-closed 403', async () => {
+      process.env['FOYER_AUTHZ_ENFORCE'] = '1';
+      const guard = new AppartenanceGuard(
+        fakeReflector('identite'),
+        fakeFoyers(async () => {
+          throw new Error('svc-foyer indisponible');
+        }),
+        fakePlanification(async () => ({ foyerId: 'x' })),
+      );
+      const req = requete({ identite: { email: 'p@test.fr' } });
+      await expect(guard.canActivate(fakeContext(req))).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(addRefus).toHaveBeenCalledWith(1, {
+        decision: 'refuse',
+        motif: 'resolution_impossible',
+      });
+    });
+  });
+
   describe('observe-only (flag FOYER_AUTHZ_ENFORCE absent)', () => {
     it('foyer autorisé → laisse passer (aucun warn)', async () => {
       const warn = vi.spyOn(Logger.prototype, 'warn');
