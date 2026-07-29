@@ -1,0 +1,21 @@
+# ===========================================================================
+# creche-heartbeat.timer — Planifie le battement de cœur creche-planner
+# ---------------------------------------------------------------------------
+# Déclenche creche-heartbeat.service toutes les ~5 minutes. La PÉRIODE et la
+# GRÂCE configurées côté moniteur externe (ex. Healthchecks.io : period 5 min,
+# grace 5 min) déterminent le délai d'alerte : silence détecté en ~10 min.
+# OnBootSec court : reprendre le battement vite après un redémarrage, sinon le
+# moniteur signale à tort une panne prolongée.
+# ===========================================================================
+[Unit]
+Description=Planification du battement de cœur creche-planner
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=5min
+Persistent=true
+RandomizedDelaySec=30
+Unit=creche-heartbeat.service
+
+[Install]
+WantedBy=timers.target
