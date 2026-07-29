@@ -53,8 +53,13 @@ journalctl -u creche-backup.service -n 50 --no-pager
 ls -la /home/<user>/backups/creche
 ```
 
-Une exécution réussie écrit un sous-dossier horodaté contenant les 4 dumps et
+Une exécution réussie écrit un sous-dossier horodaté contenant les 5 dumps et
 se termine avec le statut `success` dans `journalctl`.
+
+Si `OFFSITE_REMOTE` est défini dans `.env.server`, la même exécution pousse
+aussi le jeu de dumps **chiffré (age)** vers le cloud via
+[`backup-offsite.sh`](../backup-offsite.sh) — mise en service et restauration :
+[docs/exploitation/sauvegardes.md §9](../../docs/exploitation/sauvegardes.md).
 
 ## Alternative cron
 
