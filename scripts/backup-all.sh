@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# backup-all.sh — Sauvegarde des 4 bases PostgreSQL de creche-planner
+# backup-all.sh — Sauvegarde des 5 bases PostgreSQL de creche-planner
 # Usage : ./scripts/backup-all.sh [OUTPUT_DIR] [FORMAT]
 #   OUTPUT_DIR : répertoire de sortie (défaut : ./backups)
 #   FORMAT     : custom (défaut) | plain
@@ -35,6 +35,7 @@ DATABASES=(
     "postgres-foyer         foyer         foyer"
     "postgres-planification planification planification"
     "postgres-tarification  tarification  tarification"
+    "postgres-notifications notifications notifications"
 )
 
 if [ "${FORMAT}" = "custom" ]; then
