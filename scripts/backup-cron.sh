@@ -4,9 +4,11 @@
 # Usage : ./scripts/backup-cron.sh
 #
 # Pensé pour cron ou un timer systemd. Enchaîne :
-#   1. chargement des secrets (.env.server → PG_<DB>_PWD) ;
+#   1. chargement des secrets (.env.server → PG_<DB>_PWD, OFFSITE_*) ;
 #   2. backup-all.sh vers un répertoire persistant ;
-#   3. backup-prune.sh (purge selon la rétention).
+#   3. backup-prune.sh (purge selon la rétention) ;
+#   4. backup-offsite.sh (copie hors-site chiffrée — sautée si OFFSITE_REMOTE
+#      n'est pas défini dans l'environnement).
 #
 # Variables d'environnement :
 #   BACKUP_DIR              répertoire de sortie persistant
@@ -47,5 +49,8 @@ echo ">>> Sauvegarde vers ${BACKUP_DIR}"
 
 echo ">>> Purge (rétention : ${BACKUP_RETENTION_DAYS:-30} j)"
 "${SCRIPT_DIR}/backup-prune.sh" "${BACKUP_DIR}" "${BACKUP_RETENTION_DAYS:-30}"
+
+echo ">>> Copie hors-site chiffrée (age + rclone)"
+"${SCRIPT_DIR}/backup-offsite.sh" "${BACKUP_DIR}"
 
 echo ">>> Sauvegarde planifiée terminée."
