@@ -45,7 +45,8 @@ export class DatabaseModule implements OnModuleDestroy {
         },
         MigrationService,
       ],
-      exports: [PG_CLIENT, DRIZZLE],
+      // MigrationService est exporté pour la sonde readiness (MigrationsHealthIndicator).
+      exports: [PG_CLIENT, DRIZZLE, MigrationService],
     };
   }
 
