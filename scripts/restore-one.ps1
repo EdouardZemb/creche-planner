@@ -13,7 +13,7 @@
     -Confirm:$false est passé.
 
 .PARAMETER DbName
-    Nom de la base cible. Valeurs : referentiel | foyer | planification | tarification
+    Nom de la base cible. Valeurs : referentiel | foyer | planification | tarification | notifications
 
 .PARAMETER DumpFile
     Chemin complet vers le fichier dump (.dump ou .sql) à restaurer.
@@ -36,7 +36,7 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('referentiel', 'foyer', 'planification', 'tarification')]
+    [ValidateSet('referentiel', 'foyer', 'planification', 'tarification', 'notifications')]
     [string]$DbName,
 
     [Parameter(Mandatory)]
@@ -56,6 +56,7 @@ $ServiceMap = @{
     'foyer'         = 'postgres-foyer'
     'planification' = 'postgres-planification'
     'tarification'  = 'postgres-tarification'
+    'notifications' = 'postgres-notifications'
 }
 
 $Service = $ServiceMap[$DbName]
