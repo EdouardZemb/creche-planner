@@ -48,6 +48,12 @@ const compteurRefus = meterAuthz.createCounter('gateway_authz_refus_total', {
  *   laisse passer (comportement legacy, prod actuelle inchangée) ;
  * - **activé** (après back-fill PR6) : **refus réel (403)**.
  *
+ * Cas particulier `@FoyerScope('identite')` (routes « self », BFF `/moi/*`) : la
+ * requête ne porte aucune référence de foyer, il n'y a rien à comparer — le guard
+ * résout seulement `foyersParEmail` et pose `req.foyersAutorises` pour que
+ * l'assertion propagée aux services porte les foyers du parent (sinon leur
+ * `ScopeFoyerGuard` compte des refus fantômes sur les appels aval du handler).
+ *
  * Garde-fous anti-verrouillage :
  * - **route non scopée** (`@FoyerScope` absent) → laisse passer ;
  * - **aucune identité établie** → laisse passer (l'auth machine + Cloudflare
@@ -91,6 +97,20 @@ export class AppartenanceGuard implements CanActivate {
       // Statut repris par l'interceptor de propagation (assertion parent `admin`).
       req.estAdmin = true;
       return true; // provisioning admin : bypass de l'appartenance
+    }
+
+    if (source === 'identite') {
+      // Route « self » (BFF /moi) : pas de ressource foyer à contrôler, mais les
+      // appels aval du handler visent le(s) foyer(s) du parent — on résout donc
+      // l'ensemble autorisé pour que l'assertion propagée le porte. Même
+      // fail-closed que les routes scopées : sans résolution, les services
+      // refuseraient de toute façon ces appels en enforce.
+      try {
+        req.foyersAutorises = await this.foyers.foyersParEmail(email);
+      } catch (erreur) {
+        return this.surEchecResolution(email, foyerAuthzEnforce, erreur);
+      }
+      return true;
     }
 
     const ref = extraireRefFoyer(source, req);
