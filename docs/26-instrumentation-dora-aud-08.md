@@ -102,20 +102,20 @@ Deux artefacts, deux responsabilités :
 
 **Entrées** (variables d'environnement, lues depuis `.env.server` / l'invocation) :
 
-| Variable                     | Rôle                                                                          | Défaut                                                              |
-| ---------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `GH_DEPLOYMENTS_TOKEN`       | PAT **fine-grained**, scope **Deployments: Read and write** sur le seul dépôt | _(requis ; sinon mode record-skip)_                                 |
-| `GITHUB_REPOSITORY`          | `owner/repo` ciblé par l'API                                                  | `EdouardZemb/creche-planner`                                        |
-| `DEPLOY_REF`                 | SHA (ou tag) **déployé** = `ref` du Deployment (clé du _lead time_)           | label `…image.revision` de l'image gateway tirée, sinon `IMAGE_TAG` |
-| `IMAGE_TAG`                  | Tag d'image tiré (déjà utilisé par le compose, AUD-05)                        | `main`                                                              |
-| `DEPLOY_ENVIRONMENT`         | Nom d'environnement GitHub                                                    | `production`                                                        |
-| `DEPLOY_ENVIRONMENT_URL`     | URL publique consignée sur le statut                                          | `https://creche.testlens.dev`                                       |
-| `DEPLOY_VERIFY_COSIGN`       | Vérifier la signature cosign (AUD-07) avant `up` (`1` pour activer)           | _off_                                                               |
-| `DEPLOY_SKIP_SEED` / `_PERF` | Sauter le seed / le smoke perf (porte 3)                                      | _off_                                                               |
-| `GATEWAY_URL`                | Où la porte 3 (santé/seed/perf) joint la gateway                              | `SERVER_ORIGIN`, sinon `http://localhost:3000`                      |
-| `SEED_BASE_URL`              | Base API transmise au seed (porte 3)                                          | `${GATEWAY_URL}/api/v1`                                             |
-| `DEPLOY_CA_CERT`             | CA à faire confiance pour le TLS « internal » de Caddy (HTTPS)                | `NODE_EXTRA_CA_CERTS`, sinon `./caddy-root.crt` s'il existe         |
-| `DORA_DRY_RUN`               | N'appeler ni Docker ni l'API (validation locale du flux)                      | _off_                                                               |
+| Variable                     | Rôle                                                                                                   | Défaut                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `GH_DEPLOYMENTS_TOKEN`       | PAT **fine-grained**, scope **Deployments: Read and write** sur le seul dépôt                          | _(requis ; sinon mode record-skip)_                                 |
+| `GITHUB_REPOSITORY`          | `owner/repo` ciblé par l'API                                                                           | `EdouardZemb/creche-planner`                                        |
+| `DEPLOY_REF`                 | SHA (ou tag) **déployé** = `ref` du Deployment (clé du _lead time_)                                    | label `…image.revision` de l'image gateway tirée, sinon `IMAGE_TAG` |
+| `IMAGE_TAG`                  | Tag d'image tiré (déjà utilisé par le compose, AUD-05)                                                 | `main`                                                              |
+| `DEPLOY_ENVIRONMENT`         | Nom d'environnement GitHub                                                                             | `production`                                                        |
+| `DEPLOY_ENVIRONMENT_URL`     | URL publique consignée sur le statut                                                                   | `https://creche.testlens.dev`                                       |
+| `DEPLOY_VERIFY_COSIGN`       | Vérifier la signature cosign (AUD-07) de TOUTES les images avant `up` (`0` pour désactiver — à éviter) | _on_                                                                |
+| `DEPLOY_SKIP_SEED` / `_PERF` | Sauter le seed / le smoke perf (porte 3)                                                               | _off_                                                               |
+| `GATEWAY_URL`                | Où la porte 3 (santé/seed/perf) joint la gateway                                                       | `SERVER_ORIGIN`, sinon `http://localhost:3000`                      |
+| `SEED_BASE_URL`              | Base API transmise au seed (porte 3)                                                                   | `${GATEWAY_URL}/api/v1`                                             |
+| `DEPLOY_CA_CERT`             | CA à faire confiance pour le TLS « internal » de Caddy (HTTPS)                                         | `NODE_EXTRA_CA_CERTS`, sinon `./caddy-root.crt` s'il existe         |
+| `DORA_DRY_RUN`               | N'appeler ni Docker ni l'API (validation locale du flux)                                               | _off_                                                               |
 
 > **Topologie « ports non publiés » (#31, doc 24 §6).** Depuis que la prod ne
 > publie plus aucun port hôte d'`api-gateway`, la porte 3 ne peut plus viser
@@ -133,7 +133,9 @@ Deux artefacts, deux responsabilités :
    **déjà validé** par la CI → pas de re-vérification de statuts), `auto_merge:false`,
    `production_environment:true`. → mémorise `deployment.id`. Poste aussitôt
    `state=in_progress`.
-2. **Porte 1bis** — `docker compose … pull` (+ `cosign verify` si `DEPLOY_VERIFY_COSIGN`).
+2. **Porte 1bis** — `cosign verify` de **toutes** les images déployées (les 7 de
+   `scripts/services.json`, actif par défaut, opt-out `DEPLOY_VERIFY_COSIGN=0`),
+   puis `docker compose … pull`.
 3. **Résolution du SHA réel** — si `DEPLOY_REF` non fourni, lit
    `org.opencontainers.image.revision` sur l'image **gateway** tirée
    (`docker image inspect`) → `ref` exact même quand on déploie le rolling `:main`.

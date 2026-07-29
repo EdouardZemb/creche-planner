@@ -5,7 +5,7 @@
  *
  * Lancé SUR LE SERVEUR de production par l'opérateur. Enveloppe les portes de
  * qualité de la [doc 24](../docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md)
- * (1bis pull → 2 up --wait → 3 health/seed/perf) et **enregistre l'événement de
+ * (1bis cosign toutes images + pull → 2 up --wait → 3 health/seed/perf) et **enregistre l'événement de
  * déploiement** auprès de GitHub (API Deployments) → c'est la source des métriques
  * DORA (deployment frequency, lead time, change failure rate, MTTR).
  *
@@ -83,7 +83,10 @@ const CHILD_ENV = {
   ...(CA_CERT ? { NODE_EXTRA_CA_CERTS: CA_CERT } : {}),
 };
 const DRY_RUN = process.env.DORA_DRY_RUN === '1';
-const VERIFY_COSIGN = process.env.DEPLOY_VERIFY_COSIGN === '1';
+// Vérification cosign (AUD-07) de TOUTES les images déployées — ACTIVE PAR DÉFAUT
+// (lot A2 « Risques prod »). Opt-out EXPLICITE avec DEPLOY_VERIFY_COSIGN=0
+// (ex. dev local sans cosign sur le PATH).
+const VERIFY_COSIGN = process.env.DEPLOY_VERIFY_COSIGN !== '0';
 const SKIP_SEED = process.env.DEPLOY_SKIP_SEED === '1';
 const SKIP_PERF = process.env.DEPLOY_SKIP_PERF === '1';
 // Rollback auto (Phase 7). Override explicite de la version-cible du rollback
@@ -121,28 +124,38 @@ const UP_SERVICES = (process.env.DEPLOY_UP_SERVICES ?? '')
   .split(/\s+/)
   .filter(Boolean);
 
-// Garde-fou (audit 2026-07) : chaque service de DEPLOY_UP_SERVICES doit exister
-// dans la source unique de topologie (scripts/services.json) — attrape une faute
-// de frappe de .env.staging avant le `up`. AVERTISSEMENT seulement : un souci de
-// lecture du fichier ne doit JAMAIS bloquer un déploiement (prod comprise).
+// Source unique de topologie (scripts/services.json) : liste des services
+// applicatifs déployés + registre. Sert au garde-fou DEPLOY_UP_SERVICES ET à la
+// vérification cosign de TOUTES les images (Porte 1bis). Une lecture en échec ne
+// bloque pas ICI (le garde-fou reste un avertissement) — la Porte 1bis, elle,
+// refusera de déployer sans liste (fail-closed).
+let SERVICES_APPLICATIFS = [];
+let REGISTRE = 'ghcr.io/edouardzemb/creche-planner';
 try {
-  const { servicesApplicatifs } = JSON.parse(
+  const topologie = JSON.parse(
     readFileSync(join(RACINE, 'scripts', 'services.json'), 'utf8'),
   );
-  for (const s of UP_SERVICES) {
-    if (!servicesApplicatifs.includes(s)) {
-      console.warn(
-        `⚠️ DEPLOY_UP_SERVICES : service "${s}" inconnu de scripts/services.json (faute de frappe ?).`,
-      );
-    }
-  }
+  SERVICES_APPLICATIFS = topologie.servicesApplicatifs ?? [];
+  REGISTRE = topologie.registre || REGISTRE;
 } catch (e) {
   console.warn(
     `⚠️ scripts/services.json illisible (${e.message}) — garde-fou DEPLOY_UP_SERVICES sauté.`,
   );
 }
 
-const GATEWAY_IMAGE = `ghcr.io/edouardzemb/creche-planner/api-gateway:${IMAGE_TAG}`;
+// Garde-fou (audit 2026-07) : chaque service de DEPLOY_UP_SERVICES doit exister
+// dans la source unique de topologie — attrape une faute de frappe de
+// .env.staging avant le `up`. AVERTISSEMENT seulement : un souci de lecture du
+// fichier ne doit JAMAIS bloquer un déploiement (prod comprise).
+for (const s of UP_SERVICES) {
+  if (SERVICES_APPLICATIFS.length && !SERVICES_APPLICATIFS.includes(s)) {
+    console.warn(
+      `⚠️ DEPLOY_UP_SERVICES : service "${s}" inconnu de scripts/services.json (faute de frappe ?).`,
+    );
+  }
+}
+
+const GATEWAY_IMAGE = `${REGISTRE}/api-gateway:${IMAGE_TAG}`;
 
 // --- Utilitaires ------------------------------------------------------------
 
@@ -482,22 +495,49 @@ async function main() {
   // une fois l'image tirée (résolution du SHA exact). Pour éviter deux Deployments,
   // on TIRE d'abord, on résout le SHA, PUIS on crée le Deployment.
 
-  // Porte 1bis — récupération (+ vérification cosign optionnelle).
+  // Porte 1bis — vérification cosign de TOUTES les images déployées (AUD-07,
+  // lot A2). Active par défaut ; opt-out explicite DEPLOY_VERIFY_COSIGN=0.
   if (VERIFY_COSIGN) {
     console.log('\n▶ Porte 1bis — vérification de signature cosign (AUD-07)');
-    const code = run('cosign', [
-      'verify',
-      GATEWAY_IMAGE,
-      '--certificate-identity-regexp',
-      'https://github.com/EdouardZemb/creche-planner/.+',
-      '--certificate-oidc-issuer',
-      'https://token.actions.githubusercontent.com',
-    ]);
-    if (code !== 0) {
-      // Pas encore de Deployment créé → on ne peut pas poster `failure` ; on sort.
-      console.error('\n❌ Signature cosign invalide — déploiement refusé.');
+    // Fail-closed : sans la liste des services (services.json illisible), on ne
+    // sait pas QUOI vérifier → refus. L'opérateur peut désactiver explicitement
+    // (DEPLOY_VERIFY_COSIGN=0) s'il assume de déployer sans vérification.
+    if (SERVICES_APPLICATIFS.length === 0) {
+      console.error(
+        '\n❌ scripts/services.json illisible — liste des images à vérifier inconnue ; déploiement refusé.',
+      );
       process.exit(1);
     }
+    const images = SERVICES_APPLICATIFS.map(
+      (s) => `${REGISTRE}/${s}:${IMAGE_TAG}`,
+    );
+    let verifiees = 0;
+    for (const image of images) {
+      const code = run('cosign', [
+        'verify',
+        image,
+        '--certificate-identity-regexp',
+        'https://github.com/EdouardZemb/creche-planner/.+',
+        '--certificate-oidc-issuer',
+        'https://token.actions.githubusercontent.com',
+      ]);
+      if (code !== 0) {
+        // Pas encore de Deployment créé → on ne peut pas poster `failure` ; on sort.
+        console.error(
+          `\n❌ Signature cosign invalide pour ${image} — déploiement refusé.`,
+        );
+        process.exit(1);
+      }
+      verifiees += 1;
+      console.log(`  ✔ ${image} vérifiée (${verifiees}/${images.length})`);
+    }
+    console.log(
+      `  ✓ ${verifiees}/${images.length} images vérifiées (signature cosign keyless).`,
+    );
+  } else {
+    console.warn(
+      '\n⚠️ Vérification cosign DÉSACTIVÉE (DEPLOY_VERIFY_COSIGN=0) — images déployées sans preuve de signature.',
+    );
   }
 
   console.log('\n▶ Porte 1bis — récupération des images (docker compose pull)');
