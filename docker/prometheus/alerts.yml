@@ -362,3 +362,35 @@ groups:
             que l'enforce refuserait — AVANT bascule, un flux non nul signale un faux positif, ex.
             un client interne sans assertion machine ou une règle de scoping trop stricte). Corréler
             aux logs (Loki : `{service=~"svc-.*"} |= "SCOPE AURAIT REFUSÉ"` ou `|= "SCOPE REFUSÉ"`).
+
+  # ---------------------------------------------------------------------------
+  # Groupe 7 : Migrations de schéma (chantier A, lot A7)
+  # Sources : instruments applicatifs émis par libs/nest-commons (migration.service)
+  #           via OTel Metrics → OTel Collector (:8889) → Prometheus (job otel-metrics).
+  #   • migrations_en_attente{service_name}  — jauge 0/1 : 1 tant que les migrations
+  #     Drizzle ne sont pas appliquées au boot (schéma potentiellement en retard)
+  #   • migrations_echecs_total{service_name} — tentatives en échec (1 toutes les 5 s)
+  # Comble l'angle mort du retry silencieux : un service dont la migration échoue
+  # reboucle toutes les 5 s indéfiniment, tourne avec un schéma en retard, et sa
+  # readiness (/api/health) reste down — mais AUCUNE alerte ne partait (liveness OK,
+  # blackbox sonde /api/health/live). Routée e-mail via le label severity.
+  # ---------------------------------------------------------------------------
+  - name: migrations
+    interval: 30s
+    rules:
+      - alert: MigrationsEnRetardPersistant
+        expr: migrations_en_attente > 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Migrations non appliquées sur {{ $labels.service_name }} — schéma en retard'
+          description: >
+            Le service {{ $labels.service_name }} n'a toujours pas appliqué ses
+            migrations Drizzle 10 min après son démarrage (migrations_en_attente = 1) :
+            il tourne avec un schéma en retard et sa readiness reste down, mais le
+            process est vivant (la boucle de retry réessaie toutes les 5 s en silence).
+            Rythme des échecs : `rate(migrations_echecs_total[5m])`. Cause dans les
+            logs (Loki : `{service="{{ $labels.service_name }}"} |= "Migrations impossibles"`) :
+            base injoignable, droits insuffisants, ou migration SQL en erreur (à corriger
+            et redéployer — le retry ne résoudra jamais une migration invalide).

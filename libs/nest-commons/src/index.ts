@@ -4,6 +4,7 @@ export * from './lib/database/database.module.js';
 export * from './lib/database/database.options.js';
 export * from './lib/database/migration.service.js';
 export * from './lib/health/health.module.js';
+export * from './lib/health/migrations.health.js';
 export * from './lib/mailer/mailer.module.js';
 export * from './lib/mailer/mailer.options.js';
 export * from './lib/mailer/mailer.service.js';
