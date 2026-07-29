@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { Column, getTableColumns, Param, type Table } from 'drizzle-orm';
+import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
 import {
   FOYER_MIS_A_JOUR_TYPE,
   FOYER_MIS_A_JOUR_V2_TYPE,
@@ -40,6 +42,11 @@ import {
  * `insert().values().onConflictDoUpdate()` (upserts), `update`/`delete`. Les
  * conditions `eq(colonne, valeur)` sont évaluées en lisant les `queryChunks`
  * drizzle (colonne + paramètre lié) ; seul ce prédicat est supporté.
+ *
+ * Elle applique aussi **toutes** les contraintes d'unicité déclarées sur la table
+ * (PK + `unique(...)`), pas seulement celle visée par le `ON CONFLICT` — sans quoi
+ * elle accepterait des lignes que Postgres refuse. C'est exactement l'angle mort
+ * qui a laissé passer la régression PK de `grille_tarifaire` (SFD 30 lot 2).
  */
 
 type Ligne = Record<string, unknown>;
@@ -75,8 +82,90 @@ function fakeBaseEnMemoire(): {
     const cle = cleDe(table, colonne);
     return (ligne: Ligne) => ligne[cle] === param.value;
   };
+  /** Clé TS d'une colonne à partir de son nom SQL (ex. `grille_id` → `grilleId`). */
+  const cleDepuisNomSql = (table: Table, nomSql: string): string => {
+    const entree = Object.entries(getTableColumns(table)).find(
+      ([, c]) => c.name === nomSql,
+    );
+    if (!entree) {
+      throw new Error(`colonne inconnue dans la table : ${nomSql}`);
+    }
+    return entree[0];
+  };
+  const clefDepuisCles = (cles: string[], ligne: Ligne): string =>
+    cles.map((k) => String(ligne[k])).join('|');
   const clefConflit = (table: Table, cibles: Column[], ligne: Ligne): string =>
-    cibles.map((c) => String(ligne[cleDe(table, c)])).join('|');
+    clefDepuisCles(
+      cibles.map((c) => cleDe(table, c)),
+      ligne,
+    );
+  /**
+   * Applique les défauts SQL non fournis par l'appelant — en pratique les PK
+   * surrogate `uuid ... defaultRandom()`, que la projection n'alimente pas.
+   */
+  const avecDefauts = (table: Table, valeurs: Ligne): Ligne => {
+    const complet = { ...valeurs };
+    for (const [cle, colonne] of Object.entries(getTableColumns(table))) {
+      if (
+        complet[cle] === undefined &&
+        colonne.hasDefault &&
+        colonne.columnType === 'PgUUID'
+      ) {
+        complet[cle] = randomUUID();
+      }
+    }
+    return complet;
+  };
+  /**
+   * Index d'unicité déclarés sur la table : PK puis contraintes `unique(...)`,
+   * exprimés en clés TS (les colonnes de `getTableConfig` ne sont pas du même
+   * type nominal que celles de `getTableColumns`, d'où le passage par les noms).
+   */
+  const indexUniques = (table: Table): { nom: string; cles: string[] }[] => {
+    const config = getTableConfig(table as PgTable);
+    const cles = (colonnes: readonly { name: string }[]): string[] =>
+      colonnes.map((c) => cleDepuisNomSql(table, c.name));
+    const pk = config.columns.filter((c) => c.primary);
+    return [
+      ...(pk.length > 0
+        ? [{ nom: `${config.name}_pkey`, cles: cles(pk) }]
+        : []),
+      ...config.uniqueConstraints.map((u) => ({
+        nom: u.name ?? '?',
+        cles: cles(u.columns),
+      })),
+    ];
+  };
+  /**
+   * Réplique le comportement Postgres : `ON CONFLICT (cible)` ne rattrape que les
+   * conflits sur **cet** index. Toute autre unicité violée (PK, autre contrainte
+   * `unique`) fait échouer l'insertion — c'est ce qui doit arriver quand un même
+   * identifiant amont alimente deux lignes de clé métier distincte.
+   */
+  const verifierAutresUnicites = (
+    table: Table,
+    cibles: Column[],
+    valeurs: Ligne,
+  ): void => {
+    const clesCibles = new Set(cibles.map((c) => cleDe(table, c)));
+    for (const index of indexUniques(table)) {
+      const estLaCible =
+        index.cles.length === clesCibles.size &&
+        index.cles.every((k) => clesCibles.has(k));
+      if (estLaCible) {
+        continue;
+      }
+      const clef = clefDepuisCles(index.cles, valeurs);
+      const collision = lignesDe(table).some(
+        (l) => clefDepuisCles(index.cles, l) === clef,
+      );
+      if (collision) {
+        throw new Error(
+          `duplicate key value violates unique constraint "${index.nom}"`,
+        );
+      }
+    }
+  };
   /**
    * Évalue la garde de monotonie `setWhere`
    * (`<col> is null or <col> <= excluded.occurred_at`) : renvoie `true` si le `set`
@@ -108,10 +197,11 @@ function fakeBaseEnMemoire(): {
       }),
     }),
     insert: (table: Table) => ({
-      values: (valeurs: Ligne) => ({
+      values: (brutes: Ligne) => ({
         // Marqueur d'idempotence : n'insère que si la clé est nouvelle.
         onConflictDoNothing: (opts: { target: Column }) => ({
           returning: () => {
+            const valeurs = avecDefauts(table, brutes);
             const clef = clefConflit(table, [opts.target], valeurs);
             const doublon = lignesDe(table).some(
               (l) => clefConflit(table, [opts.target], l) === clef,
@@ -119,7 +209,8 @@ function fakeBaseEnMemoire(): {
             if (doublon) {
               return Promise.resolve([]);
             }
-            lignesDe(table).push({ ...valeurs });
+            verifierAutresUnicites(table, [opts.target], valeurs);
+            lignesDe(table).push(valeurs);
             return Promise.resolve([{ id: valeurs['id'] }]);
           },
         }),
@@ -130,6 +221,7 @@ function fakeBaseEnMemoire(): {
           set: Ligne;
           setWhere?: unknown;
         }) => {
+          const valeurs = avecDefauts(table, brutes);
           const cibles = Array.isArray(opts.target)
             ? opts.target
             : [opts.target];
@@ -145,7 +237,8 @@ function fakeBaseEnMemoire(): {
               Object.assign(existante, opts.set);
             }
           } else {
-            lignesDe(table).push({ ...valeurs });
+            verifierAutresUnicites(table, cibles, valeurs);
+            lignesDe(table).push(valeurs);
           }
           return Promise.resolve();
         },
@@ -391,7 +484,7 @@ describe('Projection GrillePubliee (référentiel)', () => {
 
     expect(lignesDe(grilleTarifaire)).toHaveLength(1);
     expect(lignesDe(grilleTarifaire)[0]).toMatchObject({
-      id: '44444444-0000-4000-8000-000000000000',
+      grilleId: '44444444-0000-4000-8000-000000000000',
       mode: 'CANTINE',
       tranche: 3,
       valideDu: '2026-01-01',
@@ -431,6 +524,64 @@ describe('Projection GrillePubliee (référentiel)', () => {
       cantineTotalCentimes: 1268,
       cantinePartGardeCentimes: 801,
     });
+  });
+
+  it('les 3 modes d’une même grille amont (même grilleId) sont tous projetés', async () => {
+    // Cas réel : une ligne `grille_abcm` publie un événement par mode ABCM, tous
+    // porteurs du **même** `grilleId` (svc-referentiel, `reemettreGrillesEnV2`).
+    // La clé métier du read model est `(mode, tranche, valide_du)` : `grilleId`
+    // n'y est pas discriminant et ne doit donc pas porter la PK.
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientMuet);
+    const GRILLE_ID = '65ceb915-0baa-46b0-bd8d-93476ba37cff';
+    const parMode = {
+      PERISCOLAIRE: { periMatinCentimes: 210, periSoirCentimes: 315 },
+      CANTINE: { cantineTotalCentimes: 1268, cantinePartGardeCentimes: 801 },
+      ALSH: {
+        alshJourneeCompleteCentimes: 1450,
+        alshDemiJourneeCentimes: 820,
+        alshRepasCentimes: 467,
+      },
+    };
+
+    for (const [rang, [mode, parametres]] of Object.entries(
+      parMode,
+    ).entries()) {
+      await expect(
+        projection.traiter('REFERENTIEL', {
+          // Enveloppe distincte par mode (`randomUUID()` côté amont).
+          id: `33333333-3333-4333-8333-00000000000${rang}`,
+          type: GRILLE_PUBLIEE_V2_TYPE,
+          source: 'svc-referentiel',
+          version: 1,
+          occurredAt: '2026-01-01T00:00:00.000Z',
+          traceId: 'trace-fanout',
+          payload: {
+            grilleId: GRILLE_ID,
+            mode,
+            tranche: 2,
+            valideDu: '2026-01-01',
+            valideAu: null,
+            parametres,
+          },
+        }),
+      ).resolves.toBe('TRAITE');
+    }
+
+    expect(lignesDe(grilleTarifaire)).toHaveLength(3);
+    expect(
+      lignesDe(grilleTarifaire).map((l) => [l['mode'], l['parametres']]),
+    ).toEqual([
+      ['PERISCOLAIRE', parMode.PERISCOLAIRE],
+      ['CANTINE', parMode.CANTINE],
+      ['ALSH', parMode.ALSH],
+    ]);
+    // Identifiant amont conservé pour la traçabilité, mais partagé par les 3 lignes…
+    expect(
+      new Set(lignesDe(grilleTarifaire).map((l) => l['grilleId'])),
+    ).toEqual(new Set([GRILLE_ID]));
+    // …tandis que la PK technique reste distincte.
+    expect(new Set(lignesDe(grilleTarifaire).map((l) => l['id'])).size).toBe(3);
   });
 });
 

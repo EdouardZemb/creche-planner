@@ -50,6 +50,13 @@
       "when": 1785231670967,
       "tag": "0006_foyer_version_readmodel",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785310703914,
+      "tag": "0007_grille_tarifaire_pk_surrogate",
+      "breakpoints": true
     }
   ]
 }

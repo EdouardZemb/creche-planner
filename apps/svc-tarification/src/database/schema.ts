@@ -125,8 +125,17 @@ export const enfant = pgTable('enfant', {
 export const grilleTarifaire = pgTable(
   'grille_tarifaire',
   {
-    /** Identifiant de grille amont (PK). */
-    id: uuid('id').primaryKey(),
+    /**
+     * Identifiant technique de la ligne (PK **surrogate**, sans signification
+     * métier). Une grille amont est publiée en **un événement par mode ABCM**,
+     * tous porteurs du même `grilleId` : celui-ci ne peut donc pas porter la PK
+     * (il alimente 3 lignes). L'identité métier est `(mode, tranche, valide_du)`,
+     * portée par `grille_tarifaire_mode_tranche_du_uq` — cible du `ON CONFLICT`
+     * de la projection, qui assure l'idempotence des republications.
+     */
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Identifiant de la grille amont d'origine (traçabilité ; non discriminant). */
+    grilleId: uuid('grille_id').notNull(),
     /** Mode de garde couvert (CRECHE_PSU | CANTINE | PERISCOLAIRE | ALSH). */
     mode: varchar('mode', { length: 32 }).notNull(),
     /** Tranche ABCM concernée (1/2/3), `null` pour un barème PSU non tranché. */

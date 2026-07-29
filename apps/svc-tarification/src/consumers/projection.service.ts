@@ -336,7 +336,10 @@ export class ProjectionService {
       await tx
         .insert(grilleTarifaire)
         .values({
-          id: p.grilleId,
+          // `id` est une PK surrogate (`gen_random_uuid()`) : `grilleId` est
+          // partagé par les 3 modes d'une même grille amont, il ne peut pas
+          // l'alimenter. L'identité de la ligne est `(mode, tranche, valide_du)`.
+          grilleId: p.grilleId,
           mode: p.mode,
           tranche: p.tranche,
           valideDu: p.valideDu,
@@ -353,6 +356,7 @@ export class ProjectionService {
             grilleTarifaire.valideDu,
           ],
           set: {
+            grilleId: p.grilleId,
             valideAu: p.valideAu,
             parametres,
             eventId: evt.id,
