@@ -82,5 +82,10 @@ COPY --from=build /app/apps/$APP/dist ./
 # fichier (logs sur stdout, migrations lues depuis l'image) et /app copié par
 # root reste lisible en lecture seule.
 USER 1000:1000
+# Sonde de vie embarquée (lot A6) : l'état de santé suit l'image même hors des
+# healthchecks Compose (docker run nu, staging). Compose la surcharge par service
+# avec le même patron ; le port vient de l'env PORT injecté au run (repli 3000).
+HEALTHCHECK --interval=5s --timeout=3s --retries=10 --start-period=20s \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/health/live').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
 # Démarre le bundle du service ciblé (main.js à la racine de l'image).
 CMD ["node", "main.js"]
