@@ -272,6 +272,20 @@ services:
       # signature/vérification est réellement exercé en dev/e2e-stack (observe).
       ASSERTION_IDENTITE_SECRET: dev-assertion-secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    # Liveness HTTP (lot A6) — même patron que la gateway (AUD-01) : /api/health/live
+    # sans dépendance externe, sondé par `node` (ni curl ni wget dans node:24-slim).
+    # `up --wait` (e2e-stack CI, deploy.mjs) attend donc des services qui SERVENT,
+    # pas seulement des process lancés. Reproduit sur les 5 svc-* (port de chacun).
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - '-e'
+        - "fetch('http://127.0.0.1:3001/api/health/live').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
     depends_on:
       postgres-referentiel:
         condition: service_healthy
@@ -300,6 +314,16 @@ services:
       # FACTICE pour la pile locale/CI (jamais un vrai secret ; la prod l'écrase via
       # docker-compose.server.yml `${DESABONNEMENT_TOKEN_SECRET:?}`).
       DESABONNEMENT_TOKEN_SECRET: factice
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - '-e'
+        - "fetch('http://127.0.0.1:3002/api/health/live').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
     depends_on:
       postgres-foyer:
         condition: service_healthy
@@ -324,6 +348,16 @@ services:
       # signature/vérification est réellement exercé en dev/e2e-stack (observe).
       ASSERTION_IDENTITE_SECRET: dev-assertion-secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - '-e'
+        - "fetch('http://127.0.0.1:3004/api/health/live').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
     depends_on:
       postgres-planification:
         condition: service_healthy
@@ -350,6 +384,16 @@ services:
       # signature/vérification est réellement exercé en dev/e2e-stack (observe).
       ASSERTION_IDENTITE_SECRET: dev-assertion-secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - '-e'
+        - "fetch('http://127.0.0.1:3005/api/health/live').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
     depends_on:
       postgres-tarification:
         condition: service_healthy
@@ -386,6 +430,16 @@ services:
       # signature/vérification est réellement exercé en dev/e2e-stack (observe).
       ASSERTION_IDENTITE_SECRET: dev-assertion-secret
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - '-e'
+        - "fetch('http://127.0.0.1:3006/api/health/live').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
     depends_on:
       postgres-notifications:
         condition: service_healthy
