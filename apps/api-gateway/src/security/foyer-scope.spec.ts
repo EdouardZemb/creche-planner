@@ -52,6 +52,12 @@ describe('extraireRefFoyer', () => {
     ).toEqual({ kind: 'contrat', valeur: 'c-3' });
   });
 
+  it('identite → undefined (route « self », aucune référence dans la requête)', () => {
+    expect(
+      extraireRefFoyer('identite', req({ params: { id: 'f-9' } })),
+    ).toBeUndefined();
+  });
+
   it('valeur absente → undefined', () => {
     expect(extraireRefFoyer('query:foyer', req())).toBeUndefined();
     expect(extraireRefFoyer('param:id', req({ params: {} }))).toBeUndefined();

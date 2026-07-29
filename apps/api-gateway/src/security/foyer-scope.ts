@@ -15,8 +15,17 @@ import type { RequeteIdentifiable } from './identite.js';
  * - `contrat:<nom>` — paramètre de chemin portant un **contratId** à **résoudre**
  *   en foyer (`/contrats/:id/…` → `contrat:id`), car ces routes ne portent pas le
  *   foyer directement.
+ *
+ * Forme spéciale `'identite'` — route « self » (BFF `/moi/*`) : la requête ne
+ * porte **aucune** référence de foyer (la cible est résolue côté serveur depuis
+ * l'identité), il n'y a donc pas d'appartenance à contrôler — mais le guard
+ * résout quand même l'ensemble des foyers autorisés (`foyersParEmail`) pour que
+ * l'assertion propagée aux services le porte : sans lui, le `ScopeFoyerGuard`
+ * aval voit une assertion parent sans `foyers` et compte un refus fantôme sur
+ * les appels `/foyers/:id/**` du handler (constat prod A5, 2026-07-29).
  */
 export type SourceFoyer =
+  | 'identite'
   | `param:${string}`
   | `query:${string}`
   | `body:${string}`
@@ -64,6 +73,9 @@ export function extraireRefFoyer(
   source: SourceFoyer,
   req: RequeteIdentifiable,
 ): RefFoyer | undefined {
+  if (source === 'identite') {
+    return undefined; // route « self » : aucune référence de foyer dans la requête
+  }
   const sep = source.indexOf(':');
   const type = source.slice(0, sep);
   const nom = source.slice(sep + 1);

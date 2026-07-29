@@ -222,6 +222,23 @@ describe('MoiController · /moi/profil + /moi/preferences (PR2)', () => {
     expect(foyers.preferences).toHaveBeenCalledWith('f-1', 'p-moi');
   });
 
+  it('profil : réutilise req.foyersAutorises (guard @FoyerScope(identite)) sans re-résoudre', async () => {
+    const moi = parent({ id: 'p-moi', email: 'moi@example.test' });
+    const foyers = {
+      foyersParEmail: vi.fn(),
+      parents: vi.fn(async () => [moi]),
+      preferences: vi.fn(async () => PREFS),
+    } as unknown as FoyerClient;
+    const r = req({ email: 'moi@example.test' });
+    r.foyersAutorises = ['f-1'];
+
+    const vue = await new MoiController(foyers, fakeNotifs()).profil(r);
+
+    expect(vue.foyerId).toBe('f-1');
+    // La liste vient du guard (une seule résolution svc-foyer par requête).
+    expect(foyers.foyersParEmail).not.toHaveBeenCalled();
+  });
+
   it('profil : identité sans ligne parent correspondante → 404', async () => {
     const foyers = {
       foyersParEmail: vi.fn(async () => ['f-1']),

@@ -23,6 +23,7 @@ import {
 } from '../clients/notifications.client.js';
 import { loadConfig } from '../config.js';
 import { estAdmin, estGatingAdminActif } from '../security/admin.js';
+import { FoyerScope } from '../security/foyer-scope.decorator.js';
 import type { RequeteIdentifiable } from '../security/identite.js';
 import { majPreferencesSchema, valider } from './bff.dto.js';
 import { relayer } from './relais.js';
@@ -108,12 +109,16 @@ export class MoiController {
    * l'identité ne correspond à aucun parent (aucun foyer, ou foyer sans sa ligne).
    */
   @Get('profil')
+  @FoyerScope('identite')
   async profil(@Req() req: RequeteIdentifiable): Promise<MonProfilVue> {
     const email = req.identite?.email;
     if (email === undefined) {
       throw new UnauthorizedException('identité requise');
     }
-    const { foyerId, parent } = await this.resoudreParentCourant(email);
+    const { foyerId, parent } = await this.resoudreParentCourant(
+      email,
+      req.foyersAutorises,
+    );
     // Dégradation gracieuse, en miroir de `lire` (GET /moi) : la ligne parent
     // (résolue ci-dessus via `relayer`) reste **obligatoire**, mais un simple
     // hoquet svc-foyer sur la lecture des préférences ne doit pas faire tomber
@@ -149,6 +154,7 @@ export class MoiController {
    * combinaison coupant tous les canaux d'un type de service.
    */
   @Put('preferences')
+  @FoyerScope('identite')
   async majPreferences(
     @Req() req: RequeteIdentifiable,
     @Body() corps: unknown,
@@ -158,7 +164,10 @@ export class MoiController {
       throw new UnauthorizedException('identité requise');
     }
     const saisie = valider(majPreferencesSchema, corps);
-    const { foyerId, parent } = await this.resoudreParentCourant(email);
+    const { foyerId, parent } = await this.resoudreParentCourant(
+      email,
+      req.foyersAutorises,
+    );
     return relayer(() =>
       this.foyers.majPreferences(foyerId, parent.id, saisie),
     );
@@ -173,12 +182,16 @@ export class MoiController {
    * (celle-ci reste sur `/notifications/a-valider`).
    */
   @Get('notifications')
+  @FoyerScope('identite')
   async notificationsInbox(@Req() req: RequeteIdentifiable): Promise<InboxVue> {
     const email = req.identite?.email;
     if (email === undefined) {
       throw new UnauthorizedException('identité requise');
     }
-    const { parent } = await this.resoudreParentCourant(email);
+    const { parent } = await this.resoudreParentCourant(
+      email,
+      req.foyersAutorises,
+    );
     return relayer(() => this.notifications.listerInbox(parent.id));
   }
 
@@ -189,6 +202,7 @@ export class MoiController {
    * notification (**404** relayé si l'id est inconnu ou appartient à un autre parent).
    */
   @Post('notifications/:id/lu')
+  @FoyerScope('identite')
   async marquerNotificationLue(
     @Req() req: RequeteIdentifiable,
     @Param('id', ParseUUIDPipe) id: string,
@@ -197,7 +211,10 @@ export class MoiController {
     if (email === undefined) {
       throw new UnauthorizedException('identité requise');
     }
-    const { parent } = await this.resoudreParentCourant(email);
+    const { parent } = await this.resoudreParentCourant(
+      email,
+      req.foyersAutorises,
+    );
     return relayer(() =>
       this.notifications.marquerNotificationLue(parent.id, id),
     );
@@ -213,12 +230,17 @@ export class MoiController {
    * plusieurs foyers — familles recomposées) : profil / préférences / inbox sont
    * alors résolus sur son **premier** foyer. C'est une **limitation assumée** (pas
    * de sélecteur de profil multi-foyers, cf. plan §3). `404` si aucune ligne ne
-   * correspond (identité sans foyer / sans parent).
+   * correspond (identité sans foyer / sans parent). `foyersConnus` : liste déjà
+   * résolue par `AppartenanceGuard` (`@FoyerScope('identite')`,
+   * `req.foyersAutorises`) — évite un second `foyersParEmail` ; absente sur le
+   * bypass admin (le guard ne résout pas), on la recalcule alors.
    */
   private async resoudreParentCourant(
     email: string,
+    foyersConnus?: readonly string[],
   ): Promise<{ foyerId: string; parent: ParentVue }> {
-    const foyers = await relayer(() => this.foyers.foyersParEmail(email));
+    const foyers =
+      foyersConnus ?? (await relayer(() => this.foyers.foyersParEmail(email)));
     const cible = email.trim().toLowerCase();
     for (const foyerId of foyers) {
       const parents = await relayer(() => this.foyers.parents(foyerId));
