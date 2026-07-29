@@ -150,7 +150,7 @@ describe('Pact provider · svc-tarification honore le contrat api-gateway', () =
           await db`delete from prestation_mois where foyer_id = ${FOYER_ID}`;
           await db`delete from contrat where foyer_id = ${FOYER_ID}`;
           await db`delete from foyer where id = ${FOYER_ID}`;
-          await db`delete from grille_tarifaire where id = ${GRILLE_ID}`;
+          await db`delete from grille_tarifaire where grille_id = ${GRILLE_ID}`;
           await db`
             insert into foyer (
               id, ressources_mensuelles_centimes, rfr_centimes, tranche,
@@ -161,7 +161,7 @@ describe('Pact provider · svc-tarification honore le contrat api-gateway', () =
           `;
           await db`
             insert into grille_tarifaire (
-              id, mode, tranche, valide_du, valide_au, parametres
+              grille_id, mode, tranche, valide_du, valide_au, parametres
             ) values (
               ${GRILLE_ID}, 'CANTINE', 3, '2026-01-01', null,
               ${JSON.stringify({
