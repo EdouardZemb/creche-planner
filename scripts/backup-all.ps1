@@ -1,11 +1,12 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Sauvegarde les 4 bases PostgreSQL du projet creche-planner via pg_dump.
+    Sauvegarde les 5 bases PostgreSQL du projet creche-planner via pg_dump.
 
 .DESCRIPTION
-    Exécute un pg_dump pour chacune des 4 bases (referentiel, foyer,
-    planification, tarification) en passant par docker compose exec.
+    Exécute un pg_dump pour chacune des 5 bases (referentiel, foyer,
+    planification, tarification, notifications) en passant par
+    docker compose exec.
     Les dumps sont horodatés et placés dans un sous-dossier de $OutputDir.
 
 .PARAMETER OutputDir
@@ -67,7 +68,8 @@ $Databases = @(
     @{ Service = 'postgres-referentiel';   User = 'referentiel';   DbName = 'referentiel'   },
     @{ Service = 'postgres-foyer';         User = 'foyer';         DbName = 'foyer'         },
     @{ Service = 'postgres-planification'; User = 'planification'; DbName = 'planification' },
-    @{ Service = 'postgres-tarification';  User = 'tarification';  DbName = 'tarification'  }
+    @{ Service = 'postgres-tarification';  User = 'tarification';  DbName = 'tarification'  },
+    @{ Service = 'postgres-notifications'; User = 'notifications'; DbName = 'notifications' }
 )
 
 $Extension = if ($Format -eq 'custom') { 'dump' } else { 'sql' }
@@ -86,10 +88,15 @@ foreach ($Db in $Databases) {
     try {
         # pg_dump écrit sur stdout ; on capture et redirige vers le fichier hôte.
         # PGPASSWORD transmis via -e pour éviter l'invite interactive.
-        $env:PGPASSWORD = $Db.User  # même valeur que le user dans docker-compose.yml
+        # Mot de passe : en prod, lu depuis l'env (PG_<DB>_PWD) ; en dev, repli
+        # sur le user (le compose de base met POSTGRES_PASSWORD = user) — même
+        # mécanisme que backup-all.sh.
+        $PwdVar = "PG_$($Db.DbName.ToUpperInvariant())_PWD"
+        $DbPwd  = [Environment]::GetEnvironmentVariable($PwdVar)
+        if ([string]::IsNullOrEmpty($DbPwd)) { $DbPwd = $Db.User }
         $dumpArgs = @(
             'compose', 'exec', '-T',
-            '-e', "PGPASSWORD=$($Db.User)",
+            '-e', "PGPASSWORD=$DbPwd",
             $Db.Service,
             'pg_dump',
             '-U', $Db.User,
@@ -113,9 +120,6 @@ foreach ($Db in $Databases) {
         $Errors += $Db.DbName
         # Supprime le fichier partiel s'il existe
         if (Test-Path $HostPath) { Remove-Item $HostPath -Force }
-    }
-    finally {
-        Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
     }
 }
 

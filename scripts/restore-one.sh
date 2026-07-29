@@ -2,7 +2,7 @@
 # ===========================================================================
 # restore-one.sh — Restauration d'une base PostgreSQL de creche-planner
 # Usage : ./scripts/restore-one.sh <DBNAME> <DUMP_FILE> [--force]
-#   DBNAME    : referentiel | foyer | planification | tarification
+#   DBNAME    : referentiel | foyer | planification | tarification | notifications
 #   DUMP_FILE : chemin vers le fichier .dump (custom) ou .sql (plain)
 #   --force   : écrase les données existantes (demande confirmation)
 #
@@ -13,7 +13,7 @@ set -euo pipefail
 
 usage() {
     echo "Usage: $0 <DBNAME> <DUMP_FILE> [--force]"
-    echo "  DBNAME : referentiel | foyer | planification | tarification"
+    echo "  DBNAME : referentiel | foyer | planification | tarification | notifications"
     exit 1
 }
 
@@ -34,8 +34,8 @@ fi
 
 # Vérification du nom de base
 case "${DBNAME}" in
-    referentiel|foyer|planification|tarification) ;;
-    *) echo "Erreur : DBNAME invalide '${DBNAME}'. Valeurs attendues : referentiel | foyer | planification | tarification" >&2; exit 2 ;;
+    referentiel|foyer|planification|tarification|notifications) ;;
+    *) echo "Erreur : DBNAME invalide '${DBNAME}'. Valeurs attendues : referentiel | foyer | planification | tarification | notifications" >&2; exit 2 ;;
 esac
 
 # Correspondance base → service docker-compose (lus dans docker-compose.yml)
@@ -44,6 +44,7 @@ case "${DBNAME}" in
     foyer)         SERVICE="postgres-foyer"         ;;
     planification) SERVICE="postgres-planification" ;;
     tarification)  SERVICE="postgres-tarification"  ;;
+    notifications) SERVICE="postgres-notifications" ;;
 esac
 
 DB_USER="${DBNAME}"  # user == dbname dans ce projet
