@@ -210,3 +210,62 @@ Un **échec** est **réessayé** jusqu'à `RELEASE_MAX_ATTEMPTS` (défaut 3) pui
 (journal : « intervention requise ») — la prod restant saine via le **rollback auto**
 (§9.4). Variables utiles : `RELEASE_FORCE=1`, `RELEASE_MAX_ATTEMPTS=<n>`,
 `RELEASE_SKIP_PULL=1`, `DORA_DRY_RUN=1`.
+
+---
+
+# Heartbeat externe — dead man's switch (lot A4)
+
+Unités `creche-heartbeat.{service,timer}` : toutes les ~5 min,
+[`scripts/heartbeat.sh`](../heartbeat.sh) pingue une URL **Healthchecks.io**
+(ou équivalent) hébergée **ailleurs** que sur ce serveur. Si les pings cessent
+(machine éteinte, réseau coupé, systemd HS), le moniteur externe alerte — ce que
+Prometheus/Alertmanager, qui tournent **sur** la machine surveillée, ne peuvent
+pas faire. Optionnellement, le ping n'est envoyé que si la gateway répond 200
+(battement « serveur ET app OK »). Voir
+[docs/exploitation/observabilite.md](../../docs/exploitation/observabilite.md)
+§ « Heartbeat externe ».
+
+## 1. Créer le check externe
+
+Sur [Healthchecks.io](https://healthchecks.io) (gratuit) : créer un check
+(nom suggéré `creche-heartbeat`), **Period = 5 min**, **Grace = 5 min**,
+notification e-mail. Récupérer l'URL de ping (`https://hc-ping.com/<uuid>`).
+Équivalents : cron-job.org, ou une instance Uptime Kuma sur une **autre** machine.
+
+## 2. Poser le fichier d'env (HORS dépôt — l'URL de ping est un secret)
+
+```bash
+sudo cp scripts/systemd/creche-heartbeat.env.example /etc/creche-heartbeat.env
+sudo chmod 600 /etc/creche-heartbeat.env
+sudoedit /etc/creche-heartbeat.env    # HEARTBEAT_PING_URL + HEARTBEAT_HEALTH_URL
+```
+
+## 3. Adapter et installer les unités
+
+Remplacer `<user>` dans
+[`creche-heartbeat.service`](creche-heartbeat.service) (`User`, `ExecStart`,
+`Documentation`), puis :
+
+```bash
+chmod +x scripts/heartbeat.sh   # exécuté par systemd
+sudo cp scripts/systemd/creche-heartbeat.service /etc/systemd/system/
+sudo cp scripts/systemd/creche-heartbeat.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now creche-heartbeat.timer
+```
+
+## 4. Vérifier
+
+```bash
+# Prochaine échéance
+systemctl list-timers creche-heartbeat.timer
+
+# Forcer un battement immédiat
+sudo systemctl start creche-heartbeat.service
+journalctl -u creche-heartbeat.service -n 20 --no-pager   # « HEARTBEAT: ping envoyé. »
+```
+
+Le dashboard Healthchecks.io doit afficher le check **up** avec un ping récent.
+**Tester la chaîne d'alerte de bout en bout** : `sudo systemctl stop
+creche-heartbeat.timer`, attendre ~10 min (period + grace) → e-mail « check is
+down », puis `sudo systemctl start creche-heartbeat.timer` → e-mail « up ».

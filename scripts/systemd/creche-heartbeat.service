@@ -1,0 +1,25 @@
+# ===========================================================================
+# creche-heartbeat.service — Battement de cœur vers le moniteur externe (lot A4)
+# ---------------------------------------------------------------------------
+# Unité oneshot déclenchée par creche-heartbeat.timer (toutes les ~5 min).
+# Pingue une URL Healthchecks.io (ou équivalent) hébergée AILLEURS que sur ce
+# serveur : si les pings cessent (machine éteinte, réseau coupé, systemd HS),
+# le moniteur externe alerte — ce que Prometheus/Alertmanager, qui tournent SUR
+# la machine surveillée, ne peuvent pas faire. Adapter <user> (cf. README.md).
+#
+# L'URL de ping est un SECRET : lue depuis /etc/creche-heartbeat.env (HORS
+# dépôt, root:root 0600 — systemd (PID 1) lit EnvironmentFile= avant de
+# basculer sur User=, les droits restreints suffisent donc).
+# ===========================================================================
+[Unit]
+Description=Battement de cœur creche-planner vers le moniteur externe
+Documentation=file:///home/<user>/creche-planner/docs/exploitation/observabilite.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=<user>
+EnvironmentFile=/etc/creche-heartbeat.env
+ExecStart=/home/<user>/creche-planner/scripts/heartbeat.sh
+Nice=10
