@@ -143,634 +143,646 @@ const semaineTypeCrecheLundi: Record<string, Record<string, number>[]> =
     ]),
   );
 
-describe('Pact consumer · api-gateway → svc-planification', () => {
-  it('lit les prestations crèche du mois de mars 2026 (planning réel)', async () => {
-    provider
-      .given(ETAT_CONTRAT_CRECHE)
-      .uponReceiving('une lecture des prestations crèche du mois (réel)')
-      .withRequest({
-        method: 'GET',
-        path: '/api/prestations',
-        query: { contrat: CONTRAT_ID, mois: '2026-03', simule: 'false' },
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          contratId: CONTRAT_ID,
-          mois: '2026-03',
-          simule: false,
-          prestations: MatchersV3.eachLike({
-            mode: 'CRECHE_PSU',
-            // Heures mensualisées figées : 763 h / 7 mensualités = 109,00 h (doc 02 §7).
-            heuresMensualisees: integer(109),
-            heuresReserveesMinutes: integer(8430),
-            heuresDeduitesMinutes: integer(0),
-            complementMinutes: integer(0),
-          }),
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/prestations?contrat=${CONTRAT_ID}&mois=2026-03&simule=false`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as {
-        contratId: string;
-        mois: string;
-        prestations: { mode: string }[];
-      };
-      expect(corps.contratId).toBe(CONTRAT_ID);
-      expect(corps.mois).toBe('2026-03');
-      expect(corps.prestations[0]?.mode).toBe('CRECHE_PSU');
-    });
-  });
-
-  it("liste les contrats d'un foyer (GET /api/contrats?foyer=)", async () => {
-    provider
-      .given(ETAT_FOYER_AVEC_CONTRATS)
-      .uponReceiving('une lecture de la liste des contrats du foyer')
-      .withRequest({
-        method: 'GET',
-        path: '/api/contrats',
-        query: { foyer: FOYER_LISTE_ID },
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        // Tableau de `ContratDetailVue` (forme renvoyée par `listerContrats`) :
-        // en plus des champs cœur, la config mode-spécifique (semaine type, heures,
-        // mensualités) que le BFF relaie au front pour piloter les calendriers.
-        body: MatchersV3.eachLike({
-          id: uuid(CONTRAT_ID),
-          foyerId: uuid(FOYER_LISTE_ID),
-          enfant: MatchersV3.string('Mia'),
-          enfantId: uuid(ENFANT_ID),
-          mode: MatchersV3.string('CRECHE_PSU'),
-          valideDu: MatchersV3.string('2026-01-01'),
-          valideAu: MatchersV3.string('2026-07-31'),
-          // Première inscription ABCM (lot 4a) : exposée en lecture (false ici,
-          // contrat crèche seedé — le champ est toujours false en CRECHE_PSU).
-          premiereInscription: MatchersV3.boolean(false),
-          heuresAnnuellesContractualisees: integer(763),
-          nbMensualites: integer(7),
-          semaineType: {
-            LUNDI: MatchersV3.eachLike({
-              debutHeures: integer(8),
-              debutMinutes: integer(30),
-              finHeures: integer(17),
-              finMinutes: integer(0),
+// `retry: 1` : parade à la course pact-core sous charge CPU en CI (match
+// enregistré côté mock server mais « expected but not received » à la
+// vérification) — détail dans vitest.config.mts. Rejeu sûr (interaction
+// ré-enregistrée dans le corps du `it`).
+describe(
+  'Pact consumer · api-gateway → svc-planification',
+  { retry: 1 },
+  () => {
+    it('lit les prestations crèche du mois de mars 2026 (planning réel)', async () => {
+      provider
+        .given(ETAT_CONTRAT_CRECHE)
+        .uponReceiving('une lecture des prestations crèche du mois (réel)')
+        .withRequest({
+          method: 'GET',
+          path: '/api/prestations',
+          query: { contrat: CONTRAT_ID, mois: '2026-03', simule: 'false' },
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            contratId: CONTRAT_ID,
+            mois: '2026-03',
+            simule: false,
+            prestations: MatchersV3.eachLike({
+              mode: 'CRECHE_PSU',
+              // Heures mensualisées figées : 763 h / 7 mensualités = 109,00 h (doc 02 §7).
+              heuresMensualisees: integer(109),
+              heuresReserveesMinutes: integer(8430),
+              heuresDeduitesMinutes: integer(0),
+              complementMinutes: integer(0),
             }),
           },
-        }),
-      });
+        });
 
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/contrats?foyer=${FOYER_LISTE_ID}`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as {
-        id: string;
-        foyerId: string;
-        mode: string;
-        nbMensualites: number;
-        semaineType: Record<string, unknown[]>;
-      }[];
-      expect(Array.isArray(corps)).toBe(true);
-      expect(corps[0]?.foyerId).toBe(FOYER_LISTE_ID);
-      expect(corps[0]?.mode).toBe('CRECHE_PSU');
-      expect(corps[0]?.nbMensualites).toBe(7);
-      expect(corps[0]?.semaineType?.['LUNDI']?.length).toBeGreaterThan(0);
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/prestations?contrat=${CONTRAT_ID}&mois=2026-03&simule=false`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          contratId: string;
+          mois: string;
+          prestations: { mode: string }[];
+        };
+        expect(corps.contratId).toBe(CONTRAT_ID);
+        expect(corps.mois).toBe('2026-03');
+        expect(corps.prestations[0]?.mode).toBe('CRECHE_PSU');
+      });
     });
-  });
 
-  it('crée un contrat cantine (ABCM) et reçoit sa projection', async () => {
-    provider
-      .given(ETAT_SANS_ETAB_CANTINE)
-      .uponReceiving('une création de contrat cantine ABCM')
-      .withRequest({
-        method: 'POST',
-        path: '/api/contrats',
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          // Clé d'idempotence injectée par la gateway (lot 3 — C1), regex UUID.
-          id: uuid(CONTRAT_CREE_CANTINE_ID),
-          mode: 'CANTINE',
-          foyerId: FOYER_ID,
-          enfant: 'Zoé',
-          enfantId: ENFANT_ID,
-          valideDu: '2026-09-01',
-          valideAu: null,
-          semaineAbcm: semaineAbcmCantineLundi,
-          // Première inscription ABCM (lot 4a) : cochée par le parent.
-          premiereInscription: true,
-          // Lien établissement OBLIGATOIRE (P5) : créé à la volée (aucun seed requis).
-          nouvelEtablissement: { nom: 'Crèche Pact CANTINE' },
-        },
-      })
-      .willRespondWith({
-        status: 201,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          id: uuid(CONTRAT_ABCM_ID),
-          foyerId: uuid(FOYER_ID),
-          enfant: 'Zoé',
-          enfantId: uuid(ENFANT_ID),
-          // Valeur exacte : le contrat fige le mode CANTINE.
-          mode: 'CANTINE',
-          valideDu: '2026-09-01',
-          valideAu: null,
-          // Valeur exacte : la coche demandée est persistée et restituée.
-          premiereInscription: true,
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(`${mockServer.url}/api/contrats`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: JSON.stringify({
-          id: CONTRAT_CREE_CANTINE_ID,
-          mode: 'CANTINE',
-          foyerId: FOYER_ID,
-          enfant: 'Zoé',
-          enfantId: ENFANT_ID,
-          valideDu: '2026-09-01',
-          valideAu: null,
-          semaineAbcm: semaineAbcmCantineLundi,
-          premiereInscription: true,
-          nouvelEtablissement: { nom: 'Crèche Pact CANTINE' },
-        }),
-      });
-      expect(reponse.status).toBe(201);
-      const corps = (await reponse.json()) as {
-        id: string;
-        mode: string;
-        premiereInscription: boolean;
-      };
-      expect(corps.mode).toBe('CANTINE');
-      expect(corps.premiereInscription).toBe(true);
-    });
-  });
-
-  it('crée un contrat ALSH avec inscription hebdomadaire (mercredis récurrents)', async () => {
-    // Verrouille l'acceptation provider de `semaineAbcm[jour].alsh` (formule +
-    // repas) : avant cette modélisation, la clé était silencieusement éliminée
-    // par la validation Zod (saisie parent perdue sans erreur).
-    const semaineAbcmAlshMercredi: Record<string, unknown> = Object.fromEntries(
-      JOURS_SEMAINE.map((j) => [
-        j,
-        j === 'MERCREDI' ? { alsh: { type: 'COMPLETE', repas: true } } : {},
-      ]),
-    );
-    const corpsCreation = {
-      mode: 'ALSH',
-      foyerId: FOYER_ID,
-      enfant: 'Zoé',
-      enfantId: ENFANT_ID,
-      valideDu: '2026-09-01',
-      valideAu: null,
-      semaineAbcm: semaineAbcmAlshMercredi,
-      nouvelEtablissement: { nom: 'Centre Pact ALSH' },
-    };
-    provider
-      .given(ETAT_SANS_ETAB_ALSH)
-      .uponReceiving(
-        'une création de contrat ALSH avec récurrence hebdomadaire',
-      )
-      .withRequest({
-        method: 'POST',
-        path: '/api/contrats',
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        // Clé d'idempotence injectée par la gateway (lot 3 — C1), regex UUID.
-        body: { ...corpsCreation, id: uuid(CONTRAT_CREE_ALSH_ID) },
-      })
-      .willRespondWith({
-        status: 201,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          id: uuid(CONTRAT_ABCM_ID),
-          foyerId: uuid(FOYER_ID),
-          enfant: 'Zoé',
-          enfantId: uuid(ENFANT_ID),
-          mode: 'ALSH',
-          valideDu: '2026-09-01',
-          valideAu: null,
-          // Rétro-compat lot 4a : corps de création SANS premiereInscription
-          // (comme le front pré-lot 4a) → défaut false persisté et restitué.
-          premiereInscription: false,
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(`${mockServer.url}/api/contrats`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: JSON.stringify({ ...corpsCreation, id: CONTRAT_CREE_ALSH_ID }),
-      });
-      expect(reponse.status).toBe(201);
-      const corps = (await reponse.json()) as { id: string; mode: string };
-      expect(corps.mode).toBe('ALSH');
-    });
-  });
-
-  it('lit le cœur d’un contrat par id (GET /api/contrats/:id → foyerId)', async () => {
-    // Résolution contrat → foyer du guard d'appartenance (PR7). Réutilise l'état
-    // « un contrat de garde modifiable existe » (contrat CONTRAT_ID, foyer figé).
-    provider
-      .given(ETAT_CONTRAT_EXISTE)
-      .uponReceiving('une lecture du cœur d’un contrat par id')
-      .withRequest({
-        method: 'GET',
-        path: `/api/contrats/${CONTRAT_ID}`,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          id: uuid(CONTRAT_ID),
-          foyerId: uuid(FOYER_CONTRAT_ID),
-          enfant: MatchersV3.string('Mia'),
-          enfantId: uuid(ENFANT_ID),
-          mode: MatchersV3.string('CRECHE_PSU'),
-          valideDu: MatchersV3.string('2026-01-01'),
-          valideAu: MatchersV3.string('2026-07-31'),
-          premiereInscription: MatchersV3.boolean(false),
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/contrats/${CONTRAT_ID}`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as { id: string; foyerId: string };
-      expect(corps.id).toBe(CONTRAT_ID);
-      expect(corps.foyerId).toBe(FOYER_CONTRAT_ID);
-    });
-  });
-
-  it('corrige la version courante (PUT .../version-courante) et reçoit la projection', async () => {
-    // Remplace l'ancien « PUT /api/contrats/:id » (SFD 30 lot 4) : correction NON
-    // destructive de la version courante — le corps reste le contrat complet mais
-    // seuls les champs versionnés sont appliqués (H6) et les plannings survivent.
-    const corpsModif = {
-      mode: 'CRECHE_PSU',
-      foyerId: FOYER_MODIF_ID,
-      enfant: 'Mia',
-      enfantId: ENFANT_ID,
-      valideDu: '2026-01-01',
-      valideAu: '2026-07-31',
-      heuresAnnuellesContractualisees: 763,
-      nbMensualites: 7,
-      semaineType: semaineTypeCrecheLundi,
-      etablissementId: ETAB_SEED_ID,
-    };
-    provider
-      .given(ETAT_CONTRAT_EXISTE)
-      .uponReceiving(
-        'une correction de la version courante d’un contrat crèche',
-      )
-      .withRequest({
-        method: 'PUT',
-        path: `/api/contrats/${CONTRAT_ID}/version-courante`,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: corpsModif,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          id: uuid(CONTRAT_ID),
-          foyerId: uuid(FOYER_CONTRAT_ID),
-          enfant: 'Mia',
-          enfantId: uuid(ENFANT_ID),
-          mode: 'CRECHE_PSU',
-          valideDu: '2026-01-01',
-          valideAu: '2026-07-31',
-          // Toujours false pour un contrat crèche (le DTO n'expose pas le champ).
-          premiereInscription: false,
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/contrats/${CONTRAT_ID}/version-courante`,
-        {
-          method: 'PUT',
+    it("liste les contrats d'un foyer (GET /api/contrats?foyer=)", async () => {
+      provider
+        .given(ETAT_FOYER_AVEC_CONTRATS)
+        .uponReceiving('une lecture de la liste des contrats du foyer')
+        .withRequest({
+          method: 'GET',
+          path: '/api/contrats',
+          query: { foyer: FOYER_LISTE_ID },
+        })
+        .willRespondWith({
+          status: 200,
           headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify(corpsModif),
-        },
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as { id: string; valideAu: string };
-      expect(corps.valideAu).toBe('2026-07-31');
-    });
-  });
+          // Tableau de `ContratDetailVue` (forme renvoyée par `listerContrats`) :
+          // en plus des champs cœur, la config mode-spécifique (semaine type, heures,
+          // mensualités) que le BFF relaie au front pour piloter les calendriers.
+          body: MatchersV3.eachLike({
+            id: uuid(CONTRAT_ID),
+            foyerId: uuid(FOYER_LISTE_ID),
+            enfant: MatchersV3.string('Mia'),
+            enfantId: uuid(ENFANT_ID),
+            mode: MatchersV3.string('CRECHE_PSU'),
+            valideDu: MatchersV3.string('2026-01-01'),
+            valideAu: MatchersV3.string('2026-07-31'),
+            // Première inscription ABCM (lot 4a) : exposée en lecture (false ici,
+            // contrat crèche seedé — le champ est toujours false en CRECHE_PSU).
+            premiereInscription: MatchersV3.boolean(false),
+            heuresAnnuellesContractualisees: integer(763),
+            nbMensualites: integer(7),
+            semaineType: {
+              LUNDI: MatchersV3.eachLike({
+                debutHeures: integer(8),
+                debutMinutes: integer(30),
+                finHeures: integer(17),
+                finMinutes: integer(0),
+              }),
+            },
+          }),
+        });
 
-  it('crée un avenant (POST .../versions) et reçoit la projection du contrat', async () => {
-    // Avenant SFD 30 lot 4 : nouvelle version à date d'effet, paramètres
-    // versionnés seuls (l'identité vient du contrat, H6).
-    const corpsAvenant = {
-      mode: 'CRECHE_PSU',
-      dateEffet: '2026-06-01',
-      heuresAnnuellesContractualisees: 700,
-      nbMensualites: 7,
-      semaineType: semaineTypeCrecheLundi,
-      motif: 'changement de rentrée',
-    };
-    provider
-      .given(ETAT_CONTRAT_EXISTE)
-      .uponReceiving('une création d’avenant sur un contrat crèche')
-      .withRequest({
-        method: 'POST',
-        path: `/api/contrats/${CONTRAT_ID}/versions`,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: corpsAvenant,
-      })
-      .willRespondWith({
-        status: 201,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          id: uuid(CONTRAT_ID),
-          foyerId: uuid(FOYER_CONTRAT_ID),
-          enfant: 'Mia',
-          enfantId: uuid(ENFANT_ID),
-          mode: 'CRECHE_PSU',
-          valideDu: '2026-01-01',
-          valideAu: '2026-07-31',
-          premiereInscription: false,
-        },
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/contrats?foyer=${FOYER_LISTE_ID}`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          id: string;
+          foyerId: string;
+          mode: string;
+          nbMensualites: number;
+          semaineType: Record<string, unknown[]>;
+        }[];
+        expect(Array.isArray(corps)).toBe(true);
+        expect(corps[0]?.foyerId).toBe(FOYER_LISTE_ID);
+        expect(corps[0]?.mode).toBe('CRECHE_PSU');
+        expect(corps[0]?.nbMensualites).toBe(7);
+        expect(corps[0]?.semaineType?.['LUNDI']?.length).toBeGreaterThan(0);
       });
+    });
 
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/contrats/${CONTRAT_ID}/versions`,
-        {
+    it('crée un contrat cantine (ABCM) et reçoit sa projection', async () => {
+      provider
+        .given(ETAT_SANS_ETAB_CANTINE)
+        .uponReceiving('une création de contrat cantine ABCM')
+        .withRequest({
+          method: 'POST',
+          path: '/api/contrats',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            // Clé d'idempotence injectée par la gateway (lot 3 — C1), regex UUID.
+            id: uuid(CONTRAT_CREE_CANTINE_ID),
+            mode: 'CANTINE',
+            foyerId: FOYER_ID,
+            enfant: 'Zoé',
+            enfantId: ENFANT_ID,
+            valideDu: '2026-09-01',
+            valideAu: null,
+            semaineAbcm: semaineAbcmCantineLundi,
+            // Première inscription ABCM (lot 4a) : cochée par le parent.
+            premiereInscription: true,
+            // Lien établissement OBLIGATOIRE (P5) : créé à la volée (aucun seed requis).
+            nouvelEtablissement: { nom: 'Crèche Pact CANTINE' },
+          },
+        })
+        .willRespondWith({
+          status: 201,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            id: uuid(CONTRAT_ABCM_ID),
+            foyerId: uuid(FOYER_ID),
+            enfant: 'Zoé',
+            enfantId: uuid(ENFANT_ID),
+            // Valeur exacte : le contrat fige le mode CANTINE.
+            mode: 'CANTINE',
+            valideDu: '2026-09-01',
+            valideAu: null,
+            // Valeur exacte : la coche demandée est persistée et restituée.
+            premiereInscription: true,
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(`${mockServer.url}/api/contrats`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify(corpsAvenant),
-        },
-      );
-      expect(reponse.status).toBe(201);
-      const corps = (await reponse.json()) as { id: string; mode: string };
-      expect(corps.id).toBe(CONTRAT_ID);
-      expect(corps.mode).toBe('CRECHE_PSU');
-    });
-  });
-
-  it('liste l’historique des versions (GET .../versions)', async () => {
-    provider
-      .given(ETAT_CONTRAT_VERSIONNE)
-      .uponReceiving('une lecture de l’historique des versions d’un contrat')
-      .withRequest({
-        method: 'GET',
-        path: `/api/contrats/${CONTRAT_ID}/versions`,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: MatchersV3.eachLike({
-          id: uuid(VERSION_ID),
-          contratId: uuid(CONTRAT_ID),
-          mode: MatchersV3.string('CRECHE_PSU'),
-          dateEffet: MatchersV3.string('2026-01-01'),
-          du: MatchersV3.string('2026-01-01'),
-          // Version unique et ouverte : borne haute dérivée absente (null).
-          au: null,
-          heuresAnnuellesContractualisees: integer(763),
-          nbMensualites: integer(7),
-          saisiLe: MatchersV3.timestamp(
-            "yyyy-MM-dd'T'HH:mm:ss.SSSX",
-            '2026-01-01T00:00:00.000Z',
-          ),
-          motif: null,
-        }),
+          body: JSON.stringify({
+            id: CONTRAT_CREE_CANTINE_ID,
+            mode: 'CANTINE',
+            foyerId: FOYER_ID,
+            enfant: 'Zoé',
+            enfantId: ENFANT_ID,
+            valideDu: '2026-09-01',
+            valideAu: null,
+            semaineAbcm: semaineAbcmCantineLundi,
+            premiereInscription: true,
+            nouvelEtablissement: { nom: 'Crèche Pact CANTINE' },
+          }),
+        });
+        expect(reponse.status).toBe(201);
+        const corps = (await reponse.json()) as {
+          id: string;
+          mode: string;
+          premiereInscription: boolean;
+        };
+        expect(corps.mode).toBe('CANTINE');
+        expect(corps.premiereInscription).toBe(true);
       });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/contrats/${CONTRAT_ID}/versions`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as {
-        id: string;
-        dateEffet: string;
-        au: string | null;
-      }[];
-      expect(Array.isArray(corps)).toBe(true);
-      expect(corps[0]?.dateEffet).toBe('2026-01-01');
     });
-  });
 
-  it('corrige une version existante (PUT .../versions/:versionId)', async () => {
-    const corpsCorrection = {
-      mode: 'CRECHE_PSU',
-      heuresAnnuellesContractualisees: 700,
-      nbMensualites: 7,
-      semaineType: semaineTypeCrecheLundi,
-      motif: 'erreur de saisie',
-    };
-    provider
-      .given(ETAT_CONTRAT_VERSIONNE)
-      .uponReceiving('une correction d’une version existante d’un contrat')
-      .withRequest({
-        method: 'PUT',
-        path: `/api/contrats/${CONTRAT_ID}/versions/${VERSION_ID}`,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: corpsCorrection,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          id: uuid(CONTRAT_ID),
-          foyerId: uuid(FOYER_CONTRAT_ID),
-          enfant: 'Mia',
-          enfantId: uuid(ENFANT_ID),
-          mode: 'CRECHE_PSU',
-          valideDu: '2026-01-01',
-          valideAu: '2026-07-31',
-          premiereInscription: false,
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/contrats/${CONTRAT_ID}/versions/${VERSION_ID}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify(corpsCorrection),
-        },
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as { id: string };
-      expect(corps.id).toBe(CONTRAT_ID);
-    });
-  });
-
-  it('donne l’aperçu d’impact d’une version (GET .../versions/:versionId/impact)', async () => {
-    provider
-      .given(ETAT_CONTRAT_VERSIONNE)
-      .uponReceiving('une lecture de l’aperçu d’impact d’une version')
-      .withRequest({
-        method: 'GET',
-        path: `/api/contrats/${CONTRAT_ID}/versions/${VERSION_ID}/impact`,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          versionId: uuid(VERSION_ID),
-          // Version [2026-01-01, ouverte] plafonnée à valideAu 2026-07-31 → 7 mois.
-          moisCouverts: MatchersV3.eachLike(MatchersV3.string('2026-01')),
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/contrats/${CONTRAT_ID}/versions/${VERSION_ID}/impact`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as {
-        versionId: string;
-        moisCouverts: string[];
+    it('crée un contrat ALSH avec inscription hebdomadaire (mercredis récurrents)', async () => {
+      // Verrouille l'acceptation provider de `semaineAbcm[jour].alsh` (formule +
+      // repas) : avant cette modélisation, la clé était silencieusement éliminée
+      // par la validation Zod (saisie parent perdue sans erreur).
+      const semaineAbcmAlshMercredi: Record<string, unknown> =
+        Object.fromEntries(
+          JOURS_SEMAINE.map((j) => [
+            j,
+            j === 'MERCREDI' ? { alsh: { type: 'COMPLETE', repas: true } } : {},
+          ]),
+        );
+      const corpsCreation = {
+        mode: 'ALSH',
+        foyerId: FOYER_ID,
+        enfant: 'Zoé',
+        enfantId: ENFANT_ID,
+        valideDu: '2026-09-01',
+        valideAu: null,
+        semaineAbcm: semaineAbcmAlshMercredi,
+        nouvelEtablissement: { nom: 'Centre Pact ALSH' },
       };
-      expect(corps.versionId).toBe(VERSION_ID);
-      expect(corps.moisCouverts.length).toBeGreaterThan(0);
-    });
-  });
-
-  it('supprime un contrat existant (DELETE → 204)', async () => {
-    provider
-      .given(ETAT_CONTRAT_EXISTE)
-      .uponReceiving('une suppression de contrat')
-      .withRequest({
-        method: 'DELETE',
-        path: `/api/contrats/${CONTRAT_ID}`,
-      })
-      .willRespondWith({ status: 204 });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/contrats/${CONTRAT_ID}`,
-        {
-          method: 'DELETE',
-        },
-      );
-      expect(reponse.status).toBe(204);
-    });
-  });
-
-  it('relit la saisie de planning enregistrée d’un mois (GET .../plannings/:mois)', async () => {
-    provider
-      .given(ETAT_PLANNING_SAISI)
-      .uponReceiving(
-        'une relecture de la saisie de planning d’un mois (saisie présente)',
-      )
-      .withRequest({
-        method: 'GET',
-        path: `/api/contrats/${CONTRAT_ID}/plannings/2026-03`,
-        query: { simule: 'false' },
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        // Forme renvoyée par le contrôleur : `{ saisie: EcrirePlanningDto | null }`.
-        // Ici la saisie crèche stockée (complément + un jour supplémentaire).
-        body: {
-          saisie: {
-            complementMinutes: integer(60),
-            joursSupplementaires: MatchersV3.eachLike({
-              date: MatchersV3.string('2026-03-18'),
-              debutHeures: integer(9),
-              debutMinutes: integer(0),
-              finHeures: integer(12),
-              finMinutes: integer(0),
-            }),
+      provider
+        .given(ETAT_SANS_ETAB_ALSH)
+        .uponReceiving(
+          'une création de contrat ALSH avec récurrence hebdomadaire',
+        )
+        .withRequest({
+          method: 'POST',
+          path: '/api/contrats',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          // Clé d'idempotence injectée par la gateway (lot 3 — C1), regex UUID.
+          body: { ...corpsCreation, id: uuid(CONTRAT_CREE_ALSH_ID) },
+        })
+        .willRespondWith({
+          status: 201,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            id: uuid(CONTRAT_ABCM_ID),
+            foyerId: uuid(FOYER_ID),
+            enfant: 'Zoé',
+            enfantId: uuid(ENFANT_ID),
+            mode: 'ALSH',
+            valideDu: '2026-09-01',
+            valideAu: null,
+            // Rétro-compat lot 4a : corps de création SANS premiereInscription
+            // (comme le front pré-lot 4a) → défaut false persisté et restitué.
+            premiereInscription: false,
           },
-        },
-      });
+        });
 
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/contrats/${CONTRAT_ID}/plannings/2026-03?simule=false`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as {
-        saisie: { complementMinutes?: number } | null;
-      };
-      expect(corps.saisie).not.toBeNull();
-      expect(corps.saisie?.complementMinutes).toBe(60);
-    });
-  });
-
-  it('édite les besoins d’une semaine (PUT .../plannings/semaine/:iso → 204)', async () => {
-    // Le contrat existe (ETAT_CONTRAT_EXISTE). Le service relit le mois (vide),
-    // fusionne la semaine et ré-upsert → 204. Corps = catégories datées seules.
-    const besoins = {
-      joursSupplementaires: [
-        {
-          date: '2026-03-10', // dans 2026-W11 (tout mars).
-          debutHeures: 9,
-          debutMinutes: 0,
-          finHeures: 12,
-          finMinutes: 0,
-        },
-      ],
-    };
-    provider
-      .given(ETAT_CONTRAT_EXISTE)
-      .uponReceiving('une édition des besoins d’une semaine (réel)')
-      .withRequest({
-        method: 'PUT',
-        path: `/api/contrats/${CONTRAT_ID}/plannings/semaine/2026-W11`,
-        query: { simule: 'false' },
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: besoins,
-      })
-      .willRespondWith({ status: 204 });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/contrats/${CONTRAT_ID}/plannings/semaine/2026-W11?simule=false`,
-        {
-          method: 'PUT',
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(`${mockServer.url}/api/contrats`, {
+          method: 'POST',
           headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify(besoins),
-        },
-      );
-      expect(reponse.status).toBe(204);
-    });
-  });
-
-  it('relit un mois sans saisie → { saisie: null } (200)', async () => {
-    // Le contrat existe mais aucun planning n'a été enregistré : le service
-    // répond 200 avec `{ saisie: null }` (et NON 204) — cf. lirePlanning.
-    provider
-      .given(ETAT_CONTRAT_EXISTE)
-      .uponReceiving('une relecture de planning sans saisie enregistrée')
-      .withRequest({
-        method: 'GET',
-        path: `/api/contrats/${CONTRAT_ID}/plannings/2026-03`,
-        query: { simule: 'false' },
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: { saisie: null },
+          body: JSON.stringify({ ...corpsCreation, id: CONTRAT_CREE_ALSH_ID }),
+        });
+        expect(reponse.status).toBe(201);
+        const corps = (await reponse.json()) as { id: string; mode: string };
+        expect(corps.mode).toBe('ALSH');
       });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/contrats/${CONTRAT_ID}/plannings/2026-03?simule=false`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as { saisie: unknown };
-      expect(corps.saisie).toBeNull();
     });
-  });
-});
+
+    it('lit le cœur d’un contrat par id (GET /api/contrats/:id → foyerId)', async () => {
+      // Résolution contrat → foyer du guard d'appartenance (PR7). Réutilise l'état
+      // « un contrat de garde modifiable existe » (contrat CONTRAT_ID, foyer figé).
+      provider
+        .given(ETAT_CONTRAT_EXISTE)
+        .uponReceiving('une lecture du cœur d’un contrat par id')
+        .withRequest({
+          method: 'GET',
+          path: `/api/contrats/${CONTRAT_ID}`,
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            id: uuid(CONTRAT_ID),
+            foyerId: uuid(FOYER_CONTRAT_ID),
+            enfant: MatchersV3.string('Mia'),
+            enfantId: uuid(ENFANT_ID),
+            mode: MatchersV3.string('CRECHE_PSU'),
+            valideDu: MatchersV3.string('2026-01-01'),
+            valideAu: MatchersV3.string('2026-07-31'),
+            premiereInscription: MatchersV3.boolean(false),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/contrats/${CONTRAT_ID}`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as { id: string; foyerId: string };
+        expect(corps.id).toBe(CONTRAT_ID);
+        expect(corps.foyerId).toBe(FOYER_CONTRAT_ID);
+      });
+    });
+
+    it('corrige la version courante (PUT .../version-courante) et reçoit la projection', async () => {
+      // Remplace l'ancien « PUT /api/contrats/:id » (SFD 30 lot 4) : correction NON
+      // destructive de la version courante — le corps reste le contrat complet mais
+      // seuls les champs versionnés sont appliqués (H6) et les plannings survivent.
+      const corpsModif = {
+        mode: 'CRECHE_PSU',
+        foyerId: FOYER_MODIF_ID,
+        enfant: 'Mia',
+        enfantId: ENFANT_ID,
+        valideDu: '2026-01-01',
+        valideAu: '2026-07-31',
+        heuresAnnuellesContractualisees: 763,
+        nbMensualites: 7,
+        semaineType: semaineTypeCrecheLundi,
+        etablissementId: ETAB_SEED_ID,
+      };
+      provider
+        .given(ETAT_CONTRAT_EXISTE)
+        .uponReceiving(
+          'une correction de la version courante d’un contrat crèche',
+        )
+        .withRequest({
+          method: 'PUT',
+          path: `/api/contrats/${CONTRAT_ID}/version-courante`,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: corpsModif,
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            id: uuid(CONTRAT_ID),
+            foyerId: uuid(FOYER_CONTRAT_ID),
+            enfant: 'Mia',
+            enfantId: uuid(ENFANT_ID),
+            mode: 'CRECHE_PSU',
+            valideDu: '2026-01-01',
+            valideAu: '2026-07-31',
+            // Toujours false pour un contrat crèche (le DTO n'expose pas le champ).
+            premiereInscription: false,
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/contrats/${CONTRAT_ID}/version-courante`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify(corpsModif),
+          },
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          id: string;
+          valideAu: string;
+        };
+        expect(corps.valideAu).toBe('2026-07-31');
+      });
+    });
+
+    it('crée un avenant (POST .../versions) et reçoit la projection du contrat', async () => {
+      // Avenant SFD 30 lot 4 : nouvelle version à date d'effet, paramètres
+      // versionnés seuls (l'identité vient du contrat, H6).
+      const corpsAvenant = {
+        mode: 'CRECHE_PSU',
+        dateEffet: '2026-06-01',
+        heuresAnnuellesContractualisees: 700,
+        nbMensualites: 7,
+        semaineType: semaineTypeCrecheLundi,
+        motif: 'changement de rentrée',
+      };
+      provider
+        .given(ETAT_CONTRAT_EXISTE)
+        .uponReceiving('une création d’avenant sur un contrat crèche')
+        .withRequest({
+          method: 'POST',
+          path: `/api/contrats/${CONTRAT_ID}/versions`,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: corpsAvenant,
+        })
+        .willRespondWith({
+          status: 201,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            id: uuid(CONTRAT_ID),
+            foyerId: uuid(FOYER_CONTRAT_ID),
+            enfant: 'Mia',
+            enfantId: uuid(ENFANT_ID),
+            mode: 'CRECHE_PSU',
+            valideDu: '2026-01-01',
+            valideAu: '2026-07-31',
+            premiereInscription: false,
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/contrats/${CONTRAT_ID}/versions`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify(corpsAvenant),
+          },
+        );
+        expect(reponse.status).toBe(201);
+        const corps = (await reponse.json()) as { id: string; mode: string };
+        expect(corps.id).toBe(CONTRAT_ID);
+        expect(corps.mode).toBe('CRECHE_PSU');
+      });
+    });
+
+    it('liste l’historique des versions (GET .../versions)', async () => {
+      provider
+        .given(ETAT_CONTRAT_VERSIONNE)
+        .uponReceiving('une lecture de l’historique des versions d’un contrat')
+        .withRequest({
+          method: 'GET',
+          path: `/api/contrats/${CONTRAT_ID}/versions`,
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: MatchersV3.eachLike({
+            id: uuid(VERSION_ID),
+            contratId: uuid(CONTRAT_ID),
+            mode: MatchersV3.string('CRECHE_PSU'),
+            dateEffet: MatchersV3.string('2026-01-01'),
+            du: MatchersV3.string('2026-01-01'),
+            // Version unique et ouverte : borne haute dérivée absente (null).
+            au: null,
+            heuresAnnuellesContractualisees: integer(763),
+            nbMensualites: integer(7),
+            saisiLe: MatchersV3.timestamp(
+              "yyyy-MM-dd'T'HH:mm:ss.SSSX",
+              '2026-01-01T00:00:00.000Z',
+            ),
+            motif: null,
+          }),
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/contrats/${CONTRAT_ID}/versions`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          id: string;
+          dateEffet: string;
+          au: string | null;
+        }[];
+        expect(Array.isArray(corps)).toBe(true);
+        expect(corps[0]?.dateEffet).toBe('2026-01-01');
+      });
+    });
+
+    it('corrige une version existante (PUT .../versions/:versionId)', async () => {
+      const corpsCorrection = {
+        mode: 'CRECHE_PSU',
+        heuresAnnuellesContractualisees: 700,
+        nbMensualites: 7,
+        semaineType: semaineTypeCrecheLundi,
+        motif: 'erreur de saisie',
+      };
+      provider
+        .given(ETAT_CONTRAT_VERSIONNE)
+        .uponReceiving('une correction d’une version existante d’un contrat')
+        .withRequest({
+          method: 'PUT',
+          path: `/api/contrats/${CONTRAT_ID}/versions/${VERSION_ID}`,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: corpsCorrection,
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            id: uuid(CONTRAT_ID),
+            foyerId: uuid(FOYER_CONTRAT_ID),
+            enfant: 'Mia',
+            enfantId: uuid(ENFANT_ID),
+            mode: 'CRECHE_PSU',
+            valideDu: '2026-01-01',
+            valideAu: '2026-07-31',
+            premiereInscription: false,
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/contrats/${CONTRAT_ID}/versions/${VERSION_ID}`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify(corpsCorrection),
+          },
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as { id: string };
+        expect(corps.id).toBe(CONTRAT_ID);
+      });
+    });
+
+    it('donne l’aperçu d’impact d’une version (GET .../versions/:versionId/impact)', async () => {
+      provider
+        .given(ETAT_CONTRAT_VERSIONNE)
+        .uponReceiving('une lecture de l’aperçu d’impact d’une version')
+        .withRequest({
+          method: 'GET',
+          path: `/api/contrats/${CONTRAT_ID}/versions/${VERSION_ID}/impact`,
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            versionId: uuid(VERSION_ID),
+            // Version [2026-01-01, ouverte] plafonnée à valideAu 2026-07-31 → 7 mois.
+            moisCouverts: MatchersV3.eachLike(MatchersV3.string('2026-01')),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/contrats/${CONTRAT_ID}/versions/${VERSION_ID}/impact`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          versionId: string;
+          moisCouverts: string[];
+        };
+        expect(corps.versionId).toBe(VERSION_ID);
+        expect(corps.moisCouverts.length).toBeGreaterThan(0);
+      });
+    });
+
+    it('supprime un contrat existant (DELETE → 204)', async () => {
+      provider
+        .given(ETAT_CONTRAT_EXISTE)
+        .uponReceiving('une suppression de contrat')
+        .withRequest({
+          method: 'DELETE',
+          path: `/api/contrats/${CONTRAT_ID}`,
+        })
+        .willRespondWith({ status: 204 });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/contrats/${CONTRAT_ID}`,
+          {
+            method: 'DELETE',
+          },
+        );
+        expect(reponse.status).toBe(204);
+      });
+    });
+
+    it('relit la saisie de planning enregistrée d’un mois (GET .../plannings/:mois)', async () => {
+      provider
+        .given(ETAT_PLANNING_SAISI)
+        .uponReceiving(
+          'une relecture de la saisie de planning d’un mois (saisie présente)',
+        )
+        .withRequest({
+          method: 'GET',
+          path: `/api/contrats/${CONTRAT_ID}/plannings/2026-03`,
+          query: { simule: 'false' },
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          // Forme renvoyée par le contrôleur : `{ saisie: EcrirePlanningDto | null }`.
+          // Ici la saisie crèche stockée (complément + un jour supplémentaire).
+          body: {
+            saisie: {
+              complementMinutes: integer(60),
+              joursSupplementaires: MatchersV3.eachLike({
+                date: MatchersV3.string('2026-03-18'),
+                debutHeures: integer(9),
+                debutMinutes: integer(0),
+                finHeures: integer(12),
+                finMinutes: integer(0),
+              }),
+            },
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/contrats/${CONTRAT_ID}/plannings/2026-03?simule=false`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          saisie: { complementMinutes?: number } | null;
+        };
+        expect(corps.saisie).not.toBeNull();
+        expect(corps.saisie?.complementMinutes).toBe(60);
+      });
+    });
+
+    it('édite les besoins d’une semaine (PUT .../plannings/semaine/:iso → 204)', async () => {
+      // Le contrat existe (ETAT_CONTRAT_EXISTE). Le service relit le mois (vide),
+      // fusionne la semaine et ré-upsert → 204. Corps = catégories datées seules.
+      const besoins = {
+        joursSupplementaires: [
+          {
+            date: '2026-03-10', // dans 2026-W11 (tout mars).
+            debutHeures: 9,
+            debutMinutes: 0,
+            finHeures: 12,
+            finMinutes: 0,
+          },
+        ],
+      };
+      provider
+        .given(ETAT_CONTRAT_EXISTE)
+        .uponReceiving('une édition des besoins d’une semaine (réel)')
+        .withRequest({
+          method: 'PUT',
+          path: `/api/contrats/${CONTRAT_ID}/plannings/semaine/2026-W11`,
+          query: { simule: 'false' },
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: besoins,
+        })
+        .willRespondWith({ status: 204 });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/contrats/${CONTRAT_ID}/plannings/semaine/2026-W11?simule=false`,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify(besoins),
+          },
+        );
+        expect(reponse.status).toBe(204);
+      });
+    });
+
+    it('relit un mois sans saisie → { saisie: null } (200)', async () => {
+      // Le contrat existe mais aucun planning n'a été enregistré : le service
+      // répond 200 avec `{ saisie: null }` (et NON 204) — cf. lirePlanning.
+      provider
+        .given(ETAT_CONTRAT_EXISTE)
+        .uponReceiving('une relecture de planning sans saisie enregistrée')
+        .withRequest({
+          method: 'GET',
+          path: `/api/contrats/${CONTRAT_ID}/plannings/2026-03`,
+          query: { simule: 'false' },
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: { saisie: null },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/contrats/${CONTRAT_ID}/plannings/2026-03?simule=false`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as { saisie: unknown };
+        expect(corps.saisie).toBeNull();
+      });
+    });
+  },
+);

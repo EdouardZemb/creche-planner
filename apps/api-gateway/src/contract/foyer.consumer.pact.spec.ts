@@ -118,7 +118,11 @@ const provider = new PactV3({
   dir: PACTS_DIR,
 });
 
-describe('Pact consumer · api-gateway → svc-foyer', () => {
+// `retry: 1` : sous charge CPU (CI 2 cœurs), pact-core peut matcher la requête
+// mais répondre « expected but not received » à la vérification (course
+// interne, cf. vitest.config.mts). Rejouer le test est sûr : `executeTest` a
+// tout nettoyé et le corps du `it` ré-enregistre l'interaction.
+describe('Pact consumer · api-gateway → svc-foyer', { retry: 1 }, () => {
   it('lit le foyer de référence et reçoit sa tranche T3 déduite du RFR', async () => {
     provider
       .given(ETAT_FOYER_T3, { id: FOYER_REFERENCE_ID })
