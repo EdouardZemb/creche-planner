@@ -67,349 +67,400 @@ const provider = new PactV3({
   dir: PACTS_DIR,
 });
 
-describe('Pact consumer · api-gateway → svc-notifications', () => {
-  it('liste les semaines à valider d’un foyer (GET /api/validations/a-valider)', async () => {
-    provider
-      .given(ETAT_SEMAINE_A_VALIDER)
-      .uponReceiving('une lecture des semaines à valider d’un foyer')
-      .withRequest({
-        method: 'GET',
-        path: '/api/validations/a-valider',
-        query: { foyer: FOYER_ID },
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: MatchersV3.eachLike({
-          contratId: string(CONTRAT_ID),
-          foyerId: string(FOYER_ID),
-          semaineIso: string(SEMAINE),
-          statut: string('A_VALIDER'),
-          notifieeLe: string('2026-06-23T06:00:00.000Z'),
-        }),
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/validations/a-valider?foyer=${FOYER_ID}`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as { semaineIso: string }[];
-      expect(corps[0]?.semaineIso).toBe(SEMAINE);
-    });
-  });
-
-  it('valide une semaine (POST /api/validations/:contratId/:semaineIso)', async () => {
-    provider
-      .given(ETAT_SEMAINE_VALIDABLE)
-      .uponReceiving('la validation d’une semaine A_VALIDER')
-      .withRequest({
-        method: 'POST',
-        path: `/api/validations/${CONTRAT_ID}/${SEMAINE}`,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        // Provider sans svc-planification : relecture dégradée ⇒ snapshot inchangé
-        // ⇒ statut VALIDEE, sans delta.
-        body: {
-          contratId: string(CONTRAT_ID),
-          semaineIso: string(SEMAINE),
-          statut: string('VALIDEE'),
-          deltaModifs: null,
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/validations/${CONTRAT_ID}/${SEMAINE}`,
-        { method: 'POST' },
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as { statut: string };
-      expect(corps.statut).toBe('VALIDEE');
-    });
-  });
-
-  it('régénère le brouillon agrégé par établissement (GET …/etablissements/:etablissementId/brouillon)', async () => {
-    provider
-      .given(ETAT_BROUILLON)
-      .uponReceiving('une régénération du brouillon agrégé par établissement')
-      .withRequest({
-        method: 'GET',
-        path: `/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ID}/brouillon`,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          foyerId: string(FOYER_ID),
-          semaineIso: string(SEMAINE),
-          etablissementId: string(ETABLISSEMENT_ID),
-          etablissementLibelle: string('Crèche Les Hirondelles'),
-          destinataire: string('contact-creche@example.org'),
-          sujet: string('Plannings modifiés — semaine 2026-W10'),
-          corps: string('<p>Bonjour Crèche Les Hirondelles,</p>'),
-          texte: string('Bonjour Crèche Les Hirondelles,'),
-          // Au moins un enfant concerné (forme contrainte ; le détail du delta est
-          // validé par les specs unitaires du template).
-          enfants: MatchersV3.eachLike({
-            contratId: string(CONTRAT_ID),
-            enfant: string('Léa'),
-            deltaModifs: {
-              jours: MatchersV3.eachLike({ date: string('2026-03-04') }),
-            },
-          }),
-          // Établissement joignable → routable, aucune raison de non-routabilité.
-          routable: boolean(true),
-          raisonNonRoutable: null,
-          // Provider en dry-run par défaut (aucun SMTP réel pendant la vérif).
-          dryRun: boolean(true),
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ID}/brouillon`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as { destinataire: string };
-      expect(corps.destinataire).toBe('contact-creche@example.org');
-    });
-  });
-
-  it('régénère un brouillon NON routable pour un établissement sans e-mail (routable=false)', async () => {
-    provider
-      .given(ETAT_BROUILLON_SANS_EMAIL)
-      .uponReceiving(
-        'une régénération du brouillon agrégé d’un établissement sans e-mail',
-      )
-      .withRequest({
-        method: 'GET',
-        path: `/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_SANS_EMAIL_ID}/brouillon`,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          foyerId: string(FOYER_ID),
-          semaineIso: string(SEMAINE),
-          etablissementId: string(ETABLISSEMENT_SANS_EMAIL_ID),
-          etablissementLibelle: string('Halte-garderie du Parc'),
-          // Non routable : destinataire vide, jamais lu par le front dans ce cas.
-          destinataire: '',
-          sujet: string('Plannings modifiés — semaine 2026-W10'),
-          corps: string('<p>Bonjour Halte-garderie du Parc,</p>'),
-          texte: string('Bonjour Halte-garderie du Parc,'),
-          // Le calcul des enfants ne dépend pas de l'e-mail : il y a bien des modifs.
-          enfants: MatchersV3.eachLike({
-            contratId: string('55555555-0000-4000-8000-000000000002'),
-            enfant: string('Zoé'),
-            deltaModifs: {
-              jours: MatchersV3.eachLike({ date: string('2026-03-04') }),
-            },
-          }),
-          routable: boolean(false),
-          raisonNonRoutable: string('SANS_EMAIL'),
-          // dryRun neutralisé (aucun envoi possible).
-          dryRun: boolean(false),
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_SANS_EMAIL_ID}/brouillon`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as {
-        routable: boolean;
-        raisonNonRoutable: string | null;
-        destinataire: string;
-      };
-      expect(corps.routable).toBe(false);
-      expect(corps.raisonNonRoutable).toBe('SANS_EMAIL');
-      expect(corps.destinataire).toBe('');
-    });
-  });
-
-  it('régénère un brouillon NON routable pour un établissement archivé (raisonNonRoutable=ARCHIVE prioritaire)', async () => {
-    provider
-      .given(ETAT_BROUILLON_ARCHIVE)
-      .uponReceiving(
-        'une régénération du brouillon agrégé d’un établissement archivé',
-      )
-      .withRequest({
-        method: 'GET',
-        path: `/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ARCHIVE_ID}/brouillon`,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          foyerId: string(FOYER_ID),
-          semaineIso: string(SEMAINE),
-          etablissementId: string(ETABLISSEMENT_ARCHIVE_ID),
-          etablissementLibelle: string('Crèche Les Coccinelles'),
-          // Non routable (archivée) : destinataire vide, jamais lu par le front.
-          destinataire: '',
-          sujet: string('Plannings modifiés — semaine 2026-W10'),
-          corps: string('<p>Bonjour Crèche Les Coccinelles,</p>'),
-          texte: string('Bonjour Crèche Les Coccinelles,'),
-          // Le calcul des enfants ne dépend ni de l'e-mail ni de l'état actif.
-          enfants: MatchersV3.eachLike({
-            contratId: string('55555555-0000-4000-8000-000000000003'),
-            enfant: string('Nina'),
-            deltaModifs: {
-              jours: MatchersV3.eachLike({ date: string('2026-03-04') }),
-            },
-          }),
-          routable: boolean(false),
-          // Bien que la fiche ait un e-mail, l'archivage prime : raison ARCHIVE.
-          raisonNonRoutable: string('ARCHIVE'),
-          dryRun: boolean(false),
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ARCHIVE_ID}/brouillon`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as {
-        routable: boolean;
-        raisonNonRoutable: string | null;
-        destinataire: string;
-      };
-      expect(corps.routable).toBe(false);
-      expect(corps.raisonNonRoutable).toBe('ARCHIVE');
-      expect(corps.destinataire).toBe('');
-    });
-  });
-
-  it('envoie le récap agrégé au service (POST /api/envois/etablissement)', async () => {
-    provider
-      .given(ETAT_ENVOI)
-      .uponReceiving('un envoi du récap agrégé par établissement')
-      .withRequest({
-        method: 'POST',
-        path: '/api/envois/etablissement',
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          foyerId: FOYER_ID,
-          semaineIso: SEMAINE,
-          etablissementId: ETABLISSEMENT_ID,
-        },
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        // Provider en dry-run par défaut ⇒ statut DRY_RUN, aucun messageId.
-        body: {
-          foyerId: string(FOYER_ID),
-          semaineIso: string(SEMAINE),
-          etablissementId: string(ETABLISSEMENT_ID),
-          destinataire: string('contact-creche@example.org'),
-          statut: string('DRY_RUN'),
-          messageId: null,
-          erreur: null,
-          envoyeLe: string('2026-03-09T08:00:00.000Z'),
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/envois/etablissement`,
-        {
-          method: 'POST',
+// `retry: 1` : parade à la course pact-core sous charge CPU en CI (match
+// enregistré côté mock server mais « expected but not received » à la
+// vérification) — détail dans vitest.config.mts. Rejeu sûr (interaction
+// ré-enregistrée dans le corps du `it`).
+describe(
+  'Pact consumer · api-gateway → svc-notifications',
+  { retry: 1 },
+  () => {
+    it('liste les semaines à valider d’un foyer (GET /api/validations/a-valider)', async () => {
+      provider
+        .given(ETAT_SEMAINE_A_VALIDER)
+        .uponReceiving('une lecture des semaines à valider d’un foyer')
+        .withRequest({
+          method: 'GET',
+          path: '/api/validations/a-valider',
+          query: { foyer: FOYER_ID },
+        })
+        .willRespondWith({
+          status: 200,
           headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify({
+          body: MatchersV3.eachLike({
+            contratId: string(CONTRAT_ID),
+            foyerId: string(FOYER_ID),
+            semaineIso: string(SEMAINE),
+            statut: string('A_VALIDER'),
+            notifieeLe: string('2026-06-23T06:00:00.000Z'),
+          }),
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/validations/a-valider?foyer=${FOYER_ID}`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as { semaineIso: string }[];
+        expect(corps[0]?.semaineIso).toBe(SEMAINE);
+      });
+    });
+
+    it('valide une semaine (POST /api/validations/:contratId/:semaineIso)', async () => {
+      provider
+        .given(ETAT_SEMAINE_VALIDABLE)
+        .uponReceiving('la validation d’une semaine A_VALIDER')
+        .withRequest({
+          method: 'POST',
+          path: `/api/validations/${CONTRAT_ID}/${SEMAINE}`,
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          // Provider sans svc-planification : relecture dégradée ⇒ snapshot inchangé
+          // ⇒ statut VALIDEE, sans delta.
+          body: {
+            contratId: string(CONTRAT_ID),
+            semaineIso: string(SEMAINE),
+            statut: string('VALIDEE'),
+            deltaModifs: null,
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/validations/${CONTRAT_ID}/${SEMAINE}`,
+          { method: 'POST' },
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as { statut: string };
+        expect(corps.statut).toBe('VALIDEE');
+      });
+    });
+
+    it('régénère le brouillon agrégé par établissement (GET …/etablissements/:etablissementId/brouillon)', async () => {
+      provider
+        .given(ETAT_BROUILLON)
+        .uponReceiving('une régénération du brouillon agrégé par établissement')
+        .withRequest({
+          method: 'GET',
+          path: `/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ID}/brouillon`,
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            foyerId: string(FOYER_ID),
+            semaineIso: string(SEMAINE),
+            etablissementId: string(ETABLISSEMENT_ID),
+            etablissementLibelle: string('Crèche Les Hirondelles'),
+            destinataire: string('contact-creche@example.org'),
+            sujet: string('Plannings modifiés — semaine 2026-W10'),
+            corps: string('<p>Bonjour Crèche Les Hirondelles,</p>'),
+            texte: string('Bonjour Crèche Les Hirondelles,'),
+            // Au moins un enfant concerné (forme contrainte ; le détail du delta est
+            // validé par les specs unitaires du template).
+            enfants: MatchersV3.eachLike({
+              contratId: string(CONTRAT_ID),
+              enfant: string('Léa'),
+              deltaModifs: {
+                jours: MatchersV3.eachLike({ date: string('2026-03-04') }),
+              },
+            }),
+            // Établissement joignable → routable, aucune raison de non-routabilité.
+            routable: boolean(true),
+            raisonNonRoutable: null,
+            // Provider en dry-run par défaut (aucun SMTP réel pendant la vérif).
+            dryRun: boolean(true),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ID}/brouillon`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as { destinataire: string };
+        expect(corps.destinataire).toBe('contact-creche@example.org');
+      });
+    });
+
+    it('régénère un brouillon NON routable pour un établissement sans e-mail (routable=false)', async () => {
+      provider
+        .given(ETAT_BROUILLON_SANS_EMAIL)
+        .uponReceiving(
+          'une régénération du brouillon agrégé d’un établissement sans e-mail',
+        )
+        .withRequest({
+          method: 'GET',
+          path: `/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_SANS_EMAIL_ID}/brouillon`,
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            foyerId: string(FOYER_ID),
+            semaineIso: string(SEMAINE),
+            etablissementId: string(ETABLISSEMENT_SANS_EMAIL_ID),
+            etablissementLibelle: string('Halte-garderie du Parc'),
+            // Non routable : destinataire vide, jamais lu par le front dans ce cas.
+            destinataire: '',
+            sujet: string('Plannings modifiés — semaine 2026-W10'),
+            corps: string('<p>Bonjour Halte-garderie du Parc,</p>'),
+            texte: string('Bonjour Halte-garderie du Parc,'),
+            // Le calcul des enfants ne dépend pas de l'e-mail : il y a bien des modifs.
+            enfants: MatchersV3.eachLike({
+              contratId: string('55555555-0000-4000-8000-000000000002'),
+              enfant: string('Zoé'),
+              deltaModifs: {
+                jours: MatchersV3.eachLike({ date: string('2026-03-04') }),
+              },
+            }),
+            routable: boolean(false),
+            raisonNonRoutable: string('SANS_EMAIL'),
+            // dryRun neutralisé (aucun envoi possible).
+            dryRun: boolean(false),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_SANS_EMAIL_ID}/brouillon`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          routable: boolean;
+          raisonNonRoutable: string | null;
+          destinataire: string;
+        };
+        expect(corps.routable).toBe(false);
+        expect(corps.raisonNonRoutable).toBe('SANS_EMAIL');
+        expect(corps.destinataire).toBe('');
+      });
+    });
+
+    it('régénère un brouillon NON routable pour un établissement archivé (raisonNonRoutable=ARCHIVE prioritaire)', async () => {
+      provider
+        .given(ETAT_BROUILLON_ARCHIVE)
+        .uponReceiving(
+          'une régénération du brouillon agrégé d’un établissement archivé',
+        )
+        .withRequest({
+          method: 'GET',
+          path: `/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ARCHIVE_ID}/brouillon`,
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            foyerId: string(FOYER_ID),
+            semaineIso: string(SEMAINE),
+            etablissementId: string(ETABLISSEMENT_ARCHIVE_ID),
+            etablissementLibelle: string('Crèche Les Coccinelles'),
+            // Non routable (archivée) : destinataire vide, jamais lu par le front.
+            destinataire: '',
+            sujet: string('Plannings modifiés — semaine 2026-W10'),
+            corps: string('<p>Bonjour Crèche Les Coccinelles,</p>'),
+            texte: string('Bonjour Crèche Les Coccinelles,'),
+            // Le calcul des enfants ne dépend ni de l'e-mail ni de l'état actif.
+            enfants: MatchersV3.eachLike({
+              contratId: string('55555555-0000-4000-8000-000000000003'),
+              enfant: string('Nina'),
+              deltaModifs: {
+                jours: MatchersV3.eachLike({ date: string('2026-03-04') }),
+              },
+            }),
+            routable: boolean(false),
+            // Bien que la fiche ait un e-mail, l'archivage prime : raison ARCHIVE.
+            raisonNonRoutable: string('ARCHIVE'),
+            dryRun: boolean(false),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SEMAINE}/etablissements/${ETABLISSEMENT_ARCHIVE_ID}/brouillon`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          routable: boolean;
+          raisonNonRoutable: string | null;
+          destinataire: string;
+        };
+        expect(corps.routable).toBe(false);
+        expect(corps.raisonNonRoutable).toBe('ARCHIVE');
+        expect(corps.destinataire).toBe('');
+      });
+    });
+
+    it('envoie le récap agrégé au service (POST /api/envois/etablissement)', async () => {
+      provider
+        .given(ETAT_ENVOI)
+        .uponReceiving('un envoi du récap agrégé par établissement')
+        .withRequest({
+          method: 'POST',
+          path: '/api/envois/etablissement',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
             foyerId: FOYER_ID,
             semaineIso: SEMAINE,
             etablissementId: ETABLISSEMENT_ID,
-          }),
-        },
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as { statut: string };
-      expect(corps.statut).toBe('DRY_RUN');
-    });
-  });
-
-  it('envoie le récap avec un objet + corps édités par le parent (POST /api/envois/etablissement)', async () => {
-    provider
-      .given(ETAT_ENVOI)
-      .uponReceiving('un envoi du récap agrégé avec un corps édité')
-      .withRequest({
-        method: 'POST',
-        path: '/api/envois/etablissement',
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        // Objet + corps (texte brut) relus/édités par le parent avant l'envoi :
-        // rétro-compatible avec l'interaction « 3 ids seuls » ci-dessus.
-        body: {
-          foyerId: FOYER_ID,
-          semaineIso: SEMAINE,
-          etablissementId: ETABLISSEMENT_ID,
-          sujet: 'Planning de la semaine du 2 mars — Léa',
-          corps:
-            'Bonjour,\n\nVoici le planning complet de la semaine.\n\nMerci !',
-        },
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        // Réponse de forme identique (le corps édité ne change pas la forme du résultat).
-        body: {
-          foyerId: string(FOYER_ID),
-          semaineIso: string(SEMAINE),
-          etablissementId: string(ETABLISSEMENT_ID),
-          destinataire: string('contact-creche@example.org'),
-          statut: string('DRY_RUN'),
-          messageId: null,
-          erreur: null,
-          envoyeLe: string('2026-03-09T08:00:00.000Z'),
-        },
-      });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/envois/etablissement`,
-        {
-          method: 'POST',
+          },
+        })
+        .willRespondWith({
+          status: 200,
           headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify({
+          // Provider en dry-run par défaut ⇒ statut DRY_RUN, aucun messageId.
+          body: {
+            foyerId: string(FOYER_ID),
+            semaineIso: string(SEMAINE),
+            etablissementId: string(ETABLISSEMENT_ID),
+            destinataire: string('contact-creche@example.org'),
+            statut: string('DRY_RUN'),
+            messageId: null,
+            erreur: null,
+            envoyeLe: string('2026-03-09T08:00:00.000Z'),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/envois/etablissement`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({
+              foyerId: FOYER_ID,
+              semaineIso: SEMAINE,
+              etablissementId: ETABLISSEMENT_ID,
+            }),
+          },
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as { statut: string };
+        expect(corps.statut).toBe('DRY_RUN');
+      });
+    });
+
+    it('envoie le récap avec un objet + corps édités par le parent (POST /api/envois/etablissement)', async () => {
+      provider
+        .given(ETAT_ENVOI)
+        .uponReceiving('un envoi du récap agrégé avec un corps édité')
+        .withRequest({
+          method: 'POST',
+          path: '/api/envois/etablissement',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          // Objet + corps (texte brut) relus/édités par le parent avant l'envoi :
+          // rétro-compatible avec l'interaction « 3 ids seuls » ci-dessus.
+          body: {
             foyerId: FOYER_ID,
             semaineIso: SEMAINE,
             etablissementId: ETABLISSEMENT_ID,
             sujet: 'Planning de la semaine du 2 mars — Léa',
             corps:
               'Bonjour,\n\nVoici le planning complet de la semaine.\n\nMerci !',
-          }),
-        },
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as { statut: string };
-      expect(corps.statut).toBe('DRY_RUN');
+          },
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          // Réponse de forme identique (le corps édité ne change pas la forme du résultat).
+          body: {
+            foyerId: string(FOYER_ID),
+            semaineIso: string(SEMAINE),
+            etablissementId: string(ETABLISSEMENT_ID),
+            destinataire: string('contact-creche@example.org'),
+            statut: string('DRY_RUN'),
+            messageId: null,
+            erreur: null,
+            envoyeLe: string('2026-03-09T08:00:00.000Z'),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/envois/etablissement`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({
+              foyerId: FOYER_ID,
+              semaineIso: SEMAINE,
+              etablissementId: ETABLISSEMENT_ID,
+              sujet: 'Planning de la semaine du 2 mars — Léa',
+              corps:
+                'Bonjour,\n\nVoici le planning complet de la semaine.\n\nMerci !',
+            }),
+          },
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as { statut: string };
+        expect(corps.statut).toBe('DRY_RUN');
+      });
     });
-  });
 
-  // --- Inbox in-app (cloche) : liste, accusé de lecture, isolation cross-parent ---
+    // --- Inbox in-app (cloche) : liste, accusé de lecture, isolation cross-parent ---
 
-  it('liste l’inbox d’un parent (GET /api/moi/notifications?parent=…)', async () => {
-    provider
-      .given(ETAT_INBOX, { parentId: PARENT_INBOX_ID, id: NOTIF_INBOX_ID })
-      .uponReceiving('une lecture du panneau in-app d’un parent')
-      .withRequest({
-        method: 'GET',
-        path: '/api/moi/notifications',
-        query: { parent: PARENT_INBOX_ID },
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          // Au moins une entrée récente, non lue (`luLe: null`). La forme d'une
-          // `NotificationInAppVue` est figée ; le compteur est un entier.
-          notifications: MatchersV3.eachLike({
+    it('liste l’inbox d’un parent (GET /api/moi/notifications?parent=…)', async () => {
+      provider
+        .given(ETAT_INBOX, { parentId: PARENT_INBOX_ID, id: NOTIF_INBOX_ID })
+        .uponReceiving('une lecture du panneau in-app d’un parent')
+        .withRequest({
+          method: 'GET',
+          path: '/api/moi/notifications',
+          query: { parent: PARENT_INBOX_ID },
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            // Au moins une entrée récente, non lue (`luLe: null`). La forme d'une
+            // `NotificationInAppVue` est figée ; le compteur est un entier.
+            notifications: MatchersV3.eachLike({
+              id: string(NOTIF_INBOX_ID),
+              type: string('VALIDATION_HEBDO'),
+              sujet: string('Planning de la semaine à valider'),
+              corps: string(
+                'Votre planning de la semaine est prêt à être validé.',
+              ),
+              lien: string(
+                '/foyers/22222222-2222-4222-8222-222222222222/planning',
+              ),
+              creeLe: string('2026-06-23T06:00:00.000Z'),
+              luLe: null,
+            }),
+            nonLus: integer(1),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/moi/notifications?parent=${PARENT_INBOX_ID}`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          notifications: { luLe: string | null }[];
+          nonLus: number;
+        };
+        expect(corps.notifications[0]?.luLe).toBeNull();
+        expect(typeof corps.nonLus).toBe('number');
+      });
+    });
+
+    it('marque une notification comme lue (POST …/:id/lu?parent=…) → 200 avec luLe', async () => {
+      provider
+        .given(ETAT_INBOX, { parentId: PARENT_INBOX_ID, id: NOTIF_INBOX_ID })
+        .uponReceiving('un accusé de lecture d’une notification du parent')
+        .withRequest({
+          method: 'POST',
+          path: `/api/moi/notifications/${NOTIF_INBOX_ID}/lu`,
+          query: { parent: PARENT_INBOX_ID },
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          // `luLe` désormais posé (chaîne ISO, matché en type) : prouve l'accusé.
+          body: {
             id: string(NOTIF_INBOX_ID),
             type: string('VALIDATION_HEBDO'),
             sujet: string('Planning de la semaine à valider'),
@@ -420,181 +471,144 @@ describe('Pact consumer · api-gateway → svc-notifications', () => {
               '/foyers/22222222-2222-4222-8222-222222222222/planning',
             ),
             creeLe: string('2026-06-23T06:00:00.000Z'),
-            luLe: null,
-          }),
-          nonLus: integer(1),
-        },
+            luLe: string('2026-06-23T07:00:00.000Z'),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/moi/notifications/${NOTIF_INBOX_ID}/lu?parent=${PARENT_INBOX_ID}`,
+          { method: 'POST' },
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as { luLe: string | null };
+        expect(corps.luLe).not.toBeNull();
       });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/moi/notifications?parent=${PARENT_INBOX_ID}`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as {
-        notifications: { luLe: string | null }[];
-        nonLus: number;
-      };
-      expect(corps.notifications[0]?.luLe).toBeNull();
-      expect(typeof corps.nonLus).toBe('number');
     });
-  });
 
-  it('marque une notification comme lue (POST …/:id/lu?parent=…) → 200 avec luLe', async () => {
-    provider
-      .given(ETAT_INBOX, { parentId: PARENT_INBOX_ID, id: NOTIF_INBOX_ID })
-      .uponReceiving('un accusé de lecture d’une notification du parent')
-      .withRequest({
-        method: 'POST',
-        path: `/api/moi/notifications/${NOTIF_INBOX_ID}/lu`,
-        query: { parent: PARENT_INBOX_ID },
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        // `luLe` désormais posé (chaîne ISO, matché en type) : prouve l'accusé.
-        body: {
-          id: string(NOTIF_INBOX_ID),
-          type: string('VALIDATION_HEBDO'),
-          sujet: string('Planning de la semaine à valider'),
-          corps: string('Votre planning de la semaine est prêt à être validé.'),
-          lien: string('/foyers/22222222-2222-4222-8222-222222222222/planning'),
-          creeLe: string('2026-06-23T06:00:00.000Z'),
-          luLe: string('2026-06-23T07:00:00.000Z'),
-        },
+    it('refuse (404) l’accusé de lecture d’un AUTRE parent (isolation cross-parent)', async () => {
+      provider
+        // La notif reste possédée par `PARENT_INBOX_ID` ; on la requête ici au nom
+        // d'un AUTRE parent → 404 (même message, aucune fuite). C'est LE contrat de
+        // sécurité : si le prédicat `parentId` de `inbox.service.ts` saute, le
+        // provider répondrait 200 → la vérification provider échouerait.
+        .given(ETAT_INBOX, { parentId: PARENT_INBOX_ID, id: NOTIF_INBOX_ID })
+        .uponReceiving(
+          'un accusé de lecture d’une notification d’un autre parent',
+        )
+        .withRequest({
+          method: 'POST',
+          path: `/api/moi/notifications/${NOTIF_INBOX_ID}/lu`,
+          query: { parent: AUTRE_PARENT_ID },
+        })
+        .willRespondWith({
+          status: 404,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            statusCode: integer(404),
+            message: string('notification inconnue'),
+            error: string('Not Found'),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/moi/notifications/${NOTIF_INBOX_ID}/lu?parent=${AUTRE_PARENT_ID}`,
+          { method: 'POST' },
+        );
+        expect(reponse.status).toBe(404);
+        const corps = (await reponse.json()) as { message: string };
+        expect(corps.message).toBe('notification inconnue');
       });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/moi/notifications/${NOTIF_INBOX_ID}/lu?parent=${PARENT_INBOX_ID}`,
-        { method: 'POST' },
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as { luLe: string | null };
-      expect(corps.luLe).not.toBeNull();
     });
-  });
 
-  it('refuse (404) l’accusé de lecture d’un AUTRE parent (isolation cross-parent)', async () => {
-    provider
-      // La notif reste possédée par `PARENT_INBOX_ID` ; on la requête ici au nom
-      // d'un AUTRE parent → 404 (même message, aucune fuite). C'est LE contrat de
-      // sécurité : si le prédicat `parentId` de `inbox.service.ts` saute, le
-      // provider répondrait 200 → la vérification provider échouerait.
-      .given(ETAT_INBOX, { parentId: PARENT_INBOX_ID, id: NOTIF_INBOX_ID })
-      .uponReceiving(
-        'un accusé de lecture d’une notification d’un autre parent',
-      )
-      .withRequest({
-        method: 'POST',
-        path: `/api/moi/notifications/${NOTIF_INBOX_ID}/lu`,
-        query: { parent: AUTRE_PARENT_ID },
-      })
-      .willRespondWith({
-        status: 404,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          statusCode: integer(404),
-          message: string('notification inconnue'),
-          error: string('Not Found'),
-        },
-      });
+    // --- Suivi des envois (B1) : lecture seule, cas peuplé + cas vide ---------
 
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/moi/notifications/${NOTIF_INBOX_ID}/lu?parent=${AUTRE_PARENT_ID}`,
-        { method: 'POST' },
-      );
-      expect(reponse.status).toBe(404);
-      const corps = (await reponse.json()) as { message: string };
-      expect(corps.message).toBe('notification inconnue');
-    });
-  });
-
-  // --- Suivi des envois (B1) : lecture seule, cas peuplé + cas vide ---------
-
-  it('lit le suivi des envois d’une semaine (GET …/envois) — rappel + établissement', async () => {
-    provider
-      .given(ETAT_SUIVI_ENVOIS)
-      .uponReceiving('une lecture du suivi des envois d’une semaine')
-      .withRequest({
-        method: 'GET',
-        path: `/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE}/envois`,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        body: {
-          foyerId: string(FOYER_ID),
-          semaineIso: string(SUIVI_SEMAINE),
-          // Rappel du mardi ENVOYE aux parents (au moins un parent servi).
-          rappel: {
-            statut: string('ENVOYE'),
-            envoyeLe: string('2026-03-24T06:00:00.000Z'),
-            erreur: null,
-            parents: MatchersV3.eachLike({
-              email: string('parent@example.org'),
+    it('lit le suivi des envois d’une semaine (GET …/envois) — rappel + établissement', async () => {
+      provider
+        .given(ETAT_SUIVI_ENVOIS)
+        .uponReceiving('une lecture du suivi des envois d’une semaine')
+        .withRequest({
+          method: 'GET',
+          path: `/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE}/envois`,
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            foyerId: string(FOYER_ID),
+            semaineIso: string(SUIVI_SEMAINE),
+            // Rappel du mardi ENVOYE aux parents (au moins un parent servi).
+            rappel: {
               statut: string('ENVOYE'),
               envoyeLe: string('2026-03-24T06:00:00.000Z'),
-              essais: integer(0),
+              erreur: null,
+              parents: MatchersV3.eachLike({
+                email: string('parent@example.org'),
+                statut: string('ENVOYE'),
+                envoyeLe: string('2026-03-24T06:00:00.000Z'),
+                essais: integer(0),
+              }),
+            },
+            // Au moins un récap établissement ENVOYE.
+            etablissements: MatchersV3.eachLike({
+              etablissementId: string(ETABLISSEMENT_ID),
+              statut: string('ENVOYE'),
+              envoyeLe: string('2026-03-24T06:00:00.000Z'),
+              erreur: null,
+              destinataire: string('contact-creche@example.org'),
             }),
           },
-          // Au moins un récap établissement ENVOYE.
-          etablissements: MatchersV3.eachLike({
-            etablissementId: string(ETABLISSEMENT_ID),
-            statut: string('ENVOYE'),
-            envoyeLe: string('2026-03-24T06:00:00.000Z'),
-            erreur: null,
-            destinataire: string('contact-creche@example.org'),
-          }),
-        },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE}/envois`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          rappel: { statut: string } | null;
+          etablissements: { statut: string }[];
+        };
+        expect(corps.rappel?.statut).toBe('ENVOYE');
+        expect(corps.etablissements[0]?.statut).toBe('ENVOYE');
       });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE}/envois`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as {
-        rappel: { statut: string } | null;
-        etablissements: { statut: string }[];
-      };
-      expect(corps.rappel?.statut).toBe('ENVOYE');
-      expect(corps.etablissements[0]?.statut).toBe('ENVOYE');
     });
-  });
 
-  it('lit un suivi des envois VIDE (rappel null, aucun établissement)', async () => {
-    provider
-      .given(ETAT_SUIVI_ENVOIS_VIDE)
-      .uponReceiving('une lecture du suivi des envois d’une semaine sans envoi')
-      .withRequest({
-        method: 'GET',
-        path: `/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE_VIDE}/envois`,
-      })
-      .willRespondWith({
-        status: 200,
-        headers: { 'Content-Type': 'application/json; charset=utf-8' },
-        // Cas nominal de début de semaine : rien n'est encore parti.
-        body: {
-          foyerId: string(FOYER_ID),
-          semaineIso: string(SUIVI_SEMAINE_VIDE),
-          rappel: null,
-          etablissements: [],
-        },
+    it('lit un suivi des envois VIDE (rappel null, aucun établissement)', async () => {
+      provider
+        .given(ETAT_SUIVI_ENVOIS_VIDE)
+        .uponReceiving(
+          'une lecture du suivi des envois d’une semaine sans envoi',
+        )
+        .withRequest({
+          method: 'GET',
+          path: `/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE_VIDE}/envois`,
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          // Cas nominal de début de semaine : rien n'est encore parti.
+          body: {
+            foyerId: string(FOYER_ID),
+            semaineIso: string(SUIVI_SEMAINE_VIDE),
+            rappel: null,
+            etablissements: [],
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE_VIDE}/envois`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          rappel: unknown;
+          etablissements: unknown[];
+        };
+        expect(corps.rappel).toBeNull();
+        expect(corps.etablissements).toEqual([]);
       });
-
-    await provider.executeTest(async (mockServer) => {
-      const reponse = await fetch(
-        `${mockServer.url}/api/validations/semaine/${FOYER_ID}/${SUIVI_SEMAINE_VIDE}/envois`,
-      );
-      expect(reponse.status).toBe(200);
-      const corps = (await reponse.json()) as {
-        rappel: unknown;
-        etablissements: unknown[];
-      };
-      expect(corps.rappel).toBeNull();
-      expect(corps.etablissements).toEqual([]);
     });
-  });
-});
+  },
+);

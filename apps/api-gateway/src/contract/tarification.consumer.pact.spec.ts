@@ -30,7 +30,11 @@ const provider = new PactV3({
   dir: PACTS_DIR,
 });
 
-describe('Pact consumer · api-gateway → svc-tarification', () => {
+// `retry: 1` : parade à la course pact-core sous charge CPU en CI (match
+// enregistré côté mock server mais « expected but not received » à la
+// vérification) — détail dans vitest.config.mts. Rejeu sûr (interaction
+// ré-enregistrée dans le corps du `it`).
+describe('Pact consumer · api-gateway → svc-tarification', { retry: 1 }, () => {
   it('lit le coût consolidé du mois de octobre 2026 (planning réel)', async () => {
     provider
       .given(ETAT_FOYER_COUT)

@@ -9,6 +9,18 @@ export default defineConfig(() => ({
     globals: true,
     environment: 'node',
     include: ['{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    // Fichiers SÉRIALISÉS en CI (parallélisme conservé en local). Les specs
+    // pact (`src/contract/*.pact.spec.ts`) démarrent un mock server natif
+    // (pact-core/tokio) par `executeTest` ; sur le runner GitHub 2 cœurs,
+    // plusieurs forks vitest + leurs mock servers saturent le CPU et ouvrent
+    // une course interne à pact-core : la requête est reçue ET matchée par le
+    // mock server (logs hyper_server), la réponse 200 conforme revient au
+    // test, mais `mockServerMismatches()` — interrogé juste après le callback
+    // — répond « request expected but not received » (run 30480333256,
+    // tentatives 1 et 2, sur un spec différent à chaque fois). Un seul fork
+    // actif ⇒ le worker tokio n'est plus affamé ⇒ la fenêtre se referme.
+    // Filet complémentaire : `retry: 1` sur les describes des specs pact.
+    fileParallelism: !process.env['CI'],
     reporters: process.env['CI']
       ? [
           'default',
