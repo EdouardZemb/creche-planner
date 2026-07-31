@@ -68,7 +68,7 @@ export function BarreStatutCalendrier({
         <span
           role="alert"
           className="muted"
-          style={{ fontSize: '0.82rem', color: 'var(--erreur, #b00020)' }}
+          style={{ fontSize: '0.82rem', color: 'var(--erreur)' }}
         >
           {erreurDurable}
         </span>
