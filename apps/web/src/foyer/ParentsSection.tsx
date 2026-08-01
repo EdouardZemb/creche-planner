@@ -39,11 +39,9 @@ export function ParentsSection({
   ]);
 
   return (
-    <fieldset style={{ border: 'none', padding: 0, margin: '1.5rem 0 0' }}>
-      <legend style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
-        Parents
-      </legend>
-      <p className="muted" style={{ marginTop: 0 }}>
+    <fieldset className="bloc-champs" style={{ margin: '1.5rem 0 0' }}>
+      <legend style={{ marginBottom: '0.25rem' }}>Parents</legend>
+      <p className="muted mt-0">
         Destinataires des récapitulatifs hebdomadaires. Au moins un parent est
         recommandé.
       </p>
@@ -205,7 +203,7 @@ function LigneParentExistant({
   }
 
   return (
-    <div className="carte parent-ligne" style={{ marginBottom: '0.5rem' }}>
+    <div className="carte parent-ligne mb-2">
       <ChampErreur balise="p">{erreurGlobale}</ChampErreur>
 
       <ChampFormulaire
@@ -227,12 +225,12 @@ function LigneParentExistant({
             onChange={(e) => {
               setEmail(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         )}
       </ChampFormulaire>
 
-      <div className="champs-duo" style={{ marginTop: 'var(--esp-2)' }}>
+      <div className="champs-duo mt-2">
         <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span className="muted">(facultatif)</span>
@@ -244,7 +242,7 @@ function LigneParentExistant({
             onChange={(e) => {
               setPrenom(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         </div>
         <div>
@@ -258,7 +256,7 @@ function LigneParentExistant({
             onChange={(e) => {
               setNom(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         </div>
       </div>
@@ -397,10 +395,7 @@ function FormNouveauParent({
   const etatAffiche: EtatSauvegarde = occupe ? 'en-cours' : etatSauvegarde;
 
   return (
-    <div
-      className="carte parent-ligne"
-      style={{ marginBottom: '0.5rem', marginTop: '0.5rem' }}
-    >
+    <div className="carte parent-ligne mb-2 mt-2">
       <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Ajouter un parent</p>
 
       <ChampErreur balise="p">{erreurGlobale}</ChampErreur>
@@ -424,12 +419,12 @@ function FormNouveauParent({
             onChange={(e) => {
               setEmail(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         )}
       </ChampFormulaire>
 
-      <div className="champs-duo" style={{ marginTop: 'var(--esp-2)' }}>
+      <div className="champs-duo mt-2">
         <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span className="muted">(facultatif)</span>
@@ -441,7 +436,7 @@ function FormNouveauParent({
             onChange={(e) => {
               setPrenom(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         </div>
         <div>
@@ -455,7 +450,7 @@ function FormNouveauParent({
             onChange={(e) => {
               setNom(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         </div>
       </div>

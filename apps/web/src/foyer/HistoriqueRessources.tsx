@@ -21,11 +21,7 @@ export function HistoriqueRessources({
   );
 
   if (loading) {
-    return (
-      <p className="muted" style={{ marginTop: 0 }}>
-        Chargement de l’historique…
-      </p>
-    );
+    return <p className="muted mt-0">Chargement de l’historique…</p>;
   }
   if (error || !data || data.length === 0) {
     // L'historique est un plus : un échec de lecture ne bloque pas l'édition.
@@ -33,8 +29,8 @@ export function HistoriqueRessources({
   }
 
   return (
-    <section style={{ marginTop: 'var(--esp-5)' }}>
-      <h2 style={{ fontSize: '1rem', marginBottom: 'var(--esp-2)' }}>
+    <section className="mt-5">
+      <h2 className="mb-2" style={{ fontSize: '1rem' }}>
         Historique des ressources
       </h2>
       <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>

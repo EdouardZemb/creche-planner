@@ -449,6 +449,19 @@ label {
   color: var(--gris);
 }
 
+/* Cases et boutons radio : ils ne sont pas des champs de saisie et n'héritent
+   donc ni du `padding` ci-dessous ni d'une largeur imposée. Remplace 19
+   `style={{ width: 'auto', padding: 0 }}` écrits à la main (lot C4).
+   Placement DÉLIBÉRÉMENT ICI, avant les règles de formulaire : le `padding`
+   l'emporte partout par spécificité (0,1,1 > 0,0,1), tandis que le `width`
+   continue de céder à `.profil-form input` et consorts, déclarées plus bas à
+   spécificité égale — c'est exactement le rendu actuel de ces formulaires. */
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+  padding: 0;
+}
+
 input,
 select {
   font: inherit;
@@ -1612,6 +1625,86 @@ button:disabled,
   background: var(--surface);
   color: var(--rouge-desactive); /* sur blanc : 6,7:1 */
   border: 1px solid var(--rouge-desactive);
+}
+
+/* ---- Utilitaires (lot C4) ------------------------------------------------ */
+/* Jeu VOLONTAIREMENT borné : il résorbe les styles inline les plus répétés, ce
+   n'est pas un framework utilitaire. Pas de variantes responsives, pas de
+   left/right, pas de pas intermédiaires — chaque classe ci-dessous supprime au
+   moins huit `style={{…}}` identiques.
+   Déclarées EN FIN de feuille, juste avant le responsive : un style inline
+   battait toutes les règles de composant, une classe déclarée tard s'en
+   approche au plus près à spécificité égale. */
+
+/* Champ de saisie pleine largeur (jamais sur une case ni un radio). */
+.champ-large {
+  width: 100%;
+}
+
+/* Groupe de champs sans le chrome natif du <fieldset>. Généralise
+   `.etab-fieldset` / `.profil-fieldset`. */
+.bloc-champs {
+  border: none;
+  padding: 0;
+}
+
+.bloc-champs > legend {
+  font-weight: 600;
+  margin-bottom: var(--esp-2);
+}
+
+/* Échelle de marges verticales, calée sur `--esp-*` et BORNÉE : uniquement
+   `top` et `bottom`, aucun pas intermédiaire, aucune variante responsive. Elle
+   ne couvre que les valeurs déjà présentes dans le code — une marge de 0.4rem
+   reste inline plutôt que d'être arrondie au pas voisin. */
+.mt-0 {
+  margin-top: 0;
+}
+.mt-1 {
+  margin-top: var(--esp-1);
+}
+.mt-2 {
+  margin-top: var(--esp-2);
+}
+.mt-3 {
+  margin-top: var(--esp-3);
+}
+.mt-4 {
+  margin-top: var(--esp-4);
+}
+.mt-5 {
+  margin-top: var(--esp-5);
+}
+.mb-1 {
+  margin-bottom: var(--esp-1);
+}
+.mb-2 {
+  margin-bottom: var(--esp-2);
+}
+.mb-3 {
+  margin-bottom: var(--esp-3);
+}
+.mb-4 {
+  margin-bottom: var(--esp-4);
+}
+.mb-5 {
+  margin-bottom: var(--esp-5);
+}
+
+/* Pied de formulaire ou de modale : la rangée de boutons. Généralise
+   `.etab-form-actions`. */
+.rangee-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--esp-2);
+  margin-top: var(--esp-4);
+}
+
+/* Liste sémantique sans puces ni retrait. */
+.liste-nue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 /* ---- Responsive : enrichissement mobile-first ---------------------------- */

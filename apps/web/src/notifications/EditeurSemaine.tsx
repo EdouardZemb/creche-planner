@@ -74,9 +74,9 @@ export function EditeurSemaine({
 
   return (
     <section
-      className="carte"
+      className="carte mt-4"
       aria-label={`Éditer les besoins de la ${libelleSemaine(semaineIso)}`}
-      style={{ borderLeft: '4px solid var(--bleu)', marginTop: '1rem' }}
+      style={{ borderLeft: '4px solid var(--bleu)' }}
     >
       <div
         style={{
@@ -113,7 +113,7 @@ export function EditeurSemaine({
             aujourdhui,
           );
           return (
-            <div key={groupe.id} style={{ marginTop: '0.75rem' }}>
+            <div key={groupe.id} className="mt-3">
               <h4 style={{ fontSize: 'var(--h2)', margin: '0 0 0.25rem' }}>
                 {groupe.libelle}
               </h4>

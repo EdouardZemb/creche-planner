@@ -37,15 +37,13 @@ export function FoyerScalairesForm({
   idErreur,
 }: FoyerScalairesFormProps) {
   return (
-    <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-      <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-        Ressources de la famille
-      </legend>
+    <fieldset className="bloc-champs" style={{ margin: 0 }}>
+      <legend>Ressources de la famille</legend>
 
       {/* Onboarding guidé (lot 3) : lever l'inquiétude devant les champs fiscaux
           — à quoi ils servent et qu'ils restent modifiables. Partagé avec
           l'édition, qui en bénéficie aussi. */}
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted mt-0">
         Ces informations servent uniquement à estimer le coût de la garde
         (barème CAF). Vous pourrez les modifier à tout moment.
       </p>
@@ -72,7 +70,7 @@ export function FoyerScalairesForm({
             onChange={(e) => {
               onChange('ressourcesMensuelles', e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         )}
       </ChampFormulaire>
@@ -100,7 +98,7 @@ export function FoyerScalairesForm({
             onChange={(e) => {
               onChange('rfr', e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         )}
       </ChampFormulaire>
@@ -127,7 +125,7 @@ export function FoyerScalairesForm({
             onChange={(e) => {
               onChange('nbEnfantsACharge', e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         )}
       </ChampFormulaire>
@@ -154,7 +152,7 @@ export function FoyerScalairesForm({
             onChange={(e) => {
               onChange('nbParts', e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         )}
       </ChampFormulaire>

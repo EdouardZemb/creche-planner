@@ -200,7 +200,7 @@ function FormulaireEdition({
 
   return (
     <div className="carte page-etroite">
-      <h1 style={{ marginTop: 0 }}>Ma famille</h1>
+      <h1 className="mt-0">Ma famille</h1>
 
       <ChampErreur balise="p" focalisable ref={refErreurGlobale}>
         {erreurGlobale}
@@ -228,10 +228,7 @@ function FormulaireEdition({
 
         {/* Date d'effet (SFD 30) : à partir de quand ces ressources s'appliquent.
             Défaut aujourd'hui ; une date au futur préserve les mois passés. */}
-        <label
-          htmlFor={`${idBase}-dateEffet`}
-          style={{ marginTop: 'var(--esp-3)' }}
-        >
+        <label htmlFor={`${idBase}-dateEffet`} className="mt-3">
           À partir du
         </label>
         <input
@@ -243,12 +240,12 @@ function FormulaireEdition({
           }}
           style={{ width: '100%' }}
         />
-        <p className="muted" style={{ marginTop: 'var(--esp-1)' }}>
+        <p className="muted mt-1">
           Les mois d’avant cette date gardent leurs montants ; ceux d’après sont
           recalculés.
         </p>
 
-        <div className="actions-ligne" style={{ marginTop: 'var(--esp-5)' }}>
+        <div className="actions-ligne mt-5">
           <Bouton type="submit" disabled={etatSauvegarde === 'en-cours'}>
             {etatSauvegarde === 'en-cours'
               ? 'Enregistrement…'

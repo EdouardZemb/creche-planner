@@ -173,7 +173,7 @@ export function EncartValidation({
       aria-busy={enChargement}
       style={{ borderLeft: '4px solid var(--bleu)', marginBottom: '1rem' }}
     >
-      <h2 style={{ marginTop: 0, fontSize: 'var(--h2)' }}>
+      <h2 className="mt-0" style={{ fontSize: 'var(--h2)' }}>
         Valider la semaine suivante
       </h2>
       {enChargement && (

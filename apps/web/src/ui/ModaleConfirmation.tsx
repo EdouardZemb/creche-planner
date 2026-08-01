@@ -50,7 +50,7 @@ export function ModaleConfirmation({
     <Modale titre={titre} onClose={onAnnuler} refFocusInitial={refAnnuler}>
       <p>{message}</p>
       {children}
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+      <div className="mt-4" style={{ display: 'flex', gap: '0.5rem' }}>
         <Bouton variante="secondaire" ref={refAnnuler} onClick={onAnnuler}>
           Annuler
         </Bouton>

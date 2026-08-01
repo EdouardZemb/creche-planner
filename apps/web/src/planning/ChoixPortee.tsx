@@ -17,7 +17,7 @@ export interface ChoixPorteeProps {
 export function ChoixPortee({ valeur, onChange, nom }: ChoixPorteeProps) {
   const idDescriptionDurable = `portee-${nom}-tous-description`;
   return (
-    <fieldset style={{ marginTop: '0.5rem', border: 'none', padding: 0 }}>
+    <fieldset className="mt-2" style={{ border: 'none', padding: 0 }}>
       <legend style={{ fontSize: '0.85rem', padding: 0 }}>Appliquer</legend>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
         <label
@@ -35,7 +35,6 @@ export function ChoixPortee({ valeur, onChange, nom }: ChoixPorteeProps) {
             onChange={() => {
               onChange('mois');
             }}
-            style={{ width: 'auto', padding: 0 }}
           />
           Seulement cette fois
         </label>
@@ -61,7 +60,6 @@ export function ChoixPortee({ valeur, onChange, nom }: ChoixPorteeProps) {
                 onChange('tous');
               }}
               aria-describedby={idDescriptionDurable}
-              style={{ width: 'auto', padding: 0 }}
             />
             Toutes les semaines, durablement (modifie le contrat)
           </label>

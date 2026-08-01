@@ -49,11 +49,9 @@ export function EnfantsSection({
   ]);
 
   return (
-    <fieldset style={{ border: 'none', padding: 0, margin: '1.5rem 0 0' }}>
-      <legend style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
-        Enfants
-      </legend>
-      <p className="muted" style={{ marginTop: 0 }}>
+    <fieldset className="bloc-champs" style={{ margin: '1.5rem 0 0' }}>
+      <legend style={{ marginBottom: '0.25rem' }}>Enfants</legend>
+      <p className="muted mt-0">
         Renommer un enfant met aussi à jour ses contrats de garde. Supprimer un
         enfant ne supprime pas ses contrats.
       </p>
@@ -178,7 +176,7 @@ function LigneEnfantExistant({
   const etatAffiche: EtatSauvegarde = occupe ? 'en-cours' : etatSauvegarde;
 
   return (
-    <div className="carte enfant-ligne" style={{ marginBottom: '0.5rem' }}>
+    <div className="carte enfant-ligne mb-2">
       <ChampErreur balise="p">{erreurGlobale}</ChampErreur>
 
       <div className="champs-duo">
@@ -202,7 +200,7 @@ function LigneEnfantExistant({
                 onChange={(e) => {
                   setPrenom(e.target.value);
                 }}
-                style={{ width: '100%' }}
+                className="champ-large"
               />
             )}
           </ChampFormulaire>
@@ -227,7 +225,7 @@ function LigneEnfantExistant({
                 onChange={(e) => {
                   setDateNaissance(e.target.value);
                 }}
-                style={{ width: '100%' }}
+                className="champ-large"
               />
             )}
           </ChampFormulaire>
@@ -331,7 +329,7 @@ function FormNouvelEnfant({
   const etatAffiche: EtatSauvegarde = occupe ? 'en-cours' : etatSauvegarde;
 
   return (
-    <div className="carte enfant-ligne" style={{ marginBottom: '0.5rem' }}>
+    <div className="carte enfant-ligne mb-2">
       <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Ajouter un enfant</p>
 
       <ChampErreur balise="p">{erreurGlobale}</ChampErreur>
@@ -357,7 +355,7 @@ function FormNouvelEnfant({
                 onChange={(e) => {
                   setPrenom(e.target.value);
                 }}
-                style={{ width: '100%' }}
+                className="champ-large"
               />
             )}
           </ChampFormulaire>
@@ -382,7 +380,7 @@ function FormNouvelEnfant({
                 onChange={(e) => {
                   setDateNaissance(e.target.value);
                 }}
-                style={{ width: '100%' }}
+                className="champ-large"
               />
             )}
           </ChampFormulaire>

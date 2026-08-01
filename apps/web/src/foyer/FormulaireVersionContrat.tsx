@@ -168,7 +168,7 @@ export function FormulaireVersionContrat({
           onChange={(e) => {
             setHeuresAnnuelles(e.target.value);
           }}
-          style={{ width: '100%' }}
+          className="champ-large"
         />
 
         <label htmlFor="version-mensualites">Nombre de mensualités</label>
@@ -182,13 +182,11 @@ export function FormulaireVersionContrat({
           onChange={(e) => {
             setNbMensualites(e.target.value);
           }}
-          style={{ width: '100%' }}
+          className="champ-large"
         />
 
-        <fieldset style={{ border: 'none', padding: 0, margin: '0.75rem 0 0' }}>
-          <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-            Semaine type (jours et horaires)
-          </legend>
+        <fieldset className="bloc-champs" style={{ margin: '0.75rem 0 0' }}>
+          <legend>Semaine type (jours et horaires)</legend>
           {JOURS_SEMAINE_OUVRES.map((jour) => {
             const plage = plagesJours[jour] ?? {
               debutHeures: 8,
@@ -222,10 +220,8 @@ export function FormulaireVersionContrat({
         </fieldset>
       </>
     ) : (
-      <fieldset style={{ border: 'none', padding: 0, margin: '0.75rem 0 0' }}>
-        <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-          Inscriptions hebdomadaires
-        </legend>
+      <fieldset className="bloc-champs" style={{ margin: '0.75rem 0 0' }}>
+        <legend>Inscriptions hebdomadaires</legend>
         {mode === 'ALSH' ? (
           <>
             <p className="muted" style={{ margin: '0 0 0.5rem' }}>
@@ -255,14 +251,14 @@ export function FormulaireVersionContrat({
           setConfirmationOuverte(true);
         }}
       >
-        <p className="muted" style={{ marginTop: 0 }}>
+        <p className="muted mt-0">
           Corrige les paramètres <strong>actuels</strong> du contrat, sans
           changer leur date de début. Les mois déjà enregistrés seront
           recalculés.
         </p>
         {editeursParametres}
         {!confirmationOuverte && <ChampErreur balise="p">{erreur}</ChampErreur>}
-        <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+        <div className="mt-4" style={{ display: 'flex', gap: '0.5rem' }}>
           <Bouton type="submit">Voir l’impact et corriger</Bouton>
           <Bouton variante="secondaire" onClick={onAnnuler}>
             Annuler
@@ -287,7 +283,7 @@ export function FormulaireVersionContrat({
 
   return (
     <form onSubmit={(ev) => void creerAvenant(ev)}>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted mt-0">
         Enregistre un changement <strong>à partir d’une date</strong> : les mois
         d’avant gardent leurs paramètres actuels, ceux à partir de cette date
         prennent les nouveaux.
@@ -303,21 +299,14 @@ export function FormulaireVersionContrat({
         onChange={(e) => {
           setDateEffet(e.target.value);
         }}
-        style={{ width: '100%' }}
+        className="champ-large"
       />
 
       {editeursParametres}
 
       <ChampErreur balise="p">{erreur}</ChampErreur>
 
-      <div
-        style={{
-          marginTop: '1rem',
-          display: 'flex',
-          gap: '0.5rem',
-          flexWrap: 'wrap',
-        }}
-      >
+      <div className="rangee-actions">
         <Bouton type="submit" disabled={chargement}>
           {chargement ? 'Enregistrement…' : 'Enregistrer le changement'}
         </Bouton>

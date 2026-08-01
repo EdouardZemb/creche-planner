@@ -132,7 +132,7 @@ export function ModaleAbsenceRapide({
           {erreur}
         </p>
       )}
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+      <div className="mt-4" style={{ display: 'flex', gap: '0.5rem' }}>
         <Bouton
           ref={refConfirmer}
           onClick={() => void confirmer()}

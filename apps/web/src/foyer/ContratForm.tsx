@@ -312,7 +312,7 @@ export function ContratForm({
           setMode(e.target.value as Mode);
           setSemaineAbcm({});
         }}
-        style={{ width: '100%' }}
+        className="champ-large"
       >
         {MODES_SELECTIONNABLES.map((m) => (
           <option key={m} value={m}>
@@ -341,7 +341,7 @@ export function ContratForm({
               setEnfantId(e.target.value);
             }}
             required
-            style={{ width: '100%' }}
+            className="champ-large"
           >
             <option value="">— Sélectionner un enfant —</option>
             {enfants.map((e) => (
@@ -373,7 +373,7 @@ export function ContratForm({
             onChange={(e) => {
               setValideDu(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         )}
       </ChampFormulaire>
@@ -392,7 +392,7 @@ export function ContratForm({
             onChange={(e) => {
               setValideAu(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         )}
       </ChampFormulaire>
@@ -415,7 +415,7 @@ export function ContratForm({
             onChange={(e) => {
               setEtablissementChoix(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           >
             <option value="">— Sélectionner un établissement —</option>
             {/* Archivage réel (Lot 3) : on ne propose que les établissements ACTIFS pour
@@ -438,10 +438,8 @@ export function ContratForm({
       </ChampFormulaire>
 
       {etablissementChoix === NOUVEL_ETABLISSEMENT && (
-        <fieldset style={{ border: 'none', padding: 0, margin: '0.5rem 0 0' }}>
-          <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-            Nouvel établissement
-          </legend>
+        <fieldset className="bloc-champs" style={{ margin: '0.5rem 0 0' }}>
+          <legend>Nouvel établissement</legend>
           <ChampFormulaire
             id="contrat-nouvel-etab-nom"
             libelle={
@@ -462,7 +460,7 @@ export function ContratForm({
                 onChange={(e) => {
                   setNouvelNom(e.target.value);
                 }}
-                style={{ width: '100%' }}
+                className="champ-large"
               />
             )}
           </ChampFormulaire>
@@ -476,7 +474,7 @@ export function ContratForm({
             onChange={(e) => {
               setNouvelEmail(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         </fieldset>
       )}
@@ -506,7 +504,7 @@ export function ContratForm({
                 onChange={(e) => {
                   setHeuresAnnuelles(e.target.value);
                 }}
-                style={{ width: '100%' }}
+                className="champ-large"
               />
             )}
           </ChampFormulaire>
@@ -534,17 +532,13 @@ export function ContratForm({
                 onChange={(e) => {
                   setNbMensualites(e.target.value);
                 }}
-                style={{ width: '100%' }}
+                className="champ-large"
               />
             )}
           </ChampFormulaire>
 
-          <fieldset
-            style={{ border: 'none', padding: 0, margin: '0.75rem 0 0' }}
-          >
-            <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-              Semaine type (jours et horaires)
-            </legend>
+          <fieldset className="bloc-champs" style={{ margin: '0.75rem 0 0' }}>
+            <legend>Semaine type (jours et horaires)</legend>
             {JOURS_SEMAINE_OUVRES.map((jour) => {
               const plage = plagesJours[jour] ?? {
                 debutHeures: 8,
@@ -581,12 +575,8 @@ export function ContratForm({
 
       {mode !== 'CRECHE_PSU' && (
         <>
-          <fieldset
-            style={{ border: 'none', padding: 0, margin: '0.75rem 0 0' }}
-          >
-            <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-              Inscriptions hebdomadaires
-            </legend>
+          <fieldset className="bloc-champs" style={{ margin: '0.75rem 0 0' }}>
+            <legend>Inscriptions hebdomadaires</legend>
             {mode === 'ALSH' ? (
               <>
                 <p className="muted" style={{ margin: '0 0 0.5rem' }}>
@@ -611,11 +601,11 @@ export function ContratForm({
           {/* Première inscription à l'association (lot 4a) : ABCM uniquement —
               jamais affichée pour un contrat crèche (CRECHE_PSU). */}
           <label
+            className="mt-3"
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: '0.4rem',
-              marginTop: '0.75rem',
             }}
           >
             <input
@@ -634,7 +624,7 @@ export function ContratForm({
         </>
       )}
 
-      <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+      <div className="mt-4" style={{ display: 'flex', gap: '0.5rem' }}>
         <Bouton type="submit" disabled={chargement}>
           {chargement
             ? edition

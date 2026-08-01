@@ -243,11 +243,11 @@ export function FoyerFormPage() {
 
   return (
     <div className="carte page-etroite">
-      <h1 style={{ marginTop: 0 }}>Créer ma famille</h1>
+      <h1 className="mt-0">Créer ma famille</h1>
 
       {/* Onboarding guidé (lot 3) : dire d'entrée ce qu'on construit, avant les
           champs — le formaire raconte enfants → parents → ressources. */}
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted mt-0">
         Votre famille regroupe vos enfants, les parents qui suivent leur garde,
         et vos ressources pour estimer les tarifs.
       </p>
@@ -257,17 +257,14 @@ export function FoyerFormPage() {
       </ChampErreur>
 
       <form onSubmit={(ev) => void soumettre(ev)}>
-        <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-          <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-            Enfants
-          </legend>
+        <fieldset className="bloc-champs" style={{ margin: 0 }}>
+          <legend>Enfants</legend>
 
           {enfants.map((enfant) => (
             <div
               key={enfant.id}
-              className="carte enfant-ligne"
+              className="carte enfant-ligne mb-2"
               style={{
-                marginBottom: '0.5rem',
                 display: 'flex',
                 gap: '0.5rem',
               }}
@@ -285,7 +282,7 @@ export function FoyerFormPage() {
                   onChange={(e) => {
                     mettreAJourEnfant(enfant.id, 'prenom', e.target.value);
                   }}
-                  style={{ width: '100%' }}
+                  className="champ-large"
                 />
               </div>
               <div style={{ flex: 1 }}>
@@ -305,7 +302,7 @@ export function FoyerFormPage() {
                       e.target.value,
                     );
                   }}
-                  style={{ width: '100%' }}
+                  className="champ-large"
                 />
               </div>
               {enfants.length > 1 && (
@@ -330,17 +327,17 @@ export function FoyerFormPage() {
           <Bouton
             variante="secondaire"
             onClick={ajouterEnfant}
-            style={{ marginTop: '0.25rem' }}
+            className="mt-1"
           >
             + Ajouter un enfant
           </Bouton>
         </fieldset>
 
-        <fieldset style={{ border: 'none', padding: 0, margin: '1rem 0 0' }}>
-          <legend style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
-            Parents
-          </legend>
-          <p className="muted" style={{ marginTop: 0 }}>
+        <fieldset className="bloc-champs" style={{ margin: '1rem 0 0' }}>
+          {/* `.bloc-champs > legend` pose déjà `font-weight: 600` ; la marge
+              basse reste inline car elle vaut 0.25rem, pas le 0.5rem du bloc. */}
+          <legend style={{ marginBottom: '0.25rem' }}>Parents</legend>
+          <p className="muted mt-0">
             Chaque parent recevra les récapitulatifs hebdomadaires et pourra
             accéder à l&apos;application avec son adresse e-mail.
           </p>
@@ -351,11 +348,7 @@ export function FoyerFormPage() {
               `${parent.prenom.trim()} ${parent.nom.trim()}`.trim();
             const designation = nomComplet || parent.email.trim();
             return (
-              <div
-                key={parent.id}
-                className="carte parent-ligne"
-                style={{ marginBottom: '0.5rem' }}
-              >
+              <div key={parent.id} className="carte parent-ligne mb-2">
                 <ChampFormulaire
                   id={`parent-email-${parent.id}`}
                   libelle={
@@ -381,15 +374,12 @@ export function FoyerFormPage() {
                       onChange={(e) => {
                         mettreAJourParent(parent.id, 'email', e.target.value);
                       }}
-                      style={{ width: '100%' }}
+                      className="champ-large"
                     />
                   )}
                 </ChampFormulaire>
 
-                <div
-                  className="champs-duo"
-                  style={{ marginTop: 'var(--esp-2)' }}
-                >
+                <div className="champs-duo mt-2">
                   <div>
                     <label htmlFor={`parent-prenom-${parent.id}`}>
                       Prénom <span className="muted">(facultatif)</span>
@@ -401,7 +391,7 @@ export function FoyerFormPage() {
                       onChange={(e) => {
                         mettreAJourParent(parent.id, 'prenom', e.target.value);
                       }}
-                      style={{ width: '100%' }}
+                      className="champ-large"
                     />
                   </div>
                   <div>
@@ -415,7 +405,7 @@ export function FoyerFormPage() {
                       onChange={(e) => {
                         mettreAJourParent(parent.id, 'nom', e.target.value);
                       }}
-                      style={{ width: '100%' }}
+                      className="champ-large"
                     />
                   </div>
                 </div>
@@ -430,7 +420,7 @@ export function FoyerFormPage() {
                       ? `Retirer le parent ${designation}`
                       : 'Retirer ce parent'
                   }
-                  style={{ marginTop: '0.5rem' }}
+                  className="mt-2"
                 >
                   Retirer
                 </Bouton>
@@ -441,7 +431,7 @@ export function FoyerFormPage() {
           <Bouton
             variante="secondaire"
             onClick={ajouterParent}
-            style={{ marginTop: '0.25rem' }}
+            className="mt-1"
           >
             + Ajouter un parent
           </Bouton>
@@ -458,7 +448,7 @@ export function FoyerFormPage() {
           />
         </div>
 
-        <div style={{ marginTop: '1.5rem' }}>
+        <div className="mt-5">
           <Bouton type="submit" disabled={chargement}>
             {chargement ? 'Création en cours…' : 'Créer ma famille'}
           </Bouton>

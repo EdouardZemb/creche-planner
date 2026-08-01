@@ -39,8 +39,8 @@ export function BarreStatutCalendrier({
 }: BarreStatutCalendrierProps) {
   return (
     <div
+      className="mb-3"
       style={{
-        marginBottom: '0.75rem',
         display: 'flex',
         alignItems: 'center',
         gap: '1rem',

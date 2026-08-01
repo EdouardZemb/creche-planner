@@ -625,7 +625,6 @@ export function CalendrierAbcm({
               onChange={(e) => {
                 handlePaiChange(e.target.checked);
               }}
-              style={{ width: 'auto', padding: 0 }}
             />
             PAI (Projet d&apos;accueil individualisé)
           </label>
@@ -678,7 +677,7 @@ export function CalendrierAbcm({
       {mode === 'ALSH' && joursDuMoisListe.length > 0 && (
         <fieldset style={{ marginTop: '1rem' }}>
           <legend>Saisir une journée ALSH (accessible au clavier)</legend>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          <ul className="liste-nue">
             {joursDuMoisListe.map((jour) => {
               const eff = alshEffectifDe(jour);
               const libelleJour = formaterDateFr(jour);
@@ -726,7 +725,7 @@ export function CalendrierAbcm({
       {mode !== 'ALSH' && joursDuMoisListe.length > 0 && (
         <fieldset style={{ marginTop: '1rem' }}>
           <legend>Ajuster un jour (accessible au clavier)</legend>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          <ul className="liste-nue">
             {joursDuMoisListe.map((jour) => {
               const eff = effectif(jour);
               const actif =
@@ -787,7 +786,6 @@ export function CalendrierAbcm({
                 onChange={(e) => {
                   setDialogForm((f) => ({ ...f, cantine: e.target.checked }));
                 }}
-                style={{ width: 'auto', padding: 0 }}
               />
               Cantine
             </label>
@@ -813,7 +811,6 @@ export function CalendrierAbcm({
                   onChange={(e) => {
                     setDialogForm((f) => ({ ...f, matin: e.target.checked }));
                   }}
-                  style={{ width: 'auto', padding: 0 }}
                 />
                 Matin
               </label>
@@ -831,7 +828,6 @@ export function CalendrierAbcm({
                   onChange={(e) => {
                     setDialogForm((f) => ({ ...f, soir: e.target.checked }));
                   }}
-                  style={{ width: 'auto', padding: 0 }}
                 />
                 Soir
               </label>
@@ -898,7 +894,6 @@ export function CalendrierAbcm({
               onChange={(e) => {
                 setPopoverForm((f) => ({ ...f, repas: e.target.checked }));
               }}
-              style={{ width: 'auto', padding: 0 }}
             />
             Repas inclus
           </label>

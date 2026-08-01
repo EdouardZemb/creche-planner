@@ -84,7 +84,7 @@ export function HistoriqueContrat({
           gap: '0.5rem',
         }}
       >
-        <h2 style={{ marginTop: 0 }}>Historique — {enfant}</h2>
+        <h2 className="mt-0">Historique — {enfant}</h2>
         <Bouton variante="secondaire" onClick={onFermer}>
           Fermer
         </Bouton>
@@ -119,15 +119,11 @@ export function HistoriqueContrat({
 
       {etat.data && etat.data.length > 0 && (
         <ol
-          style={{ listStyle: 'none', margin: 0, padding: 0 }}
+          className="liste-nue"
           aria-label={`Changements du contrat de ${enfant}`}
         >
           {etat.data.map((version) => (
-            <li
-              key={version.id}
-              className="carte"
-              style={{ marginBottom: '0.5rem' }}
-            >
+            <li key={version.id} className="carte mb-2">
               <div className="historique-version-titre">
                 À partir du {dateJourMoisAnneeFr(version.dateEffet)}
                 {version.au === null && <Badge>en cours</Badge>}

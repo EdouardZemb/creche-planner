@@ -894,7 +894,6 @@ export function CalendrierCreche({
                       onChange={() => {
                         setLotForm((f) => ({ ...f, typeAbsence: t.valeur }));
                       }}
-                      style={{ width: 'auto', padding: 0 }}
                     />
                     {t.libelle}
                   </label>
@@ -971,7 +970,6 @@ export function CalendrierCreche({
                     certificatMaladie: e.target.checked,
                   }));
                 }}
-                style={{ width: 'auto', padding: 0 }}
               />
               Certificat médical
             </label>
@@ -1016,7 +1014,7 @@ export function CalendrierCreche({
       {joursGardesListe.length > 0 && (
         <fieldset style={{ marginTop: '1rem' }}>
           <legend>Saisir une absence (accessible au clavier)</legend>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          <ul className="liste-nue">
             {joursGardesListe.map((jour) => {
               const etat = etatsJours.get(jour);
               const aAbsence = etat?.aAbsence ?? false;
@@ -1051,7 +1049,6 @@ export function CalendrierCreche({
                       onChange={() => {
                         basculerSelection(jour);
                       }}
-                      style={{ width: 'auto', padding: 0 }}
                       aria-label={`Sélectionner le ${libelleJour} pour la saisie en lot`}
                     />
                     <span style={{ minWidth: '8rem' }}>{libelleJour}</span>
@@ -1115,7 +1112,6 @@ export function CalendrierCreche({
                       onChange={() => {
                         setDialogForm((f) => ({ ...f, typeAbsence: t.valeur }));
                       }}
-                      style={{ width: 'auto', padding: 0 }}
                     />
                     {t.libelle}
                   </label>
@@ -1268,7 +1264,6 @@ export function CalendrierCreche({
                       certificatMaladie: e.target.checked,
                     }));
                   }}
-                  style={{ width: 'auto', padding: 0 }}
                 />
                 Certificat médical
               </label>

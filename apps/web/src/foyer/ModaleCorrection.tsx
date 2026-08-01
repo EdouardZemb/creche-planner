@@ -56,7 +56,7 @@ export function ModaleCorrection({
 
   return (
     <Modale titre="Corriger les paramètres actuels" onClose={onAnnuler}>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted mt-0">
         La correction remplace les paramètres de cette période sans en changer
         la date de début. Les mois concernés seront recalculés.
       </p>
@@ -109,7 +109,7 @@ export function ModaleCorrection({
             </p>
           )}
 
-          <label htmlFor="correction-motif" style={{ marginTop: '0.75rem' }}>
+          <label htmlFor="correction-motif" className="mt-3">
             Motif (facultatif)
           </label>
           <textarea
@@ -120,14 +120,14 @@ export function ModaleCorrection({
             }}
             rows={2}
             placeholder="Ex. erreur de saisie sur les horaires"
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         </>
       )}
 
       <ChampErreur balise="p">{erreur}</ChampErreur>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+      <div className="mt-4" style={{ display: 'flex', gap: '0.5rem' }}>
         <Bouton
           variante="secondaire"
           onClick={onAnnuler}
