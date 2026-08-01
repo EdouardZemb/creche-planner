@@ -247,19 +247,52 @@ function AccueilDecouverte() {
   );
 }
 
+/**
+ * Destinations du panneau « Plus » qui vivent HORS d'un contexte /foyers/:id
+ * (chemins fixes, sans segment de foyer). Elles allument l'onglet « Plus » au
+ * même titre que les pages de gestion du foyer.
+ */
+const PAGES_GLOBALES_DU_PANNEAU = [
+  '/tarifs',
+  '/mes-foyers',
+  '/mon-profil',
+  '/foyers/new',
+];
+
 function Entete() {
-  // EX-02 : les liens dérivent du foyerId de la route active (URL = source de
-  // vérité), jamais de localStorage. Aucun lien foyer hors d'un contexte /foyers/:id.
+  // EX-02 : dans un contexte /foyers/:id, les liens dérivent du foyerId de la
+  // route active (URL = source de vérité), jamais de localStorage.
   const match = useMatch('/foyers/:foyerId/*');
-  const foyerId = match?.params.foyerId;
-  // La route /foyers/new partage le segment :foyerId ("new") : on n'affiche pas
-  // les liens foyer pour cette pseudo-valeur.
-  const id = foyerId && foyerId !== 'new' ? foyerId : null;
+  const foyerIdRoute = match?.params.foyerId;
+  // La route /foyers/new partage le segment :foyerId ("new") : cette
+  // pseudo-valeur ne désigne aucun foyer, on n'en dérive aucun lien.
+  const idRoute = foyerIdRoute && foyerIdRoute !== 'new' ? foyerIdRoute : null;
   const moi = useMoi();
   // P5 : un non-admin ne peut créer qu'à défaut de foyer (create-once) ; l'admin
   // crée sans limite, et le mode hérité reste permissif (`moi.admin` vrai).
   const peutCreerFoyer = moi.admin || moi.foyers.length === 0;
-  const premierFoyer = moi.foyers[0];
+  // Foyer de RÉFÉRENCE de la barre d'onglets. Les pages GLOBALES (/tarifs,
+  // /mon-profil, /mes-foyers, /foyers/new, 404) n'ont pas de :foyerId dans
+  // l'URL : sans repli, la barre du bas disparaissait au profit de l'ancienne
+  // nav textuelle d'en-tête — alors que la plupart de ces pages s'atteignent
+  // DEPUIS le panneau « Plus » de cette même barre. La route garde la priorité
+  // (EX-02 intact) ; à défaut seulement, on retombe sur le foyer mémorisé —
+  // validé contre l'ensemble autorisé en mode borné, comme dans `Accueil` —
+  // puis sur le premier foyer autorisé.
+  const cache = getFoyerId();
+  const cacheUtilisable =
+    cache !== null && (moi.email === null || moi.foyers.includes(cache));
+  // Tant que `/moi` n'a pas répondu, l'ensemble autorisé est INCONNU : le repli
+  // par défaut (`email: null`) validerait n'importe quel cache, y compris celui
+  // d'un autre parent (navigateur partagé, changement de compte). La barre
+  // pointerait alors vers un foyer non autorisé et `PastilleAValider` émettrait
+  // un GET scopé dessus — refusé (403) par `AppartenanceGuard`, donc comptabilisé
+  // en `gateway_authz_refus_total{decision="refuse"}` : un faux positif sur
+  // l'alerte `AuthzGatewayRefus`. On diffère donc la décision, comme le font déjà
+  // `Accueil` et `MesFoyersPage` ; la route, elle, reste toujours utilisable.
+  const id =
+    idRoute ??
+    (moi.loading ? null : cacheUtilisable ? cache : (moi.foyers[0] ?? null));
   // Panneau « Plus » (mobile) : disclosure des pages de gestion, refermé au clic
   // de chaque lien (pas d'effet sur pathname — le clic est la cause directe).
   const { pathname } = useLocation();
@@ -269,12 +302,14 @@ function Entete() {
     setPlusOuvert(false);
   };
   // Sur mobile, l'onglet « Plus » s'allume quand la page courante est l'une des
-  // destinations rangées dans son panneau (au même titre qu'un NavLink actif).
+  // destinations rangées dans son panneau (au même titre qu'un NavLink actif) —
+  // pages de gestion du foyer comme pages globales.
   const plusActif =
-    id !== null &&
-    ['contrats', 'etablissements', 'modifier'].some(
-      (segment) => pathname === `/foyers/${id}/${segment}`,
-    );
+    PAGES_GLOBALES_DU_PANNEAU.includes(pathname) ||
+    (id !== null &&
+      ['contrats', 'etablissements', 'modifier'].some(
+        (segment) => pathname === `/foyers/${id}/${segment}`,
+      ));
   return (
     <header className="app-header">
       <a href="#contenu" className="skip-link">
@@ -388,23 +423,17 @@ function Entete() {
             </div>
           </>
         )}
-        {!id && (
+        {!id && !moi.loading && (
           <>
-            {/* Hors contexte foyer, peu de liens : ils restent dans l'en-tête
-                (pas de barre d'onglets sans destinations quotidiennes). */}
-            {moi.foyers.length > 1 && (
-              <NavLink to="/mes-foyers">Mes familles</NavLink>
-            )}
+            {/* AUCUN foyer de référence : identité sans foyer rattaché (P5,
+                avant la 1ʳᵉ création) ou mode hérité sans foyer mémorisé. Il n'y
+                a alors aucune destination quotidienne — donc pas de barre
+                d'onglets — et les deux liens d'amorçage restent dans l'en-tête.
+                Pendant le chargement de `/moi` on ne rend rien plutôt que ces
+                liens : ils seraient remplacés par la barre d'onglets à la
+                résolution (permutation visible à chaque chargement de page). */}
             {moi.email !== null && (
               <NavLink to="/mon-profil">Mon profil</NavLink>
-            )}
-            {/* P5 : hors d'un contexte foyer (le bloc `id` ci-dessus porte déjà
-                « Modifier le foyer »), raccourci vers l'édition de SON foyer dès
-                qu'au moins un foyer est rattaché. */}
-            {premierFoyer && (
-              <NavLink to={`/foyers/${premierFoyer}/modifier`}>
-                Voir ma famille
-              </NavLink>
             )}
             {peutCreerFoyer && (
               <NavLink to="/foyers/new">Nouvelle famille</NavLink>

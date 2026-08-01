@@ -434,6 +434,31 @@ describe('App — coquille de navigation', () => {
     expect(nav).not.toContainElement(cloche);
   });
 
+  it('Nav : la barre d’onglets survit aux pages globales du panneau « Plus »', async () => {
+    // Régression : /tarifs, /mon-profil et /mes-foyers s'atteignent DEPUIS le
+    // panneau « Plus » de la barre du bas. Faute de :foyerId dans l'URL, la barre
+    // disparaissait au profit de l'ancienne nav textuelle d'en-tête — l'app
+    // changeait de navigation d'un écran à l'autre.
+    localStorage.setItem('creche:foyerId', FOYER_ID);
+    rendre('/mes-foyers');
+
+    const nav = await screen.findByRole('navigation', {
+      name: 'Navigation principale',
+    });
+    // Les 3 destinations quotidiennes sont là, calées sur le foyer mémorisé…
+    expect(
+      within(nav).getByRole('link', { name: 'Aujourd’hui' }),
+    ).toHaveAttribute('href', `/foyers/${FOYER_ID}/dashboard`);
+    expect(within(nav).getByRole('link', { name: 'Planning' })).toHaveAttribute(
+      'href',
+      `/foyers/${FOYER_ID}/planning`,
+    );
+    // … et l'onglet « Plus » s'allume, la page courante vivant dans son panneau.
+    expect(within(nav).getByRole('button', { name: 'Plus' })).toHaveClass(
+      'actif',
+    );
+  });
+
   it('EX-02 : le header dérive ses liens du foyerId de la route (pas de localStorage)', async () => {
     // localStorage pointe vers un autre foyer : il ne doit PAS piloter le header.
     localStorage.setItem('creche:foyerId', 'autre-foyer');
@@ -685,24 +710,103 @@ describe('App — mode borné par identité (PR6)', () => {
     ).toBeInTheDocument();
   });
 
-  it('P5 : hors contexte foyer, « Modifier mon foyer » mène à l’édition de son foyer', async () => {
+  it('P5 : hors contexte foyer, la nav se cale sur le foyer autorisé et « Ma famille » mène à son édition', async () => {
     mockedApi.moi.mockResolvedValue({
       email: 'parent@test.fr',
       admin: false,
       foyers: [FOYER_ID],
     });
-    // Page 404 (hors /foyers/:id) : le raccourci d'en-tête doit apparaître.
+    // Page 404 (hors /foyers/:id) : sans foyer mémorisé, la nav retombe sur le
+    // premier foyer autorisé plutôt que de perdre ses destinations.
     rendre('/page-inconnue');
 
-    // On vise l'en-tête (la page 404 porte son propre CTA « Nouveau foyer »).
+    // On vise l'en-tête (la page 404 porte son propre CTA « Nouvelle famille »).
     const nav = await screen.findByRole('navigation', {
       name: 'Navigation principale',
     });
-    const lien = within(nav).getByRole('link', { name: 'Voir ma famille' });
-    expect(lien).toHaveAttribute('href', `/foyers/${FOYER_ID}/modifier`);
-    // Dans l'en-tête, « Nouveau foyer » est masqué (create-once, non-admin).
+    // `moi` arrive de façon asynchrone : la nav se recale à sa résolution.
+    await waitFor(() => {
+      expect(
+        within(nav).getByRole('link', { name: 'Ma famille' }),
+      ).toHaveAttribute('href', `/foyers/${FOYER_ID}/modifier`);
+    });
+    expect(
+      within(nav).getByRole('link', { name: 'Aujourd’hui' }),
+    ).toHaveAttribute('href', `/foyers/${FOYER_ID}/dashboard`);
+    // Dans l'en-tête, « Nouvelle famille » est masqué (create-once, non-admin).
     expect(
       within(nav).queryByRole('link', { name: 'Nouvelle famille' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('Nav : un foyer mémorisé HORS ensemble autorisé ne pilote pas la barre (mode borné)', async () => {
+    // Le cache localStorage reste un simple cache : forgé ou périmé, il ne doit
+    // jamais élargir la portée — on retombe sur l'ensemble autorisé par le BFF.
+    localStorage.setItem('creche:foyerId', 'foyer-interdit');
+    mockedApi.moi.mockResolvedValue({
+      email: 'parent@test.fr',
+      admin: false,
+      foyers: [FOYER_ID],
+    });
+    rendre('/page-inconnue');
+
+    const nav = await screen.findByRole('navigation', {
+      name: 'Navigation principale',
+    });
+    await waitFor(() => {
+      expect(
+        within(nav).getByRole('link', { name: 'Aujourd’hui' }),
+      ).toHaveAttribute('href', `/foyers/${FOYER_ID}/dashboard`);
+    });
+    // Aucun lien de la nav ne pointe vers le foyer non autorisé.
+    for (const lien of within(nav).getAllByRole('link')) {
+      expect(lien.getAttribute('href')).not.toContain('foyer-interdit');
+    }
+  });
+
+  it('Nav : tant que `/moi` n’a pas répondu, le cache ne pilote rien (ni lien, ni appel scopé)', async () => {
+    // Navigateur partagé : le cache pointe le foyer d'un AUTRE parent. Avant la
+    // réponse de `/moi`, l'identité est inconnue (`email: null` par défaut) — s'en
+    // servir pour valider le cache reviendrait à faire confiance à n'importe quelle
+    // valeur mémorisée. La `PastilleAValider` de la barre émettrait alors un GET
+    // scopé sur ce foyer, refusé en 403 par la gateway : un faux positif sur
+    // l'alerte `AuthzGatewayRefus`. On assert donc l'état AVANT résolution.
+    localStorage.setItem('creche:foyerId', 'foyer-interdit');
+    let resoudreMoi!: (identite: unknown) => void;
+    mockedApi.moi.mockReturnValue(
+      new Promise((resolve) => {
+        resoudreMoi = resolve;
+      }),
+    );
+    // Page 404, comme les deux tests voisins : une route SANS segment de foyer,
+    // donc celle où le repli s'arme.
+    rendre('/page-inconnue');
+
+    // Rendu synchrone, `/moi` encore en vol : aucune destination quotidienne…
+    const nav = screen.getByRole('navigation', {
+      name: 'Navigation principale',
+    });
+    expect(
+      within(nav).queryByRole('link', { name: 'Aujourd’hui' }),
+    ).not.toBeInTheDocument();
+    // … et surtout aucune requête scopée sur le foyer d'autrui.
+    expect(mockedApi.listerAValider).not.toHaveBeenCalled();
+
+    resoudreMoi({ email: 'parent@test.fr', admin: false, foyers: [FOYER_ID] });
+
+    // À la résolution, la barre se cale sur le foyer réellement autorisé.
+    await waitFor(() => {
+      expect(
+        within(nav).getByRole('link', { name: 'Aujourd’hui' }),
+      ).toHaveAttribute('href', `/foyers/${FOYER_ID}/dashboard`);
+    });
+    expect(mockedApi.listerAValider).toHaveBeenCalledWith(
+      FOYER_ID,
+      expect.anything(),
+    );
+    expect(mockedApi.listerAValider).not.toHaveBeenCalledWith(
+      'foyer-interdit',
+      expect.anything(),
+    );
   });
 });

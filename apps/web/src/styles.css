@@ -7,7 +7,13 @@
      (badges, statuts) — #6b7280 n'y faisait que 4.4:1. */
   --gris: #4b5563;
   --gris-clair: #f3f4f6;
+  /* Filets DÉCORATIFS (séparateurs, cartes) : exemptés du seuil 3:1 (WCAG 1.4.11). */
   --bordure: #e5e7eb;
+  /* Contour des CONTRÔLES (champs de saisie, roue de chargement) : porteur de
+     sens, donc soumis au seuil 3:1 — #e5e7eb n'y faisait que 1,2:1. */
+  --bordure-champ: #7f8794;
+  /* Erreur : même rouge que --rouge, nommé pour les usages sémantiques. */
+  --erreur: #b91c1c;
   --violet: #7c3aed; /* périscolaire */
   --ambre: #b45309; /* ALSH */
 
@@ -129,9 +135,10 @@ a {
   border-top: 1px solid var(--bordure);
 }
 
-/* Notification lue : grisée (comme l'ancien opacity: 0.65). */
+/* Notification lue : en retrait. À 0.65 la date tombait à 3,2:1 — on remonte à
+   0.85 (plancher AA ≈ 0.80), le graissage du sujet portant déjà la distinction. */
 .cloche-item--lu {
-  opacity: 0.65;
+  opacity: 0.85;
 }
 
 .cloche-item-entete {
@@ -396,8 +403,16 @@ select {
   /* 16px minimum : en deçà, iOS zoome automatiquement au focus d'un champ. */
   font-size: max(1rem, 16px);
   padding: 0.45rem 0.55rem;
-  border: 1px solid var(--bordure);
+  border: 1px solid var(--bordure-champ);
   border-radius: 6px;
+}
+
+/* Sans règle explicite, chaque navigateur choisit son gris (Safari/iOS descend
+   sous AA) ; `opacity: 1` neutralise en plus la dilution de Firefox. */
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280; /* sur blanc : 4,8:1 */
+  opacity: 1;
 }
 
 /* Cibles tactiles : les champs de saisie (hors cases à cocher / radios, qui
@@ -726,7 +741,7 @@ h3 {
   font: inherit;
   font-size: max(1rem, 16px);
   padding: 0.45rem 0.55rem;
-  border: 1px solid var(--bordure);
+  border: 1px solid var(--bordure-champ);
   border-radius: 6px;
   min-height: 12rem;
   resize: vertical;
@@ -764,7 +779,9 @@ h3 {
   display: inline-block;
   width: 1rem;
   height: 1rem;
-  border: 2px solid var(--bordure);
+  /* Anneau = indicateur d'état : à 1,2:1 seul l'arc bleu se voyait, la roue
+     paraissait incomplète. */
+  border: 2px solid var(--bordure-champ);
   border-top-color: var(--bleu);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -810,7 +827,11 @@ h3 {
   border: 0;
 }
 
-/* Lien d'évitement : masqué hors focus, visible au focus clavier (EX-10). */
+/* Lien d'évitement : masqué hors focus, visible au focus clavier (EX-10).
+   Focalisé, il se pose SUR l'en-tête bleu : à fond `--bleu` sur fond `--bleu`,
+   la boîte du lien était indiscernable (1:1). Un liseré blanc la détache
+   (6,7:1) sans toucher au texte — inverser les couleurs ici ne marcherait pas,
+   `.app-header a` (plus spécifique) reforce `color: white`. */
 .skip-link {
   position: absolute;
   left: var(--esp-2);
@@ -818,6 +839,7 @@ h3 {
   z-index: 100;
   background: var(--bleu);
   color: white;
+  box-shadow: 0 0 0 2px #fff;
   padding: var(--esp-2) var(--esp-3);
   border-radius: 6px;
   text-decoration: none;
@@ -1029,9 +1051,12 @@ h3 {
   max-width: 600px;
 }
 
-/* Un archivé est grisé (il n'est plus notifié — cf. langage « (archivé) »). */
+/* Un archivé est en retrait (il n'est plus notifié — cf. langage « (archivé) »).
+   L'`opacity: 0.6` d'origine délavait TOUT le contenu sous le seuil AA (texte
+   secondaire 2,9:1, boutons 2,9:1, et 1,8:1 en se cumulant à `:disabled`) : on
+   marque donc le retrait par le FOND, qui ne touche pas la lisibilité. */
 .etab-carte.est-archive {
-  opacity: 0.6;
+  background: var(--gris-clair);
 }
 
 .etab-carte-entete {
@@ -1482,11 +1507,66 @@ h3 {
   outline-offset: 2px;
 }
 
-/* Bouton désactivé : indication visuelle claire. */
+/* Sur le bandeau bleu de l'en-tête, un outline `--bleu` est INVISIBLE (1:1) :
+   le focus clavier y passe en blanc (6,7:1). Ne concerne que ce qui est posé
+   SUR le bleu — la marque, la cloche et le lien d'évitement ; la barre
+   d'onglets du bas, elle, est sur fond blanc et garde l'outline bleu. */
+.app-header .marque:focus-visible,
+.app-header .cloche-bouton:focus-visible,
+.skip-link:focus-visible {
+  outline-color: #fff;
+}
+
+/* Branche « aucun foyer de référence » (identité sans foyer, avant la 1ʳᵉ
+   création) : ses liens sont des enfants DIRECTS de la nav, donc posés sur le
+   bandeau bleu à toute largeur — contrairement à ceux de la barre d'onglets et
+   du panneau « Plus », qui vivent dans un `div` sur fond blanc en dessous de
+   768px et gardent l'outline bleu. */
+.app-header nav > a:focus-visible {
+  outline-color: #fff;
+}
+
+@media (min-width: 768px) {
+  /* Dès la tablette, `display: contents` restitue TOUS les liens de nav à
+     l'en-tête bleu : leur focus doit y être blanc lui aussi. */
+  .app-header nav a:focus-visible,
+  .app-header nav button:focus-visible {
+    outline-color: #fff;
+  }
+}
+
+/* Bouton désactivé : indication visuelle claire. Un `opacity` global délavait
+   le texte sous le seuil AA (blanc sur bleu à 55 % = 2,6:1) — on pose donc des
+   couleurs explicites, qui gardent l'aspect « éteint » en restant lisibles. */
 button:disabled,
 .btn:disabled {
-  opacity: 0.55;
   cursor: not-allowed;
+}
+
+.btn:disabled {
+  background: #54679e; /* blanc dessus : 5,5:1 */
+  border-color: #54679e;
+  color: #fff;
+}
+
+.btn.danger:disabled {
+  background: #a13939; /* blanc dessus : 6,7:1 */
+  border-color: #a13939;
+  color: #fff;
+}
+
+.btn.secondaire:disabled {
+  background: #fff;
+  color: #54679e; /* sur blanc : 5,5:1 (bordure comprise) */
+  border: 1px solid #54679e;
+}
+
+/* La variante contour reste rouge une fois désactivée : l'affordance
+   destructive ne doit pas se dissoudre en bleu. */
+.btn.danger.contour:disabled {
+  background: #fff;
+  color: #a13939; /* sur blanc : 6,7:1 */
+  border: 1px solid #a13939;
 }
 
 /* ---- Responsive : enrichissement mobile-first ---------------------------- */
@@ -1717,6 +1797,17 @@ button:disabled,
 
 .fc .fc-daygrid-day-number {
   padding: 2px 4px;
+}
+
+/* Jours des mois adjacents : FullCalendar les délave par `opacity: 0.3`, ce qui
+   ramenait leur numéro à 1,6:1 — une date illisible. On garde le retrait, mais
+   porté par une couleur pleine (4,8:1) au lieu d'une transparence. */
+.fc .fc-day-other .fc-daygrid-day-top {
+  opacity: 1;
+}
+
+.fc .fc-day-other .fc-daygrid-day-number {
+  color: #6b7280;
 }
 
 /* Les pastilles d'événement (Gardé / Absent / Ajouté) ne débordent pas d'une
