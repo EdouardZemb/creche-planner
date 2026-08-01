@@ -1,5 +1,4 @@
 import { type FormEvent, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import type {
   ContratLocal,
@@ -24,6 +23,8 @@ import {
 import { extraireErreurs, messageErreur } from '../utils/erreurs';
 import { estMode } from '../utils/libelles';
 import { Abbr } from '../ui/Abbr';
+import { Bouton, BoutonLien } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
 import { ModaleCorrection } from './ModaleCorrection';
 
 /** Date du jour au format `YYYY-MM-DD` (fuseau local du navigateur). */
@@ -260,18 +261,12 @@ export function FormulaireVersionContrat({
           recalculés.
         </p>
         {editeursParametres}
-        {erreur && !confirmationOuverte && (
-          <p className="debit" role="alert">
-            {erreur}
-          </p>
-        )}
+        {!confirmationOuverte && <ChampErreur balise="p">{erreur}</ChampErreur>}
         <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
-          <button type="submit" className="btn">
-            Voir l’impact et corriger
-          </button>
-          <button type="button" className="btn secondaire" onClick={onAnnuler}>
+          <Bouton type="submit">Voir l’impact et corriger</Bouton>
+          <Bouton variante="secondaire" onClick={onAnnuler}>
             Annuler
-          </button>
+          </Bouton>
         </div>
         {confirmationOuverte && versionId !== undefined && (
           <ModaleCorrection
@@ -313,11 +308,7 @@ export function FormulaireVersionContrat({
 
       {editeursParametres}
 
-      {erreur && (
-        <p className="debit" role="alert">
-          {erreur}
-        </p>
-      )}
+      <ChampErreur balise="p">{erreur}</ChampErreur>
 
       <div
         style={{
@@ -327,18 +318,18 @@ export function FormulaireVersionContrat({
           flexWrap: 'wrap',
         }}
       >
-        <button type="submit" className="btn" disabled={chargement}>
+        <Bouton type="submit" disabled={chargement}>
           {chargement ? 'Enregistrement…' : 'Enregistrer le changement'}
-        </button>
-        <Link
+        </Bouton>
+        <BoutonLien
           to={`/foyers/${foyerId}/couts?simule=true`}
-          className="btn secondaire"
+          variante="secondaire"
         >
           Simuler l’impact sur les coûts
-        </Link>
-        <button type="button" className="btn secondaire" onClick={onAnnuler}>
+        </BoutonLien>
+        <Bouton variante="secondaire" onClick={onAnnuler}>
           Annuler
-        </button>
+        </Bouton>
       </div>
     </form>
   );

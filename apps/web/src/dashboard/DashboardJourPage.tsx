@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   jourCourantParis,
   semaineIsoDeDate,
@@ -29,6 +29,7 @@ import { useTitrePage } from '../hooks/useTitrePage';
 import { useNotifications } from '../notifications/useNotifications';
 import { useContrats } from '../foyer/useContrats';
 import { api } from '../api/client';
+import { Bouton, BoutonLien } from '../ui/Bouton';
 import { LigneIndisponible } from '../ui/LigneIndisponible';
 import { lignesDuJour, type EtatJour, type LigneJour } from './jourFoyer';
 
@@ -143,19 +144,18 @@ function RangeeJour({
         </span>
       </span>
       <div className="jour-actions">
-        <Link
+        <BoutonLien
           to={cible}
-          className="btn secondaire"
+          variante="secondaire"
           aria-label={`Modifier la garde de ${ligne.enfant}${
             contexte === undefined ? '' : ` ${contexte}`
           }`}
         >
           Modifier
-        </Link>
+        </BoutonLien>
         {plageGarde !== null && (
-          <button
-            type="button"
-            className="btn secondaire"
+          <Bouton
+            variante="secondaire"
             onClick={() => {
               setModaleOuverte(true);
             }}
@@ -163,7 +163,7 @@ function RangeeJour({
             aria-label={`Signaler une absence de ${ligne.enfant} le ${libelleDate(iso)}`}
           >
             Signaler une absence
-          </button>
+          </Bouton>
         )}
       </div>
       {messageSucces !== null && (
@@ -254,9 +254,9 @@ function CarteAValider({ foyerId }: { foyerId: string }) {
           </ul>
         </>
       )}
-      <Link to={`/foyers/${foyerId}/planning`} className="btn">
+      <BoutonLien to={`/foyers/${foyerId}/planning`}>
         Vérifier et valider
-      </Link>
+      </BoutonLien>
     </section>
   );
 }
@@ -299,9 +299,9 @@ function BandeauCoutMois({ foyerId, mois }: { foyerId: string; mois: string }) {
         <strong className="bandeau-cout-montant">
           {centimesEnEuros(data.totalCentimes)}
         </strong>
-        <Link to={`/foyers/${foyerId}/couts`} className="btn secondaire">
+        <BoutonLien to={`/foyers/${foyerId}/couts`} variante="secondaire">
           Détail
-        </Link>
+        </BoutonLien>
       </span>
     </div>
   );
@@ -533,9 +533,9 @@ function CarteJourneeVide({
           Pour démarrer, créez le contrat de garde de votre enfant : c&apos;est
           lui qui alimente le planning et les coûts.
         </p>
-        <Link to={`/foyers/${foyerId}/contrats`} className="btn">
+        <BoutonLien to={`/foyers/${foyerId}/contrats`}>
           Créer un contrat
-        </Link>
+        </BoutonLien>
       </>
     );
   }
@@ -543,9 +543,9 @@ function CarteJourneeVide({
     <>
       {/* Lot 4 UX : dire quand ça reprend plutôt qu'un cul-de-sac. */}
       <ProchaineGarde foyerId={foyerId} aujourdhui={aujourdhui} vue={vue} />
-      <Link to={`/foyers/${foyerId}/planning`} className="btn secondaire">
+      <BoutonLien to={`/foyers/${foyerId}/planning`} variante="secondaire">
         Voir le planning
-      </Link>
+      </BoutonLien>
     </>
   );
 }
@@ -616,9 +616,9 @@ export function DashboardJourPage() {
             Impossible de charger votre journée. Vérifiez votre connexion et
             réessayez.
           </p>
-          <button type="button" className="btn secondaire" onClick={reload}>
+          <Bouton variante="secondaire" onClick={reload}>
             Réessayer
-          </button>
+          </Bouton>
         </div>
       )}
 

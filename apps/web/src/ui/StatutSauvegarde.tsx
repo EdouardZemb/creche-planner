@@ -1,3 +1,5 @@
+import { Badge, type VarianteBadge } from './Badge';
+
 export type EtatSauvegarde = 'idle' | 'en-cours' | 'enregistre' | 'erreur';
 
 export interface StatutSauvegardeProps {
@@ -6,10 +8,12 @@ export interface StatutSauvegardeProps {
   enregistreA?: string | null;
 }
 
-const CLASSE: Record<Exclude<EtatSauvegarde, 'idle'>, string> = {
-  'en-cours': 'badge statut-en-cours',
-  enregistre: 'badge statut-enregistre',
-  erreur: 'badge statut-erreur',
+const VARIANTE: Record<Exclude<EtatSauvegarde, 'idle'>, VarianteBadge> = {
+  // « en cours » se rend avec la variante par défaut : l'ancienne règle
+  // `.statut-en-cours` était le doublon strict de `.badge`.
+  'en-cours': 'defaut',
+  enregistre: 'succes',
+  erreur: 'erreur',
 };
 
 /**
@@ -31,8 +35,8 @@ export function StatutSauvegarde({ etat, enregistreA }: StatutSauvegardeProps) {
           : 'Enregistré'
         : "Erreur d'enregistrement";
   return (
-    <span className={CLASSE[etat]} role="status" aria-live="polite">
+    <Badge variante={VARIANTE[etat]} statutLive>
       {libelle}
-    </span>
+    </Badge>
   );
 }

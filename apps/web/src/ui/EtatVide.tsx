@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Bouton, BoutonLien } from './Bouton';
 
 export interface ActionEtatVide {
   /** Libellé du bouton/lien. */
@@ -37,10 +37,6 @@ export interface EtatVideProps {
   titrePrincipal?: boolean;
 }
 
-function classeAction(primaire: boolean): string {
-  return primaire ? 'btn' : 'btn secondaire';
-}
-
 /**
  * Bloc d'état vide / erreur orienté action : titre + description optionnelle +
  * 0..n actions (liens ou boutons). Évite les impasses (cf. EX-01/03/07).
@@ -62,42 +58,31 @@ export function EtatVide({
         <div className="etat-vide-actions">
           {actions.map((action, i) => {
             const primaire = action.primaire ?? i === 0;
+            const variante = primaire ? 'primaire' : 'secondaire';
             if (action.href != null) {
               // Interne (`/…`) sans rechargement forcé → transition SPA (pas de
               // rechargement complet de l'app). Externe ou `rechargement` →
-              // `<a href>` classique (aller-retour réseau).
-              const spa =
-                action.href.startsWith('/') && action.rechargement !== true;
-              if (spa) {
-                return (
-                  <Link
-                    key={action.libelle}
-                    to={action.href}
-                    className={classeAction(primaire)}
-                  >
-                    {action.libelle}
-                  </Link>
-                );
-              }
+              // `<a href>` classique (aller-retour réseau). `BoutonLien`
+              // applique exactement cette règle, d'où l'absence de branchement.
               return (
-                <a
+                <BoutonLien
                   key={action.libelle}
-                  href={action.href}
-                  className={classeAction(primaire)}
+                  to={action.href}
+                  variante={variante}
+                  rechargement={action.rechargement === true}
                 >
                   {action.libelle}
-                </a>
+                </BoutonLien>
               );
             }
             return (
-              <button
+              <Bouton
                 key={action.libelle}
-                type="button"
-                className={classeAction(primaire)}
+                variante={variante}
                 {...(action.onClick ? { onClick: action.onClick } : {})}
               >
                 {action.libelle}
-              </button>
+              </Bouton>
             );
           })}
         </div>

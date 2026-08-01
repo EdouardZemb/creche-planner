@@ -656,17 +656,15 @@ h3 {
   color: #fff;
 }
 
-.statut-en-cours {
-  background: var(--gris-clair);
-  color: var(--gris);
-}
-
-.statut-enregistre {
+/* Variantes de statut. Il n'y a PAS de `.badge-en-cours` : sa règle était le
+   doublon strict de `.badge` (fond var(--gris-clair), texte var(--gris)) —
+   l'état « en cours » se rend donc avec la variante par défaut. */
+.badge-succes {
   background: #dcfce7;
   color: var(--vert);
 }
 
-.statut-erreur {
+.badge-erreur {
   background: #fee2e2;
   color: var(--rouge);
 }
@@ -1232,7 +1230,17 @@ h3 {
   font-size: 1rem;
 }
 
-.panneau-cout-badge {
+/* Ligne de titre d'une version de contrat dans l'historique. */
+.historique-version-titre {
+  font-weight: 600;
+}
+
+/* Placement du badge dans un titre : porté par le PARENT, pour que `<Badge>`
+   n'ait pas à transporter de classe de positionnement (elle rouvrirait la porte
+   aux variantes ad hoc). Remplace l'enveloppe `.panneau-cout-badge` et la marge
+   inline d'`HistoriqueContrat`. */
+.panneau-cout-titre .badge,
+.historique-version-titre .badge {
   margin-left: var(--esp-2);
   vertical-align: middle;
 }

@@ -1,3 +1,5 @@
+import { Bouton } from './Bouton';
+
 /**
  * Ligne discrète « {texte} · Recharger » (chantier Confiance, lot B2) : ce
  * qu'un bloc SECONDAIRE du dashboard affiche quand son chargement a échoué, à
@@ -19,9 +21,9 @@ export function LigneIndisponible({
   return (
     <div role="status" className="ligne-indisponible">
       <span className="muted">{texte}</span>
-      <button type="button" className="btn secondaire" onClick={onRecharger}>
+      <Bouton variante="secondaire" onClick={onRecharger}>
         Recharger
-      </button>
+      </Bouton>
     </div>
   );
 }

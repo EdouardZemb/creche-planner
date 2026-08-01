@@ -10,6 +10,9 @@ import {
   type ErreurChamp,
 } from '../utils/erreurs';
 import { EtatVide } from '../ui/EtatVide';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
+import { ChampFormulaire } from '../ui/ChampFormulaire';
 import { useMoi } from '../session/MoiContext';
 import {
   FoyerScalairesForm,
@@ -249,11 +252,9 @@ export function FoyerFormPage() {
         et vos ressources pour estimer les tarifs.
       </p>
 
-      {erreurGlobale && (
-        <p className="debit" role="alert" tabIndex={-1} ref={refErreurGlobale}>
-          {erreurGlobale}
-        </p>
-      )}
+      <ChampErreur balise="p" focalisable ref={refErreurGlobale}>
+        {erreurGlobale}
+      </ChampErreur>
 
       <form onSubmit={(ev) => void soumettre(ev)}>
         <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
@@ -308,9 +309,8 @@ export function FoyerFormPage() {
                 />
               </div>
               {enfants.length > 1 && (
-                <button
-                  type="button"
-                  className="btn secondaire"
+                <Bouton
+                  variante="secondaire"
                   onClick={() => {
                     supprimerEnfant(enfant.id);
                   }}
@@ -322,19 +322,18 @@ export function FoyerFormPage() {
                   style={{ whiteSpace: 'nowrap' }}
                 >
                   Retirer
-                </button>
+                </Bouton>
               )}
             </div>
           ))}
 
-          <button
-            type="button"
-            className="btn secondaire"
+          <Bouton
+            variante="secondaire"
             onClick={ajouterEnfant}
             style={{ marginTop: '0.25rem' }}
           >
             + Ajouter un enfant
-          </button>
+          </Bouton>
         </fieldset>
 
         <fieldset style={{ border: 'none', padding: 0, margin: '1rem 0 0' }}>
@@ -357,37 +356,35 @@ export function FoyerFormPage() {
                 className="carte parent-ligne"
                 style={{ marginBottom: '0.5rem' }}
               >
-                <label htmlFor={`parent-email-${parent.id}`}>
-                  Adresse e-mail <span aria-hidden="true">*</span>
-                </label>
-                {/* Pas d'attribut `required` HTML : le bloc Parents est
-                    facultatif (un foyer peut être créé sans parent, la ligne
-                    vide par défaut est ignorée). L'e-mail reste obligatoire
-                    *pour un parent renseigné* — `aria-required` l'annonce et le
-                    BFF le valide, l'erreur étant reliée via `aria-describedby`. */}
-                <input
+                <ChampFormulaire
                   id={`parent-email-${parent.id}`}
-                  type="email"
-                  aria-required="true"
-                  aria-invalid={erreurPour(champEmail) ? true : undefined}
-                  {...(erreurPour(champEmail)
-                    ? { 'aria-describedby': idErreur(champEmail) }
-                    : {})}
-                  value={parent.email}
-                  onChange={(e) => {
-                    mettreAJourParent(parent.id, 'email', e.target.value);
-                  }}
-                  style={{ width: '100%' }}
-                />
-                {erreurPour(champEmail) && (
-                  <span
-                    id={idErreur(champEmail)}
-                    className="debit"
-                    role="alert"
-                  >
-                    {erreurPour(champEmail)}
-                  </span>
-                )}
+                  libelle={
+                    <>
+                      Adresse e-mail <span aria-hidden="true">*</span>
+                    </>
+                  }
+                  requis
+                  erreur={erreurPour(champEmail) ?? null}
+                  idErreur={idErreur(champEmail)}
+                >
+                  {/* Pas d'attribut `required` HTML : le bloc Parents est
+                      facultatif (un foyer peut être créé sans parent, la ligne
+                      vide par défaut est ignorée). L'e-mail reste obligatoire
+                      *pour un parent renseigné* — `aria-required` l'annonce et
+                      le BFF le valide, l'erreur étant reliée via
+                      `aria-describedby`. */}
+                  {(champ) => (
+                    <input
+                      {...champ}
+                      type="email"
+                      value={parent.email}
+                      onChange={(e) => {
+                        mettreAJourParent(parent.id, 'email', e.target.value);
+                      }}
+                      style={{ width: '100%' }}
+                    />
+                  )}
+                </ChampFormulaire>
 
                 <div
                   className="champs-duo"
@@ -423,9 +420,8 @@ export function FoyerFormPage() {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  className="btn secondaire"
+                <Bouton
+                  variante="secondaire"
                   onClick={() => {
                     supprimerParent(parent.id);
                   }}
@@ -437,19 +433,18 @@ export function FoyerFormPage() {
                   style={{ marginTop: '0.5rem' }}
                 >
                   Retirer
-                </button>
+                </Bouton>
               </div>
             );
           })}
 
-          <button
-            type="button"
-            className="btn secondaire"
+          <Bouton
+            variante="secondaire"
             onClick={ajouterParent}
             style={{ marginTop: '0.25rem' }}
           >
             + Ajouter un parent
-          </button>
+          </Bouton>
         </fieldset>
 
         {/* Ressources en dernier (lot 3) : après les enfants et les parents,
@@ -464,9 +459,9 @@ export function FoyerFormPage() {
         </div>
 
         <div style={{ marginTop: '1.5rem' }}>
-          <button type="submit" className="btn" disabled={chargement}>
+          <Bouton type="submit" disabled={chargement}>
             {chargement ? 'Création en cours…' : 'Créer ma famille'}
-          </button>
+          </Bouton>
         </div>
       </form>
     </div>

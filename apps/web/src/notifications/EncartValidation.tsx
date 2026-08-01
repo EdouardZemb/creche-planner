@@ -4,6 +4,8 @@ import type { NotificationAValider } from '../types/bff';
 import { messageErreur } from '../utils/erreurs';
 import { libelleMode } from '../utils/libelles';
 import { libelleSemaine } from '../utils/dates';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
 import { useNotifications } from './useNotifications';
 import { RelectureEnvoi } from './RelectureEnvoi';
 import { EditeurSemaine } from './EditeurSemaine';
@@ -186,20 +188,19 @@ export function EncartValidation({
         </p>
       )}
       {retour !== null && retour.type === 'erreur' && (
-        <p className="debit" role="alert">
+        <ChampErreur balise="p">
           {retour.texte}{' '}
           {retour.notif !== undefined && (
-            <button
-              type="button"
-              className="btn secondaire"
+            <Bouton
+              variante="secondaire"
               onClick={() => {
                 if (retour.notif) void valider(retour.notif);
               }}
             >
               Réessayer
-            </button>
+            </Bouton>
           )}
-        </p>
+        </ChampErreur>
       )}
       {/* Liste vidée après la dernière validation : on le dit explicitement au
           lieu de faire disparaître l'encart (le parent doit voir que c'est fini,
@@ -215,9 +216,8 @@ export function EncartValidation({
             <span>{libelleLigne(n)}</span>
             {/* Boutons empilés pleine largeur sous ~480px (cf. .encart-actions). */}
             <span className="encart-actions">
-              <button
-                type="button"
-                className="btn secondaire"
+              <Bouton
+                variante="secondaire"
                 aria-expanded={semaineEditee === n.semaineIso}
                 aria-label={ariaLabel('Éditer la', n)}
                 onClick={() => {
@@ -229,10 +229,8 @@ export function EncartValidation({
                 {semaineEditee === n.semaineIso
                   ? 'Fermer l’éditeur'
                   : 'Éditer la semaine'}
-              </button>
-              <button
-                type="button"
-                className="btn"
+              </Bouton>
+              <Bouton
                 disabled={enCours === n.contratId}
                 aria-label={ariaLabel('Valider la', n)}
                 onClick={() => {
@@ -240,7 +238,7 @@ export function EncartValidation({
                 }}
               >
                 {enCours === n.contratId ? 'Validation…' : 'Valider'}
-              </button>
+              </Bouton>
             </span>
           </li>
         ))}

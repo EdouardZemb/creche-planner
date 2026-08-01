@@ -7,7 +7,9 @@ import {
   LIBELLES_JOURS_COURT,
 } from '../utils/dates';
 import { JOURS_SEMAINE_OUVRES } from './editeursSemaine';
+import { Badge } from '../ui/Badge';
 import { Spinner } from '../ui/Spinner';
+import { Bouton } from '../ui/Bouton';
 
 export interface HistoriqueContratProps {
   contratId: string;
@@ -83,9 +85,9 @@ export function HistoriqueContrat({
         }}
       >
         <h2 style={{ marginTop: 0 }}>Historique — {enfant}</h2>
-        <button type="button" className="btn secondaire" onClick={onFermer}>
+        <Bouton variante="secondaire" onClick={onFermer}>
           Fermer
-        </button>
+        </Bouton>
       </div>
 
       {etat.loading && (
@@ -100,15 +102,14 @@ export function HistoriqueContrat({
           <p className="texte-erreur">
             Impossible de charger l’historique : {etat.error}
           </p>
-          <button
-            type="button"
-            className="btn secondaire"
+          <Bouton
+            variante="secondaire"
             onClick={() => {
               etat.reload();
             }}
           >
             Réessayer
-          </button>
+          </Bouton>
         </div>
       )}
 
@@ -127,13 +128,9 @@ export function HistoriqueContrat({
               className="carte"
               style={{ marginBottom: '0.5rem' }}
             >
-              <div style={{ fontWeight: 600 }}>
+              <div className="historique-version-titre">
                 À partir du {dateJourMoisAnneeFr(version.dateEffet)}
-                {version.au === null && (
-                  <span className="badge" style={{ marginLeft: '0.5rem' }}>
-                    en cours
-                  </span>
-                )}
+                {version.au === null && <Badge>en cours</Badge>}
               </div>
               <div className="muted" style={{ margin: '0.15rem 0' }}>
                 {resumeVersion(version)}

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { AbsenceCreche, EcrirePlanning } from '../types/bff';
+import { Bouton } from '../ui/Bouton';
 import { Modale } from '../ui/Modale';
 import { fenetreAbsence, type PlageGarde } from '../planning/saisieAbsence';
 import { libelleDate } from '../utils/dates';
@@ -132,23 +133,16 @@ export function ModaleAbsenceRapide({
         </p>
       )}
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-        <button
-          type="button"
-          className="btn"
+        <Bouton
           ref={refConfirmer}
           onClick={() => void confirmer()}
           disabled={enCours}
         >
           {libelleConfirmer}
-        </button>
-        <button
-          type="button"
-          className="btn secondaire"
-          onClick={onFermer}
-          disabled={enCours}
-        >
+        </Bouton>
+        <Bouton variante="secondaire" onClick={onFermer} disabled={enCours}>
           Annuler
-        </button>
+        </Bouton>
       </div>
       <p style={{ margin: '0.75rem 0 0' }}>
         <Link className="muted" to={ciblePlanning} onClick={onFermer}>

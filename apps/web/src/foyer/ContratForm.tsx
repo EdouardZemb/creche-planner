@@ -28,6 +28,9 @@ import {
 } from '../utils/erreurs';
 import { LIBELLES_MODE, estMode } from '../utils/libelles';
 import { Abbr } from '../ui/Abbr';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
+import { ChampFormulaire } from '../ui/ChampFormulaire';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 
 const MODES_SELECTIONNABLES: Mode[] = [
@@ -289,20 +292,16 @@ export function ContratForm({
         setSaisieModifiee(true);
       }}
     >
-      {erreurGlobale && (
-        <p className="debit" role="alert">
-          {erreurGlobale}
-        </p>
-      )}
+      <ChampErreur balise="p">{erreurGlobale}</ChampErreur>
 
       {/* Erreurs de champs non rattachées à un champ affiché (ex. semaineType).
           Les champs ci-dessous portent leur propre message lié (aria-describedby). */}
       {erreursChamps
         .filter((e) => !CHAMPS_LIES.has(e.champ))
         .map((e) => (
-          <p key={e.champ} className="debit" role="alert">
+          <ChampErreur key={e.champ} balise="p">
             {e.message}
-          </p>
+          </ChampErreur>
         ))}
 
       <label htmlFor="contrat-mode">Mode</label>
@@ -321,161 +320,152 @@ export function ContratForm({
           </option>
         ))}
       </select>
-      {erreurPour('mode') && (
-        <span id={idErreur('mode')} className="debit" role="alert">
-          {erreurPour('mode')}
-        </span>
-      )}
+      <ChampErreur id={idErreur('mode')}>{erreurPour('mode')}</ChampErreur>
 
-      <label htmlFor="contrat-enfant">
-        Enfant <span aria-hidden="true">*</span>
-      </label>
-      <select
+      <ChampFormulaire
         id="contrat-enfant"
-        value={enfantId}
-        onChange={(e) => {
-          setEnfantId(e.target.value);
-        }}
-        required
-        aria-required="true"
-        aria-invalid={erreurPour('enfant') ? true : undefined}
-        {...(erreurPour('enfant')
-          ? { 'aria-describedby': idErreur('enfant') }
-          : {})}
-        style={{ width: '100%' }}
+        libelle={
+          <>
+            Enfant <span aria-hidden="true">*</span>
+          </>
+        }
+        requis
+        erreur={erreurPour('enfant') ?? null}
+        idErreur={idErreur('enfant')}
       >
-        <option value="">— Sélectionner un enfant —</option>
-        {enfants.map((e) => (
-          <option key={e.id} value={e.id}>
-            {e.prenom}
-          </option>
-        ))}
-      </select>
-      {erreurPour('enfant') && (
-        <span id={idErreur('enfant')} className="debit" role="alert">
-          {erreurPour('enfant')}
-        </span>
-      )}
+        {(champ) => (
+          <select
+            {...champ}
+            value={enfantId}
+            onChange={(e) => {
+              setEnfantId(e.target.value);
+            }}
+            required
+            style={{ width: '100%' }}
+          >
+            <option value="">— Sélectionner un enfant —</option>
+            {enfants.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.prenom}
+              </option>
+            ))}
+          </select>
+        )}
+      </ChampFormulaire>
 
-      <label htmlFor="contrat-valideDu">
-        Valide du <span aria-hidden="true">*</span>
-      </label>
-      <input
+      <ChampFormulaire
         id="contrat-valideDu"
-        type="date"
-        required
-        aria-required="true"
-        aria-invalid={erreurPour('valideDu') ? true : undefined}
-        {...(erreurPour('valideDu')
-          ? { 'aria-describedby': idErreur('valideDu') }
-          : {})}
-        value={valideDu}
-        onChange={(e) => {
-          setValideDu(e.target.value);
-        }}
-        style={{ width: '100%' }}
-      />
-      {erreurPour('valideDu') && (
-        <span id={idErreur('valideDu')} className="debit" role="alert">
-          {erreurPour('valideDu')}
-        </span>
-      )}
-
-      <label htmlFor="contrat-valideAu">
-        Valide au (laisser vide si ouvert)
-      </label>
-      <input
-        id="contrat-valideAu"
-        type="date"
-        aria-invalid={erreurPour('valideAu') ? true : undefined}
-        {...(erreurPour('valideAu')
-          ? { 'aria-describedby': idErreur('valideAu') }
-          : {})}
-        value={valideAu}
-        onChange={(e) => {
-          setValideAu(e.target.value);
-        }}
-        style={{ width: '100%' }}
-      />
-      {erreurPour('valideAu') && (
-        <span id={idErreur('valideAu')} className="debit" role="alert">
-          {erreurPour('valideAu')}
-        </span>
-      )}
-
-      <label htmlFor="contrat-etablissement">
-        Établissement <span aria-hidden="true">*</span>
-      </label>
-      <select
-        id="contrat-etablissement"
-        value={etablissementChoix}
-        aria-required="true"
-        aria-invalid={erreurPour('etablissementId') ? true : undefined}
-        {...(erreurPour('etablissementId')
-          ? { 'aria-describedby': idErreur('etablissementId') }
-          : {})}
-        onChange={(e) => {
-          setEtablissementChoix(e.target.value);
-        }}
-        style={{ width: '100%' }}
+        libelle={
+          <>
+            Valide du <span aria-hidden="true">*</span>
+          </>
+        }
+        requis
+        erreur={erreurPour('valideDu') ?? null}
+        idErreur={idErreur('valideDu')}
       >
-        <option value="">— Sélectionner un établissement —</option>
-        {/* Archivage réel (Lot 3) : on ne propose que les établissements ACTIFS pour
-            un nouveau rattachement. À l'édition d'un contrat déjà rattaché à un
-            archivé, on garde CETTE option (suffixe « (archivé) ») pour qu'elle reste
-            sélectionnée/affichée ; les autres archivés n'apparaissent pas. */}
-        {etablissements
-          .filter((e) => e.actif || e.id === contrat?.etablissementId)
-          .map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.nom}
-              {e.actif ? '' : ' (archivé)'}
+        {(champ) => (
+          <input
+            {...champ}
+            type="date"
+            required
+            value={valideDu}
+            onChange={(e) => {
+              setValideDu(e.target.value);
+            }}
+            style={{ width: '100%' }}
+          />
+        )}
+      </ChampFormulaire>
+
+      <ChampFormulaire
+        id="contrat-valideAu"
+        libelle="Valide au (laisser vide si ouvert)"
+        erreur={erreurPour('valideAu') ?? null}
+        idErreur={idErreur('valideAu')}
+      >
+        {(champ) => (
+          <input
+            {...champ}
+            type="date"
+            value={valideAu}
+            onChange={(e) => {
+              setValideAu(e.target.value);
+            }}
+            style={{ width: '100%' }}
+          />
+        )}
+      </ChampFormulaire>
+
+      <ChampFormulaire
+        id="contrat-etablissement"
+        libelle={
+          <>
+            Établissement <span aria-hidden="true">*</span>
+          </>
+        }
+        requis
+        erreur={erreurPour('etablissementId') ?? null}
+        idErreur={idErreur('etablissementId')}
+      >
+        {(champ) => (
+          <select
+            {...champ}
+            value={etablissementChoix}
+            onChange={(e) => {
+              setEtablissementChoix(e.target.value);
+            }}
+            style={{ width: '100%' }}
+          >
+            <option value="">— Sélectionner un établissement —</option>
+            {/* Archivage réel (Lot 3) : on ne propose que les établissements ACTIFS pour
+                un nouveau rattachement. À l'édition d'un contrat déjà rattaché à un
+                archivé, on garde CETTE option (suffixe « (archivé) ») pour qu'elle reste
+                sélectionnée/affichée ; les autres archivés n'apparaissent pas. */}
+            {etablissements
+              .filter((e) => e.actif || e.id === contrat?.etablissementId)
+              .map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.nom}
+                  {e.actif ? '' : ' (archivé)'}
+                </option>
+              ))}
+            <option value={NOUVEL_ETABLISSEMENT}>
+              ➕ Créer une nouvelle crèche / école
             </option>
-          ))}
-        <option value={NOUVEL_ETABLISSEMENT}>
-          ➕ Créer une nouvelle crèche / école
-        </option>
-      </select>
-      {erreurPour('etablissementId') && (
-        <span id={idErreur('etablissementId')} className="debit" role="alert">
-          {erreurPour('etablissementId')}
-        </span>
-      )}
+          </select>
+        )}
+      </ChampFormulaire>
 
       {etablissementChoix === NOUVEL_ETABLISSEMENT && (
         <fieldset style={{ border: 'none', padding: 0, margin: '0.5rem 0 0' }}>
           <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
             Nouvel établissement
           </legend>
-          <label htmlFor="contrat-nouvel-etab-nom">
-            Nom du nouvel établissement <span aria-hidden="true">*</span>
-          </label>
-          <input
+          <ChampFormulaire
             id="contrat-nouvel-etab-nom"
-            type="text"
-            required
-            aria-required="true"
-            aria-invalid={
-              erreurPour('nouvelEtablissementNom') ? true : undefined
+            libelle={
+              <>
+                Nom du nouvel établissement <span aria-hidden="true">*</span>
+              </>
             }
-            {...(erreurPour('nouvelEtablissementNom')
-              ? { 'aria-describedby': idErreur('nouvelEtablissementNom') }
-              : {})}
-            value={nouvelNom}
-            onChange={(e) => {
-              setNouvelNom(e.target.value);
-            }}
-            style={{ width: '100%' }}
-          />
-          {erreurPour('nouvelEtablissementNom') && (
-            <span
-              id={idErreur('nouvelEtablissementNom')}
-              className="debit"
-              role="alert"
-            >
-              {erreurPour('nouvelEtablissementNom')}
-            </span>
-          )}
+            requis
+            erreur={erreurPour('nouvelEtablissementNom') ?? null}
+            idErreur={idErreur('nouvelEtablissementNom')}
+          >
+            {(champ) => (
+              <input
+                {...champ}
+                type="text"
+                required
+                value={nouvelNom}
+                onChange={(e) => {
+                  setNouvelNom(e.target.value);
+                }}
+                style={{ width: '100%' }}
+              />
+            )}
+          </ChampFormulaire>
           <label htmlFor="contrat-nouvel-etab-email">
             Adresse e-mail du service
           </label>
@@ -493,68 +483,61 @@ export function ContratForm({
 
       {mode === 'CRECHE_PSU' && (
         <>
-          <label htmlFor="heuresAnnuelles">
-            Heures annuelles contractualisées <span aria-hidden="true">*</span>
-          </label>
-          <input
+          <ChampFormulaire
             id="heuresAnnuelles"
-            type="number"
-            min="1"
-            step="0.5"
-            required
-            aria-required="true"
-            aria-invalid={
-              erreurPour('heuresAnnuellesContractualisees') ? true : undefined
+            libelle={
+              <>
+                {'Heures annuelles contractualisées '}
+                <span aria-hidden="true">*</span>
+              </>
             }
-            {...(erreurPour('heuresAnnuellesContractualisees')
-              ? {
-                  'aria-describedby': idErreur(
-                    'heuresAnnuellesContractualisees',
-                  ),
-                }
-              : {})}
-            value={heuresAnnuelles}
-            onChange={(e) => {
-              setHeuresAnnuelles(e.target.value);
-            }}
-            style={{ width: '100%' }}
-          />
-          {erreurPour('heuresAnnuellesContractualisees') && (
-            <span
-              id={idErreur('heuresAnnuellesContractualisees')}
-              className="debit"
-              role="alert"
-            >
-              {erreurPour('heuresAnnuellesContractualisees')}
-            </span>
-          )}
+            requis
+            erreur={erreurPour('heuresAnnuellesContractualisees') ?? null}
+            idErreur={idErreur('heuresAnnuellesContractualisees')}
+          >
+            {(champ) => (
+              <input
+                {...champ}
+                type="number"
+                min="1"
+                step="0.5"
+                required
+                value={heuresAnnuelles}
+                onChange={(e) => {
+                  setHeuresAnnuelles(e.target.value);
+                }}
+                style={{ width: '100%' }}
+              />
+            )}
+          </ChampFormulaire>
 
-          <label htmlFor="nbMensualites">
-            Nombre de mensualités <span aria-hidden="true">*</span>
-          </label>
-          <input
+          <ChampFormulaire
             id="nbMensualites"
-            type="number"
-            min="1"
-            max="12"
-            step="1"
-            required
-            aria-required="true"
-            aria-invalid={erreurPour('nbMensualites') ? true : undefined}
-            {...(erreurPour('nbMensualites')
-              ? { 'aria-describedby': idErreur('nbMensualites') }
-              : {})}
-            value={nbMensualites}
-            onChange={(e) => {
-              setNbMensualites(e.target.value);
-            }}
-            style={{ width: '100%' }}
-          />
-          {erreurPour('nbMensualites') && (
-            <span id={idErreur('nbMensualites')} className="debit" role="alert">
-              {erreurPour('nbMensualites')}
-            </span>
-          )}
+            libelle={
+              <>
+                Nombre de mensualités <span aria-hidden="true">*</span>
+              </>
+            }
+            requis
+            erreur={erreurPour('nbMensualites') ?? null}
+            idErreur={idErreur('nbMensualites')}
+          >
+            {(champ) => (
+              <input
+                {...champ}
+                type="number"
+                min="1"
+                max="12"
+                step="1"
+                required
+                value={nbMensualites}
+                onChange={(e) => {
+                  setNbMensualites(e.target.value);
+                }}
+                style={{ width: '100%' }}
+              />
+            )}
+          </ChampFormulaire>
 
           <fieldset
             style={{ border: 'none', padding: 0, margin: '0.75rem 0 0' }}
@@ -652,7 +635,7 @@ export function ContratForm({
       )}
 
       <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
-        <button type="submit" className="btn" disabled={chargement}>
+        <Bouton type="submit" disabled={chargement}>
           {chargement
             ? edition
               ? 'Enregistrement…'
@@ -660,11 +643,10 @@ export function ContratForm({
             : edition
               ? 'Enregistrer les modifications'
               : 'Créer le contrat'}
-        </button>
+        </Bouton>
         {onAnnuler && (
-          <button
-            type="button"
-            className="btn secondaire"
+          <Bouton
+            variante="secondaire"
             onClick={() => {
               // Rien saisi → fermeture directe ; sinon confirmation (la saisie
               // n'est pas enregistrée et serait perdue sans retour possible).
@@ -676,7 +658,7 @@ export function ContratForm({
             }}
           >
             Annuler
-          </button>
+          </Bouton>
         )}
       </div>
       <ModaleConfirmation

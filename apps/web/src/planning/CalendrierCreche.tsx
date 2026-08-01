@@ -13,6 +13,7 @@ import type {
 import { joursDuMois, jourSemaineDeIso, formaterDateFr } from '../utils/dates';
 import { couleurDuMode } from '../utils/couleurs';
 import { Modale } from '../ui/Modale';
+import { Bouton } from '../ui/Bouton';
 import { usePersistanceAbsences } from '../hooks/usePersistanceAbsences';
 import { LegendePlanning } from './LegendePlanning';
 import { ChoixPortee } from './ChoixPortee';
@@ -994,22 +995,19 @@ export function CalendrierCreche({
               flexWrap: 'wrap',
             }}
           >
-            <button
-              type="button"
-              className="btn"
+            <Bouton
               onClick={appliquerSelection}
               disabled={selection.size === 0 || !lotPlageValide}
             >
               Appliquer à la sélection ({selection.size})
-            </button>
-            <button
-              type="button"
-              className="btn secondaire"
+            </Bouton>
+            <Bouton
+              variante="secondaire"
               onClick={appliquerTousLesJoursGardes}
               disabled={!lotPlageValide}
             >
               Appliquer à tous les jours gardés
-            </button>
+            </Bouton>
           </div>
         </fieldset>
       )}
@@ -1061,9 +1059,8 @@ export function CalendrierCreche({
                   <span className="muted" style={{ fontSize: '0.82rem' }}>
                     {libelleEtat}
                   </span>
-                  <button
-                    type="button"
-                    className="btn secondaire"
+                  <Bouton
+                    variante="secondaire"
                     onClick={() => {
                       ouvrirSaisie(jour);
                     }}
@@ -1074,7 +1071,7 @@ export function CalendrierCreche({
                     }
                   >
                     {aAbsence ? 'Modifier' : 'Saisir'}
-                  </button>
+                  </Bouton>
                 </li>
               );
             })}
@@ -1281,35 +1278,25 @@ export function CalendrierCreche({
           <ChoixPortee valeur={portee} onChange={setPortee} nom="creche" />
 
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-            <button
-              type="button"
-              className="btn"
-              onClick={confirmerDialog}
-              disabled={!dialogPlageValide}
-            >
+            <Bouton onClick={confirmerDialog} disabled={!dialogPlageValide}>
               Confirmer
-            </button>
+            </Bouton>
             {portee === 'mois' &&
               ((dialogKind === 'absence' &&
                 absences.some((a) => a.date === dialogDate)) ||
                 (dialogKind === 'ajout' && joursSupSet.has(dialogDate))) && (
-                <button
-                  type="button"
-                  className="btn secondaire"
-                  onClick={supprimerDialog}
-                >
+                <Bouton variante="secondaire" onClick={supprimerDialog}>
                   Supprimer
-                </button>
+                </Bouton>
               )}
-            <button
-              type="button"
-              className="btn secondaire"
+            <Bouton
+              variante="secondaire"
               onClick={() => {
                 setDialogDate(null);
               }}
             >
               Annuler
-            </button>
+            </Bouton>
           </div>
         </Modale>
       )}

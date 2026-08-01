@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { api } from '../api/client';
 import { useAsync } from '../hooks/useAsync';
 import { formaterMoisFr } from '../utils/dates';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
 import { Modale } from '../ui/Modale';
 import { Spinner } from '../ui/Spinner';
 
@@ -71,15 +73,14 @@ export function ModaleCorrection({
           <p className="texte-erreur">
             Impossible de calculer l’impact : {etat.error}
           </p>
-          <button
-            type="button"
-            className="btn secondaire"
+          <Bouton
+            variante="secondaire"
             onClick={() => {
               etat.reload();
             }}
           >
             Réessayer
-          </button>
+          </Bouton>
         </div>
       )}
 
@@ -124,31 +125,24 @@ export function ModaleCorrection({
         </>
       )}
 
-      {erreur && (
-        <p className="debit" role="alert">
-          {erreur}
-        </p>
-      )}
+      <ChampErreur balise="p">{erreur}</ChampErreur>
 
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-        <button
-          type="button"
-          className="btn secondaire"
+        <Bouton
+          variante="secondaire"
           onClick={onAnnuler}
           disabled={enregistrement}
         >
           Annuler
-        </button>
-        <button
-          type="button"
-          className="btn"
+        </Bouton>
+        <Bouton
           disabled={enregistrement || etat.loading || etat.error !== null}
           onClick={() => {
             onConfirmer(motif.trim() === '' ? undefined : motif.trim());
           }}
         >
           {enregistrement ? 'Enregistrement…' : 'Enregistrer la correction'}
-        </button>
+        </Bouton>
       </div>
     </Modale>
   );

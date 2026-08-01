@@ -1,6 +1,9 @@
 import { useId, useState } from 'react';
 import { api, ApiError } from '../api/client';
 import { extraireErreurs, messageErreur } from '../utils/erreurs';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
+import { ChampFormulaire } from '../ui/ChampFormulaire';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
 import type { ErreurChamp } from '../utils/erreurs';
@@ -176,75 +179,71 @@ function LigneEnfantExistant({
 
   return (
     <div className="carte enfant-ligne" style={{ marginBottom: '0.5rem' }}>
-      {erreurGlobale && (
-        <p className="debit" role="alert">
-          {erreurGlobale}
-        </p>
-      )}
+      <ChampErreur balise="p">{erreurGlobale}</ChampErreur>
 
       <div className="champs-duo">
         <div>
-          <label htmlFor={`${idBase}-prenom`}>
-            Prénom <span aria-hidden="true">*</span>
-          </label>
-          <input
+          <ChampFormulaire
             id={`${idBase}-prenom`}
-            type="text"
-            aria-required="true"
-            aria-invalid={erreurPour('prenom') ? true : undefined}
-            {...(erreurPour('prenom')
-              ? { 'aria-describedby': idErreur('prenom') }
-              : {})}
-            value={prenom}
-            onChange={(e) => {
-              setPrenom(e.target.value);
-            }}
-            style={{ width: '100%' }}
-          />
-          {erreurPour('prenom') && (
-            <span id={idErreur('prenom')} className="debit" role="alert">
-              {erreurPour('prenom')}
-            </span>
-          )}
+            libelle={
+              <>
+                Prénom <span aria-hidden="true">*</span>
+              </>
+            }
+            requis
+            erreur={erreurPour('prenom')}
+            idErreur={idErreur('prenom')}
+          >
+            {(champ) => (
+              <input
+                type="text"
+                {...champ}
+                value={prenom}
+                onChange={(e) => {
+                  setPrenom(e.target.value);
+                }}
+                style={{ width: '100%' }}
+              />
+            )}
+          </ChampFormulaire>
         </div>
         <div>
-          <label htmlFor={`${idBase}-naissance`}>
-            Date de naissance <span aria-hidden="true">*</span>
-          </label>
-          <input
+          <ChampFormulaire
             id={`${idBase}-naissance`}
-            type="date"
-            aria-required="true"
-            aria-invalid={erreurPour('dateNaissance') ? true : undefined}
-            {...(erreurPour('dateNaissance')
-              ? { 'aria-describedby': idErreur('dateNaissance') }
-              : {})}
-            value={dateNaissance}
-            onChange={(e) => {
-              setDateNaissance(e.target.value);
-            }}
-            style={{ width: '100%' }}
-          />
-          {erreurPour('dateNaissance') && (
-            <span id={idErreur('dateNaissance')} className="debit" role="alert">
-              {erreurPour('dateNaissance')}
-            </span>
-          )}
+            libelle={
+              <>
+                Date de naissance <span aria-hidden="true">*</span>
+              </>
+            }
+            requis
+            erreur={erreurPour('dateNaissance')}
+            idErreur={idErreur('dateNaissance')}
+          >
+            {(champ) => (
+              <input
+                type="date"
+                {...champ}
+                value={dateNaissance}
+                onChange={(e) => {
+                  setDateNaissance(e.target.value);
+                }}
+                style={{ width: '100%' }}
+              />
+            )}
+          </ChampFormulaire>
         </div>
       </div>
 
       <div className="actions-ligne">
-        <button
-          type="button"
-          className="btn secondaire"
+        <Bouton
+          variante="secondaire"
           disabled={occupe || prenom.trim() === '' || dateNaissance === ''}
           onClick={() => void enregistrer()}
         >
           {occupe ? 'Enregistrement…' : 'Enregistrer'}
-        </button>
-        <button
-          type="button"
-          className="btn secondaire"
+        </Bouton>
+        <Bouton
+          variante="secondaire"
           disabled={occupe}
           onClick={() => {
             setConfirmation(true);
@@ -252,7 +251,7 @@ function LigneEnfantExistant({
           aria-label={`Supprimer l’enfant ${designation}`}
         >
           Supprimer
-        </button>
+        </Bouton>
         <StatutSauvegarde etat={etatAffiche} enregistreA={enregistreA} />
       </div>
 
@@ -335,72 +334,69 @@ function FormNouvelEnfant({
     <div className="carte enfant-ligne" style={{ marginBottom: '0.5rem' }}>
       <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Ajouter un enfant</p>
 
-      {erreurGlobale && (
-        <p className="debit" role="alert">
-          {erreurGlobale}
-        </p>
-      )}
+      <ChampErreur balise="p">{erreurGlobale}</ChampErreur>
 
       <div className="champs-duo">
         <div>
-          <label htmlFor={`${idBase}-prenom`}>
-            Prénom <span aria-hidden="true">*</span>
-          </label>
-          <input
+          <ChampFormulaire
             id={`${idBase}-prenom`}
-            type="text"
-            aria-required="true"
-            aria-invalid={erreurPour('prenom') ? true : undefined}
-            {...(erreurPour('prenom')
-              ? { 'aria-describedby': idErreur('prenom') }
-              : {})}
-            value={prenom}
-            onChange={(e) => {
-              setPrenom(e.target.value);
-            }}
-            style={{ width: '100%' }}
-          />
-          {erreurPour('prenom') && (
-            <span id={idErreur('prenom')} className="debit" role="alert">
-              {erreurPour('prenom')}
-            </span>
-          )}
+            libelle={
+              <>
+                Prénom <span aria-hidden="true">*</span>
+              </>
+            }
+            requis
+            erreur={erreurPour('prenom')}
+            idErreur={idErreur('prenom')}
+          >
+            {(champ) => (
+              <input
+                type="text"
+                {...champ}
+                value={prenom}
+                onChange={(e) => {
+                  setPrenom(e.target.value);
+                }}
+                style={{ width: '100%' }}
+              />
+            )}
+          </ChampFormulaire>
         </div>
         <div>
-          <label htmlFor={`${idBase}-naissance`}>
-            Date de naissance <span aria-hidden="true">*</span>
-          </label>
-          <input
+          <ChampFormulaire
             id={`${idBase}-naissance`}
-            type="date"
-            aria-required="true"
-            aria-invalid={erreurPour('dateNaissance') ? true : undefined}
-            {...(erreurPour('dateNaissance')
-              ? { 'aria-describedby': idErreur('dateNaissance') }
-              : {})}
-            value={dateNaissance}
-            onChange={(e) => {
-              setDateNaissance(e.target.value);
-            }}
-            style={{ width: '100%' }}
-          />
-          {erreurPour('dateNaissance') && (
-            <span id={idErreur('dateNaissance')} className="debit" role="alert">
-              {erreurPour('dateNaissance')}
-            </span>
-          )}
+            libelle={
+              <>
+                Date de naissance <span aria-hidden="true">*</span>
+              </>
+            }
+            requis
+            erreur={erreurPour('dateNaissance')}
+            idErreur={idErreur('dateNaissance')}
+          >
+            {(champ) => (
+              <input
+                type="date"
+                {...champ}
+                value={dateNaissance}
+                onChange={(e) => {
+                  setDateNaissance(e.target.value);
+                }}
+                style={{ width: '100%' }}
+              />
+            )}
+          </ChampFormulaire>
         </div>
       </div>
 
       <div className="actions-ligne">
-        <button
-          type="button"
-          className="btn secondaire"
+        <Bouton
+          variante="secondaire"
           disabled={occupe || prenom.trim() === '' || dateNaissance === ''}
           onClick={() => void ajouter()}
         >
           {occupe ? 'Ajout en cours…' : '+ Ajouter cet enfant'}
-        </button>
+        </Bouton>
         <StatutSauvegarde etat={etatAffiche} enregistreA={enregistreA} />
       </div>
     </div>

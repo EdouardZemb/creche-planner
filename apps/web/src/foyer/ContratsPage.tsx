@@ -14,6 +14,8 @@ import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 import { Modale } from '../ui/Modale';
 import { EtatVide } from '../ui/EtatVide';
 import { ChargementPage } from '../ui/ChargementPage';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
 import type { ContratLocal } from '../types/bff';
 
 function formaterDate(iso: string): string {
@@ -51,23 +53,21 @@ function LigneContrat({
         </span>
       </div>
       <div className="carte-contrat-actions">
-        <button
-          type="button"
-          className="btn secondaire"
+        <Bouton
+          variante="secondaire"
           onClick={onModifier}
           aria-label={`Modifier le contrat de ${contrat.enfant}`}
         >
           Modifier
-        </button>
-        <button
-          type="button"
-          className="btn danger contour"
+        </Bouton>
+        <Bouton
+          variante="danger-contour"
           onClick={onSupprimer}
           disabled={suppressionEnCours}
           aria-label={`Supprimer le contrat de ${contrat.enfant}`}
         >
           {suppressionEnCours ? 'Suppression…' : 'Supprimer'}
-        </button>
+        </Bouton>
       </div>
     </div>
   );
@@ -250,9 +250,9 @@ export function ContratsPage() {
 
       {loading && <ChargementPage message="Chargement de votre famille…" />}
       {error && (
-        <p className="debit" role="alert">
+        <ChampErreur balise="p">
           Impossible de charger les données de la famille : {error}
-        </p>
+        </ChampErreur>
       )}
 
       {data && (
@@ -265,11 +265,7 @@ export function ContratsPage() {
         </div>
       )}
 
-      {erreurAction && (
-        <p className="debit" role="alert">
-          {erreurAction}
-        </p>
-      )}
+      <ChampErreur balise="p">{erreurAction}</ChampErreur>
 
       <div role="status" aria-live="polite">
         {messageSucces && <p className="credit">{messageSucces}</p>}
@@ -279,9 +275,9 @@ export function ContratsPage() {
         {chargementContrats ? (
           <p className="muted">Chargement des contrats…</p>
         ) : erreurContrats ? (
-          <p className="debit" role="alert">
+          <ChampErreur balise="p">
             Impossible de charger les contrats : {erreurContrats}
-          </p>
+          </ChampErreur>
         ) : contrats.length === 0 ? (
           formulaireOuvert ? null : (
             <EtatVide
@@ -356,14 +352,9 @@ export function ContratsPage() {
           contrats.length === 0 &&
           !chargementContrats &&
           !erreurContrats ? null : (
-            <button
-              type="button"
-              className="btn"
-              onClick={ouvrirCreation}
-              disabled={!data}
-            >
+            <Bouton onClick={ouvrirCreation} disabled={!data}>
               + Nouveau contrat
-            </button>
+            </Bouton>
           )
         ) : (
           <div className="carte">
@@ -395,7 +386,7 @@ export function ContratsPage() {
           <div
             style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
           >
-            <button type="button" className="btn" onClick={choisirAvenant}>
+            <Bouton onClick={choisirAvenant}>
               Changer à partir d’une date
               <span
                 className="muted"
@@ -404,10 +395,9 @@ export function ContratsPage() {
                 Garde le passé, applique les nouveaux paramètres à partir d’une
                 date.
               </span>
-            </button>
-            <button
-              type="button"
-              className="btn secondaire"
+            </Bouton>
+            <Bouton
+              variante="secondaire"
               onClick={() => void choisirCorrection()}
               disabled={preparationCorrection}
             >
@@ -420,14 +410,10 @@ export function ContratsPage() {
               >
                 Répare une erreur de saisie&nbsp;: recalcule les mois concernés.
               </span>
-            </button>
-            <button
-              type="button"
-              className="btn secondaire"
-              onClick={choisirHistorique}
-            >
+            </Bouton>
+            <Bouton variante="secondaire" onClick={choisirHistorique}>
               Voir l’historique
-            </button>
+            </Bouton>
           </div>
         </Modale>
       )}

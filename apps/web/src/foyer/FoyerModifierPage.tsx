@@ -26,6 +26,8 @@ import { HistoriqueRessources } from './HistoriqueRessources';
 import { useContrats } from './useContrats';
 import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
 import { ChargementPage } from '../ui/ChargementPage';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
 
 /**
  * Valeurs de saisie (chaînes) dérivées d'un foyer chargé : on pré-remplit avec
@@ -67,9 +69,7 @@ export function FoyerModifierPage() {
   // dupliquer les écrans de récupération.
   if (error || !data) {
     return (
-      <p className="debit" role="alert">
-        {error ?? 'Famille indisponible.'}
-      </p>
+      <ChampErreur balise="p">{error ?? 'Famille indisponible.'}</ChampErreur>
     );
   }
   // `key` lie l'état initial du formulaire au foyer chargé : si l'id change, le
@@ -202,11 +202,9 @@ function FormulaireEdition({
     <div className="carte page-etroite">
       <h1 style={{ marginTop: 0 }}>Ma famille</h1>
 
-      {erreurGlobale && (
-        <p className="debit" role="alert" tabIndex={-1} ref={refErreurGlobale}>
-          {erreurGlobale}
-        </p>
-      )}
+      <ChampErreur balise="p" focalisable ref={refErreurGlobale}>
+        {erreurGlobale}
+      </ChampErreur>
 
       {/* Ordre calqué sur la création : enfants, parents, puis ressources.
           Parents et enfants se gèrent hors du formulaire de scalaires : chaque
@@ -251,23 +249,18 @@ function FormulaireEdition({
         </p>
 
         <div className="actions-ligne" style={{ marginTop: 'var(--esp-5)' }}>
-          <button
-            type="submit"
-            className="btn"
-            disabled={etatSauvegarde === 'en-cours'}
-          >
+          <Bouton type="submit" disabled={etatSauvegarde === 'en-cours'}>
             {etatSauvegarde === 'en-cours'
               ? 'Enregistrement…'
               : 'Enregistrer les modifications'}
-          </button>
-          <button
-            type="button"
-            className="btn secondaire"
+          </Bouton>
+          <Bouton
+            variante="secondaire"
             onClick={retablir}
             disabled={etatSauvegarde === 'en-cours'}
           >
             Rétablir
-          </button>
+          </Bouton>
           <StatutSauvegarde etat={etatSauvegarde} enregistreA={enregistreA} />
         </div>
       </form>

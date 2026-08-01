@@ -8,6 +8,7 @@ import { useAsync } from '../hooks/useAsync';
 import { useTitrePage } from '../hooks/useTitrePage';
 import { Spinner } from '../ui/Spinner';
 import { EtatVide } from '../ui/EtatVide';
+import { Bouton } from '../ui/Bouton';
 
 /** Aujourd'hui au format ISO `YYYY-MM-DD` (comparaison lexicographique). */
 function aujourdhuiIso(): string {
@@ -433,14 +434,13 @@ export function TarifsPage() {
             </p>
           )}
 
-          <button
+          <Bouton
             type="submit"
-            className="btn"
             disabled={envoiEnCours}
             style={{ marginTop: 'var(--esp-3)' }}
           >
             {envoiEnCours ? 'Enregistrement…' : 'Publier la grille'}
-          </button>
+          </Bouton>
         </form>
       </section>
     </div>
