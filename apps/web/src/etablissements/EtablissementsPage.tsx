@@ -1,5 +1,5 @@
 import { type FormEvent, useId, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import type {
   CreerEtablissement,
@@ -12,6 +12,9 @@ import {
   type ErreurChamp,
 } from '../utils/erreurs';
 import { useTitrePage } from '../hooks/useTitrePage';
+import { Bouton, BoutonLien } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
+import { ChampFormulaire } from '../ui/ChampFormulaire';
 import { EtatVide } from '../ui/EtatVide';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 import { ChargementPage } from '../ui/ChargementPage';
@@ -114,13 +117,6 @@ function EtablissementForm({
   function idErreur(champ: string): string {
     return `${idBase}-${champ}-err`;
   }
-  /** `aria-describedby` de l'e-mail : aide toujours liée + erreur si présente. */
-  function descriptionEmail(): string {
-    const ids = [idAideEmail];
-    if (erreurPour('emailService')) ids.push(idErreur('emailService'));
-    return ids.join(' ');
-  }
-
   /** `''` → `null` (champ vidé), sinon la valeur ébarbée. */
   function ouNull(valeur: string): string | null {
     const v = valeur.trim();
@@ -178,60 +174,60 @@ function EtablissementForm({
 
   return (
     <form className="etab-form" onSubmit={(ev) => void soumettre(ev)}>
-      {erreurGlobale && (
-        <p className="debit" role="alert">
-          {erreurGlobale}
-        </p>
-      )}
+      <ChampErreur balise="p">{erreurGlobale}</ChampErreur>
       {erreursChamps
         .filter((e) => e.champ !== 'nom' && e.champ !== 'emailService')
         .map((e) => (
-          <p key={e.champ} className="debit" role="alert">
+          <ChampErreur key={e.champ} balise="p">
             {e.message}
-          </p>
+          </ChampErreur>
         ))}
 
-      <label htmlFor={`${idBase}-nom`}>
-        Nom <span aria-hidden="true">*</span>
-      </label>
-      <input
+      <ChampFormulaire
         id={`${idBase}-nom`}
-        type="text"
-        required
-        aria-required="true"
-        placeholder="ex. Crèche du centre, École Jean Jaurès"
-        aria-invalid={erreurPour('nom') ? true : undefined}
-        {...(erreurPour('nom') ? { 'aria-describedby': idErreur('nom') } : {})}
-        value={nom}
-        onChange={(e) => {
-          setNom(e.target.value);
-        }}
-      />
-      {erreurPour('nom') && (
-        <span id={idErreur('nom')} className="debit" role="alert">
-          {erreurPour('nom')}
-        </span>
-      )}
+        libelle={
+          <>
+            Nom <span aria-hidden="true">*</span>
+          </>
+        }
+        requis
+        erreur={erreurPour('nom') ?? null}
+        idErreur={idErreur('nom')}
+      >
+        {(champ) => (
+          <input
+            {...champ}
+            type="text"
+            required
+            placeholder="ex. Crèche du centre, École Jean Jaurès"
+            value={nom}
+            onChange={(e) => {
+              setNom(e.target.value);
+            }}
+          />
+        )}
+      </ChampFormulaire>
 
-      <label htmlFor={`${idBase}-email`}>E-mail de la crèche / école</label>
-      <input
+      <ChampFormulaire
         id={`${idBase}-email`}
-        type="email"
-        aria-invalid={erreurPour('emailService') ? true : undefined}
-        aria-describedby={descriptionEmail()}
-        value={emailService}
-        onChange={(e) => {
-          setEmailService(e.target.value);
-        }}
-      />
-      <span id={idAideEmail} className="muted etab-aide">
-        C’est à cette adresse qu’on enverra le récapitulatif.
-      </span>
-      {erreurPour('emailService') && (
-        <span id={idErreur('emailService')} className="debit" role="alert">
-          {erreurPour('emailService')}
-        </span>
-      )}
+        libelle="E-mail de la crèche / école"
+        aide="C’est à cette adresse qu’on enverra le récapitulatif."
+        idAide={idAideEmail}
+        classeAide="muted etab-aide"
+        erreur={erreurPour('emailService') ?? null}
+        idErreur={idErreur('emailService')}
+      >
+        {(champ) => (
+          <input
+            {...champ}
+            type="email"
+            value={emailService}
+            onChange={(e) => {
+              setEmailService(e.target.value);
+            }}
+          />
+        )}
+      </ChampFormulaire>
 
       <fieldset className="etab-fieldset" aria-describedby={idAideDelai}>
         <legend>Délai pour prévenir</legend>
@@ -356,7 +352,7 @@ function EtablissementForm({
       </fieldset>
 
       <div className="etab-form-actions">
-        <button type="submit" className="btn" disabled={chargement}>
+        <Bouton type="submit" disabled={chargement}>
           {chargement
             ? edition
               ? 'Enregistrement…'
@@ -364,10 +360,10 @@ function EtablissementForm({
             : edition
               ? 'Enregistrer les modifications'
               : 'Ajouter'}
-        </button>
-        <button type="button" className="btn secondaire" onClick={onAnnuler}>
+        </Bouton>
+        <Bouton variante="secondaire" onClick={onAnnuler}>
           Annuler
-        </button>
+        </Bouton>
       </div>
     </form>
   );
@@ -430,32 +426,29 @@ function CarteEtablissement({
       )}
 
       <div className="etab-actions">
-        <button
-          type="button"
-          className="btn secondaire"
+        <Bouton
+          variante="secondaire"
           onClick={onModifier}
           aria-label={`Modifier ${e.nom}`}
         >
           Modifier
-        </button>
-        <button
-          type="button"
-          className="btn secondaire"
+        </Bouton>
+        <Bouton
+          variante="secondaire"
           onClick={onBasculerActif}
           disabled={actionEnCours}
           aria-label={`${e.actif ? 'Archiver' : 'Réactiver'} ${e.nom}`}
         >
           {e.actif ? 'Archiver' : 'Réactiver'}
-        </button>
-        <button
-          type="button"
-          className="btn secondaire danger contour"
+        </Bouton>
+        <Bouton
+          variante="danger-contour"
           onClick={onSupprimer}
           disabled={actionEnCours}
           aria-label={`Supprimer ${e.nom}`}
         >
           Supprimer
-        </button>
+        </Bouton>
       </div>
     </section>
   );
@@ -565,12 +558,12 @@ export function EtablissementsPage() {
       <div className="etab-entete">
         <h1>Crèches & écoles</h1>
         <div className="etab-entete-liens">
-          <Link to={`/foyers/${id}/contrats`} className="btn secondaire">
+          <BoutonLien to={`/foyers/${id}/contrats`} variante="secondaire">
             Contrats
-          </Link>
-          <Link to={`/foyers/${id}/planning`} className="btn secondaire">
+          </BoutonLien>
+          <BoutonLien to={`/foyers/${id}/planning`} variante="secondaire">
             Planning
-          </Link>
+          </BoutonLien>
         </div>
       </div>
       <p className="muted">
@@ -578,11 +571,7 @@ export function EtablissementsPage() {
         ici qu’on envoie le récapitulatif quand vous modifiez une semaine.
       </p>
 
-      {erreurAction && (
-        <p className="debit" role="alert">
-          {erreurAction}
-        </p>
-      )}
+      <ChampErreur balise="p">{erreurAction}</ChampErreur>
       <div role="status" aria-live="polite">
         {messageSucces && <p className="credit">{messageSucces}</p>}
       </div>
@@ -594,9 +583,9 @@ export function EtablissementsPage() {
       {!loading && error && !data && (
         <div className="carte" role="alert">
           <p className="debit">{error}</p>
-          <button type="button" className="btn secondaire" onClick={reload}>
+          <Bouton variante="secondaire" onClick={reload}>
             Réessayer
-          </button>
+          </Bouton>
         </div>
       )}
 
@@ -652,14 +641,9 @@ export function EtablissementsPage() {
         ) : (
           // L'accueil (EtatVide) porte déjà l'action quand la liste est vide.
           !listeVide && (
-            <button
-              type="button"
-              className="btn"
-              onClick={ouvrirCreation}
-              disabled={!id}
-            >
+            <Bouton onClick={ouvrirCreation} disabled={!id}>
               Ajouter une crèche / école
-            </button>
+            </Bouton>
           )
         )}
       </section>

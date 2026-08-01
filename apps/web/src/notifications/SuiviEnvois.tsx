@@ -110,11 +110,7 @@ export function SuiviEnvois({
   }
 
   return (
-    <div
-      className="suivi-envois"
-      role="status"
-      style={{ marginTop: 'var(--esp-3)' }}
-    >
+    <div className="suivi-envois mt-3" role="status">
       <h4 style={{ margin: '0 0 var(--esp-1)', fontSize: 'var(--h4, 1rem)' }}>
         Suivi des envois
       </h4>

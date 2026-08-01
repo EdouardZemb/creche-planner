@@ -17,6 +17,53 @@
   --violet: #7c3aed; /* périscolaire */
   --ambre: #b45309; /* ALSH */
 
+  /* ---- Surfaces et texte ---- */
+  --surface: #fff; /* fonds : cartes, modale, boutons secondaires */
+  --fond-page: #fafafa;
+  --texte: #111827;
+  /* Blanc posé SUR un aplat coloré saturé (bandeau bleu, pastille rouge).
+     Nommé à part de --surface, qui est une couleur de FOND : les deux valent
+     #fff mais ne bougeraient pas ensemble. */
+  --texte-inverse: #fff;
+  /* Gris de texte SUR BLANC uniquement (placeholders, jours adjacents du
+     calendrier). NE PAS remplacer par --gris : celui-ci a été ASSOMBRI exprès
+     pour tenir 4,5:1 sur --gris-clair (cf. commentaire ci-dessus), l'échange
+     assombrirait ces deux usages. */
+  --gris-sur-blanc: #6b7280;
+
+  /* ---- Survols et fonds de teinte ---- */
+  --bleu-survol: #1746c0;
+  --rouge-survol: #991b1b;
+  /* Voisins SANS être égaux (#fef2f2 vs #fee2e2) : ne pas unifier. */
+  --rouge-fond-survol: #fef2f2;
+  --rouge-fond: #fee2e2;
+  --vert-fond: #dcfce7;
+  --ambre-fond: #fef3c7;
+  /* Ambre de TEXTE sur --ambre-fond, distinct de --ambre : valeur retenue pour
+     le contraste AA du bandeau hors-ligne. */
+  --ambre-texte: #92400e;
+
+  /* ---- Contrôles désactivés ---- */
+  /* Couleurs de contraste CALCULÉES, jamais un opacity — celui-ci délavait le
+     blanc sur bleu à 2,6:1. */
+  --bleu-desactive: #54679e;
+  --rouge-desactive: #a13939;
+
+  /* ---- Largeurs de gabarit ---- */
+  /* `--largeur-colonne` était écrite deux fois à l'identique (formulaires
+     étroits, carte d'établissement) ; les écrans à venir (grille famille,
+     SFD 33) s'y adosseront. */
+  --largeur-page: 1200px;
+  --largeur-colonne: 600px;
+  --largeur-modale: 32rem;
+
+  /* ---- Ombres et voiles ---- */
+  --ombre-carte: rgba(0, 0, 0, 0.05);
+  --ombre-carte-survol: rgba(0, 0, 0, 0.08);
+  --ombre-feuille: rgba(0, 0, 0, 0.18);
+  --ombre-modale: rgba(0, 0, 0, 0.25);
+  --voile-modale: rgba(17, 24, 39, 0.5);
+
   /* Couleurs par mode (consommées par utils/couleurs.ts via getComputedStyle). */
   --mode-creche: #1d4ed8;
   --mode-cantine: #15803d;
@@ -42,7 +89,7 @@
     'Segoe UI',
     Roboto,
     sans-serif;
-  color: #111827;
+  color: var(--texte);
 }
 
 * {
@@ -51,7 +98,7 @@
 
 body {
   margin: 0;
-  background: #fafafa;
+  background: var(--fond-page);
 }
 
 a {
@@ -69,7 +116,7 @@ a {
     max(0.9rem, env(safe-area-inset-right)) 0.6rem
     max(0.9rem, env(safe-area-inset-left));
   background: var(--bleu);
-  color: white;
+  color: var(--texte-inverse);
 }
 
 /* Les liens de navigation sont regroupés dans un <nav> : sans display:flex,
@@ -82,7 +129,7 @@ a {
 }
 
 .app-header a {
-  color: white;
+  color: var(--texte-inverse);
   text-decoration: none;
   font-weight: 500;
   display: inline-flex;
@@ -190,7 +237,23 @@ a {
    (Aujourd'hui / Planning / Coûts) + « Plus » forment une barre d'onglets FIXE
    en bas de l'écran (zone du pouce), et les pages de gestion vivent dans le
    panneau ouvert par « Plus ». Dès la tablette (≥ 768px), `display: contents`
-   dissout ces conteneurs : tous les liens redeviennent des liens d'en-tête. */
+   dissout ces conteneurs : tous les liens redeviennent des liens d'en-tête.
+
+   ⚠️ Ce bloc `max-width` est CONSERVÉ à dessein (statué au lot C3). Le passer en
+   mobile-first n'est pas un déplacement : sa protection n'est PAS la spécificité,
+   c'est la media query elle-même. Six règles casseraient, dont :
+   - `.nav-onglets a` et `.nav-plus-panneau a` ont EXACTEMENT la spécificité de
+     `.app-header a` (0,1,1) et sont déclarées plus bas : sorties d'ici, elles
+     gagneraient sur desktop et peindraient les liens d'en-tête en gris/noir sur
+     le bandeau bleu ;
+   - `.nav-plus-panneau.ouvert` (0,2,0) BAT `display: contents` (0,1,0) : l'état
+     React `plusOuvert` survivant à un élargissement de fenêtre, le panneau
+     « Plus » réapparaîtrait en feuille fixe sur desktop — régression
+     fonctionnelle, pas seulement visuelle ;
+   - `main#contenu { padding-bottom }` (1,0,1) ne serait pas annulable par
+     `main { padding }` (0,0,1) dans le bloc ≥ 768px.
+   Une conversion exigerait au moins cinq règles de neutralisation : le coût
+   dépasse le bénéfice. */
 @media (max-width: 767.98px) {
   .nav-onglets {
     position: fixed;
@@ -199,7 +262,7 @@ a {
     bottom: 0;
     z-index: 40; /* sous la modale (z-index 50) */
     display: flex;
-    background: white;
+    background: var(--surface);
     border-top: 1px solid var(--bordure);
     /* iPhone : ne pas coller les onglets sous la barre home. */
     padding-bottom: env(safe-area-inset-bottom);
@@ -265,10 +328,10 @@ a {
     z-index: 40;
     display: flex;
     flex-direction: column;
-    background: white;
+    background: var(--surface);
     border-top: 1px solid var(--bordure);
     border-radius: 14px 14px 0 0;
-    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 -6px 24px var(--ombre-feuille);
     padding: var(--esp-2) var(--esp-4);
   }
 
@@ -277,7 +340,7 @@ a {
     align-items: center;
     /* Cible tactile ~44px. */
     min-height: 2.75rem;
-    color: #111827;
+    color: var(--texte);
     font-weight: 500;
   }
 
@@ -305,23 +368,12 @@ a {
   }
 }
 
-@media (min-width: 768px) {
-  /* Les conteneurs mobiles disparaissent : leurs liens redeviennent des
-     enfants directs (flex) de la nav d'en-tête. */
-  .nav-onglets,
-  .nav-plus-panneau {
-    display: contents;
-  }
-
-  .nav-plus-bouton,
-  .nav-onglet-icone,
-  .nav-libelle-court {
-    display: none;
-  }
-}
+/* Le pendant ≥ 768px de cette section vit dans le bloc @media unique de la
+   section « Responsive » (fusion du lot C3). Descendre ces règles est sans
+   effet : aucun sélecteur `.nav-*` n'est redéclaré entre les deux endroits. */
 
 main {
-  max-width: 1200px;
+  max-width: var(--largeur-page);
   margin: 0 auto;
   padding: 0.75rem; /* mobile ; élargi en tablette (cf. min-width: 768px) */
 }
@@ -338,7 +390,7 @@ button {
   /* Cible tactile ~44px de haut. */
   min-height: 2.75rem;
   background: var(--bleu);
-  color: white;
+  color: var(--texte-inverse);
   border: none;
   border-radius: 6px;
   padding: 0.5rem 1rem;
@@ -350,7 +402,7 @@ button {
 }
 
 .btn:hover {
-  background: #1746c0;
+  background: var(--bleu-survol);
 }
 
 .btn:active {
@@ -358,7 +410,7 @@ button {
 }
 
 .btn.secondaire {
-  background: white;
+  background: var(--surface);
   color: var(--bleu);
   border: 1px solid var(--bleu);
 }
@@ -374,20 +426,20 @@ button {
 }
 
 .btn.danger:hover {
-  background: #991b1b;
+  background: var(--rouge-survol);
 }
 
 /* Variante destructive DISCRÈTE (listes) : garde l'affordance rouge sans que
    chaque carte crie au danger — le rouge plein reste réservé à l'engagement
    final (modale de confirmation). */
 .btn.danger.contour {
-  background: white;
+  background: var(--surface);
   color: var(--rouge);
   border: 1px solid var(--rouge);
 }
 
 .btn.danger.contour:hover {
-  background: #fef2f2;
+  background: var(--rouge-fond-survol);
 }
 
 label {
@@ -395,6 +447,19 @@ label {
   margin: 0.4rem 0 0.15rem;
   font-size: 0.9rem;
   color: var(--gris);
+}
+
+/* Cases et boutons radio : ils ne sont pas des champs de saisie et n'héritent
+   donc ni du `padding` ci-dessous ni d'une largeur imposée. Remplace 19
+   `style={{ width: 'auto', padding: 0 }}` écrits à la main (lot C4).
+   Placement DÉLIBÉRÉMENT ICI, avant les règles de formulaire : le `padding`
+   l'emporte partout par spécificité (0,1,1 > 0,0,1), tandis que le `width`
+   continue de céder à `.profil-form input` et consorts, déclarées plus bas à
+   spécificité égale — c'est exactement le rendu actuel de ces formulaires. */
+input[type='checkbox'],
+input[type='radio'] {
+  width: auto;
+  padding: 0;
 }
 
 input,
@@ -411,7 +476,7 @@ select {
    sous AA) ; `opacity: 1` neutralise en plus la dilution de Firefox. */
 input::placeholder,
 textarea::placeholder {
-  color: #6b7280; /* sur blanc : 4,8:1 */
+  color: var(--gris-sur-blanc); /* sur blanc : 4,8:1 */
   opacity: 1;
 }
 
@@ -432,12 +497,12 @@ fieldset {
 }
 
 .carte {
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--bordure);
   border-radius: 10px;
   padding: 0.75rem; /* mobile ; élargi en tablette (cf. min-width: 768px) */
   margin-bottom: 1rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 2px var(--ombre-carte);
 }
 
 /* Conteneur générique de table défilable : la table garde sa largeur naturelle
@@ -574,7 +639,7 @@ h3 {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(17, 24, 39, 0.5);
+  background: var(--voile-modale);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -582,13 +647,13 @@ h3 {
 }
 
 .modal {
-  background: white;
+  background: var(--surface);
   border-radius: 14px 14px 0 0;
   padding: var(--esp-5);
   width: 100%;
   max-height: 92vh;
   overflow-y: auto;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 -4px 20px var(--ombre-modale);
 }
 
 .modal-entete {
@@ -635,7 +700,7 @@ h3 {
 }
 
 .badge-simulation {
-  background: #fef3c7;
+  background: var(--ambre-fond);
   color: var(--ambre);
 }
 
@@ -653,21 +718,19 @@ h3 {
   font-weight: 700;
   line-height: 1;
   background: var(--rouge);
-  color: #fff;
+  color: var(--texte-inverse);
 }
 
-.statut-en-cours {
-  background: var(--gris-clair);
-  color: var(--gris);
-}
-
-.statut-enregistre {
-  background: #dcfce7;
+/* Variantes de statut. Il n'y a PAS de `.badge-en-cours` : sa règle était le
+   doublon strict de `.badge` (fond var(--gris-clair), texte var(--gris)) —
+   l'état « en cours » se rend donc avec la variante par défaut. */
+.badge-succes {
+  background: var(--vert-fond);
   color: var(--vert);
 }
 
-.statut-erreur {
-  background: #fee2e2;
+.badge-erreur {
+  background: var(--rouge-fond);
   color: var(--rouge);
 }
 
@@ -728,7 +791,7 @@ h3 {
 /* Bandeau « Mode test » (dry-run) : même palette ambre que .badge-simulation,
    rendu en bloc pleine largeur au-dessus du récap. */
 .bandeau-test {
-  background: #fef3c7;
+  background: var(--ambre-fond);
   color: var(--ambre);
   border-radius: 8px;
   padding: var(--esp-2) var(--esp-3);
@@ -806,8 +869,8 @@ h3 {
   position: sticky;
   top: 0;
   z-index: 30; /* au-dessus du contenu, sous la barre d'onglets (40) et la modale (50) */
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--ambre-fond);
+  color: var(--ambre-texte);
   border-bottom: 1px solid var(--ambre);
   padding: var(--esp-2) var(--esp-4);
   font-size: 0.9rem;
@@ -831,15 +894,15 @@ h3 {
    Focalisé, il se pose SUR l'en-tête bleu : à fond `--bleu` sur fond `--bleu`,
    la boîte du lien était indiscernable (1:1). Un liseré blanc la détache
    (6,7:1) sans toucher au texte — inverser les couleurs ici ne marcherait pas,
-   `.app-header a` (plus spécifique) reforce `color: white`. */
+   `.app-header a` (plus spécifique) reforce `color: var(--texte-inverse)`. */
 .skip-link {
   position: absolute;
   left: var(--esp-2);
   top: -3rem;
   z-index: 100;
   background: var(--bleu);
-  color: white;
-  box-shadow: 0 0 0 2px #fff;
+  color: var(--texte-inverse);
+  box-shadow: 0 0 0 2px var(--texte-inverse);
   padding: var(--esp-2) var(--esp-3);
   border-radius: 6px;
   text-decoration: none;
@@ -859,7 +922,7 @@ h3 {
 
 .etat-vide-titre {
   margin: 0 0 var(--esp-2);
-  color: #111827;
+  color: var(--texte);
 }
 
 .etat-vide-description {
@@ -875,7 +938,7 @@ h3 {
 
 /* ---- Sélecteur « Mes familles » (mode borné, multi-foyer) ---------------- */
 .selecteur-familles {
-  max-width: 32rem;
+  max-width: var(--largeur-modale);
   margin: 0 auto;
   padding: var(--esp-5) var(--esp-4);
 }
@@ -883,7 +946,7 @@ h3 {
 .selecteur-familles-titre {
   margin: 0 0 var(--esp-2);
   font-size: var(--h1);
-  color: #111827;
+  color: var(--texte);
 }
 
 .selecteur-familles-intro {
@@ -907,11 +970,11 @@ h3 {
   gap: var(--esp-1);
   min-height: 2.75rem;
   padding: var(--esp-3) var(--esp-4);
-  background: white;
+  background: var(--surface);
   border: 1px solid var(--bordure);
   border-radius: 10px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  color: #111827;
+  box-shadow: 0 1px 2px var(--ombre-carte);
+  color: var(--texte);
   text-decoration: none;
   transition:
     border-color 0.15s ease,
@@ -920,7 +983,7 @@ h3 {
 
 .selecteur-famille-carte:hover {
   border-color: var(--bleu);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 6px var(--ombre-carte-survol);
 }
 
 .selecteur-famille-nom {
@@ -992,7 +1055,7 @@ h3 {
 /* ---- Écrans « Ma famille » (création / édition) : layout mobile-first ---- */
 /* Colonne étroite lisible sur desktop, pleine largeur sur mobile. */
 .page-etroite {
-  max-width: 600px;
+  max-width: var(--largeur-colonne);
 }
 
 /* Paire de champs (prénom/nom, prénom/date) : empilée sous ~480px, en ligne
@@ -1048,7 +1111,7 @@ h3 {
 
 /* Carte d'une crèche / école (vue ou formulaire) : colonne lisible bornée. */
 .etab-carte {
-  max-width: 600px;
+  max-width: var(--largeur-colonne);
 }
 
 /* Un archivé est en retrait (il n'est plus notifié — cf. langage « (archivé) »).
@@ -1153,6 +1216,13 @@ h3 {
   margin-top: var(--esp-2);
 }
 
+/* ⚠️ `max-width` CONSERVÉ à dessein (statué au lot C3). L'écriture mobile-first
+   équivalente (`flex-wrap: wrap` par défaut + `nowrap` dès 480px) diffère dans
+   la bande fractionnaire ]479 ; 480[ — atteinte au zoom navigateur ou sur un
+   écran à facteur d'échelle non entier : aujourd'hui `nowrap` y gagne, après
+   conversion ce serait `wrap`. C'est le SEUL couple de bornes non contiguës du
+   fichier (partout ailleurs : 767.98 / 768). Convertir sans d'abord aligner
+   cette borne changerait le rendu ; l'aligner le changerait aussi. */
 @media (max-width: 479px) {
   .actions-ligne {
     flex-wrap: wrap;
@@ -1232,7 +1302,17 @@ h3 {
   font-size: 1rem;
 }
 
-.panneau-cout-badge {
+/* Ligne de titre d'une version de contrat dans l'historique. */
+.historique-version-titre {
+  font-weight: 600;
+}
+
+/* Placement du badge dans un titre : porté par le PARENT, pour que `<Badge>`
+   n'ait pas à transporter de classe de positionnement (elle rouvrirait la porte
+   aux variantes ad hoc). Remplace l'enveloppe `.panneau-cout-badge` et la marge
+   inline d'`HistoriqueContrat`. */
+.panneau-cout-titre .badge,
+.historique-version-titre .badge {
   margin-left: var(--esp-2);
   vertical-align: middle;
 }
@@ -1370,26 +1450,9 @@ h3 {
   padding-right: 0.5rem;
 }
 
-@media (min-width: 768px) {
-  .jour-rangee {
-    grid-template-columns: 11rem minmax(0, 1fr) minmax(6rem, auto);
-    gap: 0.5rem 0.75rem;
-  }
-
-  /* Desktop : on a la place pour le libellé daté complet. */
-  .jour-libelle-court {
-    display: none;
-  }
-
-  .jour-libelle-long {
-    display: inline;
-  }
-
-  .jour-action {
-    padding-left: 1rem;
-    padding-right: 1rem;
-  }
-}
+/* Pendant ≥ 768px dans le bloc @media unique de la section « Responsive ».
+   Seul `.jour-pastille` est déclaré entre les deux — sélecteur distinct, donc
+   la descente ne change aucune cascade. */
 
 /* ---- Tableau de bord « Aujourd'hui » ------------------------------------- */
 /* Pastille d'état d'une garde (RangeeJour) : petit carré arrondi ; seule la
@@ -1514,7 +1577,7 @@ h3 {
 .app-header .marque:focus-visible,
 .app-header .cloche-bouton:focus-visible,
 .skip-link:focus-visible {
-  outline-color: #fff;
+  outline-color: var(--texte-inverse);
 }
 
 /* Branche « aucun foyer de référence » (identité sans foyer, avant la 1ʳᵉ
@@ -1523,17 +1586,12 @@ h3 {
    du panneau « Plus », qui vivent dans un `div` sur fond blanc en dessous de
    768px et gardent l'outline bleu. */
 .app-header nav > a:focus-visible {
-  outline-color: #fff;
+  outline-color: var(--texte-inverse);
 }
 
-@media (min-width: 768px) {
-  /* Dès la tablette, `display: contents` restitue TOUS les liens de nav à
-     l'en-tête bleu : leur focus doit y être blanc lui aussi. */
-  .app-header nav a:focus-visible,
-  .app-header nav button:focus-visible {
-    outline-color: #fff;
-  }
-}
+/* Pendant ≥ 768px dans le bloc @media unique de la section « Responsive ».
+   Les trois règles de focus concurrentes se départagent par SPÉCIFICITÉ et
+   posent la même valeur : leur ordre relatif n'entre pas en jeu. */
 
 /* Bouton désactivé : indication visuelle claire. Un `opacity` global délavait
    le texte sous le seuil AA (blanc sur bleu à 55 % = 2,6:1) — on pose donc des
@@ -1544,29 +1602,109 @@ button:disabled,
 }
 
 .btn:disabled {
-  background: #54679e; /* blanc dessus : 5,5:1 */
-  border-color: #54679e;
-  color: #fff;
+  background: var(--bleu-desactive); /* blanc dessus : 5,5:1 */
+  border-color: var(--bleu-desactive);
+  color: var(--texte-inverse);
 }
 
 .btn.danger:disabled {
-  background: #a13939; /* blanc dessus : 6,7:1 */
-  border-color: #a13939;
-  color: #fff;
+  background: var(--rouge-desactive); /* blanc dessus : 6,7:1 */
+  border-color: var(--rouge-desactive);
+  color: var(--texte-inverse);
 }
 
 .btn.secondaire:disabled {
-  background: #fff;
-  color: #54679e; /* sur blanc : 5,5:1 (bordure comprise) */
-  border: 1px solid #54679e;
+  background: var(--surface);
+  color: var(--bleu-desactive); /* sur blanc : 5,5:1 (bordure comprise) */
+  border: 1px solid var(--bleu-desactive);
 }
 
 /* La variante contour reste rouge une fois désactivée : l'affordance
    destructive ne doit pas se dissoudre en bleu. */
 .btn.danger.contour:disabled {
-  background: #fff;
-  color: #a13939; /* sur blanc : 6,7:1 */
-  border: 1px solid #a13939;
+  background: var(--surface);
+  color: var(--rouge-desactive); /* sur blanc : 6,7:1 */
+  border: 1px solid var(--rouge-desactive);
+}
+
+/* ---- Utilitaires (lot C4) ------------------------------------------------ */
+/* Jeu VOLONTAIREMENT borné : il résorbe les styles inline les plus répétés, ce
+   n'est pas un framework utilitaire. Pas de variantes responsives, pas de
+   left/right, pas de pas intermédiaires — chaque classe ci-dessous supprime au
+   moins huit `style={{…}}` identiques.
+   Déclarées EN FIN de feuille, juste avant le responsive : un style inline
+   battait toutes les règles de composant, une classe déclarée tard s'en
+   approche au plus près à spécificité égale. */
+
+/* Champ de saisie pleine largeur (jamais sur une case ni un radio). */
+.champ-large {
+  width: 100%;
+}
+
+/* Groupe de champs sans le chrome natif du <fieldset>. Généralise
+   `.etab-fieldset` / `.profil-fieldset`. */
+.bloc-champs {
+  border: none;
+  padding: 0;
+}
+
+.bloc-champs > legend {
+  font-weight: 600;
+  margin-bottom: var(--esp-2);
+}
+
+/* Échelle de marges verticales, calée sur `--esp-*` et BORNÉE : uniquement
+   `top` et `bottom`, aucun pas intermédiaire, aucune variante responsive. Elle
+   ne couvre que les valeurs déjà présentes dans le code — une marge de 0.4rem
+   reste inline plutôt que d'être arrondie au pas voisin. */
+.mt-0 {
+  margin-top: 0;
+}
+.mt-1 {
+  margin-top: var(--esp-1);
+}
+.mt-2 {
+  margin-top: var(--esp-2);
+}
+.mt-3 {
+  margin-top: var(--esp-3);
+}
+.mt-4 {
+  margin-top: var(--esp-4);
+}
+.mt-5 {
+  margin-top: var(--esp-5);
+}
+.mb-1 {
+  margin-bottom: var(--esp-1);
+}
+.mb-2 {
+  margin-bottom: var(--esp-2);
+}
+.mb-3 {
+  margin-bottom: var(--esp-3);
+}
+.mb-4 {
+  margin-bottom: var(--esp-4);
+}
+.mb-5 {
+  margin-bottom: var(--esp-5);
+}
+
+/* Pied de formulaire ou de modale : la rangée de boutons. Généralise
+   `.etab-form-actions`. */
+.rangee-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--esp-2);
+  margin-top: var(--esp-4);
+}
+
+/* Liste sémantique sans puces ni retrait. */
+.liste-nue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 /* ---- Responsive : enrichissement mobile-first ---------------------------- */
@@ -1605,10 +1743,6 @@ button:disabled,
     align-items: flex-end;
   }
 
-  .actions-export {
-    width: auto;
-  }
-
   /* Les onglets ont la place de s'aligner sur plusieurs lignes (plus de scroll). */
   .onglets {
     flex-wrap: wrap;
@@ -1623,8 +1757,50 @@ button:disabled,
 
   .modal {
     border-radius: 10px;
-    max-width: 32rem;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+    max-width: var(--largeur-modale);
+    box-shadow: 0 10px 25px var(--ombre-modale);
+  }
+
+  /* -- Navigation (rapatrié de la section « Navigation foyer ») ------------ */
+  /* Les conteneurs mobiles disparaissent : leurs liens redeviennent des
+     enfants directs (flex) de la nav d'en-tête. */
+  .nav-onglets,
+  .nav-plus-panneau {
+    display: contents;
+  }
+
+  .nav-plus-bouton,
+  .nav-onglet-icone,
+  .nav-libelle-court {
+    display: none;
+  }
+
+  /* -- Rangées jour (rapatrié de la section « Rangées jour ») -------------- */
+  .jour-rangee {
+    grid-template-columns: 11rem minmax(0, 1fr) minmax(6rem, auto);
+    gap: 0.5rem 0.75rem;
+  }
+
+  /* Desktop : on a la place pour le libellé daté complet. */
+  .jour-libelle-court {
+    display: none;
+  }
+
+  .jour-libelle-long {
+    display: inline;
+  }
+
+  .jour-action {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* -- Focus visible (rapatrié de la section « Accessibilité ») ------------ */
+  /* Dès la tablette, `display: contents` restitue TOUS les liens de nav à
+     l'en-tête bleu : leur focus doit y être blanc lui aussi. */
+  .app-header nav a:focus-visible,
+  .app-header nav button:focus-visible {
+    outline-color: var(--texte-inverse);
   }
 }
 
@@ -1635,8 +1811,14 @@ button:disabled,
   }
 }
 
-/* Boutons d'export : pleine largeur sur mobile (cibles tactiles), largeur
-   naturelle dès la tablette (cf. min-width: 768px). */
+/* Boutons d'export : pleine largeur, À TOUTES LES LARGEURS.
+   ⚠️ Le `width: auto` que portait le bloc @media (min-width: 768px) était une
+   RÈGLE MORTE : même sélecteur, même spécificité (0,1,0), déclarée plus haut —
+   et une media query n'ajoute aucune spécificité. Cette règle-ci gagnait donc
+   partout, contrairement à ce que prétendait le commentaire d'origine. Le lot
+   C3 a supprimé la règle morte (retirer ce qui ne s'applique jamais est
+   strictement iso-rendu) ; RÉTABLIR la largeur naturelle en tablette est un
+   changement VISIBLE, à décider séparément. */
 .actions-export {
   display: flex;
   flex-wrap: wrap;
@@ -1734,13 +1916,21 @@ button:disabled,
   display: block;
 }
 
-@media (max-width: 767.98px) {
-  .table-couts-desktop {
-    display: none;
-  }
+/* Réécrit en mobile-first (lot C3) : la table est masquée par DÉFAUT et
+   réapparaît dès la tablette. Le `display: block` explicite est indispensable —
+   auparavant, au-delà de 768px aucune règle ne s'appliquait et l'élément
+   retombait sur son display natif ; la classe étant portée par une `<div class
+   ="carte …">`, ce natif est bien `block` (le bloc @media print le confirme).
+   Bornes contiguës 767.98/768 : aucun trou de largeur. */
+.table-couts-desktop {
+  display: none;
 }
 
 @media (min-width: 768px) {
+  .table-couts-desktop {
+    display: block;
+  }
+
   .liste-couts-mobile {
     display: none;
   }
@@ -1807,7 +1997,7 @@ button:disabled,
 }
 
 .fc .fc-day-other .fc-daygrid-day-number {
-  color: #6b7280;
+  color: var(--gris-sur-blanc);
 }
 
 /* Les pastilles d'événement (Gardé / Absent / Ajouté) ne débordent pas d'une
@@ -1850,7 +2040,7 @@ button:disabled,
   }
 
   body {
-    background: white;
+    background: var(--surface);
   }
 
   main {

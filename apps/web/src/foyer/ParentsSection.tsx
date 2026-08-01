@@ -3,6 +3,9 @@ import { api, ApiError } from '../api/client';
 import { extraireErreurs } from '../utils/erreurs';
 import { messageErreurParent, retraduireErreurParent } from './parentErreurs';
 import { useMoi } from '../session/MoiContext';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
+import { ChampFormulaire } from '../ui/ChampFormulaire';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
 import type { ErreurChamp } from '../utils/erreurs';
@@ -36,11 +39,9 @@ export function ParentsSection({
   ]);
 
   return (
-    <fieldset style={{ border: 'none', padding: 0, margin: '1.5rem 0 0' }}>
-      <legend style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
-        Parents
-      </legend>
-      <p className="muted" style={{ marginTop: 0 }}>
+    <fieldset className="bloc-champs" style={{ margin: '1.5rem 0 0' }}>
+      <legend style={{ marginBottom: '0.25rem' }}>Parents</legend>
+      <p className="muted mt-0">
         Destinataires des récapitulatifs hebdomadaires. Au moins un parent est
         recommandé.
       </p>
@@ -202,37 +203,34 @@ function LigneParentExistant({
   }
 
   return (
-    <div className="carte parent-ligne" style={{ marginBottom: '0.5rem' }}>
-      {erreurGlobale && (
-        <p className="debit" role="alert">
-          {erreurGlobale}
-        </p>
-      )}
+    <div className="carte parent-ligne mb-2">
+      <ChampErreur balise="p">{erreurGlobale}</ChampErreur>
 
-      <label htmlFor={`${idBase}-email`}>
-        Adresse e-mail <span aria-hidden="true">*</span>
-      </label>
-      <input
+      <ChampFormulaire
         id={`${idBase}-email`}
-        type="email"
-        aria-required="true"
-        aria-invalid={erreurPour('email') ? true : undefined}
-        {...(erreurPour('email')
-          ? { 'aria-describedby': idErreur('email') }
-          : {})}
-        value={email}
-        onChange={(e) => {
-          setEmail(e.target.value);
-        }}
-        style={{ width: '100%' }}
-      />
-      {erreurPour('email') && (
-        <span id={idErreur('email')} className="debit" role="alert">
-          {erreurPour('email')}
-        </span>
-      )}
+        libelle={
+          <>
+            Adresse e-mail <span aria-hidden="true">*</span>
+          </>
+        }
+        requis
+        erreur={erreurPour('email')}
+        idErreur={idErreur('email')}
+      >
+        {(champ) => (
+          <input
+            type="email"
+            {...champ}
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+            }}
+            className="champ-large"
+          />
+        )}
+      </ChampFormulaire>
 
-      <div className="champs-duo" style={{ marginTop: 'var(--esp-2)' }}>
+      <div className="champs-duo mt-2">
         <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span className="muted">(facultatif)</span>
@@ -244,7 +242,7 @@ function LigneParentExistant({
             onChange={(e) => {
               setPrenom(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         </div>
         <div>
@@ -258,7 +256,7 @@ function LigneParentExistant({
             onChange={(e) => {
               setNom(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         </div>
       </div>
@@ -275,17 +273,15 @@ function LigneParentExistant({
       </label>
 
       <div className="actions-ligne">
-        <button
-          type="button"
-          className="btn secondaire"
+        <Bouton
+          variante="secondaire"
           disabled={occupe}
           onClick={demanderEnregistrer}
         >
           {occupe ? 'Enregistrement…' : 'Enregistrer'}
-        </button>
-        <button
-          type="button"
-          className="btn secondaire"
+        </Bouton>
+        <Bouton
+          variante="secondaire"
           disabled={occupe}
           onClick={() => {
             setConfirmation('retirer');
@@ -297,7 +293,7 @@ function LigneParentExistant({
           }
         >
           Retirer
-        </button>
+        </Bouton>
         <StatutSauvegarde etat={etatAffiche} enregistreA={enregistreA} />
       </div>
 
@@ -399,42 +395,36 @@ function FormNouveauParent({
   const etatAffiche: EtatSauvegarde = occupe ? 'en-cours' : etatSauvegarde;
 
   return (
-    <div
-      className="carte parent-ligne"
-      style={{ marginBottom: '0.5rem', marginTop: '0.5rem' }}
-    >
+    <div className="carte parent-ligne mb-2 mt-2">
       <p style={{ margin: '0 0 0.5rem', fontWeight: 600 }}>Ajouter un parent</p>
 
-      {erreurGlobale && (
-        <p className="debit" role="alert">
-          {erreurGlobale}
-        </p>
-      )}
+      <ChampErreur balise="p">{erreurGlobale}</ChampErreur>
 
-      <label htmlFor={`${idBase}-email`}>
-        Adresse e-mail <span aria-hidden="true">*</span>
-      </label>
-      <input
+      <ChampFormulaire
         id={`${idBase}-email`}
-        type="email"
-        aria-required="true"
-        aria-invalid={erreurPour('email') ? true : undefined}
-        {...(erreurPour('email')
-          ? { 'aria-describedby': idErreur('email') }
-          : {})}
-        value={email}
-        onChange={(e) => {
-          setEmail(e.target.value);
-        }}
-        style={{ width: '100%' }}
-      />
-      {erreurPour('email') && (
-        <span id={idErreur('email')} className="debit" role="alert">
-          {erreurPour('email')}
-        </span>
-      )}
+        libelle={
+          <>
+            Adresse e-mail <span aria-hidden="true">*</span>
+          </>
+        }
+        requis
+        erreur={erreurPour('email')}
+        idErreur={idErreur('email')}
+      >
+        {(champ) => (
+          <input
+            type="email"
+            {...champ}
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+            }}
+            className="champ-large"
+          />
+        )}
+      </ChampFormulaire>
 
-      <div className="champs-duo" style={{ marginTop: 'var(--esp-2)' }}>
+      <div className="champs-duo mt-2">
         <div>
           <label htmlFor={`${idBase}-prenom`}>
             Prénom <span className="muted">(facultatif)</span>
@@ -446,7 +436,7 @@ function FormNouveauParent({
             onChange={(e) => {
               setPrenom(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         </div>
         <div>
@@ -460,20 +450,19 @@ function FormNouveauParent({
             onChange={(e) => {
               setNom(e.target.value);
             }}
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         </div>
       </div>
 
       <div className="actions-ligne">
-        <button
-          type="button"
-          className="btn secondaire"
+        <Bouton
+          variante="secondaire"
           disabled={occupe}
           onClick={() => void ajouter()}
         >
           {occupe ? 'Ajout en cours…' : '+ Ajouter ce parent'}
-        </button>
+        </Bouton>
         <StatutSauvegarde etat={etatAffiche} enregistreA={enregistreA} />
       </div>
     </div>

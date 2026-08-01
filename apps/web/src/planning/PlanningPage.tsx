@@ -237,7 +237,6 @@ export function PlanningPage() {
             onChange={(e) => {
               handleSimuleChange(e.target.checked);
             }}
-            style={{ width: 'auto', padding: 0 }}
           />
           Mode simulation
         </label>
@@ -414,10 +413,10 @@ export function PlanningPage() {
                           }
                         >
                           <div
+                            className="mb-2"
                             style={{
                               fontSize: '0.85rem',
                               color: 'var(--gris)',
-                              marginBottom: '0.5rem',
                             }}
                           >
                             {formaterMoisFr(mois)}

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { api } from '../api/client';
 import { useAsync } from '../hooks/useAsync';
 import { formaterMoisFr } from '../utils/dates';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
 import { Modale } from '../ui/Modale';
 import { Spinner } from '../ui/Spinner';
 
@@ -54,7 +56,7 @@ export function ModaleCorrection({
 
   return (
     <Modale titre="Corriger les paramètres actuels" onClose={onAnnuler}>
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted mt-0">
         La correction remplace les paramètres de cette période sans en changer
         la date de début. Les mois concernés seront recalculés.
       </p>
@@ -71,15 +73,14 @@ export function ModaleCorrection({
           <p className="texte-erreur">
             Impossible de calculer l’impact : {etat.error}
           </p>
-          <button
-            type="button"
-            className="btn secondaire"
+          <Bouton
+            variante="secondaire"
             onClick={() => {
               etat.reload();
             }}
           >
             Réessayer
-          </button>
+          </Bouton>
         </div>
       )}
 
@@ -108,7 +109,7 @@ export function ModaleCorrection({
             </p>
           )}
 
-          <label htmlFor="correction-motif" style={{ marginTop: '0.75rem' }}>
+          <label htmlFor="correction-motif" className="mt-3">
             Motif (facultatif)
           </label>
           <textarea
@@ -119,36 +120,29 @@ export function ModaleCorrection({
             }}
             rows={2}
             placeholder="Ex. erreur de saisie sur les horaires"
-            style={{ width: '100%' }}
+            className="champ-large"
           />
         </>
       )}
 
-      {erreur && (
-        <p className="debit" role="alert">
-          {erreur}
-        </p>
-      )}
+      <ChampErreur balise="p">{erreur}</ChampErreur>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-        <button
-          type="button"
-          className="btn secondaire"
+      <div className="mt-4" style={{ display: 'flex', gap: '0.5rem' }}>
+        <Bouton
+          variante="secondaire"
           onClick={onAnnuler}
           disabled={enregistrement}
         >
           Annuler
-        </button>
-        <button
-          type="button"
-          className="btn"
+        </Bouton>
+        <Bouton
           disabled={enregistrement || etat.loading || etat.error !== null}
           onClick={() => {
             onConfirmer(motif.trim() === '' ? undefined : motif.trim());
           }}
         >
           {enregistrement ? 'Enregistrement…' : 'Enregistrer la correction'}
-        </button>
+        </Bouton>
       </div>
     </Modale>
   );

@@ -13,6 +13,7 @@ import type {
 import { joursDuMois, jourSemaineDeIso, formaterDateFr } from '../utils/dates';
 import { couleurDuMode } from '../utils/couleurs';
 import { Modale } from '../ui/Modale';
+import { Bouton } from '../ui/Bouton';
 import { usePersistanceAbsences } from '../hooks/usePersistanceAbsences';
 import { LegendePlanning } from './LegendePlanning';
 import { ChoixPortee } from './ChoixPortee';
@@ -893,7 +894,6 @@ export function CalendrierCreche({
                       onChange={() => {
                         setLotForm((f) => ({ ...f, typeAbsence: t.valeur }));
                       }}
-                      style={{ width: 'auto', padding: 0 }}
                     />
                     {t.libelle}
                   </label>
@@ -970,7 +970,6 @@ export function CalendrierCreche({
                     certificatMaladie: e.target.checked,
                   }));
                 }}
-                style={{ width: 'auto', padding: 0 }}
               />
               Certificat médical
             </label>
@@ -994,22 +993,19 @@ export function CalendrierCreche({
               flexWrap: 'wrap',
             }}
           >
-            <button
-              type="button"
-              className="btn"
+            <Bouton
               onClick={appliquerSelection}
               disabled={selection.size === 0 || !lotPlageValide}
             >
               Appliquer à la sélection ({selection.size})
-            </button>
-            <button
-              type="button"
-              className="btn secondaire"
+            </Bouton>
+            <Bouton
+              variante="secondaire"
               onClick={appliquerTousLesJoursGardes}
               disabled={!lotPlageValide}
             >
               Appliquer à tous les jours gardés
-            </button>
+            </Bouton>
           </div>
         </fieldset>
       )}
@@ -1018,7 +1014,7 @@ export function CalendrierCreche({
       {joursGardesListe.length > 0 && (
         <fieldset style={{ marginTop: '1rem' }}>
           <legend>Saisir une absence (accessible au clavier)</legend>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          <ul className="liste-nue">
             {joursGardesListe.map((jour) => {
               const etat = etatsJours.get(jour);
               const aAbsence = etat?.aAbsence ?? false;
@@ -1053,7 +1049,6 @@ export function CalendrierCreche({
                       onChange={() => {
                         basculerSelection(jour);
                       }}
-                      style={{ width: 'auto', padding: 0 }}
                       aria-label={`Sélectionner le ${libelleJour} pour la saisie en lot`}
                     />
                     <span style={{ minWidth: '8rem' }}>{libelleJour}</span>
@@ -1061,9 +1056,8 @@ export function CalendrierCreche({
                   <span className="muted" style={{ fontSize: '0.82rem' }}>
                     {libelleEtat}
                   </span>
-                  <button
-                    type="button"
-                    className="btn secondaire"
+                  <Bouton
+                    variante="secondaire"
                     onClick={() => {
                       ouvrirSaisie(jour);
                     }}
@@ -1074,7 +1068,7 @@ export function CalendrierCreche({
                     }
                   >
                     {aAbsence ? 'Modifier' : 'Saisir'}
-                  </button>
+                  </Bouton>
                 </li>
               );
             })}
@@ -1118,7 +1112,6 @@ export function CalendrierCreche({
                       onChange={() => {
                         setDialogForm((f) => ({ ...f, typeAbsence: t.valeur }));
                       }}
-                      style={{ width: 'auto', padding: 0 }}
                     />
                     {t.libelle}
                   </label>
@@ -1271,7 +1264,6 @@ export function CalendrierCreche({
                       certificatMaladie: e.target.checked,
                     }));
                   }}
-                  style={{ width: 'auto', padding: 0 }}
                 />
                 Certificat médical
               </label>
@@ -1281,35 +1273,25 @@ export function CalendrierCreche({
           <ChoixPortee valeur={portee} onChange={setPortee} nom="creche" />
 
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-            <button
-              type="button"
-              className="btn"
-              onClick={confirmerDialog}
-              disabled={!dialogPlageValide}
-            >
+            <Bouton onClick={confirmerDialog} disabled={!dialogPlageValide}>
               Confirmer
-            </button>
+            </Bouton>
             {portee === 'mois' &&
               ((dialogKind === 'absence' &&
                 absences.some((a) => a.date === dialogDate)) ||
                 (dialogKind === 'ajout' && joursSupSet.has(dialogDate))) && (
-                <button
-                  type="button"
-                  className="btn secondaire"
-                  onClick={supprimerDialog}
-                >
+                <Bouton variante="secondaire" onClick={supprimerDialog}>
                   Supprimer
-                </button>
+                </Bouton>
               )}
-            <button
-              type="button"
-              className="btn secondaire"
+            <Bouton
+              variante="secondaire"
               onClick={() => {
                 setDialogDate(null);
               }}
             >
               Annuler
-            </button>
+            </Bouton>
           </div>
         </Modale>
       )}

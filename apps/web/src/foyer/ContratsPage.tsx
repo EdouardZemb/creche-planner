@@ -14,6 +14,8 @@ import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 import { Modale } from '../ui/Modale';
 import { EtatVide } from '../ui/EtatVide';
 import { ChargementPage } from '../ui/ChargementPage';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
 import type { ContratLocal } from '../types/bff';
 
 function formaterDate(iso: string): string {
@@ -51,23 +53,21 @@ function LigneContrat({
         </span>
       </div>
       <div className="carte-contrat-actions">
-        <button
-          type="button"
-          className="btn secondaire"
+        <Bouton
+          variante="secondaire"
           onClick={onModifier}
           aria-label={`Modifier le contrat de ${contrat.enfant}`}
         >
           Modifier
-        </button>
-        <button
-          type="button"
-          className="btn danger contour"
+        </Bouton>
+        <Bouton
+          variante="danger-contour"
           onClick={onSupprimer}
           disabled={suppressionEnCours}
           aria-label={`Supprimer le contrat de ${contrat.enfant}`}
         >
           {suppressionEnCours ? 'Suppression…' : 'Supprimer'}
-        </button>
+        </Bouton>
       </div>
     </div>
   );
@@ -246,13 +246,13 @@ export function ContratsPage() {
     <div>
       {/* Les liens Planning/Coûts dupliquaient la navigation globale (barre
           d'onglets mobile + en-tête desktop) : l'en-tête ne garde que le titre. */}
-      <h1 style={{ marginTop: 0, marginBottom: '1rem' }}>Contrats</h1>
+      <h1 className="mt-0 mb-4">Contrats</h1>
 
       {loading && <ChargementPage message="Chargement de votre famille…" />}
       {error && (
-        <p className="debit" role="alert">
+        <ChampErreur balise="p">
           Impossible de charger les données de la famille : {error}
-        </p>
+        </ChampErreur>
       )}
 
       {data && (
@@ -265,11 +265,7 @@ export function ContratsPage() {
         </div>
       )}
 
-      {erreurAction && (
-        <p className="debit" role="alert">
-          {erreurAction}
-        </p>
-      )}
+      <ChampErreur balise="p">{erreurAction}</ChampErreur>
 
       <div role="status" aria-live="polite">
         {messageSucces && <p className="credit">{messageSucces}</p>}
@@ -279,9 +275,9 @@ export function ContratsPage() {
         {chargementContrats ? (
           <p className="muted">Chargement des contrats…</p>
         ) : erreurContrats ? (
-          <p className="debit" role="alert">
+          <ChampErreur balise="p">
             Impossible de charger les contrats : {erreurContrats}
-          </p>
+          </ChampErreur>
         ) : contrats.length === 0 ? (
           formulaireOuvert ? null : (
             <EtatVide
@@ -294,7 +290,7 @@ export function ContratsPage() {
           )
         ) : (
           <>
-            <h2 style={{ marginTop: 0 }}>Vos contrats</h2>
+            <h2 className="mt-0">Vos contrats</h2>
             {contrats.map((c) => (
               <LigneContrat
                 key={c.id}
@@ -314,9 +310,9 @@ export function ContratsPage() {
 
       {/* Panneau avenant / correction (SFD 30 lot 5). */}
       {actionVersion && data && (
-        <section style={{ marginTop: '1.5rem' }}>
+        <section className="mt-5">
           <div className="carte">
-            <h2 style={{ marginTop: 0 }}>
+            <h2 className="mt-0">
               {actionVersion.variante === 'avenant'
                 ? `Changer le contrat de ${actionVersion.contrat.enfant} à partir d’une date`
                 : `Corriger le contrat de ${actionVersion.contrat.enfant}`}
@@ -339,7 +335,7 @@ export function ContratsPage() {
 
       {/* Historique (lecture seule) du contrat. */}
       {historiqueContrat && (
-        <section style={{ marginTop: '1.5rem' }}>
+        <section className="mt-5">
           <HistoriqueContrat
             contratId={historiqueContrat.id}
             enfant={historiqueContrat.enfant}
@@ -350,24 +346,19 @@ export function ContratsPage() {
         </section>
       )}
 
-      <section style={{ marginTop: '1.5rem' }}>
+      <section className="mt-5">
         {!formulaireOuvert ? (
           // L'état vide porte déjà le CTA : pas de second bouton en doublon.
           contrats.length === 0 &&
           !chargementContrats &&
           !erreurContrats ? null : (
-            <button
-              type="button"
-              className="btn"
-              onClick={ouvrirCreation}
-              disabled={!data}
-            >
+            <Bouton onClick={ouvrirCreation} disabled={!data}>
               + Nouveau contrat
-            </button>
+            </Bouton>
           )
         ) : (
           <div className="carte">
-            <h2 style={{ marginTop: 0 }}>Nouveau contrat</h2>
+            <h2 className="mt-0">Nouveau contrat</h2>
             {data ? (
               <ContratForm
                 foyerId={id}
@@ -389,13 +380,11 @@ export function ContratsPage() {
           titre={`Modifier le contrat de ${menuContrat.enfant}`}
           onClose={fermerMenu}
         >
-          <p className="muted" style={{ marginTop: 0 }}>
-            Que voulez-vous faire&nbsp;?
-          </p>
+          <p className="muted mt-0">Que voulez-vous faire&nbsp;?</p>
           <div
             style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
           >
-            <button type="button" className="btn" onClick={choisirAvenant}>
+            <Bouton onClick={choisirAvenant}>
               Changer à partir d’une date
               <span
                 className="muted"
@@ -404,10 +393,9 @@ export function ContratsPage() {
                 Garde le passé, applique les nouveaux paramètres à partir d’une
                 date.
               </span>
-            </button>
-            <button
-              type="button"
-              className="btn secondaire"
+            </Bouton>
+            <Bouton
+              variante="secondaire"
               onClick={() => void choisirCorrection()}
               disabled={preparationCorrection}
             >
@@ -420,14 +408,10 @@ export function ContratsPage() {
               >
                 Répare une erreur de saisie&nbsp;: recalcule les mois concernés.
               </span>
-            </button>
-            <button
-              type="button"
-              className="btn secondaire"
-              onClick={choisirHistorique}
-            >
+            </Bouton>
+            <Bouton variante="secondaire" onClick={choisirHistorique}>
               Voir l’historique
-            </button>
+            </Bouton>
           </div>
         </Modale>
       )}

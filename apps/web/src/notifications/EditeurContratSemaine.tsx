@@ -21,6 +21,7 @@ import {
 } from '../utils/dates';
 import { libelleMode } from '../utils/libelles';
 import { messageErreur } from '../utils/erreurs';
+import { Bouton } from '../ui/Bouton';
 import { Modale } from '../ui/Modale';
 import { StatutSauvegarde } from '../ui/StatutSauvegarde';
 import { useAnnonce } from '../hooks/useAnnonce';
@@ -168,12 +169,8 @@ function ChampsHeuresPresence({
   return (
     <>
       <div
-        style={{
-          display: 'flex',
-          gap: '0.75rem',
-          flexWrap: 'wrap',
-          marginTop: '0.5rem',
-        }}
+        className="mt-2"
+        style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}
       >
         <label>
           Heure d’arrivée
@@ -233,12 +230,12 @@ function ChampsPreavisCertificat({
         />
       </label>
       <label
+        className="mt-2"
         style={{
           flexDirection: 'row',
           display: 'flex',
           alignItems: 'center',
           gap: '0.4rem',
-          marginTop: '0.5rem',
         }}
       >
         <input
@@ -250,7 +247,6 @@ function ChampsPreavisCertificat({
               certificatMaladie: e.target.checked,
             }));
           }}
-          style={{ width: 'auto', padding: 0 }}
         />
         Certificat médical
       </label>
@@ -663,7 +659,7 @@ export function EditeurContratSemaine({
   }, [contrat.contratId, semaineIso, onValide]);
 
   return (
-    <div style={{ marginBottom: '0.75rem' }}>
+    <div className="mb-3">
       <p {...regionLiveProps} className="sr-only" />
       <div
         style={{
@@ -684,13 +680,9 @@ export function EditeurContratSemaine({
                 {erreur}
               </span>
             )}
-            <button
-              type="button"
-              className="btn secondaire"
-              onClick={reessayer}
-            >
+            <Bouton variante="secondaire" onClick={reessayer}>
               Réessayer
-            </button>
+            </Bouton>
           </>
         )}
       </div>
@@ -710,16 +702,16 @@ export function EditeurContratSemaine({
                 <span className="jour-libelle-long">{libelleJour}</span>
               </span>
               <span className="muted jour-resume">{resume(date)}</span>
-              <button
-                type="button"
-                className="btn secondaire jour-action"
+              <Bouton
+                variante="secondaire"
+                className="jour-action"
                 onClick={() => {
                   ouvrir(date);
                 }}
                 aria-label={`${aSaisie(date) ? 'Modifier' : 'Saisir'} le ${libelleJour}`}
               >
                 {aSaisie(date) ? 'Modifier' : 'Saisir'}
-              </button>
+              </Bouton>
             </li>
           );
         })}
@@ -733,9 +725,7 @@ export function EditeurContratSemaine({
           flexWrap: 'wrap',
         }}
       >
-        <button
-          type="button"
-          className="btn"
+        <Bouton
           onClick={() => {
             void valider();
           }}
@@ -747,7 +737,7 @@ export function EditeurContratSemaine({
           aria-label={`Valider la ${libelleSemaine(semaineIso)} — ${contrat.enfant}, ${libelleMode(mode)}`}
         >
           {enValidation ? 'Validation…' : 'Valider'}
-        </button>
+        </Bouton>
         {messageValidation !== null && (
           <span className="credit" role="status">
             {messageValidation}
@@ -783,7 +773,6 @@ export function EditeurContratSemaine({
                   onChange={(e) => {
                     setForm((f) => ({ ...f, absentJournee: e.target.checked }));
                   }}
-                  style={{ width: 'auto', padding: 0 }}
                 />
                 Absent toute la journée
               </label>
@@ -800,8 +789,8 @@ export function EditeurContratSemaine({
                   {/* État déduit annoncé en direct (durée + effet facturation). */}
                   <p
                     aria-live="polite"
-                    className="muted"
-                    style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}
+                    className="muted mt-2"
+                    style={{ fontSize: '0.85rem' }}
                   >
                     {etatDeduit?.message ?? ''}
                   </p>
@@ -837,7 +826,6 @@ export function EditeurContratSemaine({
                 onChange={(e) => {
                   setForm((f) => ({ ...f, cantine: e.target.checked }));
                 }}
-                style={{ width: 'auto', padding: 0 }}
               />
               Cantine
             </label>
@@ -865,7 +853,6 @@ export function EditeurContratSemaine({
                   onChange={(e) => {
                     setForm((f) => ({ ...f, matin: e.target.checked }));
                   }}
-                  style={{ width: 'auto', padding: 0 }}
                 />
                 Matin
               </label>
@@ -883,7 +870,6 @@ export function EditeurContratSemaine({
                   onChange={(e) => {
                     setForm((f) => ({ ...f, soir: e.target.checked }));
                   }}
-                  style={{ width: 'auto', padding: 0 }}
                 />
                 Soir
               </label>
@@ -908,12 +894,12 @@ export function EditeurContratSemaine({
                 </select>
               </label>
               <label
+                className="mt-2"
                 style={{
                   flexDirection: 'row',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '0.4rem',
-                  marginTop: '0.5rem',
                 }}
               >
                 <input
@@ -922,17 +908,14 @@ export function EditeurContratSemaine({
                   onChange={(e) => {
                     setForm((f) => ({ ...f, repas: e.target.checked }));
                   }}
-                  style={{ width: 'auto', padding: 0 }}
                 />
                 Repas inclus
               </label>
             </>
           )}
 
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-            <button
-              type="button"
-              className="btn"
+          <div className="mt-4" style={{ display: 'flex', gap: '0.5rem' }}>
+            <Bouton
               onClick={confirmer}
               // Une plage valide n'est requise que si l'on saisit des heures
               // (jour gardé sans « absent », ou jour ajouté) ; l'absence pleine
@@ -942,19 +925,15 @@ export function EditeurContratSemaine({
               }
             >
               Confirmer
-            </button>
+            </Bouton>
             {aSaisie(dialogDate) && (
-              <button
-                type="button"
-                className="btn secondaire"
-                onClick={supprimer}
-              >
+              <Bouton variante="secondaire" onClick={supprimer}>
                 Supprimer
-              </button>
+              </Bouton>
             )}
-            <button type="button" className="btn secondaire" onClick={fermer}>
+            <Bouton variante="secondaire" onClick={fermer}>
               Annuler
-            </button>
+            </Bouton>
           </div>
         </Modale>
       )}

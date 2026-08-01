@@ -1,5 +1,5 @@
 import { type CSSProperties } from 'react';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { CoutAnnuelVue } from '../types/bff';
 import { centimesEnEuros, deltaEnEuros, repereDelta } from '../utils/money';
@@ -9,6 +9,7 @@ import { useTitrePage } from '../hooks/useTitrePage';
 import { Spinner } from '../ui/Spinner';
 import { Badge } from '../ui/Badge';
 import { EtatVide } from '../ui/EtatVide';
+import { Bouton, BoutonLien } from '../ui/Bouton';
 import {
   coutAnnuelVersCsv,
   telechargerCsv,
@@ -256,9 +257,8 @@ export function CoutsAnnuelsPage() {
       <div className="barre-couts-annuels">
         <h1>Coûts annuels</h1>
         <div className="selecteur-annee">
-          <button
-            type="button"
-            className="btn secondaire"
+          <Bouton
+            variante="secondaire"
             aria-label="Année précédente"
             disabled={annee <= ANNEE_MIN}
             onClick={() => {
@@ -266,13 +266,12 @@ export function CoutsAnnuelsPage() {
             }}
           >
             ◀
-          </button>
+          </Bouton>
           <span className="selecteur-annee-valeur" aria-live="polite">
             {annee}
           </span>
-          <button
-            type="button"
-            className="btn secondaire"
+          <Bouton
+            variante="secondaire"
             aria-label="Année suivante"
             disabled={annee >= ANNEE_MAX}
             onClick={() => {
@@ -280,7 +279,7 @@ export function CoutsAnnuelsPage() {
             }}
           >
             ▶
-          </button>
+          </Bouton>
         </div>
         {/* Interrupteur simulation : même UI que le Planning, lié à ?simule
             (l'état survit au rechargement et se partage par URL). */}
@@ -299,29 +298,27 @@ export function CoutsAnnuelsPage() {
           {/* Rien à exporter/imprimer sur l'état vide : boutons masqués. */}
           {!aucunCout && (
             <>
-              <button
-                type="button"
-                className="btn secondaire"
+              <Bouton
+                variante="secondaire"
                 onClick={exporterCsv}
                 disabled={!etatSimule.data}
                 aria-label="Exporter les coûts annuels au format CSV"
               >
                 Exporter CSV
-              </button>
-              <button
-                type="button"
-                className="btn secondaire"
+              </Bouton>
+              <Bouton
+                variante="secondaire"
                 onClick={() => {
                   window.print();
                 }}
                 aria-label="Imprimer ou enregistrer les coûts annuels en PDF"
               >
                 Imprimer / PDF
-              </button>
+              </Bouton>
             </>
           )}
           {id && (
-            <Link
+            <BoutonLien
               // Cohérence aller-retour : le mode simulation suit vers le
               // planning (PlanningPage lit déjà ?simule).
               to={
@@ -329,10 +326,10 @@ export function CoutsAnnuelsPage() {
                   ? `/foyers/${id}/planning?simule=true`
                   : `/foyers/${id}/planning`
               }
-              className="btn secondaire"
+              variante="secondaire"
             >
               Voir le détail du planning
-            </Link>
+            </BoutonLien>
           )}
         </div>
       </div>
@@ -354,16 +351,16 @@ export function CoutsAnnuelsPage() {
       {!loading && error && (
         <div className="carte" role="alert">
           <p className="texte-erreur">{error}</p>
-          <button
-            type="button"
-            className="btn secondaire no-print"
+          <Bouton
+            variante="secondaire"
+            className="no-print"
             onClick={() => {
               etatSimule.reload();
               etatReel.reload();
             }}
           >
             Réessayer
-          </button>
+          </Bouton>
         </div>
       )}
 

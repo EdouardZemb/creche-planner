@@ -9,6 +9,7 @@ import { useAsync } from '../hooks/useAsync';
 import { Spinner } from '../ui/Spinner';
 import { Abbr } from '../ui/Abbr';
 import { Badge } from '../ui/Badge';
+import { Bouton } from '../ui/Bouton';
 import { coutMoisVersCsv, telechargerCsv, nomFichierCoutMois } from './export';
 
 /**
@@ -154,16 +155,16 @@ export function PanneauCoutMois({
     return (
       <div className="carte" role="alert">
         <p className="texte-erreur">{error}</p>
-        <button
-          type="button"
-          className="btn secondaire no-print"
+        <Bouton
+          variante="secondaire"
+          className="no-print"
           onClick={() => {
             etatSimule.reload();
             etatReel.reload();
           }}
         >
           Réessayer
-        </button>
+        </Bouton>
       </div>
     );
   }
@@ -186,11 +187,7 @@ export function PanneauCoutMois({
       <div className="panneau-cout-entete">
         <h3 className="panneau-cout-titre">
           Coût du mois
-          {simule ? (
-            <span className="panneau-cout-badge">
-              <Badge variante="simulation">Simulation</Badge>
-            </span>
-          ) : null}
+          {simule ? <Badge variante="simulation">Simulation</Badge> : null}
         </h3>
         <div className="panneau-cout-total">
           <strong className="panneau-cout-montant">
@@ -234,24 +231,22 @@ export function PanneauCoutMois({
       <RecapGlobal lignes={coutSimule.lignes} />
 
       <div className="actions-export actions-export-panneau no-print">
-        <button
-          type="button"
-          className="btn secondaire"
+        <Bouton
+          variante="secondaire"
           onClick={exporterCsv}
           aria-label="Exporter le coût du mois au format CSV"
         >
           Exporter CSV
-        </button>
-        <button
-          type="button"
-          className="btn secondaire"
+        </Bouton>
+        <Bouton
+          variante="secondaire"
           onClick={() => {
             window.print();
           }}
           aria-label="Imprimer ou enregistrer le coût du mois en PDF"
         >
           Imprimer / PDF
-        </button>
+        </Bouton>
       </div>
     </div>
   );

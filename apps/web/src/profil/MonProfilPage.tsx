@@ -9,6 +9,9 @@ import { useTitrePage } from '../hooks/useTitrePage';
 import { useAnnonce } from '../hooks/useAnnonce';
 import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
 import { ChargementPage } from '../ui/ChargementPage';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
+import { ChampFormulaire } from '../ui/ChampFormulaire';
 import type {
   CanalNotification,
   MonProfilVue,
@@ -165,11 +168,9 @@ function BlocNotifications({ profil }: { readonly profil: MonProfilVue }) {
         Le rappel du mardi
       </h2>
 
-      {erreur && (
-        <p className="debit" role="alert" tabIndex={-1} ref={refErreur}>
-          {erreur}
-        </p>
-      )}
+      <ChampErreur balise="p" focalisable ref={refErreur}>
+        {erreur}
+      </ChampErreur>
 
       {TYPES.map((t) => {
         const actifs = nbCanauxActifs(etat, t.type);
@@ -307,33 +308,32 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
         Mes informations
       </h2>
 
-      {erreurGlobale && (
-        <p className="debit" role="alert" tabIndex={-1} ref={refErreur}>
-          {erreurGlobale}
-        </p>
-      )}
+      <ChampErreur balise="p" focalisable ref={refErreur}>
+        {erreurGlobale}
+      </ChampErreur>
 
-      <label htmlFor={`${idBase}-email`}>
-        Adresse e-mail <span aria-hidden="true">*</span>
-      </label>
-      <input
+      <ChampFormulaire
         id={`${idBase}-email`}
-        type="email"
-        aria-required="true"
-        aria-invalid={erreurPour('email') ? true : undefined}
-        {...(erreurPour('email')
-          ? { 'aria-describedby': idErreur('email') }
-          : {})}
-        value={email}
-        onChange={(e) => {
-          setEmail(e.target.value);
-        }}
-      />
-      {erreurPour('email') && (
-        <span id={idErreur('email')} className="debit" role="alert">
-          {erreurPour('email')}
-        </span>
-      )}
+        libelle={
+          <>
+            Adresse e-mail <span aria-hidden="true">*</span>
+          </>
+        }
+        requis
+        erreur={erreurPour('email') ?? null}
+        idErreur={idErreur('email')}
+      >
+        {(champ) => (
+          <input
+            {...champ}
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+            }}
+          />
+        )}
+      </ChampFormulaire>
 
       <div className="champs-duo">
         <div>
@@ -371,14 +371,9 @@ function BlocIdentite({ profil }: { readonly profil: MonProfilVue }) {
       )}
 
       <div className="actions-ligne">
-        <button
-          type="button"
-          className="btn"
-          disabled={occupe}
-          onClick={() => void enregistrer()}
-        >
+        <Bouton disabled={occupe} onClick={() => void enregistrer()}>
           {occupe ? 'Enregistrement…' : 'Enregistrer'}
-        </button>
+        </Bouton>
         <StatutSauvegarde etat={etatAffiche} enregistreA={enregistreA} />
       </div>
     </section>
@@ -408,9 +403,9 @@ export function MonProfilPage() {
       {!loading && error && !data && (
         <div className="carte" role="alert">
           <p className="debit profil-erreur">{error}</p>
-          <button type="button" className="btn secondaire" onClick={reload}>
+          <Bouton variante="secondaire" onClick={reload}>
             Réessayer
-          </button>
+          </Bouton>
         </div>
       )}
 

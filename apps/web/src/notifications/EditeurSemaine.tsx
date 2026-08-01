@@ -5,6 +5,8 @@ import type { ContratBesoinsSemaine, StatutNotification } from '../types/bff';
 import { useAsync } from '../hooks/useAsync';
 import { libelleSemaine } from '../utils/dates';
 import { delaiPreavis } from '../planning/delaiPreavis';
+import { Bouton } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
 import { EditeurContratSemaine } from './EditeurContratSemaine';
 import { RelectureEnvoi } from './RelectureEnvoi';
 
@@ -72,9 +74,9 @@ export function EditeurSemaine({
 
   return (
     <section
-      className="carte"
+      className="carte mt-4"
       aria-label={`Éditer les besoins de la ${libelleSemaine(semaineIso)}`}
-      style={{ borderLeft: '4px solid var(--bleu)', marginTop: '1rem' }}
+      style={{ borderLeft: '4px solid var(--bleu)' }}
     >
       <div
         style={{
@@ -88,16 +90,12 @@ export function EditeurSemaine({
         <h3 style={{ margin: 0 }}>
           Éditer les besoins de la {libelleSemaine(semaineIso)}
         </h3>
-        <button type="button" className="btn secondaire" onClick={onFermer}>
+        <Bouton variante="secondaire" onClick={onFermer}>
           Fermer
-        </button>
+        </Bouton>
       </div>
 
-      {error !== null && (
-        <p className="debit" role="alert">
-          {error}
-        </p>
-      )}
+      <ChampErreur balise="p">{error}</ChampErreur>
       {loading && !data && <p className="muted">Chargement de la semaine…</p>}
 
       {data && groupes.length === 0 && (
@@ -115,7 +113,7 @@ export function EditeurSemaine({
             aujourdhui,
           );
           return (
-            <div key={groupe.id} style={{ marginTop: '0.75rem' }}>
+            <div key={groupe.id} className="mt-3">
               <h4 style={{ fontSize: 'var(--h2)', margin: '0 0 0.25rem' }}>
                 {groupe.libelle}
               </h4>

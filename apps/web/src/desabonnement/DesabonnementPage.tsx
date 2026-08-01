@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
 import { useTitrePage } from '../hooks/useTitrePage';
+import { Bouton } from '../ui/Bouton';
 
 /**
  * Page **publique** de confirmation de désabonnement one-click (RFC 8058, PR5).
@@ -53,13 +54,7 @@ export function DesabonnementPage() {
             <strong>par e-mail</strong> les rappels du mardi (validation des
             besoins de la semaine).
           </p>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => void confirmer()}
-          >
-            Me désabonner
-          </button>
+          <Bouton onClick={() => void confirmer()}>Me désabonner</Bouton>
         </section>
       )}
 
@@ -105,13 +100,9 @@ export function DesabonnementPage() {
           <p className="profil-intro">
             Une erreur est survenue. Veuillez réessayer dans un instant.
           </p>
-          <button
-            type="button"
-            className="btn secondaire"
-            onClick={() => void confirmer()}
-          >
+          <Bouton variante="secondaire" onClick={() => void confirmer()}>
             Réessayer
-          </button>
+          </Bouton>
         </section>
       )}
     </div>

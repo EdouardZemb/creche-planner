@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type { NotificationInApp } from '../types/bff';
 import { formaterDateHeureFr } from '../utils/dates';
+import { Bouton } from '../ui/Bouton';
 import { Modale } from '../ui/Modale';
 import { Spinner } from '../ui/Spinner';
 import { EtatVide } from '../ui/EtatVide';
@@ -115,16 +116,15 @@ export function ClocheNotifications() {
               </p>
             )}
             {nonLusVisibles.length > 0 && (
-              <button
-                type="button"
-                className="btn secondaire"
+              <Bouton
+                variante="secondaire"
                 disabled={marquageEnCours}
                 onClick={() => {
                   void toutMarquerLu();
                 }}
               >
                 {marquageEnCours ? 'Enregistrement…' : 'Tout marquer comme lu'}
-              </button>
+              </Bouton>
             )}
           </div>
         )}
@@ -165,9 +165,9 @@ export function ClocheNotifications() {
                   <>
                     {contenu}
                     {!lue && (
-                      <button
-                        type="button"
-                        className="btn secondaire cloche-item-action"
+                      <Bouton
+                        variante="secondaire"
+                        className="cloche-item-action"
                         disabled={enCours === n.id}
                         onClick={() => {
                           void marquerLue(n.id);
@@ -176,7 +176,7 @@ export function ClocheNotifications() {
                         {enCours === n.id
                           ? 'Enregistrement…'
                           : 'Marquer comme lu'}
-                      </button>
+                      </Bouton>
                     )}
                   </>
                 )}
@@ -190,9 +190,9 @@ export function ClocheNotifications() {
 
   return (
     <div className="cloche">
-      <button
-        type="button"
-        className="btn secondaire cloche-bouton"
+      <Bouton
+        variante="secondaire"
+        className="cloche-bouton"
         aria-haspopup="dialog"
         aria-expanded={ouvert}
         aria-label={libelleCloche}
@@ -206,7 +206,7 @@ export function ClocheNotifications() {
             {nonLus}
           </span>
         )}
-      </button>
+      </Bouton>
 
       {ouvert && (
         <Modale

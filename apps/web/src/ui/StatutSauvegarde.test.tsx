@@ -12,14 +12,17 @@ describe('StatutSauvegarde', () => {
     render(<StatutSauvegarde etat="en-cours" />);
     const el = screen.getByRole('status');
     expect(el).toHaveTextContent('Enregistrement…');
-    expect(el).toHaveClass('statut-en-cours');
+    // Variante par défaut de <Badge> : l'ancienne `.statut-en-cours` était le
+    // doublon strict de `.badge` (même fond, même couleur).
+    expect(el).toHaveClass('badge');
+    expect(el).not.toHaveClass('badge-succes', 'badge-erreur');
   });
 
   it('affiche « Enregistré » avec un role status', () => {
     render(<StatutSauvegarde etat="enregistre" />);
     const el = screen.getByRole('status');
     expect(el).toHaveTextContent('Enregistré');
-    expect(el).toHaveClass('statut-enregistre');
+    expect(el).toHaveClass('badge', 'badge-succes');
   });
 
   it('horodate l’enregistrement quand l’heure est fournie', () => {
@@ -31,6 +34,6 @@ describe('StatutSauvegarde', () => {
     render(<StatutSauvegarde etat="erreur" />);
     const el = screen.getByRole('status');
     expect(el).toHaveTextContent("Erreur d'enregistrement");
-    expect(el).toHaveClass('statut-erreur');
+    expect(el).toHaveClass('badge', 'badge-erreur');
   });
 });

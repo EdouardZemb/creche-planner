@@ -12,6 +12,7 @@ import type {
 import { joursDuMois, jourSemaineDeIso, formaterDateFr } from '../utils/dates';
 import { alshEffectif } from '../notifications/besoinsSemaine';
 import { couleurDuMode } from '../utils/couleurs';
+import { Bouton } from '../ui/Bouton';
 import { Modale } from '../ui/Modale';
 import { LegendePlanning } from './LegendePlanning';
 import { ChoixPortee } from './ChoixPortee';
@@ -624,7 +625,6 @@ export function CalendrierAbcm({
               onChange={(e) => {
                 handlePaiChange(e.target.checked);
               }}
-              style={{ width: 'auto', padding: 0 }}
             />
             PAI (Projet d&apos;accueil individualisé)
           </label>
@@ -677,7 +677,7 @@ export function CalendrierAbcm({
       {mode === 'ALSH' && joursDuMoisListe.length > 0 && (
         <fieldset style={{ marginTop: '1rem' }}>
           <legend>Saisir une journée ALSH (accessible au clavier)</legend>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          <ul className="liste-nue">
             {joursDuMoisListe.map((jour) => {
               const eff = alshEffectifDe(jour);
               const libelleJour = formaterDateFr(jour);
@@ -701,9 +701,8 @@ export function CalendrierAbcm({
                         : 'Demi-journée'
                       : '—'}
                   </span>
-                  <button
-                    type="button"
-                    className="btn secondaire"
+                  <Bouton
+                    variante="secondaire"
                     onClick={() => {
                       ouvrirSaisieAlsh(jour);
                     }}
@@ -714,7 +713,7 @@ export function CalendrierAbcm({
                     }
                   >
                     {eff ? 'Modifier' : 'Saisir'}
-                  </button>
+                  </Bouton>
                 </li>
               );
             })}
@@ -726,7 +725,7 @@ export function CalendrierAbcm({
       {mode !== 'ALSH' && joursDuMoisListe.length > 0 && (
         <fieldset style={{ marginTop: '1rem' }}>
           <legend>Ajuster un jour (accessible au clavier)</legend>
-          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          <ul className="liste-nue">
             {joursDuMoisListe.map((jour) => {
               const eff = effectif(jour);
               const actif =
@@ -746,9 +745,8 @@ export function CalendrierAbcm({
                   <span className="muted" style={{ fontSize: '0.82rem' }}>
                     {actif ? 'Réservé' : '—'}
                   </span>
-                  <button
-                    type="button"
-                    className="btn secondaire"
+                  <Bouton
+                    variante="secondaire"
                     onClick={() => {
                       ouvrirAjustement(jour);
                     }}
@@ -757,7 +755,7 @@ export function CalendrierAbcm({
                     })`}
                   >
                     Ajuster
-                  </button>
+                  </Bouton>
                 </li>
               );
             })}
@@ -788,7 +786,6 @@ export function CalendrierAbcm({
                 onChange={(e) => {
                   setDialogForm((f) => ({ ...f, cantine: e.target.checked }));
                 }}
-                style={{ width: 'auto', padding: 0 }}
               />
               Cantine
             </label>
@@ -814,7 +811,6 @@ export function CalendrierAbcm({
                   onChange={(e) => {
                     setDialogForm((f) => ({ ...f, matin: e.target.checked }));
                   }}
-                  style={{ width: 'auto', padding: 0 }}
                 />
                 Matin
               </label>
@@ -832,7 +828,6 @@ export function CalendrierAbcm({
                   onChange={(e) => {
                     setDialogForm((f) => ({ ...f, soir: e.target.checked }));
                   }}
-                  style={{ width: 'auto', padding: 0 }}
                 />
                 Soir
               </label>
@@ -842,27 +837,20 @@ export function CalendrierAbcm({
           <ChoixPortee valeur={portee} onChange={setPortee} nom="abcm" />
 
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-            <button type="button" className="btn" onClick={confirmerAjustement}>
-              Confirmer
-            </button>
+            <Bouton onClick={confirmerAjustement}>Confirmer</Bouton>
             {portee === 'mois' && aExistant(dialogDate) && (
-              <button
-                type="button"
-                className="btn secondaire"
-                onClick={reinitialiserJour}
-              >
+              <Bouton variante="secondaire" onClick={reinitialiserJour}>
                 Réinitialiser
-              </button>
+              </Bouton>
             )}
-            <button
-              type="button"
-              className="btn secondaire"
+            <Bouton
+              variante="secondaire"
               onClick={() => {
                 setDialogDate(null);
               }}
             >
               Annuler
-            </button>
+            </Bouton>
           </div>
         </Modale>
       )}
@@ -906,7 +894,6 @@ export function CalendrierAbcm({
               onChange={(e) => {
                 setPopoverForm((f) => ({ ...f, repas: e.target.checked }));
               }}
-              style={{ width: 'auto', padding: 0 }}
             />
             Repas inclus
           </label>
@@ -914,27 +901,20 @@ export function CalendrierAbcm({
           <ChoixPortee valeur={portee} onChange={setPortee} nom="alsh" />
 
           <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-            <button type="button" className="btn" onClick={confirmerAlsh}>
-              Confirmer
-            </button>
+            <Bouton onClick={confirmerAlsh}>Confirmer</Bouton>
             {portee === 'mois' && alshEffectifDe(popoverDate) !== null && (
-              <button
-                type="button"
-                className="btn secondaire"
-                onClick={supprimerAlsh}
-              >
+              <Bouton variante="secondaire" onClick={supprimerAlsh}>
                 Supprimer
-              </button>
+              </Bouton>
             )}
-            <button
-              type="button"
-              className="btn secondaire"
+            <Bouton
+              variante="secondaire"
               onClick={() => {
                 setPopoverDate(null);
               }}
             >
               Annuler
-            </button>
+            </Bouton>
           </div>
         </Modale>
       )}

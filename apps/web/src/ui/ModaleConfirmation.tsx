@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import type { ReactNode } from 'react';
+import { Bouton } from './Bouton';
 import { Modale } from './Modale';
 
 export interface ModaleConfirmationProps {
@@ -45,24 +46,20 @@ export function ModaleConfirmation({
 
   if (!ouvert) return null;
 
-  const classeConfirmer = destructif ? 'btn danger' : 'btn';
-
   return (
     <Modale titre={titre} onClose={onAnnuler} refFocusInitial={refAnnuler}>
       <p>{message}</p>
       {children}
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-        <button
-          type="button"
-          className="btn secondaire"
-          ref={refAnnuler}
-          onClick={onAnnuler}
-        >
+      <div className="mt-4" style={{ display: 'flex', gap: '0.5rem' }}>
+        <Bouton variante="secondaire" ref={refAnnuler} onClick={onAnnuler}>
           Annuler
-        </button>
-        <button type="button" className={classeConfirmer} onClick={onConfirmer}>
+        </Bouton>
+        <Bouton
+          variante={destructif ? 'danger' : 'primaire'}
+          onClick={onConfirmer}
+        >
           {libelleConfirmer}
-        </button>
+        </Bouton>
       </div>
     </Modale>
   );

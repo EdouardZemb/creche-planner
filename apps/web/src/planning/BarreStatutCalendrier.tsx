@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Bouton } from '../ui/Bouton';
 import { StatutSauvegarde } from '../ui/StatutSauvegarde';
 import type { EtatEnregistrement } from './usePlanning';
 
@@ -38,8 +39,8 @@ export function BarreStatutCalendrier({
 }: BarreStatutCalendrierProps) {
   return (
     <div
+      className="mb-3"
       style={{
-        marginBottom: '0.75rem',
         display: 'flex',
         alignItems: 'center',
         gap: '1rem',
@@ -55,13 +56,9 @@ export function BarreStatutCalendrier({
               {erreur}
             </span>
           )}
-          <button
-            type="button"
-            className="btn secondaire"
-            onClick={onReessayer}
-          >
+          <Bouton variante="secondaire" onClick={onReessayer}>
             Réessayer
-          </button>
+          </Bouton>
         </>
       )}
       {erreurDurable && (

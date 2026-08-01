@@ -1,4 +1,5 @@
 import { Abbr } from '../ui/Abbr';
+import { ChampFormulaire } from '../ui/ChampFormulaire';
 
 /** Valeurs (chaînes de saisie) des scalaires d'un foyer, telles qu'éditées dans le formulaire. */
 export interface ValeursScalairesFoyer {
@@ -36,125 +37,125 @@ export function FoyerScalairesForm({
   idErreur,
 }: FoyerScalairesFormProps) {
   return (
-    <fieldset style={{ border: 'none', padding: 0, margin: 0 }}>
-      <legend style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-        Ressources de la famille
-      </legend>
+    <fieldset className="bloc-champs" style={{ margin: 0 }}>
+      <legend>Ressources de la famille</legend>
 
       {/* Onboarding guidé (lot 3) : lever l'inquiétude devant les champs fiscaux
           — à quoi ils servent et qu'ils restent modifiables. Partagé avec
           l'édition, qui en bénéficie aussi. */}
-      <p className="muted" style={{ marginTop: 0 }}>
+      <p className="muted mt-0">
         Ces informations servent uniquement à estimer le coût de la garde
         (barème CAF). Vous pourrez les modifier à tout moment.
       </p>
 
-      <label htmlFor="ressourcesMensuelles">
-        Ressources mensuelles (€) <span aria-hidden="true">*</span>
-      </label>
-      <input
+      <ChampFormulaire
         id="ressourcesMensuelles"
-        type="number"
-        step="0.01"
-        min="0"
-        required
-        aria-required="true"
-        aria-invalid={erreurPour('ressourcesMensuelles') ? true : undefined}
-        {...(erreurPour('ressourcesMensuelles')
-          ? { 'aria-describedby': idErreur('ressourcesMensuelles') }
-          : {})}
-        value={valeurs.ressourcesMensuelles}
-        onChange={(e) => {
-          onChange('ressourcesMensuelles', e.target.value);
-        }}
-        style={{ width: '100%' }}
-      />
-      {erreurPour('ressourcesMensuelles') && (
-        <span
-          id={idErreur('ressourcesMensuelles')}
-          className="debit"
-          role="alert"
-        >
-          {erreurPour('ressourcesMensuelles')}
-        </span>
-      )}
+        libelle={
+          <>
+            Ressources mensuelles (€) <span aria-hidden="true">*</span>
+          </>
+        }
+        requis
+        erreur={erreurPour('ressourcesMensuelles') ?? null}
+        idErreur={idErreur('ressourcesMensuelles')}
+      >
+        {(champ) => (
+          <input
+            {...champ}
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            value={valeurs.ressourcesMensuelles}
+            onChange={(e) => {
+              onChange('ressourcesMensuelles', e.target.value);
+            }}
+            className="champ-large"
+          />
+        )}
+      </ChampFormulaire>
 
-      <label htmlFor="rfr">
-        Revenu fiscal de référence — <Abbr sigle="RFR" /> (€){' '}
-        <span aria-hidden="true">*</span>
-      </label>
-      <input
+      <ChampFormulaire
         id="rfr"
-        type="number"
-        step="0.01"
-        min="0"
-        required
-        aria-required="true"
-        aria-invalid={erreurPour('rfr') ? true : undefined}
-        {...(erreurPour('rfr') ? { 'aria-describedby': idErreur('rfr') } : {})}
-        value={valeurs.rfr}
-        onChange={(e) => {
-          onChange('rfr', e.target.value);
-        }}
-        style={{ width: '100%' }}
-      />
-      {erreurPour('rfr') && (
-        <span id={idErreur('rfr')} className="debit" role="alert">
-          {erreurPour('rfr')}
-        </span>
-      )}
+        libelle={
+          <>
+            Revenu fiscal de référence — <Abbr sigle="RFR" /> (€){' '}
+            <span aria-hidden="true">*</span>
+          </>
+        }
+        requis
+        erreur={erreurPour('rfr') ?? null}
+        idErreur={idErreur('rfr')}
+      >
+        {(champ) => (
+          <input
+            {...champ}
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            value={valeurs.rfr}
+            onChange={(e) => {
+              onChange('rfr', e.target.value);
+            }}
+            className="champ-large"
+          />
+        )}
+      </ChampFormulaire>
 
-      <label htmlFor="nbEnfantsACharge">
-        Nombre d&apos;enfants à charge <span aria-hidden="true">*</span>
-      </label>
-      <input
+      <ChampFormulaire
         id="nbEnfantsACharge"
-        type="number"
-        min="1"
-        step="1"
-        required
-        aria-required="true"
-        aria-invalid={erreurPour('nbEnfantsACharge') ? true : undefined}
-        {...(erreurPour('nbEnfantsACharge')
-          ? { 'aria-describedby': idErreur('nbEnfantsACharge') }
-          : {})}
-        value={valeurs.nbEnfantsACharge}
-        onChange={(e) => {
-          onChange('nbEnfantsACharge', e.target.value);
-        }}
-        style={{ width: '100%' }}
-      />
-      {erreurPour('nbEnfantsACharge') && (
-        <span id={idErreur('nbEnfantsACharge')} className="debit" role="alert">
-          {erreurPour('nbEnfantsACharge')}
-        </span>
-      )}
+        libelle={
+          <>
+            Nombre d&apos;enfants à charge <span aria-hidden="true">*</span>
+          </>
+        }
+        requis
+        erreur={erreurPour('nbEnfantsACharge') ?? null}
+        idErreur={idErreur('nbEnfantsACharge')}
+      >
+        {(champ) => (
+          <input
+            {...champ}
+            type="number"
+            min="1"
+            step="1"
+            required
+            value={valeurs.nbEnfantsACharge}
+            onChange={(e) => {
+              onChange('nbEnfantsACharge', e.target.value);
+            }}
+            className="champ-large"
+          />
+        )}
+      </ChampFormulaire>
 
-      <label htmlFor="nbParts">
-        Nombre de parts fiscales <span aria-hidden="true">*</span>
-      </label>
-      <input
+      <ChampFormulaire
         id="nbParts"
-        type="number"
-        step="0.5"
-        min="0.5"
-        required
-        aria-required="true"
-        aria-invalid={erreurPour('nbParts') ? true : undefined}
-        {...(erreurPour('nbParts')
-          ? { 'aria-describedby': idErreur('nbParts') }
-          : {})}
-        value={valeurs.nbParts}
-        onChange={(e) => {
-          onChange('nbParts', e.target.value);
-        }}
-        style={{ width: '100%' }}
-      />
-      {erreurPour('nbParts') && (
-        <span id={idErreur('nbParts')} className="debit" role="alert">
-          {erreurPour('nbParts')}
-        </span>
-      )}
+        libelle={
+          <>
+            Nombre de parts fiscales <span aria-hidden="true">*</span>
+          </>
+        }
+        requis
+        erreur={erreurPour('nbParts') ?? null}
+        idErreur={idErreur('nbParts')}
+      >
+        {(champ) => (
+          <input
+            {...champ}
+            type="number"
+            step="0.5"
+            min="0.5"
+            required
+            value={valeurs.nbParts}
+            onChange={(e) => {
+              onChange('nbParts', e.target.value);
+            }}
+            className="champ-large"
+          />
+        )}
+      </ChampFormulaire>
     </fieldset>
   );
 }

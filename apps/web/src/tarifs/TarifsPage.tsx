@@ -8,6 +8,7 @@ import { useAsync } from '../hooks/useAsync';
 import { useTitrePage } from '../hooks/useTitrePage';
 import { Spinner } from '../ui/Spinner';
 import { EtatVide } from '../ui/EtatVide';
+import { Bouton } from '../ui/Bouton';
 
 /** Aujourd'hui au format ISO `YYYY-MM-DD` (comparaison lexicographique). */
 function aujourdhuiIso(): string {
@@ -260,17 +261,14 @@ export function TarifsPage() {
 
   return (
     <div className="page-etroite">
-      <h1 style={{ marginTop: 0 }}>Tarifs</h1>
+      <h1 className="mt-0">Tarifs</h1>
       <p className="muted">
         Les grilles de l’association (cantine, périscolaire, ALSH) par année.
         Une nouvelle grille prend effet à sa date de début : les mois d’avant
         gardent les anciens tarifs.
       </p>
 
-      <section
-        aria-labelledby={`${idPrefixe}-liste`}
-        style={{ marginTop: 'var(--esp-5)' }}
-      >
+      <section aria-labelledby={`${idPrefixe}-liste`} className="mt-5">
         <h2 id={`${idPrefixe}-liste`} style={{ fontSize: '1.1rem' }}>
           Grilles enregistrées
         </h2>
@@ -302,13 +300,7 @@ export function TarifsPage() {
                   — {LIBELLE_STATUT[periode.statut]}
                 </span>
               </h3>
-              <ul
-                style={{
-                  listStyle: 'none',
-                  padding: 0,
-                  margin: 'var(--esp-2) 0 0',
-                }}
-              >
+              <ul className="liste-nue" style={{ margin: 'var(--esp-2) 0 0' }}>
                 {periode.lignes.map((ligne) => (
                   <li
                     key={ligne.id}
@@ -330,10 +322,7 @@ export function TarifsPage() {
           ))}
       </section>
 
-      <section
-        aria-labelledby={`${idPrefixe}-form`}
-        style={{ marginTop: 'var(--esp-5)' }}
-      >
+      <section aria-labelledby={`${idPrefixe}-form`} className="mt-5">
         <h2 id={`${idPrefixe}-form`} style={{ fontSize: '1.1rem' }}>
           Publier une nouvelle grille
         </h2>
@@ -369,8 +358,8 @@ export function TarifsPage() {
             return (
               <fieldset
                 key={niveau}
+                className="mt-3"
                 style={{
-                  marginTop: 'var(--esp-3)',
                   border: '1px solid var(--bordure)',
                   borderRadius: '10px',
                   padding: 'var(--esp-3)',
@@ -383,11 +372,8 @@ export function TarifsPage() {
                     <label
                       key={poste.cle}
                       htmlFor={idChamp}
-                      style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        marginTop: 'var(--esp-2)',
-                      }}
+                      className="mt-2"
+                      style={{ display: 'flex', flexDirection: 'column' }}
                     >
                       <span>
                         {poste.libelle}
@@ -417,30 +403,20 @@ export function TarifsPage() {
               ref={alerteRef}
               role="alert"
               tabIndex={-1}
-              className="debit"
-              style={{ marginTop: 'var(--esp-3)' }}
+              className="debit mt-3"
             >
               {messageEnvoi}
             </p>
           )}
           {succes !== null && (
-            <p
-              role="status"
-              className="credit"
-              style={{ marginTop: 'var(--esp-3)' }}
-            >
+            <p role="status" className="credit mt-3">
               {succes}
             </p>
           )}
 
-          <button
-            type="submit"
-            className="btn"
-            disabled={envoiEnCours}
-            style={{ marginTop: 'var(--esp-3)' }}
-          >
+          <Bouton type="submit" disabled={envoiEnCours} className="mt-3">
             {envoiEnCours ? 'Enregistrement…' : 'Publier la grille'}
-          </button>
+          </Bouton>
         </form>
       </section>
     </div>

@@ -61,9 +61,8 @@ export function LegendePlanning({
         alignItems: 'center',
         gap: '1rem',
         fontSize: '0.82rem',
-        marginBottom: '0.5rem',
       }}
-      className="muted"
+      className="muted mb-2"
     >
       <Entree couleur={couleurGarde} libelle={libelleGarde} />
       <Entree couleur={couleurAjoute()} libelle="Ajouté" />

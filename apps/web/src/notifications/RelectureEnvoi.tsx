@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import type {
   BrouillonEtablissement,
@@ -11,6 +10,8 @@ import type {
 import { messageErreur } from '../utils/erreurs';
 import { dateLongueFr } from '../utils/dates';
 import { useAsync } from '../hooks/useAsync';
+import { Bouton, BoutonLien } from '../ui/Bouton';
+import { ChampErreur } from '../ui/ChampErreur';
 import { ModaleConfirmation } from '../ui/ModaleConfirmation';
 import { composerBrouillonSemaineComplete } from './brouillonSemaineComplete';
 
@@ -217,23 +218,18 @@ function BlocEnvoiEtablissement({
           }}
         />
 
-        <button
-          type="button"
-          className="btn secondaire"
+        <Bouton
+          variante="secondaire"
           onClick={() => {
             setSujet(propose.sujet);
             setCorps(propose.corps);
           }}
         >
           Rétablir le texte proposé
-        </button>
+        </Bouton>
       </div>
 
-      {messageValidation !== null && (
-        <p className="debit" role="alert">
-          {messageValidation}
-        </p>
-      )}
+      <ChampErreur balise="p">{messageValidation}</ChampErreur>
 
       {message !== null && (
         <p
@@ -244,9 +240,7 @@ function BlocEnvoiEtablissement({
         </p>
       )}
 
-      <button
-        type="button"
-        className="btn"
+      <Bouton
         disabled={enCours || envoye || !valide}
         aria-label={`Envoyer le récapitulatif à ${brouillon.etablissementLibelle}`}
         onClick={() => {
@@ -260,7 +254,7 @@ function BlocEnvoiEtablissement({
             : message?.type === 'erreur'
               ? `Réessayer l'envoi`
               : `Envoyer à ${brouillon.etablissementLibelle}`}
-      </button>
+      </Bouton>
 
       <ModaleConfirmation
         ouvert={confirmer}
@@ -316,12 +310,12 @@ function CarteNonRoutable({
           <span aria-hidden="true">⚠️ </span>
           {alerte}
         </p>
-        <Link
+        <BoutonLien
           to={`/foyers/${foyerId}/etablissements`}
-          className="btn secondaire"
+          variante="secondaire"
         >
           {libelleLien}
-        </Link>
+        </BoutonLien>
       </div>
 
       <ListeEnfantsConcernes enfants={brouillon.enfants} />
@@ -414,11 +408,7 @@ export function RelectureEnvoi({
         </p>
       )}
 
-      {error !== null && (
-        <p className="debit" role="alert">
-          {error}
-        </p>
-      )}
+      <ChampErreur balise="p">{error}</ChampErreur>
       {loading && !data && (
         <p className="muted">Préparation des récapitulatifs…</p>
       )}

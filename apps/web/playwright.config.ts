@@ -5,9 +5,11 @@ import { defineConfig, devices } from '@playwright/test';
 // déterministe, sans pile docker. Le webServer ne sert que le front (vite dev).
 export default defineConfig({
   testDir: './e2e',
-  // Les specs « stack réelle » (*.stack.e2e.spec.ts) ont leur propre config
-  // (playwright.stack.config.ts) : `nx e2e web` (mocké) ne doit JAMAIS les embarquer.
-  testIgnore: '**/*.stack.e2e.spec.ts',
+  // Les specs « stack réelle » (*.stack.e2e.spec.ts) et le balayage de
+  // non-régression visuelle (*.visuel.e2e.spec.ts) ont chacun leur propre config
+  // (playwright.stack.config.ts, playwright.visuel.config.ts) : `nx e2e web`
+  // (mocké) ne doit JAMAIS les embarquer.
+  testIgnore: ['**/*.stack.e2e.spec.ts', '**/*.visuel.e2e.spec.ts'],
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: process.env['CI'] ? 1 : 0,
