@@ -155,6 +155,11 @@ pnpm nx g @nx/js:lib libs/<contexte>/<couche> --name=<contexte>-<couche> \
    - deux cibles Nx sans arête d'ordre entre elles (`build` et `typecheck`) = `ENOTEMPTY` et
      cascades `TS6305` **intermittentes**, masquées tant que le cache Nx sert l'une des deux. Voir
      l'amendement 2026-08-01 de [ADR-0003](adr/0003-decisions-de-toolchain.md).
+     **Ne vaut que pour les apps.** Les 14 libs gardent `outDir: dist` dans leur
+     `tsconfig.lib.json` : c'est **volontaire et mesuré**, ne pas « harmoniser ». Leur `build` étant
+     lui aussi un `tsc` inféré par `@nx/js/typescript`, le plugin pose l'arête
+     `typecheck.dependsOn: ["build", …]` et Nx ne lance jamais les deux en parallèle. Détail des
+     mesures et conditions de réouverture : amendement 2026-08-01 (bis) du même ADR.
 
 ## 6. Décisions techniques non-évidentes
 
