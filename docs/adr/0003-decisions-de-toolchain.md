@@ -43,6 +43,35 @@ verts et reproductibles. On les consigne pour ne pas les redécouvrir (ni les ca
   domaine métier. Révisables si l'écosystème se stabilise (ex. revenir à Vitest 4 quand le binding
   rolldown Windows sera fiable).
 
+## Amendement — 2026-08-01 : la sortie `tsc` des apps quitte `dist/`
+
+- **Statut** : Accepté
+
+**Contexte.** Depuis le lot B2 (PR #268), `test` dépend de `build` **et** de `typecheck`, sans aucune
+arête d'ordre entre les deux : Nx les exécute donc **en parallèle**. Or `tsconfig.app.json` émettait
+ses déclarations dans `apps/<app>/dist`, c'est-à-dire le répertoire que `webpack.config.js` déclare
+en `output.path` **avec `clean: true`** — donc efface. Les deux tâches écrivaient dans le même
+dossier, sans se connaître. En temps normal le cache Nx sert au moins l'une des deux et la course ne
+se produit pas ; le commit de publication du 2026-08-01 (bump de version des 7 `package.json`) a
+invalidé le cache de tous les projets, d'où le premier build à froid complet depuis #268 et la
+défaillance : `ENOTEMPTY: directory not empty, rmdir …/dist/src/bff` côté webpack, puis une trentaine
+de `TS6305 Output file … has not been built from source file …` côté tsc — effet, pas cause.
+
+**Décision.** 9. **Sortie `tsc` des apps hors de `dist/`.** `tsconfig.app.json` émet dans
+`./out-tsc/app` (`outDir` **et** `tsBuildInfoFile`), en suivant la convention déjà en place pour
+`tsconfig.spec.json` (`./out-tsc/vitest`). `dist/` redevient la propriété exclusive de webpack : le
+bundle déployable qu'attendent le Dockerfile, les specs Pact provider (`resolve(RACINE,
+'apps/<app>/dist/main.js')`) et les cibles `prune-lockfile`/`copy-workspace-modules`.
+
+**Alternative écartée.** Forcer une arête d'ordre (`build.dependsOn: ["typecheck"]`) : cela sérialise
+le graphe donc le ralentit, et laisse webpack effacer ensuite des sorties que Nx vient de mettre en
+cache pour `typecheck`. Le conflit d'écriture disparaîtrait, la propriété partagée du répertoire —
+la vraie cause — resterait.
+
+**Conséquence.** `typecheck` et `build` n'ont plus aucun fichier en commun (vérifiable par
+`nx show project <app> --json` : les `outputs` des deux cibles sont disjoints). `out-tsc` est déjà
+couvert par `.gitignore` et `.dockerignore` : rien d'autre à ajuster.
+
 ## Note d'exploitation (hors décision)
 
 Les crashes Docker Desktop rencontrés (exec format error, Secrets Engine, SIGBUS) provenaient d'un
