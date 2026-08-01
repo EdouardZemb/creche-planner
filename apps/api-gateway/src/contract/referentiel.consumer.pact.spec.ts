@@ -27,7 +27,11 @@ const provider = new PactV3({
   dir: PACTS_DIR,
 });
 
-describe('Pact consumer · api-gateway → svc-referentiel', () => {
+// `retry: 1` : parade à la course pact-core sous charge CPU en CI (match
+// enregistré côté mock server mais « expected but not received » à la
+// vérification) — détail dans vitest.config.mts. Rejeu sûr (interaction
+// ré-enregistrée dans le corps du `it`).
+describe('Pact consumer · api-gateway → svc-referentiel', { retry: 1 }, () => {
   it('lit la grille cantine T3 applicable au 15/09/2026', async () => {
     provider
       .given(ETAT_GRILLE_T3)
