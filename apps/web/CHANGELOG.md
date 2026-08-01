@@ -1,3 +1,18 @@
+## 0.15.0 (2026-08-01)
+
+### 🚀 Features
+
+- **ops:** durcissement conteneurs (lot A6) ([#263](https://github.com/EdouardZemb/creche-planner/pull/263))
+
+### 🩹 Fixes
+
+- **web:** barre d onglets sur les pages globales et contrastes a11y (lot C0) ([#267](https://github.com/EdouardZemb/creche-planner/pull/267), [#7](https://github.com/EdouardZemb/creche-planner/issues/7))
+
+### ❤️ Thank You
+
+- Claude Opus 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.14.0 (2026-07-28)
 
 ### 🚀 Features

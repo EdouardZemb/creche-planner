@@ -1,3 +1,14 @@
+## 0.15.0 (2026-08-01)
+
+### 🩹 Fixes
+
+- **tarification:** grille_tarifaire projette les 3 modes (PK surrogate) ([#257](https://github.com/EdouardZemb/creche-planner/pull/257))
+
+### ❤️ Thank You
+
+- Claude
+- Edouard Zemb @EdouardZemb
+
 ## 0.14.0 (2026-07-28)
 
 ### 🚀 Features

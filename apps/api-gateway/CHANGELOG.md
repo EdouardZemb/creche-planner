@@ -1,3 +1,15 @@
+## 0.15.0 (2026-08-01)
+
+### 🩹 Fixes
+
+- **ci:** deflake pact-drift, fichiers serialises en CI et retry des specs pact consumer ([#266](https://github.com/EdouardZemb/creche-planner/pull/266))
+- **gateway:** propagation des foyers autorises sur les routes /moi (source identite) ([#264](https://github.com/EdouardZemb/creche-planner/pull/264))
+
+### ❤️ Thank You
+
+- Claude Fable 5
+- Edouard Zemb @EdouardZemb
+
 ## 0.14.0 (2026-07-28)
 
 ### 🚀 Features

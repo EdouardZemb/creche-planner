@@ -1,3 +1,7 @@
+## 0.15.0 (2026-08-01)
+
+This was a version bump only for svc-foyer to align it with other projects, there were no code changes.
+
 ## 0.14.0 (2026-07-28)
 
 ### 🚀 Features
