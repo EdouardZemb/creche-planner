@@ -42,6 +42,18 @@
       },
       "typecheck": {
         "executor": "nx:run-commands",
+        "dependsOn": [
+          "^build"
+        ],
+        "cache": true,
+        "inputs": [
+          "default",
+          "^production",
+          {
+            "dependentTasksOutputFiles": "**/*.{d.ts,d.cts,d.mts}",
+            "transitive": true
+          }
+        ],
         "options": {
           "commands": [
             "tsc --noEmit -p tsconfig.app.json",
@@ -63,6 +75,10 @@
       },
       "test": {
         "executor": "nx:run-commands",
+        "dependsOn": [
+          "^build",
+          "typecheck"
+        ],
         "options": {
           "command": "vitest run --passWithNoTests",
           "cwd": "apps/web"
