@@ -72,6 +72,71 @@ la vraie cause — resterait.
 `nx show project <app> --json` : les `outputs` des deux cibles sont disjoints). `out-tsc` est déjà
 couvert par `.gitignore` et `.dockerignore` : rien d'autre à ajuster.
 
+## Amendement — 2026-08-01 (bis) : les 14 libs ne sont **pas** concernées (question tranchée par la mesure)
+
+- **Statut** : Accepté — **aucun changement de configuration**
+
+**La question.** Les libs présentent le même recouvrement _apparent_ que les apps :
+`tsconfig.lib.json` déclare `"outDir": "dist"` et `"tsBuildInfoFile": "dist/tsconfig.lib.tsbuildinfo"` ;
+la cible `build` lance `tsc --build tsconfig.lib.json` ; la cible `typecheck` lance
+`tsc --build tsconfig.json`, dont les `references` incluent `./tsconfig.lib.json` — donc le **même**
+sous-projet, donc le **même** `.tsbuildinfo`. La PR #273 ayant volontairement laissé les libs de côté,
+la question devait être tranchée. **Elle l'est : le risque n'existe pas, et il ne faut rien changer.**
+
+**Pourquoi les libs diffèrent des apps.** C'est l'origine de la cible `build` qui change tout :
+
+|      | `build`                                               | `typecheck.dependsOn`                            |
+| ---- | ----------------------------------------------------- | ------------------------------------------------ |
+| apps | `webpack-cli build` (`@nx/webpack`)                   | `["^typecheck"]` — **aucune arête vers `build`** |
+| libs | `tsc --build tsconfig.lib.json` (`@nx/js/typescript`) | `["build", "^typecheck"]`                        |
+
+Sur les libs, `@nx/js/typescript` **produit les deux cibles** et sait donc qu'elles se recouvrent : il
+pose lui-même l'arête d'ordre. Sur les apps, le plugin ne voit qu'une cible `build` webpack qui ne lui
+appartient pas — il ne peut rien poser, d'où #273. L'arête est vérifiable sur le graphe de tâches
+(`nx run-many -t typecheck build -p <libs> --graph=g.json` → `"<lib>:typecheck": ["<lib>:build"]`,
+`roots: ["<lib>:build", …]`). **Nx ne planifie donc jamais les deux en parallèle**, y compris en CI,
+qui n'utilise qu'une seule invocation (`nx affected -t lint typecheck test build --parallel=3`).
+
+**Ce qui a été mesuré** (Windows, `--parallel=16`, `dist/` et `*.tsbuildinfo` effacés à chaque fois) :
+
+1. **Passe nominale** — `nx reset` puis 5 itérations à froid d'affilée de
+   `nx run-many -t typecheck build -p <les 14 libs> --skip-nx-cache --parallel=16` : **5/5 vertes**.
+2. **`outputs` déclarés disjoints** — `build` → `{projectRoot}/dist/**` + `dist/tsconfig.lib.tsbuildinfo` ;
+   `typecheck` → `{projectRoot}/tsconfig.tsbuildinfo` seul. Contrairement à l'attendu, **il n'y a pas de
+   recouvrement déclaré**.
+3. **Écritures réelles** — `typecheck` seul, à froid, écrit bel et bien dans `dist/` (les `.d.ts`,
+   `.d.ts.map` et `dist/tsconfig.lib.tsbuildinfo`) : ses `outputs` Nx sous-déclarent ce qu'il _peut_
+   écrire. Mais dans l'ordre réel (`build` puis `typecheck`), il **n'écrit rien** : `dist/` reste
+   identique bit à bit, mtimes inchangés. Idem après restauration de `build` depuis le cache Nx.
+4. **Contrôle adversarial** — les deux `tsc` lancés _simultanément_ hors Nx, 8 itérations × 4 libs :
+   32/32 en `exit 0`, `.js`/`.d.ts` **identiques bit à bit** à un build série. Seul
+   `dist/tsconfig.lib.tsbuildinfo` diffère, et `tsc --build --dry` répond alors « would build » au lieu
+   de « up to date » : **dégradation** (marqueur d'à-jour perdu → un rebuild inutile), **pas corruption**
+   — le build suivant réémet correctement.
+5. **Ordre inverse** (`typecheck` puis `build`) — `tsc` détecte les `.js` manquants et les réémet
+   (7/7). L'état « déclarations seules » ne trompe pas un build complet : pas de court-circuit.
+
+**Décision.** Ne rien changer aux 14 `tsconfig.lib.json`. Le `dist/` des libs est une **vraie sortie
+consommée** — `require.resolve('@creche-planner/shared-kernel')` depuis une app résout bien
+`libs/shared-kernel/dist/index.js` (la condition `@creche-planner/source` ne s'applique qu'au build
+webpack et à Vite), et `copy-workspace-modules` empaquette ces `dist` dans l'image. Le déplacer serait
+invasif, pour un risque que la mesure ne trouve pas. Et surtout : les deux producteurs sont `tsc`,
+aucun ne fait de `clean` — la propriété partagée du répertoire, vraie cause côté apps, n'a pas
+d'équivalent ici.
+
+**Quand rouvrir la question.** L'innocuité tient à l'arête posée par `@nx/js/typescript`, pas à une
+propriété intrinsèque. Rouvrir si l'une de ces conditions change :
+
+- la cible `build` d'une lib passe à un exécuteur non-`tsc` (webpack, tsup, rollup…) — le plugin
+  cesserait de poser l'arête, exactement le scénario des apps ;
+- `configName` (`nx.json` → plugin `@nx/js/typescript`) ne pointe plus vers `tsconfig.lib.json`, ou le
+  plugin cesse d'inférer `build` pour les libs ;
+- un producteur qui **nettoie** son répertoire de sortie apparaît dans la chaîne.
+
+Reste vrai dans tous les cas : **deux invocations Nx concurrentes sur le même worktree** sortent du
+graphe de tâches et ne sont couvertes par aucune arête — ce qui vaut pour toutes les cibles, pas
+seulement celles-ci.
+
 ## Note d'exploitation (hors décision)
 
 Les crashes Docker Desktop rencontrés (exec format error, Secrets Engine, SIGBUS) provenaient d'un
