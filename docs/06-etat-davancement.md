@@ -149,12 +149,19 @@ pnpm nx g @nx/js:lib libs/<contexte>/<couche> --name=<contexte>-<couche> \
 7. **Libs imbriquées par contexte** (`libs/<contexte>/<couche>`) : `pnpm-workspace.yaml` couvre
    `libs/*/*`, et la racine `tsconfig.json` doit **référencer** chaque lib. Les chemins relatifs des
    configs gagnent un niveau (`../../../` au lieu de `../../`).
+8. **Un répertoire de sortie = un seul producteur.** La sortie de `tsc` (`outDir` **et**
+   `tsBuildInfoFile` de `tsconfig.app.json`) va dans `out-tsc/`, jamais dans `dist/` : `dist/`
+   appartient à webpack, qui le **nettoie** (`output.clean`). Deux producteurs sur le même dossier
+   - deux cibles Nx sans arête d'ordre entre elles (`build` et `typecheck`) = `ENOTEMPTY` et
+     cascades `TS6305` **intermittentes**, masquées tant que le cache Nx sert l'une des deux. Voir
+     l'amendement 2026-08-01 de [ADR-0003](adr/0003-decisions-de-toolchain.md).
 
 ## 6. Décisions techniques non-évidentes
 
 Consignées dans **[ADR-0003](adr/0003-decisions-de-toolchain.md)** : Node 24, linker pnpm isolé,
 épinglage Vitest 3 (rolldown KO sous Windows), `@nx/js:typescript-sync` désactivé, résolution
-source des libs au build webpack (`resolve.conditionNames`), ignore `node_modules` par projet.
+source des libs au build webpack (`resolve.conditionNames`), ignore `node_modules` par projet, et
+sortie `tsc` des apps hors de `dist/` (amendement 2026-08-01).
 
 > 💡 Épisode d'exploitation : les crashes Docker initiaux venaient d'un **disque C: plein** (0 octet),
 > pas du code. Garder de la marge disque (la pile + builds ≈ plusieurs Go).
