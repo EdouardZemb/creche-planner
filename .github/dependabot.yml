@@ -17,6 +17,17 @@ updates:
       prefix: 'chore'
       include: 'scope'
     groups:
+      # La chaîne Nx monte d'un bloc ou pas du tout : une dizaine de paquets
+      # `@nx/*` doivent rester sur la MÊME version, et une majeure s'accompagne
+      # de migrations de code que seul `nx migrate` applique. Le split 22/23
+      # (PR #92/#93/#95/#96/#97, mergées séparément) a laissé le monorepo
+      # incohérent et cassé ci/pact-drift/openapi-types-drift. Ce groupe rend le
+      # signal visible en UNE PR, à FERMER puis à rejouer via le runbook
+      # `docs/runbook-nx-migrate.md` — jamais à merger telle quelle.
+      nx-toolchain:
+        patterns:
+          - 'nx'
+          - '@nx/*'
       # Regroupe les patchs/minors pour limiter le bruit de PR.
       dependances-mineures:
         update-types:

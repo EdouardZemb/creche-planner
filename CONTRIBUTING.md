@@ -17,12 +17,20 @@ Point d'entrée court. Les références détaillées : [CONVENTIONS.md](CONVENTI
 ```bash
 corepack pnpm install
 
+# Préflight (~6 s, aucun accès réseau) : pnpm/Node attendus, clone principal ou
+# worktree, symlinks `workspace:*`, shims .bin, chaîne Nx alignée, ports des
+# providers Pact libres, hooks husky.
+# À lancer en début de session, et dès qu'un comportement devient inexplicable.
+corepack pnpm preflight
+# ⚠️ `pnpm doctor` NE lance PAS ce script : `doctor` est une sous-commande native de pnpm.
+
 # Qualité (lint + type-check + tests + build sur les projets affectés)
 corepack pnpm nx run-many -t lint typecheck test build
 
-# Un seul projet — toujours coupler typecheck et test :
-corepack pnpm nx run-many -t typecheck test -p web
-# ⚠️ `nx test <projet>` seul ne vérifie PAS les types (Vitest transpile sans type-check).
+# Un seul projet : `nx test <projet>` déclenche désormais son `typecheck` et le
+# build des libs dont il dépend (`targetDefaults` de nx.json + `dependsOn` des
+# cibles écrites à la main). Plus besoin de builder les libs à la main.
+corepack pnpm nx test web
 
 # Pile locale complète / E2E stack réelle
 docker compose up --build

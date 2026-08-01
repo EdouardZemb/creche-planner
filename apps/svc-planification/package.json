@@ -58,7 +58,8 @@
       },
       "test": {
         "dependsOn": [
-          "build"
+          "build",
+          "typecheck"
         ]
       },
       "serve": {
