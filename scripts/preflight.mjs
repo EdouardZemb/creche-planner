@@ -72,6 +72,23 @@ function lireJson(fichier) {
   }
 }
 
+/**
+ * Lit un fichier texte, ou rend `null` s'il est absent/illisible.
+ *
+ * Toutes les lectures du script passent par ici plutôt que par un
+ * `existsSync()` suivi d'un `readFileSync()` : ce couple « on vérifie puis on
+ * lit » est une fenêtre TOCTOU (le fichier peut changer entre les deux appels),
+ * signalée par CodeQL. Tenter la lecture et rattraper l'échec dit la même chose
+ * en un seul accès.
+ */
+function lireTexte(fichier) {
+  try {
+    return fs.readFileSync(fichier, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
 const pkgRacine = lireJson(path.join(RACINE, 'package.json')) ?? {};
 
 // ---------------------------------------------------------------------------
@@ -117,9 +134,7 @@ function verifierPnpm() {
 function verifierNode() {
   const courante = process.version.replace(/^v/, '');
   const majeureCourante = Number(courante.split('.')[0]);
-  const nvmrc = fs.existsSync(path.join(RACINE, '.nvmrc'))
-    ? fs.readFileSync(path.join(RACINE, '.nvmrc'), 'utf8').trim()
-    : null;
+  const nvmrc = lireTexte(path.join(RACINE, '.nvmrc'))?.trim() ?? null;
   const engines = String(pkgRacine.engines?.node ?? '');
   const majeureMin = Number(/(\d+)/.exec(engines)?.[1] ?? NaN);
 
@@ -229,22 +244,14 @@ function verifierSymlinksWorkspace() {
         const lien = path.join(projet, 'node_modules', ...nom.split('/'));
         const relatif = path.relative(RACINE, lien).split(path.sep).join('/');
         verifies += 1;
-        let stat;
-        try {
-          stat = fs.lstatSync(lien);
-        } catch {
-          problemes.push(`${relatif} : absent`);
-          continue;
-        }
-        if (!stat.isSymbolicLink() && !stat.isDirectory()) {
-          problemes.push(`${relatif} : ni lien ni dossier`);
-          continue;
-        }
+        // Résolution directe, sans `lstat` préalable : absent et lien mort se
+        // corrigent de la même façon (réinstaller), la distinction ne vaut pas
+        // un second accès au système de fichiers.
         let cible;
         try {
           cible = fs.realpathSync(lien);
         } catch {
-          problemes.push(`${relatif} : lien mort`);
+          problemes.push(`${relatif} : absent ou lien mort`);
           continue;
         }
         if (!cible.startsWith(racineReelle)) {
@@ -273,9 +280,15 @@ function verifierSymlinksWorkspace() {
 
 /** Répertoires de projet (contenant un package.json) sous `base`, profondeur ≤ 3. */
 function listerProjets(base, profondeur = 0) {
-  if (!fs.existsSync(base) || profondeur > 3) return [];
+  if (profondeur > 3) return [];
+  let entrees;
+  try {
+    entrees = fs.readdirSync(base, { withFileTypes: true });
+  } catch {
+    return []; // dossier absent : rien à parcourir.
+  }
   const trouves = [];
-  for (const entree of fs.readdirSync(base, { withFileTypes: true })) {
+  for (const entree of entrees) {
     if (
       !entree.isDirectory() ||
       entree.name === 'node_modules' ||
@@ -284,7 +297,9 @@ function listerProjets(base, profondeur = 0) {
       continue;
     }
     const chemin = path.join(base, entree.name);
-    if (fs.existsSync(path.join(chemin, 'package.json'))) trouves.push(chemin);
+    if (lireJson(path.join(chemin, 'package.json')) !== null) {
+      trouves.push(chemin);
+    }
     trouves.push(...listerProjets(chemin, profondeur + 1));
   }
   return trouves;
@@ -307,23 +322,32 @@ function verifierShims() {
   let examines = 0;
 
   for (const dossier of dossiers) {
-    if (!fs.existsSync(dossier)) continue;
-    for (const fichier of fs.readdirSync(dossier)) {
-      // Les shims Windows portent le chemin `.pnpm` en clair ; les shims sh
-      // aussi. On ne lit que les fichiers, jamais les binaires réels.
-      const chemin = path.join(dossier, fichier);
+    let entrees;
+    try {
+      // `withFileTypes` porte déjà le type : pas de `lstat` supplémentaire sur
+      // le chemin, donc pas de fenêtre « vérifié puis relu » (TOCTOU) — c'est
+      // aussi une syscall de moins par shim, sur ~200 shims.
+      entrees = fs.readdirSync(dossier, { withFileTypes: true });
+    } catch {
+      continue; // `.bin` absent : ce projet n'expose aucun binaire.
+    }
+    for (const entree of entrees) {
+      const chemin = path.join(dossier, entree.name);
+      if (entree.isSymbolicLink()) {
+        // Shim POSIX : c'est un lien, sa validité se teste par realpath.
+        examines += 1;
+        try {
+          fs.realpathSync(chemin);
+        } catch {
+          casses.push(`${path.relative(RACINE, chemin)} : lien mort`);
+        }
+        continue;
+      }
+      if (!entree.isFile()) continue;
+      // Les shims Windows (.CMD/.ps1) portent le chemin `.pnpm` en clair, les
+      // shims sh aussi. On ne lit que des fichiers, jamais les binaires réels.
       let contenu;
       try {
-        if (fs.lstatSync(chemin).isSymbolicLink()) {
-          // Shim POSIX : c'est un lien, sa validité se teste par realpath.
-          examines += 1;
-          try {
-            fs.realpathSync(chemin);
-          } catch {
-            casses.push(`${path.relative(RACINE, chemin)} : lien mort`);
-          }
-          continue;
-        }
         contenu = fs.readFileSync(chemin, 'utf8');
       } catch {
         continue;
@@ -507,7 +531,12 @@ async function verifierPortsPact() {
 function verifierInstallAJour() {
   const lock = path.join(RACINE, 'pnpm-lock.yaml');
   const modules = path.join(RACINE, 'node_modules', '.modules.yaml');
-  if (!fs.existsSync(lock) || !fs.existsSync(modules)) {
+  let mtimeLock;
+  let mtimeModules;
+  try {
+    mtimeLock = fs.statSync(lock).mtimeMs;
+    mtimeModules = fs.statSync(modules).mtimeMs;
+  } catch {
     noter(
       'install',
       'ignore',
@@ -515,7 +544,7 @@ function verifierInstallAJour() {
     );
     return;
   }
-  if (fs.statSync(lock).mtimeMs > fs.statSync(modules).mtimeMs) {
+  if (mtimeLock > mtimeModules) {
     noter(
       'install',
       'avertissement',
