@@ -17,6 +17,13 @@ dans `.claude/memory/` et 2 prompts, jusque-là hors dépôt donc invisibles d'u
 session distante. `CLAUDE.md` pointe vers ces sources et liste ce qui reste
 infaisable hors LAN.
 
+> ⚠️ **Exception décidée le 2026-08-02 : le miroir est volontairement
+> incomplet.** Le dépôt étant **public**, les fiches touchant à l'accès au
+> serveur ou à la posture de sécurité ne sont **jamais** versionnées, et
+> quelques passages d'autres fiches sont retenus pour la même raison. La règle
+> est inscrite dans `CLAUDE.md`. Ne pas chercher à « resynchroniser » le miroir
+> en bloc depuis le poste principal : cela republierait ce qui a été écarté.
+
 > ⚠️ **Obligation de synchronisation.** La source de vérité de la mémoire reste
 > `~/.claude/projects/<slug>/memory/`. Le dépôt n'en contient qu'un **miroir** :
 > toute fiche écrite ou modifiée localement dérive tant qu'elle n'est pas

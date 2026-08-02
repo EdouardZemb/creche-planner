@@ -40,6 +40,15 @@ Si une session distante apprend un fait durable (piège, décision, état de
 prod), l'écrire dans `.claude/memory/` et l'indexer dans `MEMORY.md` : c'est
 la seule voie pour qu'il revienne sur le poste principal.
 
+⚠️ **Ce qui n'est jamais versionné ici.** Ce dépôt est **public**. Les fiches
+de mémoire décrivant l'accès au serveur ou la posture de sécurité — politique
+`sudo`, chemins de configuration système, autres services hébergés sur la
+machine, identifiants sous quelque forme que ce soit — restent **hors du
+dépôt**, sur le poste principal uniquement. Le miroir `.claude/memory/` est
+donc volontairement **incomplet** : ne pas chercher à le « resynchroniser »
+intégralement depuis une source locale. Une session distante ne peut de toute
+façon pas joindre le serveur, ces détails ne lui servent à rien.
+
 ## Ce qui n'est PAS faisable hors du réseau local
 
 - **Déploiement et vérification prod** : le serveur n'est joignable qu'en LAN
