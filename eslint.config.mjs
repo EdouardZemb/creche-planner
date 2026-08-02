@@ -131,41 +131,77 @@ export default [
       // no-confusing-void-expression, consistent-type-*, etc.) restent en ERREUR
       // par défaut — le code a été corrigé via `eslint --fix`.
       //
-      // === Ratchet (warn → error progressif). TODO ratchet : remonter lib par lib. ===
+      // === Ratchet relancé au lot D3 (chantier « consolidation », 2026-08-02). ===
+      //
+      // MÉTHODE — une règle passe en `error` quand le dépôt est à ZÉRO occurrence,
+      // jamais avant : un `error` avec de la dette restante bloquerait la CI ou
+      // ferait fleurir les `eslint-disable`. Le compteur de warnings de la CI
+      // (`.github/workflows/scripts/lint-warnings.mjs` + `lint-baseline.json`)
+      // interdit désormais toute REMONTÉE du reste. Pour promouvoir une règle :
+      // solder ses occurrences, la déplacer dans le bloc « acquis », baisser la
+      // baseline d'autant.
+      //
+      // ACQUIS (0 occurrence, verrouillé en `error`) — 10 règles au lot D3 :
+      //  - déjà propres avant le lot (le ratchet était en panne, pas le code) :
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-call': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/restrict-plus-operands': 'error',
+      '@typescript-eslint/no-unnecessary-type-conversion': 'error',
+      //  - soldées PAR le lot D3 :
+      '@typescript-eslint/no-dynamic-delete': 'error', // 7 → 0 (omission par déstructuration)
+      '@typescript-eslint/prefer-optional-chain': 'error', // 3 → 0
+      '@typescript-eslint/no-unused-expressions': 'error', // 1 → 0
+      '@typescript-eslint/no-unnecessary-type-parameters': 'error', // 3 → 0
+      //
+      // RESTE EN `warn` — dette réelle, chacune avec son motif :
       // 1) Code tiers non typé (NestJS DI, libs sans types) :
-      '@typescript-eslint/no-unsafe-assignment': 'warn',
-      '@typescript-eslint/no-unsafe-member-access': 'warn',
-      '@typescript-eslint/no-unsafe-call': 'warn',
-      '@typescript-eslint/no-unsafe-argument': 'warn',
-      '@typescript-eslint/no-unsafe-return': 'warn',
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-non-null-assertion': 'warn',
-      '@typescript-eslint/restrict-template-expressions': 'warn',
-      '@typescript-eslint/restrict-plus-operands': 'warn',
+      '@typescript-eslint/no-unsafe-assignment': 'warn', // 27
+      '@typescript-eslint/no-unsafe-argument': 'warn', // 1, même famille
+      '@typescript-eslint/no-non-null-assertion': 'warn', // 75
+      '@typescript-eslint/restrict-template-expressions': 'warn', // 96
       // 2) Patterns légitimes du projet (faux positifs) :
       //    - constructeurs qui élargissent la visibilité protected→public (erreurs de domaine)
-      '@typescript-eslint/no-useless-constructor': 'warn',
+      '@typescript-eslint/no-useless-constructor': 'warn', // 27
       //    - classes à membres statiques (modules NestJS / namespaces utilitaires)
-      '@typescript-eslint/no-extraneous-class': 'warn',
-      //    - conditions « défensives » rendues redondantes par noUncheckedIndexedAccess
-      '@typescript-eslint/no-unnecessary-condition': 'warn',
-      '@typescript-eslint/no-unnecessary-type-parameters': 'warn',
+      '@typescript-eslint/no-extraneous-class': 'warn', // 45
+      //    - conditions « défensives » rendues redondantes par noUncheckedIndexedAccess.
+      //      D3 a soldé les 8 occurrences de specs (des `as` qui MENTAIENT en
+      //      masquant un `| undefined`) ; les 7 restantes sont dans les composants
+      //      web et portent du comportement (props optimistes, branche morte) —
+      //      elles se traitent avec le lot C5, qui rouvre ces fichiers.
+      '@typescript-eslint/no-unnecessary-condition': 'warn', // 15 → 8
       //    - méthodes passées en callback (NestJS, tests) sans usage de `this`
-      '@typescript-eslint/unbound-method': 'warn',
+      '@typescript-eslint/unbound-method': 'warn', // 97
       // 3) Signaux informatifs / intentionnels :
       //    - no-unnecessary-type-assertion : non fiable sur les tests web (le
       //      projectService résout mal les types DOM/Testing-Library dans le
       //      tsconfig « solution »), avec des autofixes destructifs. En warn.
       '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
-      '@typescript-eslint/no-deprecated': 'warn',
+      '@typescript-eslint/no-deprecated': 'warn', // 61
+      //    - require-await : 196 occurrences, presque toutes des `async () => {}`
+      //      de specs. Volume trop élevé pour ce lot ; candidat n°1 du suivant.
       '@typescript-eslint/require-await': 'warn',
-      '@typescript-eslint/no-dynamic-delete': 'warn',
+      //    - no-invalid-void-type : 7 occurrences, TOUTES dans `web/src/api/client.ts`
+      //      (`lire<void>(r)` pour les réponses 204). Les solder demande de
+      //      scinder `lire<T>` en deux fonctions — refonte du client web, hors lot.
       '@typescript-eslint/no-invalid-void-type': 'warn',
-      '@typescript-eslint/no-unnecessary-type-conversion': 'warn',
-      '@typescript-eslint/prefer-optional-chain': 'warn',
-      '@typescript-eslint/no-unused-expressions': 'warn',
-      // no-unused-vars : on conserve le niveau « warn » historique de la base Nx.
-      '@typescript-eslint/no-unused-vars': 'warn',
+      // no-unused-vars : on conserve le niveau « warn » historique de la base Nx,
+      // mais on CODIFIE la convention déjà employée dans le dépôt (`_url`, `_init`,
+      // `_strength`…) : un identifiant préfixé d'un souligné est délibérément
+      // inutilisé. Indispensable depuis D3, où le retrait d'une clé s'écrit
+      // `const { [k]: _retire, ...reste } = obj` (cf. no-dynamic-delete).
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   }),
   // Fichiers hors programme TS (config, scripts, JS) : on neutralise les règles
@@ -237,6 +273,12 @@ export default [
       '**/dist',
       'coverage',
       '**/coverage',
+      // Déclarations émises par `tsc --build` (cible `typecheck`). Chaque config
+      // ESLint de projet les ignore déjà ; sans cette ligne, un `eslint .` LANCÉ
+      // À LA RACINE — ce que fait le compteur de warnings, `scripts/lint-warnings.mjs`
+      // — sort des centaines d'erreurs de parsing « not found by the project service ».
+      'out-tsc',
+      '**/out-tsc',
       '.nx',
       'tmp',
       '**/vitest.config.*.timestamp*',

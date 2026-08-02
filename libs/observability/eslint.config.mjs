@@ -24,7 +24,10 @@ export default [
       '@nx/dependency-checks': [
         'error',
         {
-          ignoredFiles: ['{projectRoot}/eslint.config.{js,cjs,mjs,ts,cts,mts}'],
+          ignoredFiles: [
+            '{projectRoot}/eslint.config.{js,cjs,mjs,ts,cts,mts}',
+            '{projectRoot}/vitest.config.{js,ts,mjs,mts}',
+          ],
         },
       ],
     },
@@ -33,6 +36,11 @@ export default [
     },
   },
   {
-    ignores: ['**/node_modules', '**/dist', '**/out-tsc'],
+    ignores: [
+      '**/node_modules',
+      '**/dist',
+      '**/out-tsc',
+      '**/vitest.config.*.timestamp*',
+    ],
   },
 ];

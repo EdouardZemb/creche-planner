@@ -4,17 +4,20 @@ import { entetesAssertionMachine } from '@creche-planner/nest-commons';
 import type { Canal, TypeNotification } from '@creche-planner/contracts-foyer';
 import { loadConfig } from '../config.js';
 import {
+  appelHttpOuRepli,
   CircuitBreaker,
-  executerOuRepli,
-  fetchAvecTimeout,
   type OptionsResilience,
 } from '@creche-planner/resilience';
 
 /** Réponse de `POST /api/desabonnement/jetons` : le jeton signé + son expiration. */
-const jetonReponseSchema = z.object({
-  token: z.string().min(1),
-  expireLe: z.string(),
-});
+const jetonReponseSchema = z
+  .object({
+    token: z.string().min(1),
+    expireLe: z.string(),
+  })
+  // Le jeton seul intéresse l'appelant : le schéma déplie l'enveloppe pour que
+  // la valeur nominale et la valeur de repli (`undefined`) aient le même type.
+  .transform((reponse) => reponse.token);
 
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
@@ -43,35 +46,28 @@ export class DesabonnementClient {
   private readonly logger = new Logger(DesabonnementClient.name);
   private readonly breaker = new CircuitBreaker();
 
+  /**
+   * Assertion machine inter-services (fondations lot 3). La route
+   * `/api/desabonnement/jetons` (interne) N'EST PAS exemptée.
+   */
+  private readonly entetes = (): Record<string, string> =>
+    entetesAssertionMachine('svc-notifications', loadConfig().assertion.secret);
+
   /** Émet un jeton one-shot pour `(parent, type, canal)` ; `undefined` si indisponible. */
   async emettreJeton(demande: DemandeJeton): Promise<string | undefined> {
-    const base = loadConfig().foyerUrl;
-    const url = `${base}/api/desabonnement/jetons`;
-    return executerOuRepli<string | undefined>(
-      'svc-foyer',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'POST',
-          // Assertion machine inter-services (fondations lot 3). La route
-          // `/api/desabonnement/jetons` (interne) N'EST PAS exemptée.
-          headers: {
-            'Content-Type': 'application/json',
-            ...entetesAssertionMachine(
-              'svc-notifications',
-              loadConfig().assertion.secret,
-            ),
-          },
-          body: JSON.stringify(demande),
-        });
-        if (!reponse.ok) {
-          throw new Error(`HTTP ${reponse.status}`);
-        }
-        return jetonReponseSchema.parse(await reponse.json()).token;
+    return appelHttpOuRepli(
+      {
+        service: 'svc-foyer',
+        logger: this.logger,
+        breaker: this.breaker,
+        options: OPTIONS,
+        entetes: this.entetes,
+        methode: 'POST',
+        url: `${loadConfig().foyerUrl}/api/desabonnement/jetons`,
+        corps: demande,
+        schema: jetonReponseSchema,
       },
       undefined,
-      this.breaker,
-      OPTIONS,
-      this.logger,
     );
   }
 }

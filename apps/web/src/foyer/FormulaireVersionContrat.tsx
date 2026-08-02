@@ -202,13 +202,8 @@ export function FormulaireVersionContrat({
                 plage={plage}
                 onCoche={(val) => {
                   setCochesJours((prev) => {
-                    const n = { ...prev };
-                    if (val) {
-                      n[jour] = true;
-                    } else {
-                      delete n[jour];
-                    }
-                    return n;
+                    const { [jour]: _retire, ...sansJour } = prev;
+                    return val ? { ...prev, [jour]: true } : sansJour;
                   });
                 }}
                 onPlage={(p) => {

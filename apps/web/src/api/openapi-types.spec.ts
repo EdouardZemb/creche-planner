@@ -31,6 +31,13 @@ import type {
 //     soit rejetée ; si les types cessaient de contraindre la forme, l'erreur
 //     attendue disparaîtrait et `@ts-expect-error` deviendrait lui-même une erreur.
 
+// `no-unnecessary-type-parameters` signale que `T` n'apparaît qu'une fois dans
+// chaque signature : c'est le principe même de l'astuce d'égalité stricte de types
+// (deux fonctions génériques ne sont mutuellement assignables que si `A` et `B`
+// sont identiques, variance comprise). Le paramètre EST le mécanisme, pas un
+// oubli — même chose pour `E` ci-dessous, dont la contrainte `extends true` porte
+// toute l'assertion.
+/* eslint-disable @typescript-eslint/no-unnecessary-type-parameters */
 type Egal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
     ? true
@@ -42,6 +49,7 @@ type Egal<A, B> =
 function verifie<E extends true>(): E {
   return true as E;
 }
+/* eslint-enable @typescript-eslint/no-unnecessary-type-parameters */
 
 describe('openapi-types — types générés depuis le contrat gateway', () => {
   it('les vues générées correspondent aux schemas du contrat (assertions de type)', () => {

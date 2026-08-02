@@ -2,12 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { z, type ZodType } from 'zod';
 import {
   CircuitBreaker,
-  fetchAvecTimeout,
   type OptionsResilience,
 } from '@creche-planner/resilience';
 import { loadConfig } from '../config.js';
-import { appelResilient, type MethodeHttp } from './appel-resilient.js';
-import { entetesAval } from './assertion-aval.js';
+import {
+  appelDirect,
+  appelResilient,
+  type MethodeHttp,
+} from './appel-resilient.js';
 
 /** Saisie de création d'un foyer (montants en euros saisis par l'usager). */
 export interface SaisieFoyer {
@@ -431,16 +433,13 @@ export class FoyerClient {
    * utilisé) via `Error('HTTP <code>')`, que `relayer` réémet à l'identique.
    */
   async desabonner(token: string): Promise<void> {
-    const base = loadConfig().foyerUrl;
-    const url = `${base}/api/desabonnement`;
-    this.logger.debug(`POST ${url}`);
-    const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...entetesAval() },
-      body: JSON.stringify({ token }),
+    await appelDirect({
+      service: 'svc-foyer',
+      logger: this.logger,
+      options: OPTIONS,
+      methode: 'POST',
+      url: `${loadConfig().foyerUrl}/api/desabonnement`,
+      corps: { token },
     });
-    if (!reponse.ok) {
-      throw new Error('HTTP ' + String(reponse.status));
-    }
   }
 }

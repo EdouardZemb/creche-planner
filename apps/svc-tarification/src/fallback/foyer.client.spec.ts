@@ -21,9 +21,10 @@ const FOYER_OK = {
 function dernierEntetes(
   fetchMock: ReturnType<typeof vi.fn>,
 ): Record<string, string> {
-  const init = fetchMock.mock.calls[0]?.[1] as {
-    headers?: Record<string, string>;
-  };
+  // `| undefined` explicite : `calls[0]` peut ne pas exister (aucun appel émis).
+  // Sans lui, le cast mentait et rendait l'accès optionnel ci-dessous « inutile ».
+  const init = fetchMock.mock.calls[0]?.[1] as
+    { headers?: Record<string, string> } | undefined;
   return init?.headers ?? {};
 }
 

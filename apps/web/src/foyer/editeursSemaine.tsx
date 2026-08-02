@@ -143,20 +143,17 @@ export function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
     champ: ChampInscription,
     val: boolean,
   ) {
-    const actuel = inscriptionJour(jour);
-    const suivant: InscriptionsJour = { ...actuel };
-    if (val) {
-      suivant[champ] = true;
-    } else {
-      delete suivant[champ];
-    }
-    const nouveauJour = Object.keys(suivant).length === 0 ? undefined : suivant;
-    const nouvelleAbcm: SemaineAbcm = { ...semaineAbcm };
-    if (nouveauJour === undefined) {
-      delete nouvelleAbcm[jour];
-    } else {
-      nouvelleAbcm[jour] = nouveauJour;
-    }
+    // Retrait d'une clé = omission par déstructuration (et non `delete`, qui
+    // dé-optimise l'objet et masque la clé retirée dans la lecture du code).
+    const { [champ]: _retire, ...sansChamp } = inscriptionJour(jour);
+    const suivant: InscriptionsJour = val
+      ? { ...inscriptionJour(jour), [champ]: true }
+      : sansChamp;
+    const { [jour]: _jourRetire, ...sansJour } = semaineAbcm;
+    const nouvelleAbcm: SemaineAbcm =
+      Object.keys(suivant).length === 0
+        ? sansJour
+        : { ...semaineAbcm, [jour]: suivant };
     onChange(nouvelleAbcm);
   }
 
@@ -253,13 +250,10 @@ export function AlshHebdoEditor({
   onChange,
 }: AlshHebdoEditorProps) {
   function mettreAJour(jour: JourSemaine, alsh: JourAlshHebdo | undefined) {
-    const nouvelleAbcm: SemaineAbcm = { ...semaineAbcm };
-    if (alsh === undefined) {
-      delete nouvelleAbcm[jour];
-    } else {
-      nouvelleAbcm[jour] = { alsh };
-    }
-    onChange(nouvelleAbcm);
+    const { [jour]: _retire, ...sansJour } = semaineAbcm;
+    onChange(
+      alsh === undefined ? sansJour : { ...semaineAbcm, [jour]: { alsh } },
+    );
   }
 
   return (

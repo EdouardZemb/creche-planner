@@ -1,0 +1,19 @@
+{
+  "total": 658,
+  "parRegle": {
+    "@typescript-eslint/require-await": 196,
+    "@typescript-eslint/unbound-method": 97,
+    "@typescript-eslint/restrict-template-expressions": 96,
+    "@typescript-eslint/no-non-null-assertion": 75,
+    "@typescript-eslint/no-deprecated": 61,
+    "@typescript-eslint/no-extraneous-class": 45,
+    "@typescript-eslint/no-unsafe-assignment": 27,
+    "@typescript-eslint/no-useless-constructor": 27,
+    "react-hooks/exhaustive-deps": 11,
+    "@typescript-eslint/no-unnecessary-condition": 8,
+    "@typescript-eslint/no-invalid-void-type": 7,
+    "react-hooks/set-state-in-effect": 5,
+    "@typescript-eslint/no-unused-vars": 2,
+    "@typescript-eslint/no-unsafe-argument": 1
+  }
+}

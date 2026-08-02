@@ -3,9 +3,8 @@ import { z } from 'zod';
 import { entetesAssertionMachine } from '@creche-planner/nest-commons';
 import { loadConfig } from '../config.js';
 import {
+  appelHttpOuRepli,
   CircuitBreaker,
-  executerOuRepli,
-  fetchAvecTimeout,
   type OptionsResilience,
 } from '@creche-planner/resilience';
 
@@ -47,27 +46,23 @@ export class FoyerClient {
   private readonly logger = new Logger(FoyerClient.name);
   private readonly breaker = new CircuitBreaker();
 
+  /** Assertion machine HMAC inter-services (fondations lot 3), injectée dans l'appel. */
+  private readonly entetes = (): Record<string, string> =>
+    entetesAssertionMachine('svc-tarification', loadConfig().assertion.secret);
+
   async foyer(foyerId: string): Promise<FoyerFallback | undefined> {
-    const url = `${loadConfig().foyerUrl}/api/foyers/${foyerId}`;
-    return executerOuRepli<FoyerFallback | undefined>(
-      'svc-foyer',
-      async () => {
-        // Assertion machine inter-services (fondations lot 3).
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAssertionMachine(
-            'svc-tarification',
-            loadConfig().assertion.secret,
-          ),
-        });
-        if (!reponse.ok) {
-          throw new Error(`HTTP ${reponse.status}`);
-        }
-        return foyerReponseSchema.parse(await reponse.json());
+    return appelHttpOuRepli(
+      {
+        service: 'svc-foyer',
+        logger: this.logger,
+        breaker: this.breaker,
+        options: OPTIONS,
+        entetes: this.entetes,
+        methode: 'GET',
+        url: `${loadConfig().foyerUrl}/api/foyers/${foyerId}`,
+        schema: foyerReponseSchema,
       },
       undefined,
-      this.breaker,
-      OPTIONS,
-      this.logger,
     );
   }
 }

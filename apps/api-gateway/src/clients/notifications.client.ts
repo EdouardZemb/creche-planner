@@ -1,13 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { z } from 'zod';
+import { z, type ZodType } from 'zod';
 import { loadConfig } from '../config.js';
 import {
   CircuitBreaker,
-  executerResilient,
-  fetchAvecTimeout,
   type OptionsResilience,
 } from '@creche-planner/resilience';
-import { entetesAval } from './assertion-aval.js';
+import { appelResilient, type MethodeHttp } from './appel-resilient.js';
 
 /** Statut d'une validation hebdomadaire renvoyé par `svc-notifications`. */
 const statutSchema = z.enum(['A_VALIDER', 'VALIDEE', 'VALIDEE_AVEC_MODIFS']);
@@ -168,6 +166,15 @@ const inboxSchema = z.object({
 
 export type InboxVue = z.infer<typeof inboxSchema>;
 
+/**
+ * `GET /api/foyers/:id/mois-communiques` renvoie `{ mois: [...] }` : le schéma
+ * **déplie** l'enveloppe pour que la valeur utile soit celle que le client
+ * expose (aucune projection à faire hors de l'appel).
+ */
+const moisCommuniquesSchema = z
+  .object({ mois: z.array(z.string()) })
+  .transform((reponse) => reponse.mois);
+
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
   retries: 1,
@@ -185,25 +192,32 @@ export class NotificationsClient {
   private readonly logger = new Logger(NotificationsClient.name);
   private readonly breaker = new CircuitBreaker();
 
+  /** Appel résilient vers `svc-notifications`, `chemin` relatif à la base configurée. */
+  private appel<T>(config: {
+    methode: MethodeHttp;
+    chemin: string;
+    corps?: unknown;
+    schema: ZodType<T>;
+  }): Promise<T> {
+    return appelResilient({
+      service: 'svc-notifications',
+      logger: this.logger,
+      breaker: this.breaker,
+      options: OPTIONS,
+      methode: config.methode,
+      url: `${loadConfig().notificationsUrl}${config.chemin}`,
+      corps: config.corps,
+      schema: config.schema,
+    });
+  }
+
   /** GET `/api/validations/a-valider?foyer=` — semaines à valider d'un foyer. */
   async listerAValider(foyerId: string): Promise<NotificationAValiderVue[]> {
-    const base = loadConfig().notificationsUrl;
-    const url = `${base}/api/validations/a-valider?foyer=${encodeURIComponent(foyerId)}`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-notifications',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return z.array(notificationAValiderSchema).parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/validations/a-valider?foyer=${encodeURIComponent(foyerId)}`,
+      schema: z.array(notificationAValiderSchema),
+    });
   }
 
   /** POST `/api/validations/:contratId/:semaineIso` — valide une semaine. */
@@ -211,26 +225,13 @@ export class NotificationsClient {
     contratId: string,
     semaineIso: string,
   ): Promise<ValidationResultat> {
-    const base = loadConfig().notificationsUrl;
-    const url =
-      `${base}/api/validations/${encodeURIComponent(contratId)}` +
-      `/${encodeURIComponent(semaineIso)}`;
-    this.logger.debug(`POST ${url}`);
-    return executerResilient(
-      'svc-notifications',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'POST',
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return validationResultatSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'POST',
+      chemin:
+        `/api/validations/${encodeURIComponent(contratId)}` +
+        `/${encodeURIComponent(semaineIso)}`,
+      schema: validationResultatSchema,
+    });
   }
 
   /**
@@ -242,25 +243,13 @@ export class NotificationsClient {
     semaineIso: string,
     etablissementId: string,
   ): Promise<BrouillonEtablissementVue> {
-    const base = loadConfig().notificationsUrl;
-    const url =
-      `${base}/api/validations/semaine/${encodeURIComponent(foyerId)}` +
-      `/${encodeURIComponent(semaineIso)}/etablissements/${encodeURIComponent(etablissementId)}/brouillon`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-notifications',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return brouillonEtablissementSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin:
+        `/api/validations/semaine/${encodeURIComponent(foyerId)}` +
+        `/${encodeURIComponent(semaineIso)}/etablissements/${encodeURIComponent(etablissementId)}/brouillon`,
+      schema: brouillonEtablissementSchema,
+    });
   }
 
   /**
@@ -272,25 +261,13 @@ export class NotificationsClient {
     foyerId: string,
     semaineIso: string,
   ): Promise<SuiviEnvoisVue> {
-    const base = loadConfig().notificationsUrl;
-    const url =
-      `${base}/api/validations/semaine/${encodeURIComponent(foyerId)}` +
-      `/${encodeURIComponent(semaineIso)}/envois`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-notifications',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return suiviEnvoisSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin:
+        `/api/validations/semaine/${encodeURIComponent(foyerId)}` +
+        `/${encodeURIComponent(semaineIso)}/envois`,
+      schema: suiviEnvoisSchema,
+    });
   }
 
   /**
@@ -304,31 +281,18 @@ export class NotificationsClient {
     du?: string,
     au?: string,
   ): Promise<string[]> {
-    const base = loadConfig().notificationsUrl;
     const params = new URLSearchParams();
     if (du !== undefined) params.set('du', du);
     if (au !== undefined) params.set('au', au);
     const suffixe = params.toString() ? `?${params.toString()}` : '';
-    const url =
-      `${base}/api/foyers/${encodeURIComponent(foyerId)}/mois-communiques` +
-      suffixe;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-notifications',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return z
-          .object({ mois: z.array(z.string()) })
-          .parse(await reponse.json()).mois;
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin:
+        `/api/foyers/${encodeURIComponent(foyerId)}/mois-communiques` + suffixe,
+      // L'enveloppe `{ mois }` est dépliée par le schéma lui-même : le repli
+      // éventuel d'un appelant ne peut ainsi jamais porter sur un objet partiel.
+      schema: moisCommuniquesSchema,
+    });
   }
 
   /**
@@ -337,23 +301,11 @@ export class NotificationsClient {
    * (jamais fourni par le navigateur), puis relayé ici comme un `foyer` de la validation.
    */
   async listerInbox(parentId: string): Promise<InboxVue> {
-    const base = loadConfig().notificationsUrl;
-    const url = `${base}/api/moi/notifications?parent=${encodeURIComponent(parentId)}`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-notifications',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return inboxSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/moi/notifications?parent=${encodeURIComponent(parentId)}`,
+      schema: inboxSchema,
+    });
   }
 
   /**
@@ -365,26 +317,13 @@ export class NotificationsClient {
     parentId: string,
     id: string,
   ): Promise<NotificationInAppVue> {
-    const base = loadConfig().notificationsUrl;
-    const url =
-      `${base}/api/moi/notifications/${encodeURIComponent(id)}/lu` +
-      `?parent=${encodeURIComponent(parentId)}`;
-    this.logger.debug(`POST ${url}`);
-    return executerResilient(
-      'svc-notifications',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'POST',
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return notificationInAppSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'POST',
+      chemin:
+        `/api/moi/notifications/${encodeURIComponent(id)}/lu` +
+        `?parent=${encodeURIComponent(parentId)}`,
+      schema: notificationInAppSchema,
+    });
   }
 
   /**
@@ -401,29 +340,11 @@ export class NotificationsClient {
     etablissementId: string,
     corpsEdite?: { sujet: string; corps: string },
   ): Promise<EnvoiEtablissementResultat> {
-    const base = loadConfig().notificationsUrl;
-    const url = `${base}/api/envois/etablissement`;
-    this.logger.debug(`POST ${url}`);
-    return executerResilient(
-      'svc-notifications',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...entetesAval() },
-          body: JSON.stringify({
-            foyerId,
-            semaineIso,
-            etablissementId,
-            ...corpsEdite,
-          }),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return envoiEtablissementResultatSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'POST',
+      chemin: '/api/envois/etablissement',
+      corps: { foyerId, semaineIso, etablissementId, ...corpsEdite },
+      schema: envoiEtablissementResultatSchema,
+    });
   }
 }

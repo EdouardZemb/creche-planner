@@ -483,6 +483,9 @@ importers:
       '@creche-planner/planification-domain':
         specifier: workspace:*
         version: link:../../libs/planification/domain
+      '@creche-planner/resilience':
+        specifier: workspace:*
+        version: link:../../libs/resilience
       '@creche-planner/shared-kernel':
         specifier: workspace:*
         version: link:../../libs/shared-kernel
@@ -971,6 +974,9 @@ importers:
       tslib:
         specifier: ^2.3.0
         version: 2.8.1
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   libs/shared-kernel:
     dependencies:

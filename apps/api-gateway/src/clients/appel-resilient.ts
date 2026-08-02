@@ -1,74 +1,47 @@
-import type { Logger } from '@nestjs/common';
 import type { ZodType } from 'zod';
 import {
-  executerResilient,
-  fetchAvecTimeout,
-  type CircuitBreaker,
-  type OptionsResilience,
+  appelHttpResilient,
+  executerAppelHttp,
+  type ConfigAppelHttp,
+  type ConfigAppelHttpResilient,
 } from '@creche-planner/resilience';
 import { entetesAval } from './assertion-aval.js';
 
-/** Méthodes HTTP émises par les clients REST du BFF. */
-export type MethodeHttp = 'GET' | 'POST' | 'PUT' | 'DELETE';
-
 /**
- * Erreur d'un service amont dont on a **capturé le corps JSON** (opt-in par
- * client, cf. `capturerCorpsErreur`). Porte le `status` HTTP et le `corps` parsé
- * afin que `relayer` puisse **réémettre le corps amont tel quel** (ex. un 409
- * `{ statusCode, code, message }` de `svc-foyer` → le front lit `code`), au lieu
- * du fourre-tout `Error('HTTP <code>')`. `message` reste `HTTP <code>` pour que le
- * repli `statutDepuisErreur` (5xx) fonctionne à l'identique si le corps n'est pas
- * relayé.
+ * Liaison **gateway** de la plomberie HTTP partagée (`@creche-planner/resilience`,
+ * lot D1) : elle n'ajoute qu'une chose — l'injection de `entetesAval()`, soit la
+ * propagation de l'identité parent + des foyers autorisés sur CHAQUE appel sortant
+ * (fondations lot 3, corrigée par #264). Le squelette commun (fetch borné, garde
+ * `ok`, parse Zod, capture optionnelle du corps d'erreur) vit désormais dans la
+ * lib, partagé avec les clients de repli des services.
+ *
+ * ⚠️ Ce fournisseur d'en-têtes est **distinct** de l'assertion machine HMAC
+ * (`entetesAssertionMachine`, `nest-commons/security`) utilisée entre services :
+ * deux mécanismes de sécurité différents, jamais à fusionner.
  */
-export class ErreurAmont extends Error {
-  constructor(
-    readonly status: number,
-    readonly corps: unknown,
-  ) {
-    super(`HTTP ${status}`);
-    this.name = 'ErreurAmont';
-  }
-}
 
-/** Lit le corps d'une réponse en JSON ; `undefined` si le corps n'est pas parseable. */
-async function lireCorpsJson(reponse: Response): Promise<unknown> {
-  try {
-    return await reponse.json();
-  } catch {
-    return undefined;
-  }
-}
+export type { MethodeHttp } from '@creche-planner/resilience';
+// Ré-export (et non redéfinition) : `relais.ts` et les specs testent
+// `erreur instanceof ErreurAmont` — ce doit rester LA même classe.
+export { ErreurAmont } from '@creche-planner/resilience';
 
-/** Configuration d'un appel REST résilient (un endpoint d'un client du BFF). */
-export interface ConfigAppelResilient<T> {
-  /** Nom du service amont (étiquette du disjoncteur et des erreurs). */
-  readonly service: string;
-  /** Logger du client appelant (trace `debug` de chaque appel sortant). */
-  readonly logger: Logger;
-  /** Disjoncteur partagé du client (une instance par dépendance amont). */
-  readonly breaker: CircuitBreaker;
-  readonly options: OptionsResilience;
-  readonly methode: MethodeHttp;
-  readonly url: string;
-  /** Corps JSON de la requête (POST/PUT) ; absent = requête sans corps. */
-  readonly corps?: unknown;
-  /** Schéma Zod de la réponse ; absent = réponse sans corps attendue (204). */
-  readonly schema?: ZodType<T> | undefined;
-  /**
-   * **Opt-in** (un seul client aujourd'hui, `FoyerClient`) : sur réponse non-2xx
-   * au corps JSON parseable, lever `ErreurAmont(status, corps)` au lieu de
-   * `Error('HTTP <code>')`, pour que `relayer` puisse réémettre le corps amont.
-   * Absent/`false` ⇒ comportement inchangé (aucun autre client n'est affecté).
-   */
-  readonly capturerCorpsErreur?: boolean;
-}
+/** Config d'un endpoint du BFF : tout sauf les en-têtes, fournis ici. */
+export type ConfigAppelResilient<T> = Omit<
+  ConfigAppelHttpResilient<T>,
+  'entetes'
+>;
+
+/** Config d'un appel one-shot du BFF (sans retry ni disjoncteur). */
+export type ConfigAppelDirect<T> = Omit<
+  ConfigAppelHttp<T>,
+  'entetes' | 'breaker'
+>;
 
 /**
  * Exécute un appel REST **résilient** (timeout + retry borné + circuit-breaker,
  * avec **propagation** des erreurs — le contrôleur du BFF traduit ensuite
  * l'échec amont en réponse HTTP) : c'est le squelette commun de tous les
- * endpoints des clients de la gateway, factorisé pour éliminer le boilerplate
- * répété par endpoint (fetch + garde `ok` + parse Zod).
+ * endpoints des clients de la gateway.
  */
 export function appelResilient<T>(
   config: ConfigAppelResilient<T> & { readonly schema: ZodType<T> },
@@ -79,37 +52,16 @@ export function appelResilient(
 export async function appelResilient<T>(
   config: ConfigAppelResilient<T>,
 ): Promise<T | undefined> {
-  const { methode, url, options, schema } = config;
-  config.logger.debug(`${methode} ${url}`);
-  return executerResilient(
-    config.service,
-    async () => {
-      // Assertion d'identité propagée sur CHAQUE appel sortant (fondations lot 3).
-      const entetes = entetesAval();
-      const init: RequestInit =
-        config.corps !== undefined
-          ? {
-              method: methode,
-              headers: { 'Content-Type': 'application/json', ...entetes },
-              body: JSON.stringify(config.corps),
-            }
-          : { method: methode, headers: { ...entetes } };
-      const reponse = await fetchAvecTimeout(url, options.timeoutMs, init);
-      if (!reponse.ok) {
-        if (config.capturerCorpsErreur) {
-          const corps = await lireCorpsJson(reponse);
-          if (corps !== undefined) {
-            throw new ErreurAmont(reponse.status, corps);
-          }
-        }
-        throw new Error('HTTP ' + String(reponse.status));
-      }
-      if (schema === undefined) {
-        return undefined;
-      }
-      return schema.parse(await reponse.json());
-    },
-    config.breaker,
-    options,
-  );
+  return appelHttpResilient({ ...config, entetes: entetesAval });
+}
+
+/**
+ * Variante **one-shot** (ni retry ni disjoncteur) pour les opérations qu'un
+ * ré-essai corromprait — cf. `FoyerClient.desabonner`, dont le jeton est brûlé
+ * au premier succès.
+ */
+export async function appelDirect(
+  config: ConfigAppelDirect<never> & { readonly schema?: undefined },
+): Promise<void> {
+  return executerAppelHttp({ ...config, entetes: entetesAval });
 }

@@ -361,7 +361,7 @@ export class EnvoiService {
     const etab = await this.etablissements.parId(etablissementId);
     // 404 réservé à l'établissement inconnu ou hors du foyer : un établissement sans
     // e-mail reste un cas nominal (récap non routable), pas une ressource introuvable.
-    if (etab === undefined || etab.foyerId !== foyerId) {
+    if (etab?.foyerId !== foyerId) {
       throw new NotFoundException([
         {
           champ: 'etablissement',

@@ -135,10 +135,7 @@ export class TarifCrechePsu implements PolitiqueTarifaire<SaisieMoisPsu> {
     ) {
       return this.config.plafond;
     }
-    if (
-      this.config.plancher !== undefined &&
-      this.config.plancher.estSuperieurA(ressources)
-    ) {
+    if (this.config.plancher?.estSuperieurA(ressources)) {
       return this.config.plancher;
     }
     return ressources;

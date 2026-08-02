@@ -28,13 +28,15 @@ describe('loadConfig (svc-notifications)', () => {
   afterEach(() => {
     for (const c of cles) {
       const v = sauvegarde.get(c);
-      if (v === undefined) delete process.env[c];
+      // `Reflect.deleteProperty` plutôt que `delete process.env[c]` : même effet
+      // (désarmer la variable), mais sans clé calculée — cf. `no-dynamic-delete`.
+      if (v === undefined) Reflect.deleteProperty(process.env, c);
       else process.env[c] = v;
     }
   });
 
   it('applique les défauts de dev local quand l’environnement est vide', () => {
-    for (const c of cles) delete process.env[c];
+    for (const c of cles) Reflect.deleteProperty(process.env, c);
 
     const config = loadConfig();
 
