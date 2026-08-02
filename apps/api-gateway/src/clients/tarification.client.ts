@@ -3,11 +3,9 @@ import { z } from 'zod';
 import { loadConfig } from '../config.js';
 import {
   CircuitBreaker,
-  executerResilient,
-  fetchAvecTimeout,
   type OptionsResilience,
 } from '@creche-planner/resilience';
-import { entetesAval } from './assertion-aval.js';
+import { appelResilient } from './appel-resilient.js';
 
 /** Ligne de coût (débit/crédit) en centimes. */
 const ligneVueSchema = z.object({
@@ -90,21 +88,15 @@ export class TarificationClient {
     const url =
       `${base}/api/couts?foyer=${encodeURIComponent(foyerId)}` +
       `&mois=${encodeURIComponent(mois)}&simule=${simule ? 'true' : 'false'}`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-tarification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return coutMoisVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return appelResilient({
+      service: 'svc-tarification',
+      logger: this.logger,
+      breaker: this.breaker,
+      options: OPTIONS,
+      methode: 'GET',
+      url,
+      schema: coutMoisVueSchema,
+    });
   }
 
   /** GET `/api/couts/annuel` — coût annuel d'un foyer. */
@@ -117,20 +109,14 @@ export class TarificationClient {
     const url =
       `${base}/api/couts/annuel?foyer=${encodeURIComponent(foyerId)}` +
       `&annee=${encodeURIComponent(String(annee))}&simule=${simule ? 'true' : 'false'}`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-tarification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS_ANNUEL.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return coutAnnuelVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS_ANNUEL,
-    );
+    return appelResilient({
+      service: 'svc-tarification',
+      logger: this.logger,
+      breaker: this.breaker,
+      options: OPTIONS_ANNUEL,
+      methode: 'GET',
+      url,
+      schema: coutAnnuelVueSchema,
+    });
   }
 }

@@ -4,9 +4,8 @@ import { z } from 'zod';
 import { entetesAssertionMachine } from '@creche-planner/nest-commons';
 import { loadConfig } from '../config.js';
 import {
+  appelHttpOuRepli,
   CircuitBreaker,
-  executerOuRepli,
-  fetchAvecTimeout,
   type OptionsResilience,
 } from '@creche-planner/resilience';
 
@@ -30,9 +29,14 @@ const compteurRelecturePlanification = meter.createCounter(
  * Réponse de `GET /api/contrats/:id/plannings/:mois` : la saisie enregistrée du
  * mois (forme libre — paramètres mensuels du planning) ou `null` si aucune saisie.
  */
-const lirePlanningReponseSchema = z.object({
-  saisie: z.record(z.string(), z.unknown()).nullable(),
-});
+const lirePlanningReponseSchema = z
+  .object({
+    saisie: z.record(z.string(), z.unknown()).nullable(),
+  })
+  // L'enveloppe est dépliée par le schéma : la valeur de repli (`undefined`)
+  // et la valeur nominale (`objet | null`) sortent alors du MÊME appel, sans
+  // projection après coup qui confondrait « pas de saisie » et « indisponible ».
+  .transform((reponse) => reponse.saisie);
 
 /**
  * Résultat d'une relecture mensuelle :
@@ -62,33 +66,31 @@ export class PlanificationClient {
   private readonly logger = new Logger(PlanificationClient.name);
   private readonly breaker = new CircuitBreaker();
 
+  /**
+   * Assertion machine inter-services (fondations lot 3) : indispensable au récap
+   * du mardi (svc-notifications → svc-planification) une fois l'enforce activé.
+   */
+  private readonly entetes = (): Record<string, string> =>
+    entetesAssertionMachine('svc-notifications', loadConfig().assertion.secret);
+
   /** Lit la saisie **réelle** d'un mois (le simulé ne concerne pas la validation). */
   async lirePlanning(contratId: string, mois: string): Promise<SaisieMois> {
     compteurRelecturePlanification.add(1);
     const base = loadConfig().planificationUrl;
-    const url =
-      `${base}/api/contrats/${encodeURIComponent(contratId)}` +
-      `/plannings/${encodeURIComponent(mois)}?simule=false`;
-    return executerOuRepli<SaisieMois>(
-      'svc-planification',
-      async () => {
-        // Assertion machine inter-services (fondations lot 3) : indispensable au récap
-        // du mardi (svc-notifications → svc-planification) une fois l'enforce activé.
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAssertionMachine(
-            'svc-notifications',
-            loadConfig().assertion.secret,
-          ),
-        });
-        if (!reponse.ok) {
-          throw new Error(`HTTP ${reponse.status}`);
-        }
-        return lirePlanningReponseSchema.parse(await reponse.json()).saisie;
+    return appelHttpOuRepli(
+      {
+        service: 'svc-planification',
+        logger: this.logger,
+        breaker: this.breaker,
+        options: OPTIONS,
+        entetes: this.entetes,
+        methode: 'GET',
+        url:
+          `${base}/api/contrats/${encodeURIComponent(contratId)}` +
+          `/plannings/${encodeURIComponent(mois)}?simule=false`,
+        schema: lirePlanningReponseSchema,
       },
       undefined,
-      this.breaker,
-      OPTIONS,
-      this.logger,
     );
   }
 }

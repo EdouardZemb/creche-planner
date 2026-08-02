@@ -5,9 +5,8 @@ import { MODES_CONTRAT } from '@creche-planner/contracts-kernel';
 import { entetesAssertionMachine } from '@creche-planner/nest-commons';
 import { loadConfig } from '../config.js';
 import {
+  appelHttpOuRepli,
   CircuitBreaker,
-  executerOuRepli,
-  fetchAvecTimeout,
   type OptionsResilience,
 } from '@creche-planner/resilience';
 
@@ -75,6 +74,13 @@ export class PlanificationClient {
   private readonly logger = new Logger(PlanificationClient.name);
   private readonly breaker = new CircuitBreaker();
 
+  /**
+   * Assertion machine inter-services (fondations lot 3) : sans elle, l'enforce
+   * futur casserait ce repli tarif→planif. Vide si secret non configuré (legacy).
+   */
+  private readonly entetes = (): Record<string, string> =>
+    entetesAssertionMachine('svc-tarification', loadConfig().assertion.secret);
+
   async prestations(
     contratId: string,
     mois: string,
@@ -91,26 +97,18 @@ export class PlanificationClient {
     const url =
       `${base}/api/prestations?contrat=${encodeURIComponent(contratId)}` +
       `&mois=${encodeURIComponent(mois)}&simule=${simule ? 'true' : 'false'}`;
-    return executerOuRepli<PrestationsContratFallback | undefined>(
-      'svc-planification',
-      async () => {
-        // Assertion machine inter-services (fondations lot 3) : sans elle, l'enforce
-        // futur casserait ce repli tarif→planif. Vide si secret non configuré (legacy).
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAssertionMachine(
-            'svc-tarification',
-            loadConfig().assertion.secret,
-          ),
-        });
-        if (!reponse.ok) {
-          throw new Error(`HTTP ${reponse.status}`);
-        }
-        return prestationsReponseSchema.parse(await reponse.json());
+    return appelHttpOuRepli(
+      {
+        service: 'svc-planification',
+        logger: this.logger,
+        breaker: this.breaker,
+        options: OPTIONS,
+        entetes: this.entetes,
+        methode: 'GET',
+        url,
+        schema: prestationsReponseSchema,
       },
       undefined,
-      this.breaker,
-      OPTIONS,
-      this.logger,
     );
   }
 }

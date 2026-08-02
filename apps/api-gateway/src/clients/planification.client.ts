@@ -1,15 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import { z } from 'zod';
+import { z, type ZodType } from 'zod';
 import { MODES_CONTRAT } from '@creche-planner/contracts-kernel';
 import { loadConfig } from '../config.js';
 import {
   CircuitBreaker,
-  executerResilient,
-  fetchAvecTimeout,
   type OptionsResilience,
 } from '@creche-planner/resilience';
-import { entetesAval } from './assertion-aval.js';
+import { appelResilient, type MethodeHttp } from './appel-resilient.js';
 
 /**
  * Saisie de création d'un contrat. Le corps est une union discriminée par
@@ -179,38 +177,59 @@ const OPTIONS: OptionsResilience = {
 /**
  * Client REST résilient vers `svc-planification` (port 3004). Sur le chemin
  * critique du BFF : timeout + retry borné + circuit-breaker, avec
- * **propagation** des erreurs (`executerResilient`).
+ * **propagation** des erreurs. Le squelette commun par endpoint (fetch + garde
+ * `ok` + parse Zod) est factorisé dans `appelResilient` ; chaque méthode ne
+ * déclare plus que sa méthode HTTP, son chemin, son corps éventuel et le schéma
+ * de sa réponse.
  */
 @Injectable()
 export class PlanificationClient {
   private readonly logger = new Logger(PlanificationClient.name);
   private readonly breaker = new CircuitBreaker();
 
+  /** Appel résilient vers `svc-planification`, `chemin` relatif à la base configurée. */
+  private appel<T>(config: {
+    methode: MethodeHttp;
+    chemin: string;
+    corps?: unknown;
+    schema: ZodType<T>;
+  }): Promise<T>;
+  private appel(config: {
+    methode: MethodeHttp;
+    chemin: string;
+    corps?: unknown;
+  }): Promise<void>;
+  private appel<T>(config: {
+    methode: MethodeHttp;
+    chemin: string;
+    corps?: unknown;
+    schema?: ZodType<T> | undefined;
+  }): Promise<T | void> {
+    const commun = {
+      service: 'svc-planification',
+      logger: this.logger,
+      breaker: this.breaker,
+      options: OPTIONS,
+      methode: config.methode,
+      url: `${loadConfig().planificationUrl}${config.chemin}`,
+      corps: config.corps,
+    };
+    return config.schema === undefined
+      ? appelResilient(commun)
+      : appelResilient({ ...commun, schema: config.schema });
+  }
+
   /** POST `/api/contrats` — crée un contrat. */
   async creerContrat(saisie: SaisieContrat): Promise<ContratVue> {
-    const base = loadConfig().planificationUrl;
-    const url = `${base}/api/contrats`;
-    this.logger.debug(`POST ${url}`);
-    // Clé d'idempotence générée AVANT `executerResilient` : les deux tentatives
-    // d'un même POST (retry sur réponse lente) partagent cet `id`, dédupliqué par
-    // PK `contrat.id` côté service (`onConflictDoNothing`) → jamais de doublon.
-    const corps = { id: randomUUID(), ...saisie };
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...entetesAval() },
-          body: JSON.stringify(corps),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return contratVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    // Clé d'idempotence générée AVANT l'appel : les deux tentatives d'un même
+    // POST (retry sur réponse lente) partagent cet `id`, dédupliqué par PK
+    // `contrat.id` côté service (`onConflictDoNothing`) → jamais de doublon.
+    return this.appel({
+      methode: 'POST',
+      chemin: '/api/contrats',
+      corps: { id: randomUUID(), ...saisie },
+      schema: contratVueSchema,
+    });
   }
 
   /**
@@ -219,48 +238,22 @@ export class PlanificationClient {
    * `/contrats/:id/...` ne portent qu'un `contratId`. 404 → erreur propagée.
    */
   async contrat(id: string): Promise<ContratVue> {
-    const base = loadConfig().planificationUrl;
-    const url = `${base}/api/contrats/${encodeURIComponent(id)}`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return contratVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/contrats/${encodeURIComponent(id)}`,
+      schema: contratVueSchema,
+    });
   }
 
   /** GET `/api/contrats?foyer=` — liste les contrats d'un foyer (config incluse). */
   async listerContrats(foyerId: string): Promise<ContratVue[]> {
-    const base = loadConfig().planificationUrl;
-    const url = `${base}/api/contrats?foyer=${encodeURIComponent(foyerId)}`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        // `passthrough` : on conserve la config mode-spécifique (semaineType,
-        // semaineAbcm, heures, nbMensualités) relayée telle quelle au front.
-        return z
-          .array(contratVueSchema.passthrough())
-          .parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/contrats?foyer=${encodeURIComponent(foyerId)}`,
+      // `passthrough` : on conserve la config mode-spécifique (semaineType,
+      // semaineAbcm, heures, nbMensualités) relayée telle quelle au front.
+      schema: z.array(contratVueSchema.passthrough()),
+    });
   }
 
   /**
@@ -274,69 +267,31 @@ export class PlanificationClient {
     id: string,
     saisie: SaisieContrat,
   ): Promise<ContratVue> {
-    const base = loadConfig().planificationUrl;
-    const url = `${base}/api/contrats/${encodeURIComponent(id)}/version-courante`;
-    this.logger.debug(`PUT ${url}`);
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...entetesAval() },
-          body: JSON.stringify(saisie),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return contratVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'PUT',
+      chemin: `/api/contrats/${encodeURIComponent(id)}/version-courante`,
+      corps: saisie,
+      schema: contratVueSchema,
+    });
   }
 
   /** POST `/api/contrats/:id/versions` — crée un **avenant** (201 attendu). */
   async creerAvenant(id: string, saisie: SaisieAvenant): Promise<ContratVue> {
-    const base = loadConfig().planificationUrl;
-    const url = `${base}/api/contrats/${encodeURIComponent(id)}/versions`;
-    this.logger.debug(`POST ${url}`);
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...entetesAval() },
-          body: JSON.stringify(saisie),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return contratVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'POST',
+      chemin: `/api/contrats/${encodeURIComponent(id)}/versions`,
+      corps: saisie,
+      schema: contratVueSchema,
+    });
   }
 
   /** GET `/api/contrats/:id/versions` — historique des versions d'un contrat. */
   async listerVersions(id: string): Promise<ContratVersionVue[]> {
-    const base = loadConfig().planificationUrl;
-    const url = `${base}/api/contrats/${encodeURIComponent(id)}/versions`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return z.array(contratVersionVueSchema).parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/contrats/${encodeURIComponent(id)}/versions`,
+      schema: z.array(contratVersionVueSchema),
+    });
   }
 
   /**
@@ -347,25 +302,13 @@ export class PlanificationClient {
     id: string,
     versionId: string,
   ): Promise<ImpactVersion> {
-    const base = loadConfig().planificationUrl;
-    const url =
-      `${base}/api/contrats/${encodeURIComponent(id)}` +
-      `/versions/${encodeURIComponent(versionId)}/impact`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return impactVersionSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin:
+        `/api/contrats/${encodeURIComponent(id)}` +
+        `/versions/${encodeURIComponent(versionId)}/impact`,
+      schema: impactVersionSchema,
+    });
   }
 
   /**
@@ -377,48 +320,22 @@ export class PlanificationClient {
     versionId: string,
     saisie: SaisieCorrectionVersion,
   ): Promise<ContratVue> {
-    const base = loadConfig().planificationUrl;
-    const url =
-      `${base}/api/contrats/${encodeURIComponent(id)}` +
-      `/versions/${encodeURIComponent(versionId)}`;
-    this.logger.debug(`PUT ${url}`);
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...entetesAval() },
-          body: JSON.stringify(saisie),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return contratVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'PUT',
+      chemin:
+        `/api/contrats/${encodeURIComponent(id)}` +
+        `/versions/${encodeURIComponent(versionId)}`,
+      corps: saisie,
+      schema: contratVueSchema,
+    });
   }
 
   /** DELETE `/api/contrats/:id` — supprime un contrat (204 attendu). */
   async supprimerContrat(id: string): Promise<void> {
-    const base = loadConfig().planificationUrl;
-    const url = `${base}/api/contrats/${encodeURIComponent(id)}`;
-    this.logger.debug(`DELETE ${url}`);
-    await executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'DELETE',
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    await this.appel({
+      methode: 'DELETE',
+      chemin: `/api/contrats/${encodeURIComponent(id)}`,
+    });
   }
 
   /** PUT `/api/contrats/:id/plannings/:mois` — écrit un planning (204 attendu). */
@@ -428,26 +345,13 @@ export class PlanificationClient {
     simule: boolean,
     corps: SaisiePlanning,
   ): Promise<void> {
-    const base = loadConfig().planificationUrl;
-    const url =
-      `${base}/api/contrats/${encodeURIComponent(contratId)}` +
-      `/plannings/${encodeURIComponent(mois)}?simule=${simule ? 'true' : 'false'}`;
-    this.logger.debug(`PUT ${url}`);
-    await executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...entetesAval() },
-          body: JSON.stringify(corps),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    await this.appel({
+      methode: 'PUT',
+      chemin:
+        `/api/contrats/${encodeURIComponent(contratId)}` +
+        `/plannings/${encodeURIComponent(mois)}?simule=${simule ? 'true' : 'false'}`,
+      corps,
+    });
   }
 
   /**
@@ -460,26 +364,13 @@ export class PlanificationClient {
     simule: boolean,
     corps: SaisiePlanning,
   ): Promise<void> {
-    const base = loadConfig().planificationUrl;
-    const url =
-      `${base}/api/contrats/${encodeURIComponent(contratId)}` +
-      `/plannings/semaine/${encodeURIComponent(semaineIso)}?simule=${simule ? 'true' : 'false'}`;
-    this.logger.debug(`PUT ${url}`);
-    await executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...entetesAval() },
-          body: JSON.stringify(corps),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    await this.appel({
+      methode: 'PUT',
+      chemin:
+        `/api/contrats/${encodeURIComponent(contratId)}` +
+        `/plannings/semaine/${encodeURIComponent(semaineIso)}?simule=${simule ? 'true' : 'false'}`,
+      corps,
+    });
   }
 
   /** GET `/api/contrats/:id/plannings/:mois` — saisie enregistrée d'un mois. */
@@ -488,46 +379,22 @@ export class PlanificationClient {
     mois: string,
     simule: boolean,
   ): Promise<LirePlanningReponse> {
-    const base = loadConfig().planificationUrl;
-    const url =
-      `${base}/api/contrats/${encodeURIComponent(contratId)}` +
-      `/plannings/${encodeURIComponent(mois)}?simule=${simule ? 'true' : 'false'}`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return lirePlanningReponseSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin:
+        `/api/contrats/${encodeURIComponent(contratId)}` +
+        `/plannings/${encodeURIComponent(mois)}?simule=${simule ? 'true' : 'false'}`,
+      schema: lirePlanningReponseSchema,
+    });
   }
 
   /** GET `/api/etablissements?foyer=` — établissements (entité libre) d'un foyer. */
   async listerEtablissements(foyerId: string): Promise<EtablissementVue[]> {
-    const base = loadConfig().planificationUrl;
-    const url = `${base}/api/etablissements?foyer=${encodeURIComponent(foyerId)}`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return z.array(etablissementVueSchema).parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/etablissements?foyer=${encodeURIComponent(foyerId)}`,
+      schema: z.array(etablissementVueSchema),
+    });
   }
 
   /** POST `/api/etablissements?foyer=` — crée un établissement (201). */
@@ -535,28 +402,14 @@ export class PlanificationClient {
     foyerId: string,
     saisie: SaisieEtablissement,
   ): Promise<EtablissementVue> {
-    const base = loadConfig().planificationUrl;
-    const url = `${base}/api/etablissements?foyer=${encodeURIComponent(foyerId)}`;
-    this.logger.debug(`POST ${url}`);
     // Même clé d'idempotence que `creerContrat` : l'`id` généré ici est partagé
     // par les deux tentatives d'un retry → dédup par PK `etablissement.id`.
-    const corps = { id: randomUUID(), ...saisie };
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...entetesAval() },
-          body: JSON.stringify(corps),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return etablissementVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'POST',
+      chemin: `/api/etablissements?foyer=${encodeURIComponent(foyerId)}`,
+      corps: { id: randomUUID(), ...saisie },
+      schema: etablissementVueSchema,
+    });
   }
 
   /** PUT `/api/etablissements/:id` — modifie un établissement. */
@@ -564,46 +417,20 @@ export class PlanificationClient {
     id: string,
     saisie: SaisieEtablissement,
   ): Promise<EtablissementVue> {
-    const base = loadConfig().planificationUrl;
-    const url = `${base}/api/etablissements/${encodeURIComponent(id)}`;
-    this.logger.debug(`PUT ${url}`);
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...entetesAval() },
-          body: JSON.stringify(saisie),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return etablissementVueSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'PUT',
+      chemin: `/api/etablissements/${encodeURIComponent(id)}`,
+      corps: saisie,
+      schema: etablissementVueSchema,
+    });
   }
 
   /** DELETE `/api/etablissements/:id` — supprime un établissement (204 ; 409 si rattaché). */
   async supprimerEtablissement(id: string): Promise<void> {
-    const base = loadConfig().planificationUrl;
-    const url = `${base}/api/etablissements/${encodeURIComponent(id)}`;
-    this.logger.debug(`DELETE ${url}`);
-    await executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          method: 'DELETE',
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    await this.appel({
+      methode: 'DELETE',
+      chemin: `/api/etablissements/${encodeURIComponent(id)}`,
+    });
   }
 
   /** GET `/api/prestations` — prestations générées d'un (contrat, mois). */
@@ -612,24 +439,12 @@ export class PlanificationClient {
     mois: string,
     simule: boolean,
   ): Promise<PrestationsReponse> {
-    const base = loadConfig().planificationUrl;
-    const url =
-      `${base}/api/prestations?contrat=${encodeURIComponent(contratId)}` +
-      `&mois=${encodeURIComponent(mois)}&simule=${simule ? 'true' : 'false'}`;
-    this.logger.debug(`GET ${url}`);
-    return executerResilient(
-      'svc-planification',
-      async () => {
-        const reponse = await fetchAvecTimeout(url, OPTIONS.timeoutMs, {
-          headers: entetesAval(),
-        });
-        if (!reponse.ok) {
-          throw new Error('HTTP ' + reponse.status);
-        }
-        return prestationsReponseSchema.parse(await reponse.json());
-      },
-      this.breaker,
-      OPTIONS,
-    );
+    return this.appel({
+      methode: 'GET',
+      chemin:
+        `/api/prestations?contrat=${encodeURIComponent(contratId)}` +
+        `&mois=${encodeURIComponent(mois)}&simule=${simule ? 'true' : 'false'}`,
+      schema: prestationsReponseSchema,
+    });
   }
 }
