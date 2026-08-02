@@ -1,0 +1,27 @@
+---
+name: plan-fondations-backend
+description: 'Chantier n°10 « Fondations backend » — 6 lots (dead-letter NATS, métriques+alertes, assertion HMAC gateway→svc, scoping par service, ménage referentiel, tests) ; ✅ EXÉCUTÉ 6/6 + ✅ DÉPLOYÉ PROD 0.13.0 (2026-07-18) ; reste enforce différé (~1 sem de logs observe)'
+metadata:
+  node_type: memory
+  type: project
+  originSessionId: d7f2d6d4-4f7f-4bf4-a581-7ba36b94bc92
+---
+
+Chantier n°10 « Fondations backend » — plan `.claude/plans/fondations-backend.md`, validé PO 2026-07-17. **✅ EXÉCUTÉ : 6/6 lots MERGÉS main (agents Opus par lot + Sonnet lot 6, orchestration séquentielle clone principal), main `db95a55`.** Premier chantier 100 % backend. **PAS ENCORE DÉPLOYÉ EN PROD** (reste release train + 3 actions ops ci-dessous).
+
+Ordre exécuté 1→2→5→3→4→6 (séquentiel : lots se recouvrent sur nest-commons/api-gateway/svc-referentiel + main protégée = merges 1 par 1 ; parallélisme worktree écarté = piège « faux vert » Windows) :
+
+1. Dead-letter + mutualisation `JetStreamConsumer` dans `nest-commons` (`ConsumerModule.forRoot`), `traiter()`→`ResultatTraitement`, migrations planif 0007/tarif 0003/notif 0017, compteur `consumer_rejets_total{stream,raison}` — PR #225 `e43c624`. Écart : `deliveryCount` (pas `redeliveryCount`, déprécié nats.js 2.29.3).
+2. Métriques (`outbox_publications_echecs_total`, `outbox_backlog` ObservableGauge, `gateway_authz_refus_total`, `notifications_envoi_echecs_total`) + groupe alertes `fondations` — PR #226 `ff39624`. **Piège tranché : un type connu mais non consommé part en dead-letter `TYPE_INCONNU` (durables sans `filter_subject`) → l'alerte `ConsumerRejetsDetectes` exclut `raison="TYPE_INCONNU"` en PromQL** (option b du plan, 0 code lot 1 touché).
+3. Referentiel : supprimé `GET /frais-fixes/applicable` + `POST /grilles/abcm`, DROP `frais_fixes_abcm` (migration 0001), validation zod déplacée dans `publierGrilleAbcm()`, specs seed+config — PR #227 `40e40c5`.
+4. Assertion HMAC `x-assertion-identite` (secret `ASSERTION_IDENTITE_SECRET`, observe-only), lib `nest-commons/src/lib/security/` exposée AUSSI par sous-chemin léger `@creche-planner/nest-commons/security` (crypto pure — sinon barrel traîne DB/NATS et le bundle gateway crash au boot), ALS+interceptor gateway, assertions machine svc→svc, guard APP_GUARD ×5, requestFilter ×5 pacts, compose dev `dev-assertion-secret` / prod `${…:?}` — PR #228 `d35a78a` (66 fichiers). A pré-écrit 4 specs du lot 6.
+5. Scoping ressource→foyer local par service, `@ScopeFoyerInterServices({param|query|body|resoudre|comparer})`, `ScopeFoyerGuard` (bypass machine/admin AVANT inclusion), `ResolveurFoyerRessource` par svc, métrique `svc_scope_refus_total{decision}` + alerte `ScopeInterServicesRefus`, 5 pacts en `INTERSERVICE_AUTHZ_ENFORCE=1`, doc `docs/exploitation/authz-inter-services.md` — PR #229 `7df97bf`.
+6. Specs clients fallback restants (api-gateway ×3) + configs planif/tarif (Sonnet) ; 4 specs déjà faites au lot 3 assertaient déjà l'entête — PR #230 `db95a55`. 0 bug prod.
+
+**⚠️ Constat revue adversariale (5 auditeurs + réfuteurs, 0 confirmé sauf ceci) : `ScopeFoyerGuard` est FAIL-OPEN quand la valeur de scope est absente de la requête** ([scope-foyer.guard.ts](../../creche-planner-public/libs/nest-commons/src/lib/security/scope-foyer.guard.ts) étape 5, ~L126-134) — délibéré, calqué sur `extraireRefFoyer`/`AppartenanceGuard` gateway (le plan le demandait). Conséquence : assertion PARENT sur `GET /api/foyers` sans `parentEmail` → passe le guard ET obtient TOUS les foyers, même en enforce ; idem `POST /api/foyers` sans `createurEmail` (rétrocompat). **Peu exploitable** (un parent ne détient jamais de jeton d'assertion valide, forgé côté gateway avec le secret ; forger = avoir le secret = pouvoir mettre n'importe quel foyer). Durcir = fail-closed pour assertions parent quand la réf est absente (machine/admin bypassent déjà avant), MAIS risque casse rétrocompat `POST /api/foyers` + portée large 4 svc → **remonté au PO, non écrasé unilatéralement**. Décision PO en attente.
+
+**✅ DÉPLOYÉ PROD `0.13.0` (2026-07-18, train autonome autorisé PO — détail du run dans [[prod-deployment-facts]]).** Ops (1) secret ✅ FAIT (commit `2067ee7`, posé serveur par le PO — sops `set` CASSÉ en 3.9.4 sur dotenv, la voie qui marche = déchiffrer vers `/dev/shm/<dir>/.env.server` (nom qui matche la creation_rule) → append → `sops -e` → round-trip → mv) ; ops (2) ✅ FAIT (`remote-apply-observability.ps1 -Yes`, 20 règles/7 groupes chargées, métriques vérifiées dans Prometheus : `consumer_rejets_total{TYPE_INCONNU}=72`, `outbox_backlog` 4 séries) ; **ops (3) ENFORCE = SEULE ACTION RESTANTE** (~1 sem logs observe propres, requêtes Loki `|= "AURAIT REFUSÉ"` / `|= "SCOPE AURAIT REFUSÉ"` dans `authz-inter-services.md`) : `INTERSERVICE_AUTHZ_ENFORCE=1` + recréer conteneurs, rollback = retirer la var.
+
+Constats post-deploy 0.13.0 : dead_letter notifications = 72×`TYPE_INCONNU`/`planification.PlanningModifie.v1` dès le seed (durables sans filter_subject, comportement voulu lot 2, alerte exclut TYPE_INCONNU — baseline attendue à chaque seed/deploy) ; 0 « AURAIT REFUSÉ » sur le trafic nominal (aucun point d'appel oublié) ; alerte préexistante `RepliPlanificationFrequent` passée `pending` après le seed (burst de reprojection tarif→planif), à surveiller qu'elle retombe.
+
+Voir [[prod-deployment-facts]], [[repo-clean-clone-location]], [[chantier-coquille-execution]].

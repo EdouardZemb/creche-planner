@@ -21,3 +21,32 @@
 - The `nx-generate` skill handles generator discovery internally - don't call nx_docs just to look up generator syntax
 
 <!-- nx configuration end-->
+
+# Contexte projet pour les sessions distantes
+
+Ce dépôt embarque son propre contexte de travail, pour qu'une session lancée
+ailleurs que sur le poste de l'auteur (Claude Code sur le web, autre machine)
+reparte avec le même historique de décisions.
+
+- **`.claude/memory/MEMORY.md`** — index de la mémoire projet : un fichier par
+  sujet (chantiers livrés, pièges connus, faits de prod). **À lire en début de
+  session** ; les fiches `piege-*.md` évitent de re-diagnostiquer des faux
+  positifs déjà tranchés.
+- **`.claude/plans/`** — plans de chantier détaillés (lots, décisions, critères
+  d'acceptation). Le plan est la source de vérité du découpage en lots.
+- **`docs/06-etat-davancement.md`** — journal d'avancement fonctionnel.
+
+Si une session distante apprend un fait durable (piège, décision, état de
+prod), l'écrire dans `.claude/memory/` et l'indexer dans `MEMORY.md` : c'est
+la seule voie pour qu'il revienne sur le poste principal.
+
+## Ce qui n'est PAS faisable hors du réseau local
+
+- **Déploiement et vérification prod** : le serveur n'est joignable qu'en LAN
+  (`ssh edouard@<ip-lan>`), et les clés sops+age vivent sur le serveur. Aucun
+  `deploy.mjs`, aucun rejeu de projection depuis une session distante.
+- **Stack Docker locale** : seed, `e2e-stack` et `web:e2e-visuel` supposent la
+  pile compose locale. Les vérifications visuelles se font sur le poste ou en CI.
+
+Une session distante produit donc du **code et des PR** ; les releases et les
+vérifications live attendent un accès au poste principal.
