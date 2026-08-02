@@ -135,6 +135,15 @@ jobs:
       - name: Lint · type-check · test · build (affected)
         run: pnpm nx affected -t lint typecheck test build --parallel=3
 
+      # Lot D3 — RATCHET ESLint. Le lint `affected` ci-dessus est vert tant qu'il
+      # n'y a pas d'ERREUR ; les 28 règles laissées en `warn` (dette assumée)
+      # n'étaient donc comptées par personne, et pouvaient remonter indéfiniment.
+      # Ce step lint le dépôt ENTIER et refuse tout dépassement de la baseline
+      # versionnée. Volontairement hors `affected` : un total ne se compare que
+      # s'il porte sur le même périmètre à chaque run.
+      - name: Ratchet ESLint — warnings vs baseline (bloquant si remontée)
+        run: node .github/workflows/scripts/lint-warnings.mjs
+
       # P1-2 (doc 18 §8) — publier les MÉTRIQUES de test, pas seulement le vert/rouge.
       # Les reporters JUnit + couverture lcov/json-summary sont activés en CI par les
       # vitest.config.mts (gardés par `process.env.CI`). On agrège un résumé lisible

@@ -113,7 +113,7 @@ export function HistoriqueContrat({
         </div>
       )}
 
-      {etat.data && etat.data.length === 0 && (
+      {etat.data?.length === 0 && (
         <p className="muted">Aucun changement enregistré pour ce contrat.</p>
       )}
 

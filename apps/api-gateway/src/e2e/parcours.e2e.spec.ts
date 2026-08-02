@@ -176,7 +176,11 @@ function trouverPortLibre(): Promise<number> {
     serveur.listen(0, () => {
       const port = (serveur.address() as AddressInfo).port;
       serveur.close((erreur) => {
-        erreur ? rejeter(erreur) : resoudre(port);
+        if (erreur) {
+          rejeter(erreur);
+        } else {
+          resoudre(port);
+        }
       });
     });
   });
