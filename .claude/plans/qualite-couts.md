@@ -454,7 +454,7 @@ repli svc-planification en échec')`. **Distinction cruciale** : un repli qui
 - [ ] Contrat sans projection + repli KO → 503 ; contrat sans projection +
       repli OK vide → mois calculé sans ce contrat (deux tests).
 - [ ] Plus aucun « foyer neutre » dans le code (`grep -n "tranche: 3"
-    apps/svc-tarification/src` ne matche plus dans cout.service.ts).
+apps/svc-tarification/src` ne matche plus dans cout.service.ts).
 - [ ] `corepack pnpm@10.34.2 nx run-many -t lint typecheck test -p svc-tarification`
       vert ; specs pact provider (`tarification.provider.pact.spec.ts`)
       inchangées et vertes ; `can-i-deploy` non impacté (aucun contrat modifié).
@@ -601,7 +601,7 @@ de septembre de la première année.` Visible pour les modes CANTINE /
 - [ ] Formulaire : case visible et fonctionnelle pour cantine/péri/ALSH,
       absente pour crèche ; état pré-rempli à l'édition.
 - [ ] `corepack pnpm@10.34.2 nx run-many -t lint typecheck test -p
-    contracts-planification svc-planification api-gateway web` vert ;
+contracts-planification svc-planification api-gateway web` vert ;
       pacts régénérés propres ; `can-i-deploy` vert (champ optionnel = compat) ;
       job `openapi-types-drift` vert (types regénérés commités).
 - [ ] E2E stack vert (les parcours contrats existants ne cochent pas la case :
@@ -734,12 +734,12 @@ septembre (règle Q-06 conservée), la projection `grille_tarifaire`.
       `valideDu` alimente les colonnes ; un événement sans le champ projette
       `false` ; rejeu idempotent (tests projection).
 - [ ] Bout-en-bout stack : foyer seedé (contrats ABCM `premiereInscription:
-    true`, `valideDu` 2026-09) → `GET /api/v1/couts?mois=2026-09` contient
+true`, `valideDu` 2026-09) → `GET /api/v1/couts?mois=2026-09` contient
       les lignes « Cotisation annuelle ABCM » (286 €) ET « Frais de 1ère
       inscription » (150 €) ; `mois=2027-09` (même contrat toujours actif) →
       cotisation seule.
 - [ ] `corepack pnpm@10.34.2 nx run-many -t lint typecheck test -p
-    tarification-domain svc-tarification` vert ; pact provider tarification
+tarification-domain svc-tarification` vert ; pact provider tarification
       vert (les vues ne changent pas) ; e2e stack vert avec le seed mis à jour.
 
 ### Comment vérifier
