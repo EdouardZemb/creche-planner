@@ -538,6 +538,24 @@ console.log(
   `\n  ${erreurs.length} erreur(s), ${avertissements.length} avertissement(s).`,
 );
 
+/**
+ * Rend un texte inoffensif dans une cellule de tableau markdown.
+ *
+ * L'ordre compte : le **backslash d'abord**, la barre ensuite. Échapper `|` sans
+ * échapper `\` laisse passer `\|`, qui devient `\\|` — soit un backslash échappé
+ * suivi d'une barre NUE, qui casse la ligne du tableau (CodeQL
+ * `js/incomplete-sanitization`, remontée sur la 1ʳᵉ version de ce script). Les
+ * sauts de ligne sont aplatis pour la même raison : une cellule est une ligne.
+ *
+ * @param {string} texte
+ */
+function cellule(texte) {
+  return texte
+    .replace(/\\/g, '\\\\')
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, ' ');
+}
+
 const resume = process.env['GITHUB_STEP_SUMMARY'];
 if (resume !== undefined && resume !== '') {
   const lignes = [
@@ -555,7 +573,7 @@ if (resume !== undefined && resume !== '') {
     );
     for (const { portee, message, remede } of erreurs) {
       lignes.push(
-        `| \`${portee}\` | ${message.replace(/\|/g, '\\|')} | ${(remede ?? '').replace(/\|/g, '\\|')} |`,
+        `| \`${cellule(portee)}\` | ${cellule(message)} | ${cellule(remede ?? '')} |`,
       );
     }
   }
