@@ -38,8 +38,8 @@ Localisation des dépendances hors racine :
 Note #106 : bump aussi `@nx/js/nest/node` 23.0.0→23.0.1 (mineur, inoffensif) — creuse
 légèrement le split Nx mais sans conséquence, le chantier B réaligne tout ensuite.
 
-Note #32 : avant merge, lancer `pnpm nx run-many -t typecheck test -p web`
-(`nx test web` ne typecheck pas — cf. mémoire projet).
+Note #32 : avant merge, lancer `pnpm nx test web` (le type-check vient avec la
+cible — cf. [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md)).
 
 **Vérif Groupe A avant merge :** confirmer que le check requis (`ci`) est bien vert sur chaque
 PR après rebase.
@@ -86,5 +86,4 @@ pas** les migrations `nx migrate`. Les merger individuellement aggraverait l'inc
 - Travailler dans le clone `-public`, jamais pousser depuis l'original.
 - `main` protégée : chaque étape = branche + PR, check requis `ci` vert.
 - pnpm via corepack `pnpm@10.34.2` (pas le pnpm global 8.x).
-- Attention worktree « faux vert » : préfixer les chemins, sinon on édite le clone principal.
-- Un worktree neuf n'a pas de `node_modules` → `pnpm install` d'abord.
+- Environnement de travail : `pnpm preflight` — cf. [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md).

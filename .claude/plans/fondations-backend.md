@@ -36,10 +36,9 @@ Quatre faiblesses auditées (audit du 2026-07-17, 4 explorations parallèles du 
 
 ## 4. Conventions transversales et pièges du repo (valables pour TOUS les lots)
 
-- **Package manager** : toujours `corepack pnpm@10.34.2 ...` (jamais le pnpm global 8.x). Commandes via nx : `corepack pnpm@10.34.2 nx run-many -t typecheck test -p <projets>`.
-- **⚠️ `nx test` ne typecheck PAS** : toujours lancer `typecheck` en plus (`nx run-many -t typecheck test -p ...`).
+- **Package manager** : toujours `corepack pnpm@10.34.2 ...` (jamais le pnpm global 8.x). Commandes via nx : `corepack pnpm@10.34.2 nx test <projet>` (le type-check est une arête de la cible).
 - **Git** : travailler dans le clone `creche-planner-public`, main est protégée → 1 PR par lot, merge après check `ci` vert. Commits conventionnels en français, sujet ≤ 100 chars (commitlint).
-- **⚠️ Worktrees** : piège « faux vert » récurrent (chemins non préfixés qui éditent le clone principal ; worktree `nifty-jackson-350eee` = dossier vide non enregistré). **Recommandation : travailler séquentiellement dans le clone principal.** Si `pnpm install` est nécessaire : PowerShell (jamais Git Bash), `--force` si les symlinks `node_modules/@creche-planner/*` sont cassés.
+- **Environnement de travail** : `pnpm preflight` en début de session — cf. [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md), source unique sur la boucle de dev.
 - **Lint** : ESLint 9 flat config type-aware avec ratchet (ne jamais réintroduire de warning) ; `prefer-const`, `noUncheckedIndexedAccess` actifs ; `ReadonlyArray<T>` → `readonly T[]`.
 - **Pact** : les pacts sont des fichiers commités dans `pacts/` (pas de broker, ADR-0005). `/pacts` est dans `.prettierignore` (ne pas les reformater). En cas de doublons après régénération : régénérer à blanc. Les specs provider (`apps/svc-*/src/contract/*.provider.pact.spec.ts`) skippent en local sans base et tournent en CI. `can-i-deploy` = `.github/workflows/scripts/can-i-deploy.mjs` (rejette un pact vide).
 - **Migrations** : drizzle-kit ^0.31.10, un `drizzle.config.ts` par service, génération `corepack pnpm@10.34.2 drizzle-kit generate` **depuis le dossier du service**, SQL numéroté dans `src/database/migrations/` + `meta/_journal.json`. Appliquées **automatiquement au boot** par `libs/nest-commons/src/lib/database/migration.service.ts` (embarquées dans le bundle webpack `dist/database/migrations`).
@@ -463,7 +462,6 @@ corepack pnpm@10.34.2 nx run-many -t typecheck test lint -p api-gateway svc-plan
 
 ### Pièges connus
 
-- `nx test` ne typecheck pas — lancer `typecheck` aussi.
 - `prefer-const` et `noUncheckedIndexedAccess` mordent dans les specs aussi.
 - Les tests de timeout : utiliser les fake timers Vitest comme dans les specs modèles, ne pas dormir réellement.
 

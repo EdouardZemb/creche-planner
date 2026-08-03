@@ -78,8 +78,7 @@ retrait de la case).
 
 ## Pièges connus
 
-- `nx test web` ne typecheck pas → lancer typecheck explicitement.
-- Builder `contracts-kernel`/`shared-semaine` avant `nx test web`.
+- Boucle de dev : `pnpm preflight` puis `nx test <projet>` — cf. [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md), source unique.
 - `/pacts` dans `.prettierignore` ; ESLint 9 strict (`ReadonlyArray<T>` → `readonly T[]`).
 - Le provider exige les 7 jours présents dans `semaineType` crèche ; `semaineAbcm`
   est un record partiel (pas d'exigence 7 jours) — ne pas « corriger » ça au passage.

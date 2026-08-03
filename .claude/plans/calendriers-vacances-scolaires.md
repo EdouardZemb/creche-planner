@@ -237,7 +237,7 @@ US-31-03/US-31-04 : quand le parent planifie, seuls les jours/services réelleme
 
 ### Pièges connus
 
-- Builder `contracts-kernel`/`shared-semaine` avant `nx test web` (piège neutralisé si le lot B2 de consolidation — `dependsOn ^build` — est passé, sinon toujours actif) ; `viderCacheAsync()` dans les tests (cache `calendrier:` !).
+- `viderCacheAsync()` dans les tests (cache `calendrier:` !).
 - FullCalendar est lazy-loadé (`PlanningPage.tsx:16-24`) — les tests `PlanningPage` utilisent `findBy…`.
 - Ne pas casser la saisie « jour de fermeture = absence » existante côté crèche : un jour fermé n'est **pas** une absence, il ne doit plus être proposé du tout.
 

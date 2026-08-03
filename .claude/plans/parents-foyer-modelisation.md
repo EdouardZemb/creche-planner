@@ -395,7 +395,7 @@ _(À confirmer : c'est l'autre vrai fork architectural.)_
   Service (`ajouterParent`/`lister`/`modifier`/`retirer` transactionnels + outbox) +
   **résolution `foyersParEmail(email)`**. Controller `POST|GET|PUT|DELETE
 /foyers/:id/parents[/:parentId]` **+ `GET /foyers?parentEmail=…`**. DTO/Zod. Provider Pact
-  states. Tests. _Pièges CI : `nx build` avant typecheck (`TS6305`), provider Pact Postgres._
+  states. Tests. _Piège CI : provider Pact Postgres._
 
 - **PR 2 — api-gateway / BFF + OpenAPI (CRUD parents, SANS enforcement).**
   `FoyerClient.parents()/ajouterParent()/…` + `foyersParEmail()`. `DossierFoyerVue.parents`.

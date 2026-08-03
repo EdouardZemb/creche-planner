@@ -163,6 +163,13 @@ pnpm nx g @nx/js:lib libs/<contexte>/<couche> --name=<contexte>-<couche> \
      lui aussi un `tsc` inféré par `@nx/js/typescript`, le plugin pose l'arête
      `typecheck.dependsOn: ["build", …]` et Nx ne lance jamais les deux en parallèle. Détail des
      mesures et conditions de réouverture : amendement 2026-08-01 (bis) du même ADR.
+9. **Les pièges de la boucle de dev ont UNE source** : [CONTRIBUTING.md § Pièges](../CONTRIBUTING.md)
+   — ce qui est encodé dans l'outillage (`pnpm preflight`, arêtes `dependsOn`) d'un côté, ce qui
+   reste réel de l'autre. **Ne pas les recopier dans un plan ou une doc** : `pnpm pieges` (step
+   bloquant du job `ci`) refuse la réapparition d'un piège neutralisé et indique la phrase à écrire
+   à la place. Corollaire pour toute nouvelle cible Nx qui consomme une lib : lui donner son arête
+   `^build` — c'est l'oubli de cette arête sur `serve`/`dev`/`preview` qui avait laissé le piège
+   « builder les libs d'abord » vivant sur le seul chemin Vite dev (lot B7, 2026-08-03).
 
 ## 6. Décisions techniques non-évidentes
 

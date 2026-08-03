@@ -153,6 +153,16 @@ jobs:
       - name: Frontières Nx + miroirs de vocabulaire (bloquant)
         run: node scripts/verifier-frontieres.mjs
 
+      # B7 — l'audit dev a compté les mêmes cinq pièges de boucle de dev recopiés
+      # dans une dizaine de plans, alors que B1 (`pnpm preflight`) et B2 (arêtes
+      # `dependsOn` réelles) les avaient rendus impossibles. Purger la prose une
+      # fois ne tient pas : un nouveau plan est écrit en recopiant la section
+      # « transverses » du précédent — c'est ainsi qu'ils se sont propagés. Ce step
+      # refuse la réapparition d'un piège du registre, en pointant la phrase à
+      # écrire à la place (CONTRIBUTING.md § Pièges, source unique).
+      - name: Pièges morts recopiés dans les plans et la doc (bloquant)
+        run: node scripts/verifier-pieges-doc.mjs
+
       # P1-2 (doc 18 §8) — publier les MÉTRIQUES de test, pas seulement le vert/rouge.
       # Les reporters JUnit + couverture lcov/json-summary sont activés en CI par les
       # vitest.config.mts (gardés par `process.env.CI`). On agrège un résumé lisible
