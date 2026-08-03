@@ -1051,6 +1051,12 @@ jobs:
 
       - name: Jeu d'essai hostile — assainissement et code de sortie
         run: |
+          # ⚠️ Le shell par défaut d'Actions est `bash -e {0}` : une commande en échec
+          # tue le step SUR-LE-CHAMP. Or le script sort VOLONTAIREMENT en 1 (chemin
+          # ALERTES) — c'est justement ce qu'on veut mesurer. Sans `set +e`, le step
+          # meurt sur l'affectation, avant la moindre assertion, et le rouge ne dit
+          # rien. On désactive donc `-e` et on juge le code de sortie nous-mêmes.
+          set +e
           set -uo pipefail
           SORTIE=$(ALERTES_DRY_RUN=1 node .github/workflows/scripts/veille-alertes.mjs)
           CODE=$?
@@ -1084,6 +1090,9 @@ jobs:
 
       - name: Chemin POINT MORT — un échec d'appel ne vaut jamais « aucune alerte »
         run: |
+          # Même raison qu'au step précédent : `bash -e` tuerait le step sur la sortie
+          # 1 attendue du chemin POINT MORT.
+          set +e
           set -uo pipefail
           SORTIE=$(GITHUB_TOKEN=jeton-invalide node .github/workflows/scripts/veille-alertes.mjs)
           CODE=$?
