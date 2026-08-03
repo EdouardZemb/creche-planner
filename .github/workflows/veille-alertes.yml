@@ -1,0 +1,65 @@
+# VEILLE des ALERTES DE SÉCURITÉ OUVERTES (code scanning CodeQL + Dependabot).
+#
+# Comble le point mort de l'issue #279 : les alertes vivent derrière les endpoints
+# `code-scanning/alerts` et `dependabot/alerts`, auxquels une session distante n'a
+# PAS accès (« 403 — GitHub access is not enabled for this session », et aucun outil
+# MCP ne les expose). La veille du 2026-08-03 a donc rendu ORANGE faute de pouvoir
+# REGARDER, pas faute d'un problème réel.
+#
+# Ce workflow déplace la lecture LÀ où le jeton a le droit de lire : un job du dépôt
+# lui-même. Le verdict devient consultable de partout via la CONCLUSION du run et son
+# résumé — et lister les runs d'un workflow, une session distante SAIT le faire.
+#
+# CONTRAT — un run VERT dit à la fois « la vérification a eu lieu » ET « aucune alerte
+# ≥ seuil ». Un run ROUGE distingue toujours, dans le résumé, `POINT MORT`
+# (vérification impossible) de `ALERTES` (findings réels). Règle cardinale : un appel
+# qui échoue n'est JAMAIS lu comme « aucune alerte ».
+#
+# NON-BLOCANT pour le reste de la chaîne : aucun build ne dépend de ce workflow, il
+# n'est pas un check requis des PR. Il rougit pour être VU, pas pour barrer la route.
+#
+# Actions épinglées par SHA (AUD-02), Node figé via .nvmrc (AUD-10), timeout borné
+# (AUD-03), concurrence (AUD-14), permissions au plus juste.
+name: Veille alertes sécurité
+
+on:
+  schedule:
+    - cron: '40 5 * * *' # chaque jour 05:40 UTC, après le rescan CVE (05:17)
+  workflow_dispatch:
+    inputs:
+      seuil:
+        description: 'Sévérités qui font rougir le run (défaut critical,high)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read # checkout du script
+  security-events: read # lecture des alertes code scanning (et Dependabot)
+
+concurrency:
+  group: veille-alertes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  alertes:
+    name: Alertes ouvertes (CodeQL + Dependabot)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Recenser les alertes ouvertes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT optionnel, prioritaire sur le jeton par défaut. À poser SEULEMENT si
+          # `dependabot/alerts` répond 403 (le résumé du run le dira explicitement) :
+          # la couverture du GITHUB_TOKEN sur cet endpoint dépend de la configuration
+          # du dépôt. Scope attendu : `security_events`.
+          ALERTS_TOKEN: ${{ secrets.ALERTS_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ALERTES_SEUIL: ${{ github.event.inputs.seuil }}
+        run: node .github/workflows/scripts/veille-alertes.mjs

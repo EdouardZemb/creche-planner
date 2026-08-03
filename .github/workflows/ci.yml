@@ -1013,3 +1013,96 @@ jobs:
       - name: Arrêt de la pile
         if: always()
         run: docker compose down -v
+
+  # AUTO-TEST du script de veille des alertes (`.github/workflows/scripts/veille-alertes.mjs`).
+  #
+  # POURQUOI un job à part, et pas un step de `config-validation` ? Ce dernier monte la
+  # pile d'observabilité (≈15 min) : y cacher une vérification d'une seconde retarderait
+  # un signal simple, et mélangerait « validation de config infra » avec « test unitaire
+  # d'un script ». Ici le rouge est LISIBLE : un check nommé, qui dit tout de suite ce
+  # qui a cassé.
+  #
+  # CE QUE ÇA GARDE — le script écrit dans `GITHUB_STEP_SUMMARY`, que GitHub REND comme
+  # du Markdown : c'est un sink d'injection alimenté par des données de l'écosystème
+  # public (noms de paquets npm, résumés d'advisory). CodeQL l'a signalé sur la PR #281
+  # (« Network data written to file »). L'assainissement est en place, mais rien
+  # n'empêchait quelqu'un de retirer `assainir()` plus tard sans que ça se voie — d'où
+  # ce garde-fou EXÉCUTÉ plutôt que documenté.
+  #
+  # Le jeu d'essai `ALERTES_DRY_RUN=1` est volontairement HOSTILE (saut de ligne, faux
+  # titre, lien, `<img onerror>`, pipe de tableau, `html_url` hors github.com) et sort
+  # en code 1 (chemin ALERTES, il contient une alerte `high`) : on vérifie donc le CODE
+  # DE SORTIE **et** le rendu. Aucun appel réseau, aucune dépendance npm.
+  #
+  # Gaté sur `config-changes` (qui filtre déjà `.github/workflows/**`) : skippé — donc
+  # traité comme réussi par la protection de branche — sur les PR qui n'y touchent pas.
+  veille-alertes-autotest:
+    name: Auto-test veille alertes
+    needs: config-changes
+    if: needs.config-changes.outputs.config == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Jeu d'essai hostile — assainissement et code de sortie
+        run: |
+          # ⚠️ Le shell par défaut d'Actions est `bash -e {0}` : une commande en échec
+          # tue le step SUR-LE-CHAMP. Or le script sort VOLONTAIREMENT en 1 (chemin
+          # ALERTES) — c'est justement ce qu'on veut mesurer. Sans `set +e`, le step
+          # meurt sur l'affectation, avant la moindre assertion, et le rouge ne dit
+          # rien. On désactive donc `-e` et on juge le code de sortie nous-mêmes.
+          set +e
+          set -uo pipefail
+          SORTIE=$(ALERTES_DRY_RUN=1 node .github/workflows/scripts/veille-alertes.mjs)
+          CODE=$?
+
+          echec() { echo "::error::$1"; echo "--- sortie obtenue ---"; echo "$SORTIE"; exit 1; }
+
+          # 1) Chemin ALERTES : le jeu d'essai porte une alerte `high`, le script DOIT
+          #    sortir en 1. Un 0 signifierait que le seuil ne mord plus (faux vert).
+          [ "$CODE" -eq 1 ] || echec "code de sortie attendu 1 (chemin ALERTES), obtenu $CODE"
+
+          # 2) La charge d'injection doit ressortir ÉCHAPPÉE.
+          echo "$SORTIE" | grep -qF '\[cliquez ici\]' \
+            || echec "lien Markdown non échappé — assainir() ne fait plus son travail"
+          echo "$SORTIE" | grep -qF '\<img src=x' \
+            || echec "balise HTML non échappée — assainir() ne fait plus son travail"
+
+          # 3) Une `html_url` hors github.com ne doit JAMAIS devenir un lien. On cherche
+          #    la SIGNATURE d'un lien Markdown vers cet hôte — `](https://…` —, pas la
+          #    simple présence de l'hôte : il apparaît légitimement, échappé, en texte.
+          if echo "$SORTIE" | grep -qF '](https://exemple-malveillant.test'; then
+            echec "URL hors github.com rendue en lien — lienGitHub() ne filtre plus"
+          fi
+          echo "$SORTIE" | grep -qF '(alerte #7)' \
+            || echec "référence sans lien attendue pour une html_url refusée"
+
+          # 4) Tout doit tenir sur UNE ligne : un saut de ligne casserait la structure.
+          NB=$(echo "$SORTIE" | grep -c 'paquet-piege')
+          [ "$NB" -eq 1 ] || echec "l'entrée hostile s'étale sur $NB lignes (sauts de ligne non retirés)"
+
+          echo "✅ Assainissement, refus de lien et code de sortie conformes."
+
+      - name: Chemin POINT MORT — un échec d'appel ne vaut jamais « aucune alerte »
+        run: |
+          # Même raison qu'au step précédent : `bash -e` tuerait le step sur la sortie
+          # 1 attendue du chemin POINT MORT.
+          set +e
+          set -uo pipefail
+          SORTIE=$(GITHUB_TOKEN=jeton-invalide node .github/workflows/scripts/veille-alertes.mjs)
+          CODE=$?
+
+          if [ "$CODE" -ne 1 ]; then
+            echo "::error::un appel d'API en échec doit sortir en 1, obtenu $CODE"
+            echo "$SORTIE"; exit 1
+          fi
+          if ! echo "$SORTIE" | grep -q 'POINT MORT'; then
+            echo "::error::un appel en échec doit être signalé POINT MORT, pas silencieusement vert"
+            echo "$SORTIE"; exit 1
+          fi
+          echo "✅ Un appel en échec reste un POINT MORT."
