@@ -146,11 +146,80 @@ async function lireAlertes(chemin) {
  * @param {any} alerte
  */
 const severiteCodeScanning = (alerte) =>
-  (alerte?.rule?.security_severity_level ?? 'qualité').toLowerCase();
+  alerte?.rule?.security_severity_level == null
+    ? 'qualité'
+    : normaliserSeverite(alerte.rule.security_severity_level);
 
 /** @param {any} alerte */
 const severiteDependabot = (alerte) =>
-  (alerte?.security_advisory?.severity ?? 'inconnue').toLowerCase();
+  normaliserSeverite(alerte?.security_advisory?.severity);
+
+/**
+ * Sévérités que GitHub peut renvoyer. Tout le reste devient `inconnue` : la
+ * sévérité sert de clé de comptage ET est réaffichée, autant la ramener à une
+ * liste FERMÉE plutôt que de recopier une chaîne venue du réseau.
+ */
+const SEVERITES_CONNUES = new Set([
+  'critical',
+  'high',
+  'medium',
+  'moderate',
+  'low',
+  'warning',
+  'note',
+  'error',
+]);
+
+/** @param {unknown} brut */
+function normaliserSeverite(brut) {
+  const niveau = String(brut ?? '').toLowerCase();
+  return SEVERITES_CONNUES.has(niveau) ? niveau : 'inconnue';
+}
+
+/**
+ * Assainit une chaîne venue de l'API avant de l'écrire dans le résumé.
+ *
+ * POURQUOI — `GITHUB_STEP_SUMMARY` est **rendu comme du Markdown** par GitHub :
+ * c'est un sink d'injection, pas un simple fichier de log (alerte CodeQL
+ * « Network data written to file » sur la 1re version). Les valeurs concernées
+ * viennent de l'écosystème public (noms de paquets npm, résumés d'advisory) ou
+ * d'un corps de réponse HTTP brut — donc pas de notre ressort.
+ *
+ * Un saut de ligne suffirait à casser la structure du rapport ; un `[texte](url)`
+ * ou un `<img>` à y injecter un lien arbitraire. On retire les caractères de
+ * contrôle, on échappe ce qui est signifiant en Markdown, et on borne la longueur.
+ *
+ * @param {unknown} brut
+ * @param {number} longueurMax
+ */
+function assainir(brut, longueurMax = 200) {
+  return String(brut ?? '')
+    .replace(/[\p{Cc}\p{Cf}]+/gu, ' ') // sauts de ligne et caractères de contrôle
+    .replace(/[\\`*_[\]()<>|#~]/g, (c) => `\\${c}`) // Markdown + HTML
+    .trim()
+    .slice(0, longueurMax);
+}
+
+/**
+ * N'accepte qu'une URL GitHub en https, sinon rien. Empêche qu'un `html_url`
+ * inattendu ne devienne un lien arbitraire dans le résumé.
+ * @param {unknown} brut
+ */
+function lienGitHub(brut) {
+  const url = String(brut ?? '');
+  return /^https:\/\/github\.com\/[\w\-./#?=&%]*$/.test(url) ? url : '';
+}
+
+/**
+ * Rend « ([alerte #12](url)) », ou « (alerte #12) » si l'URL est refusée.
+ * @param {unknown} numero
+ * @param {unknown} url
+ */
+function refAlerte(numero, url) {
+  const n = Number.isInteger(numero) ? String(numero) : '?';
+  const lien = lienGitHub(url);
+  return lien ? `([alerte #${n}](${lien}))` : `(alerte #${n})`;
+}
 
 /**
  * @param {any[]} alertes
@@ -167,7 +236,18 @@ function compter(alertes, severite) {
   return { parSeverite, bloquantes };
 }
 
-/** Jeu d'essai pour `ALERTES_DRY_RUN=1` — aucun appel réseau. */
+/**
+ * Jeu d'essai pour `ALERTES_DRY_RUN=1` — aucun appel réseau.
+ *
+ * Volontairement HOSTILE : l'alerte Dependabot porte une charge d'injection
+ * Markdown (saut de ligne, lien, `<img>`, pipe de tableau) et une `html_url` hors
+ * github.com. Le rendu attendu montre ces caractères ÉCHAPPÉS, sur UNE seule
+ * ligne, et le lien REFUSÉ (« (alerte #7) » sans URL). C'est le test de
+ * non-régression de `assainir()`/`lienGitHub()`.
+ *
+ * Ce jeu contient une alerte `high` : `ALERTES_DRY_RUN=1` sort donc en `exit=1`
+ * (chemin ALERTES), c'est normal — il exerce le cas « findings » de bout en bout.
+ */
 function jeuDEssai() {
   return {
     codeScanning: {
@@ -176,7 +256,21 @@ function jeuDEssai() {
         { rule: { security_severity_level: null, id: 'js/unused-local' } },
       ],
     },
-    dependabot: { ok: /** @type {const} */ (true), alertes: [] },
+    dependabot: {
+      ok: /** @type {const} */ (true),
+      alertes: [
+        {
+          number: 7,
+          html_url: 'https://exemple-malveillant.test/hameçonnage',
+          dependency: { package: { name: 'paquet-piege' } },
+          security_advisory: {
+            severity: 'high',
+            summary:
+              'Faille\n\n## Faux titre\n[cliquez ici](https://exemple-malveillant.test) <img src=x onerror=alert(1)> | colonne',
+          },
+        },
+      ],
+    },
   };
 }
 
@@ -227,7 +321,7 @@ function rapporter(titre, resultat, severite, decrire, aide) {
       "Ce n'est **pas** « aucune alerte » : la question reste entière, personne n'a pu regarder.",
     );
     dire('');
-    dire(`> ${resultat.detail.replace(/\n+/g, ' ')}`);
+    dire(`> ${assainir(resultat.detail, 300)}`);
     dire('');
     dire(aide);
     dire('');
@@ -274,7 +368,7 @@ rapporter(
   sources.codeScanning,
   severiteCodeScanning,
   (a) =>
-    `${a?.rule?.id ?? 'règle inconnue'} — ${a?.most_recent_instance?.location?.path ?? 'emplacement inconnu'} ([alerte #${a?.number}](${a?.html_url}))`,
+    `${assainir(a?.rule?.id) || 'règle inconnue'} — ${assainir(a?.most_recent_instance?.location?.path) || 'emplacement inconnu'} ${refAlerte(a?.number, a?.html_url)}`,
   'Le jeton du run a besoin de `security-events: read` (déclaré dans le workflow). ' +
     'Si le code scanning est désactivé sur le dépôt, le réactiver dans Settings → Code security.',
 );
@@ -284,7 +378,7 @@ rapporter(
   sources.dependabot,
   severiteDependabot,
   (a) =>
-    `${a?.dependency?.package?.name ?? 'paquet inconnu'} — ${a?.security_advisory?.summary ?? 'sans résumé'} ([alerte #${a?.number}](${a?.html_url}))`,
+    `${assainir(a?.dependency?.package?.name, 80) || 'paquet inconnu'} — ${assainir(a?.security_advisory?.summary) || 'sans résumé'} ${refAlerte(a?.number, a?.html_url)}`,
   'Un `403` ici signifie que le `GITHUB_TOKEN` par défaut ne couvre pas ' +
     '`dependabot/alerts` sur ce dépôt. Poser alors un secret Actions `ALERTS_TOKEN` ' +
     '(PAT avec le scope `security_events`) : le script le préfère au jeton par défaut. ' +

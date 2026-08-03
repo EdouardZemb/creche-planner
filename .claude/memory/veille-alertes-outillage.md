@@ -42,6 +42,17 @@ l'appelant est obligé de traiter — pas une liste vide. Un `catch` qui renverr
 `process.env.ALERTES_SEUIL ?? 'critical,high'` donne alors un seuil `[]` → plus
 aucune alerte n'est « au-dessus du seuil » → **faux vert permanent**. Il faut `||`.
 
+**`GITHUB_STEP_SUMMARY` est un sink Markdown, pas un log.** GitHub _rend_ ce
+fichier : y écrire tel quel un nom de paquet npm ou un résumé d'advisory (données
+de l'écosystème public) permet d'injecter un lien, une image ou de casser la
+structure du rapport. CodeQL l'a signalé sur la 1re version (« Network data written
+to file », PR #281). Toute valeur venue de l'API passe donc par `assainir()`
+(caractères de contrôle retirés, Markdown/HTML échappé, longueur bornée), les
+sévérités par une **liste fermée** (`normaliserSeverite()`), et les `html_url` par
+`lienGitHub()` qui refuse tout ce qui n'est pas `https://github.com/…`. Le jeu
+d'essai `ALERTES_DRY_RUN=1` est volontairement **hostile** et sert de test de
+non-régression — il sort en `exit=1` (chemin ALERTES), c'est normal.
+
 **Si `dependabot/alerts` répond 403 en CI.** La couverture du `GITHUB_TOKEN` par
 défaut sur cet endpoint dépend de la configuration du dépôt. Le run part au rouge
 avec la marche à suivre : poser un secret Actions `ALERTS_TOKEN` (PAT, scope
