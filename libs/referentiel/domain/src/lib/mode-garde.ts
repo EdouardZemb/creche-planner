@@ -1,14 +1,17 @@
 import { ModeGardeInconnuError } from './referentiel-error.js';
 
 /**
- * Modes de garde du domaine (doc 02 §1). Valeurs identiques par convention à
- * `MODES_CONTRAT`/`ModeContrat` de `@creche-planner/contracts-kernel` (source
- * de vérité inter-services, SFD 30 §H4) : ce lib `type:domain` ne peut pas
- * dépendre d'un lib `type:contracts` (`@nx/enforce-module-boundaries`), donc
- * la vocabulaire du domaine reste local et volontairement en miroir plutôt
- * qu'importé. Ne plus la faire diverger (c'était le cas de l'ancien
- * `ModeGarde` à 6 valeurs de `tarification-domain`, renommé en
- * `PolitiqueTarifaireId`).
+ * Modes de garde du domaine (doc 02 §1). **Miroir local documenté** — patron de
+ * référence de la convention (CONVENTIONS.md §4) : ce lib `type:domain` ne peut
+ * pas dépendre d'un lib `type:contracts` (`@nx/enforce-module-boundaries`), donc
+ * le vocabulaire du domaine est recopié ici plutôt qu'importé.
+ *
+ * Source de vérité : `MODES_CONTRAT`/`ModeContrat` de
+ * `@creche-planner/contracts-kernel` (SFD 30 §H4). La conformité n'est PAS
+ * laissée à la vigilance : `scripts/verifier-frontieres.mjs` (step bloquant du
+ * job `ci`) compare ce miroir à sa source à chaque run. Ne plus le faire
+ * diverger — c'était le cas de l'ancien `ModeGarde` à 6 valeurs de
+ * `tarification-domain`, renommé depuis en `PolitiqueTarifaireId`.
  */
 export type ModeGarde = 'CRECHE_PSU' | 'PERISCOLAIRE' | 'CANTINE' | 'ALSH';
 

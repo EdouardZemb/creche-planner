@@ -138,7 +138,10 @@ pnpm nx g @nx/js:lib libs/<contexte>/<couche> --name=<contexte>-<couche> \
 
 1. **Imports relatifs en `.js`** dans le TS des libs (`moduleResolution: nodenext`) :
    `import { Money } from './money.js';` — sinon le build/typecheck échoue.
-2. **Tags Nx obligatoires** à la génération (`type:*` + `context:*`) pour les frontières.
+2. **Tags Nx obligatoires** à la génération (`type:*` + `context:*`) pour les frontières —
+   et **un nouveau `context:` s'enregistre dans les `depConstraints`** d'`eslint.config.mjs`
+   **dans le même commit** : un tag absent n'est pas permissif, il n'est jamais évalué
+   (`pnpm frontieres` le refuse, cf. CONVENTIONS.md §4).
 3. **Domaine = TS pur** : zéro dépendance framework dans `type:domain` (la règle de frontières le vérifie).
 4. Après génération d'un projet, **ajouter `**/node_modules`à son`.eslintrc.json`** (`ignorePatterns`)
    — sinon ESLint scanne les libs symlinkées (voir ADR-0003).

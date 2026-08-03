@@ -78,7 +78,8 @@ ESLint 9 + flat config + `typescript-eslint` v8 en `strictTypeChecked` +
   `no-deprecated`, `require-await`, `no-unused-vars`… À remonter en `error`
   lib par lib.
 - **Frontières d'architecture** : `@nx/enforce-module-boundaries` (tags `type:` /
-  `context:`) — un contexte ne dépend que de ses dépendances déclarées.
+  `context:`) — un contexte ne dépend que de ses dépendances déclarées. ⚠️ La
+  règle ne voit que les tags **enregistrés** en `depConstraints` : cf. §4.
 
 Notes d'implémentation :
 
@@ -89,7 +90,45 @@ Notes d'implémentation :
 - Les fichiers hors programme TS (specs e2e, `*.config.ts`) sont lintés sans
   `projectService`.
 
-## 4. Tests & qualité
+## 4. Frontières Nx & vocabulaire partagé
+
+Chaque projet porte **exactement deux tags** dans le champ `nx.tags` de son
+`package.json` : une couche (`type:domain` / `type:contracts` /
+`type:infrastructure` / `type:app`) et un bounded context (`context:foyer`,
+`context:referentiel`, `context:notifications`…). Les dépendances autorisées
+sont déclarées en `depConstraints` dans [`eslint.config.mjs`](eslint.config.mjs).
+
+**Règle n°1 — tout nouveau contexte s'enregistre.** `@nx/enforce-module-boundaries`
+n'évalue une contrainte que pour les tags cités en `sourceTag`. Un contexte
+absent des `depConstraints` n'est donc pas « permissif » : il n'est **jamais
+évalué**, et le lint reste vert quoi que le projet importe. C'est une dérive
+strictement silencieuse — `context:notifications` l'a vécue pendant toute la vie
+du service. Créer un contexte (`context:famille`, `context:facturation`…) = créer
+son entrée dans le même commit.
+
+**Règle n°2 — un miroir de vocabulaire se déclare.** Une lib `type:domain` ne
+peut pas dépendre d'une lib `type:contracts` : le vocabulaire partagé y est donc
+**recopié à dessein** plutôt qu'importé. C'est la convention « miroir local
+documenté », dont le patron de référence est
+[`referentiel-domain/mode-garde.ts`](libs/referentiel/domain/src/lib/mode-garde.ts)
+(miroir de `MODES_CONTRAT`, source de vérité unique du dépôt dans
+[`contracts-kernel/modes.ts`](libs/contracts/kernel/src/lib/modes.ts)). Un miroir
+se reconnaît à trois choses :
+
+1. un commentaire d'en-tête nommant la **source de vérité** et la raison de la
+   recopie (la frontière franchie) ;
+2. une entrée dans le registre `MIROIRS` de
+   [`scripts/verifier-frontieres.mjs`](scripts/verifier-frontieres.mjs), avec la
+   relation attendue — `identique`, ou `sur-ensemble` quand la copie est
+   volontairement plus large (cas de `PolitiqueTarifaireId`, qui ajoute deux
+   politiques internes ne correspondant à aucun mode de contrat) ;
+3. rien d'autre : un miroir **non déclaré** est une divergence en attente.
+
+Les deux règles sont vérifiées par `pnpm frontieres` (step bloquant du job `ci`),
+qui refuse aussi les tags fantômes en `onlyDependOnLibsWithTags` — un tag mal
+orthographié n'élargit pas la contrainte, il la **resserre** sans le dire.
+
+## 5. Tests & qualité
 
 - Vitest 4 (+ coverage v8 : 100 % sur les libs domaine, seuils **ratchet** sur
   les services et le web), property testing (fast-check, `*.mbt.spec.ts`),
@@ -101,7 +140,7 @@ Notes d'implémentation :
   vérifier les types). Pour valider un changement : `pnpm nx run-many -t
 typecheck test -p <projet>`.
 
-## 5. Outillage évalué mais différé
+## 6. Outillage évalué mais différé
 
 `type-coverage` et `knip` ont été évalués : tous deux nécessitent une
 configuration spécifique à la structure « solution » d'Nx (type-coverage ne voit

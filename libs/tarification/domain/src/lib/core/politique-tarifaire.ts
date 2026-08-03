@@ -8,6 +8,10 @@ import type { CoutMois } from './cout-mois.js';
  * `UNITES_ASSOCIATIVES` (part associative) — d'où le nom `PolitiqueTarifaire`,
  * distinct de `ModeContrat`/`ModeGarde` (SFD 30 §H4, DV-04 réduit : ce n'était
  * pas un second `ModeGarde` divergent, mais une union plus large mal nommée).
+ *
+ * Enregistré comme miroir en **sur-ensemble** de `MODES_CONTRAT` dans
+ * `scripts/verifier-frontieres.mjs` (CONVENTIONS.md §4) : la CI vérifie que les
+ * 4 modes de contrat y figurent tous, sans interdire les politiques internes.
  */
 export type PolitiqueTarifaireId =
   | 'CRECHE_PSU'

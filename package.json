@@ -10,6 +10,7 @@
     "typecheck": "nx run-many -t typecheck",
     "check": "nx run-many -t lint typecheck test build",
     "preflight": "node scripts/preflight.mjs",
+    "frontieres": "node scripts/verifier-frontieres.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
     "e2e:stack": "node scripts/e2e-stack.mjs",
     "prepare": "husky"

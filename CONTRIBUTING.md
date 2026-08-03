@@ -27,6 +27,11 @@ corepack pnpm preflight
 # Qualité (lint + type-check + tests + build sur les projets affectés)
 corepack pnpm nx run-many -t lint typecheck test build
 
+# Frontières Nx + miroirs de vocabulaire (< 1 s, step bloquant du job `ci`).
+# À lancer après tout ajout de projet, de tag `context:`, ou de recopie d'un
+# vocabulaire partagé — cf. CONVENTIONS.md §4.
+corepack pnpm frontieres
+
 # Un seul projet : `nx test <projet>` déclenche désormais son `typecheck` et le
 # build des libs dont il dépend (`targetDefaults` de nx.json + `dependsOn` des
 # cibles écrites à la main). Plus besoin de builder les libs à la main.
