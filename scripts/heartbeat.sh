@@ -15,9 +15,16 @@
 #                                     moniteur pendant une vraie panne.
 #   HEARTBEAT_HEALTH_URL  (optionnel) si définie, le ping n'est envoyé que si
 #                                     cette URL répond 2xx (ex.
-#                                     <SERVER_ORIGIN>/api/health) : le battement
-#                                     atteste alors « serveur ET app OK », pas
-#                                     seulement « la machine est allumée ».
+#                                     <SERVER_ORIGIN>/api/health/live) : le
+#                                     battement atteste alors « serveur ET app
+#                                     OK », pas seulement « machine allumée ».
+#                                     ⚠️ LIVENESS, pas readiness : depuis le lot
+#                                     B3 la readiness gateway agrège ses 5
+#                                     amonts — la viser ici ferait taire le
+#                                     battement au moindre amont dégradé, donc
+#                                     une alerte externe indiscernable d'une
+#                                     panne d'hôte (le seul cas que ce moniteur
+#                                     détecte seul). Amont dégradé = Prometheus.
 #   HEARTBEAT_CA_CERT     (optionnel) CA à faire confiance pour le TLS
 #                                     « internal » de Caddy sur l'URL de santé
 #                                     (ex. /home/<user>/creche-planner/caddy-root.crt).

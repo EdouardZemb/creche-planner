@@ -440,8 +440,12 @@ jobs:
       # api-gateway dans docker-compose.yml). On ajoute `--retry-all-errors` pour
       # que curl réessaie aussi un « (52) Empty reply » transitoire (que `--retry`
       # seul n'inclut pas), au cas où la readiness se cale juste après le `--wait`.
+      # Depuis le lot B3 cette readiness agrège celle des 5 amonts (base +
+      # migrations + NATS de chacun) : elle vaut donc désormais garde de chaîne
+      # complète — d'où une fenêtre de patience élargie (20 × 3 s ≈ 60 s), le
+      # temps que les migrations Drizzle du démarrage à froid s'appliquent.
       - name: Santé gateway
-        run: curl --fail --retry 10 --retry-delay 3 --retry-connrefused --retry-all-errors http://localhost:3000/api/health
+        run: curl --fail --retry 20 --retry-delay 3 --retry-connrefused --retry-all-errors http://localhost:3000/api/health
 
       # SMOKE 2 — appel fonctionnel réel. `/api/v1/couts` exige un `foyer` : on
       # amorce l'état (seed SANS --verify suffit à créer le foyer), puis on lit

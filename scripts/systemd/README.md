@@ -221,7 +221,9 @@ Unités `creche-heartbeat.{service,timer}` : toutes les ~5 min,
 (machine éteinte, réseau coupé, systemd HS), le moniteur externe alerte — ce que
 Prometheus/Alertmanager, qui tournent **sur** la machine surveillée, ne peuvent
 pas faire. Optionnellement, le ping n'est envoyé que si la gateway répond 200
-(battement « serveur ET app OK »). Voir
+(battement « serveur ET app OK ») — sur sa **liveness** `/api/health/live`, et non
+sur sa readiness, qui agrège les 5 amonts depuis le lot B3 (motif détaillé dans la
+doc ci-dessous). Voir
 [docs/exploitation/observabilite.md](../../docs/exploitation/observabilite.md)
 § « Heartbeat externe ».
 
@@ -239,6 +241,13 @@ sudo cp scripts/systemd/creche-heartbeat.env.example /etc/creche-heartbeat.env
 sudo chmod 600 /etc/creche-heartbeat.env
 sudoedit /etc/creche-heartbeat.env    # HEARTBEAT_PING_URL + HEARTBEAT_HEALTH_URL
 ```
+
+> **Installation déjà en place (lot B3).** Le modèle pointait `HEARTBEAT_HEALTH_URL`
+> sur `/api/health` (readiness). Corriger le fichier posé sur le serveur —
+> `sudoedit /etc/creche-heartbeat.env`, suffixer l'URL en `/api/health/live`, puis
+> `sudo systemctl start creche-heartbeat.service` pour vérifier
+> (« HEARTBEAT: ping envoyé. »). Sans ce geste, la readiness agrégée fera taire le
+> battement au premier amont dégradé.
 
 ## 3. Adapter et installer les unités
 

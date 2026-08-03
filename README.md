@@ -146,7 +146,7 @@ Une fois la pile levée :
 | URL                                                                                 | Rôle                                               |
 | ----------------------------------------------------------------------------------- | -------------------------------------------------- |
 | http://localhost:4200                                                               | **Front web (React PWA)** — saisie, planning, coût |
-| http://localhost:3000/api/health                                                    | Gateway (readiness : dépend de svc-referentiel)    |
+| http://localhost:3000/api/health                                                    | Gateway (readiness : les 5 amonts prêts)           |
 | http://localhost:3000/api/openapi.json                                              | Spécification OpenAPI du BFF (route publique)      |
 | http://localhost:3000/api/referentiel/health                                        | Parcours distribué gateway → svc-referentiel → DB  |
 | http://localhost:3000/api/v1/foyers (POST)                                          | BFF : créer un foyer + ses enfants (agrégation)    |
