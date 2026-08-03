@@ -103,6 +103,9 @@ sans modifier le use case (OCP). C'est le seul point d'extension anticipé (YAGN
 - **Gestionnaire de paquets** : `pnpm` (workspaces).
 - **Monorepo** : Nx — enforce les **frontières de modules** (tags `domain`/`app`/`infra`
   → règle ESLint `@nx/enforce-module-boundaries`). C'est ce qui rend l'hexagonal _vérifiable_.
+  ⚠️ La règle n'évalue que les tags **enregistrés** en `depConstraints` : un contexte
+  oublié n'est pas permissif, il est hors règle. `pnpm frontieres` (bloquant en CI)
+  refuse tout tag hors règle et vérifie les miroirs de vocabulaire — CONVENTIONS.md §4.
 - **Lint/format** : ESLint (typescript-eslint) + Prettier. Règles : pas de `console.log`
   en prod, import boundaries, complexité cyclomatique plafonnée.
 - **Hooks Git** : Husky + lint-staged (lint + format + types sur le staged), commit-msg

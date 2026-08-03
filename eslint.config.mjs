@@ -91,6 +91,24 @@ export default [
               ],
             },
             {
+              // Lot D4 — ce contexte n'était PAS enregistré : `svc-notifications`
+              // et `contracts-notifications` n'étaient soumis à aucune frontière
+              // de contexte (un tag absent des `depConstraints` n'est pas
+              // « permissif », il n'est jamais évalué — dérive silencieuse
+              // fermée par `scripts/verifier-frontieres.mjs`).
+              // Le périmètre ci-dessous est celui du code existant : consommateur
+              // des ÉVÉNEMENTS foyer (`foyer.EnfantModifie`…) et planification
+              // (semaines validées) — couplage par contrats d'événements
+              // uniquement, même schéma que tarification/planification.
+              sourceTag: 'context:notifications',
+              onlyDependOnLibsWithTags: [
+                'context:notifications',
+                'context:shared',
+                'context:foyer',
+                'context:planification',
+              ],
+            },
+            {
               sourceTag: 'context:gateway',
               onlyDependOnLibsWithTags: ['context:gateway', 'context:shared'],
             },

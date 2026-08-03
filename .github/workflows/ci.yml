@@ -144,6 +144,15 @@ jobs:
       - name: Ratchet ESLint — warnings vs baseline (bloquant si remontée)
         run: node .github/workflows/scripts/lint-warnings.mjs
 
+      # Lot D4 — FRONTIÈRES. Le lint ci-dessus n'applique `enforce-module-boundaries`
+      # qu'aux tags ENREGISTRÉS en `depConstraints` : un contexte oublié n'est pas
+      # « permissif », il n'est jamais évalué (le lint reste vert quoi qu'il
+      # importe). Ce step refuse tout tag hors règle, tout tag fantôme en
+      # `onlyDependOnLibsWithTags`, et toute divergence d'un miroir de vocabulaire
+      # déclaré (recopies assumées que la frontière `domain` ↛ `contracts` impose).
+      - name: Frontières Nx + miroirs de vocabulaire (bloquant)
+        run: node scripts/verifier-frontieres.mjs
+
       # P1-2 (doc 18 §8) — publier les MÉTRIQUES de test, pas seulement le vert/rouge.
       # Les reporters JUnit + couverture lcov/json-summary sont activés en CI par les
       # vitest.config.mts (gardés par `process.env.CI`). On agrège un résumé lisible
