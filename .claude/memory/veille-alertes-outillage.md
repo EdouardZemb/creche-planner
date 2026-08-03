@@ -53,6 +53,25 @@ sévérités par une **liste fermée** (`normaliserSeverite()`), et les `html_ur
 d'essai `ALERTES_DRY_RUN=1` est volontairement **hostile** et sert de test de
 non-régression — il sort en `exit=1` (chemin ALERTES), c'est normal.
 
+Ce jeu d'essai est **exécuté en CI** par le job `veille-alertes-autotest` de
+`ci.yml`, gaté sur `config-changes` (qui filtre déjà `.github/workflows/**`) : il
+est donc skippé, et traité comme réussi par la protection de branche, sur les PR
+qui n'y touchent pas. Il vérifie les deux contrats — chemin ALERTES (code 1, charge
+échappée, lien refusé, une seule ligne) et chemin POINT MORT (code 1 + mention
+explicite). Garde-fou validé par test négatif : en neutralisant `assainir()`, le job
+échoue bien. **Ne pas** le transformer en step de `config-validation` (qui monte la
+pile d'observabilité ≈15 min) : le signal doit rester rapide et lisible.
+
+⚠️ **L'alerte CodeQL reste ouverte, et c'est assumé.** `js/http-to-file-access` est
+une règle brute « donnée réseau → écriture fichier » : l'échappement Markdown n'est
+pas un sanitizer qu'elle reconnaît, donc elle re-signale à chaque analyse (1 medium).
+Elle décrit une propriété **inhérente au design** — ce workflow existe pour écrire
+des données d'alerte distantes dans un rapport. À **dismisser dans l'onglet
+Security** (motif : données assainies à l'écriture), pas à « corriger » par une
+suppression `// codeql[...]` en dur, qui masquerait aussi une vraie régression.
+Sévérité _medium_ : elle ne franchit pas le seuil `critical,high`, donc elle ne fait
+pas rougir `veille-alertes.yml`.
+
 **Si `dependabot/alerts` répond 403 en CI.** La couverture du `GITHUB_TOKEN` par
 défaut sur cet endpoint dépend de la configuration du dépôt. Le run part au rouge
 avec la marche à suivre : poser un secret Actions `ALERTS_TOKEN` (PAT, scope
