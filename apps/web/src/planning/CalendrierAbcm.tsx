@@ -1,29 +1,38 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DateClickArg } from '@fullcalendar/interaction';
-import type { EventInput } from '@fullcalendar/core';
 import type {
   ContratLocal,
   JourAlsh,
   ExceptionAbcm,
   CreerContratAbcm,
   LienEtablissementSaisie,
-  InscriptionsJour,
 } from '../types/bff';
 import { joursDuMois, jourSemaineDeIso, formaterDateFr } from '../utils/dates';
-import { alshEffectif } from '../notifications/besoinsSemaine';
+import { libelleAlsh } from '../notifications/besoinsSemaine';
 import { couleurDuMode } from '../utils/couleurs';
-import { Bouton } from '../ui/Bouton';
-import { Modale } from '../ui/Modale';
-import { LegendePlanning } from './LegendePlanning';
-import { ChoixPortee } from './ChoixPortee';
 import { couleurAjoute, couleurRetire } from './couleursPlanning';
-import { BarreStatutCalendrier } from './BarreStatutCalendrier';
-import { CalendrierMois } from './CalendrierMois';
-import { ModaleContratDurable } from './ModaleContratDurable';
+import { SocleCalendrier } from './SocleCalendrier';
+import { ListeJoursClavier, type LigneJourClavier } from './ListeJoursClavier';
+import { ModaleAjustementAbcm } from './ModaleAjustementAbcm';
+import { ModaleJourneeAlsh, type FormuleAlsh } from './ModaleJourneeAlsh';
 import {
   socleContratDurable,
   useCalendrierContrat,
 } from './useCalendrierContrat';
+import { ecartJoursAbcm, evenementsAbcm } from './evenementsAbcm';
+import {
+  alshEffectifDe,
+  effectifActif,
+  effectifJour,
+  exceptionDe,
+  exceptionPourDate,
+  inscriptionsTemplate,
+  alshRecurrent,
+  type ContexteAbcm,
+  type Effectif,
+  type EtatAlsh,
+  type ModeAbcm,
+} from './inscriptionsAbcm';
 
 export interface CalendrierAbcmProps {
   contrat: ContratLocal;
@@ -34,19 +43,6 @@ export interface CalendrierAbcmProps {
   onContratModifie?: () => void;
 }
 
-interface EtatAlsh {
-  date: string;
-  type: 'COMPLETE' | 'DEMI';
-  repas: boolean;
-}
-
-/** Inscriptions effectives d'un jour (matin/soir/cantine) après exception. */
-interface Effectif {
-  cantine: boolean;
-  matin: boolean;
-  soir: boolean;
-}
-
 /** Calendrier mensuel ABCM (CANTINE, PERISCOLAIRE, ALSH). */
 export function CalendrierAbcm({
   contrat,
@@ -55,7 +51,7 @@ export function CalendrierAbcm({
   onEnregistre,
   onContratModifie,
 }: CalendrierAbcmProps) {
-  const mode = contrat.mode as 'CANTINE' | 'PERISCOLAIRE' | 'ALSH';
+  const mode = contrat.mode as ModeAbcm;
 
   const [pai, setPai] = useState<boolean | undefined>(undefined);
   const [joursAlsh, setJoursAlsh] = useState<EtatAlsh[]>([]);
@@ -83,28 +79,7 @@ export function CalendrierAbcm({
 
   // Enveloppe commune : écriture debouncée + statut, réhydratation serveur,
   // annonces (AQ-05), portée et flux de modification durable du contrat.
-  const {
-    ecrire,
-    erreur,
-    etat,
-    enregistreA,
-    reessayer,
-    saisieServeur,
-    chargee,
-    marquerSaisieLocale,
-    saisieServeurObsolete,
-    annoncer,
-    regionLiveProps,
-    estDansPeriode,
-    portee,
-    setPortee,
-    confirmationDurable,
-    demanderConfirmationDurable,
-    confirmerDurable,
-    annulerDurable,
-    erreurDurable,
-    succesDurable,
-  } = useCalendrierContrat<ContratLocal['semaineAbcm']>({
+  const calendrier = useCalendrierContrat<ContratLocal['semaineAbcm']>({
     contrat,
     mois,
     simule,
@@ -113,8 +88,21 @@ export function CalendrierAbcm({
     construireCorpsDurable,
     reinitialiserSaisie,
   });
+  const {
+    ecrire,
+    saisieServeur,
+    chargee,
+    marquerSaisieLocale,
+    saisieServeurObsolete,
+    annoncer,
+    estDansPeriode,
+    portee,
+    setPortee,
+    demanderConfirmationDurable,
+  } = calendrier;
 
-  // Réhydratation depuis le serveur (source de vérité, durabilité multi-poste).
+  // Changement de (contrat, mois, simulation) : la saisie du mois précédent
+  // n'a plus de sens ; le serveur la remplacera à la réhydratation suivante.
   useEffect(() => {
     setPai(undefined);
     setJoursAlsh([]);
@@ -140,192 +128,55 @@ export function CalendrierAbcm({
   }, [chargee, saisieServeur, saisieServeurObsolete]);
 
   // Modale ALSH.
-  const [popoverDate, setPopoverDate] = useState<string | null>(null);
-  const [popoverForm, setPopoverForm] = useState<{
-    type: 'COMPLETE' | 'DEMI';
-    repas: boolean;
-  }>({ type: 'COMPLETE', repas: false });
+  const [dateAlsh, setDateAlsh] = useState<string | null>(null);
+  const [formuleAlsh, setFormuleAlsh] = useState<FormuleAlsh>({
+    type: 'COMPLETE',
+    repas: false,
+  });
 
   // Modale ajustement cantine/péri.
-  const [dialogDate, setDialogDate] = useState<string | null>(null);
-  const [dialogForm, setDialogForm] = useState<{
-    cantine: boolean;
-    matin: boolean;
-    soir: boolean;
-  }>({ cantine: false, matin: false, soir: false });
+  const [dateAjustement, setDateAjustement] = useState<string | null>(null);
+  const [choixAjustement, setChoixAjustement] = useState<Effectif>({
+    cantine: false,
+    matin: false,
+    soir: false,
+  });
 
-  // Mémorisé : la valeur par défaut `{}` créerait sinon une nouvelle référence à
-  // chaque rendu et invaliderait les hooks qui en dépendent.
-  const semaineAbcm = useMemo(
-    () => contrat.semaineAbcm ?? {},
-    [contrat.semaineAbcm],
+  // Tout ce dont dépend la lecture d'un jour : la récurrence du contrat et les
+  // deux couches de saisie du mois. Un seul objet mémoïsé — les dérivations de
+  // `inscriptionsAbcm` s'appellent entre elles et n'ont ainsi qu'UNE dépendance.
+  const ctx = useMemo<ContexteAbcm>(
+    () => ({
+      semaine: contrat.semaineAbcm ?? {},
+      exceptions,
+      joursAlsh,
+    }),
+    [contrat.semaineAbcm, exceptions, joursAlsh],
   );
 
-  const inscriptionsTemplate = useCallback(
-    (iso: string): InscriptionsJour => semaineAbcm[jourSemaineDeIso(iso)] ?? {},
-    [semaineAbcm],
+  // Jours du mois compris dans la période de validité du contrat.
+  const joursPeriode = useMemo<string[]>(
+    () => joursDuMois(mois).filter(estDansPeriode),
+    [mois, estDansPeriode],
   );
 
-  const exceptionDe = useCallback(
-    (iso: string): ExceptionAbcm | undefined =>
-      exceptions.find((e) => e.date === iso),
-    [exceptions],
+  const couleurs = useMemo(
+    () => ({
+      mode: couleurDuMode(mode),
+      ajout: couleurAjoute(),
+      retrait: couleurRetire(),
+    }),
+    [mode],
   );
 
-  const effectif = useCallback(
-    (iso: string): Effectif => {
-      const t = inscriptionsTemplate(iso);
-      const e = exceptionDe(iso);
-      return {
-        cantine: e?.cantine ?? t.cantine ?? false,
-        matin: e?.periMatin ?? t.periMatin ?? false,
-        soir: e?.periSoir ?? t.periSoir ?? false,
-      };
-    },
-    [inscriptionsTemplate, exceptionDe],
+  const events = useMemo(
+    () => evenementsAbcm(ctx, mode, joursPeriode, couleurs),
+    [ctx, mode, joursPeriode, couleurs],
   );
 
-  // Jour explicite (state ALSH) d'une date, converti à la forme récurrente.
-  const alshExplicite = useCallback(
-    (iso: string) => {
-      const j = joursAlsh.find((x) => x.date === iso);
-      return j ? { type: j.type, repas: j.repas } : undefined;
-    },
-    [joursAlsh],
-  );
-
-  // Jour ALSH EFFECTIF d'une date (explicite > exception > récurrence), `null`
-  // si non réservé — même sémantique que `dashboard/jourFoyer.ts`.
-  const alshEffectifDe = useCallback(
-    (iso: string) =>
-      alshEffectif(iso, alshExplicite(iso), exceptionDe(iso), semaineAbcm),
-    [alshExplicite, exceptionDe, semaineAbcm],
-  );
-
-  // Récurrence hebdomadaire brute de ce jour de semaine (sans exception ni explicite).
-  const alshRecurrent = useCallback(
-    (iso: string) => inscriptionsTemplate(iso).alsh,
-    [inscriptionsTemplate],
-  );
-
-  // Jours d'école du mois (dans la période) — base des ajustements cantine/péri.
-  const joursPeriode = useMemo<string[]>(() => {
-    if (mode === 'ALSH') return [];
-    return joursDuMois(mois).filter(estDansPeriode);
-  }, [mode, mois, estDansPeriode]);
-
-  const couleur = couleurDuMode(mode);
-  const couleurAjout = couleurAjoute();
-  const couleurRet = couleurRetire();
-
-  // Écart net vs contrat (jours actifs ajoutés − jours actifs retirés).
-  const ecartJours = useMemo(() => {
-    if (mode === 'ALSH') return 0;
-    let ajoutes = 0;
-    let retires = 0;
-    for (const iso of joursPeriode) {
-      const t = inscriptionsTemplate(iso);
-      const eff = effectif(iso);
-      const tActif =
-        mode === 'CANTINE'
-          ? (t.cantine ?? false)
-          : (t.periMatin ?? false) || (t.periSoir ?? false);
-      const effActif = mode === 'CANTINE' ? eff.cantine : eff.matin || eff.soir;
-      if (effActif && !tActif) ajoutes += 1;
-      if (!effActif && tActif) retires += 1;
-    }
-    return ajoutes - retires;
-  }, [mode, joursPeriode, inscriptionsTemplate, effectif]);
-
-  // Écart net ALSH vs contrat (jours réservés ajoutés − jours récurrents retirés).
-  const ecartJoursAlsh = useMemo(() => {
-    if (mode !== 'ALSH') return 0;
-    let ajoutes = 0;
-    let retires = 0;
-    for (const iso of joursDuMois(mois)) {
-      if (!estDansPeriode(iso)) continue;
-      const recurrent = alshRecurrent(iso) !== undefined;
-      const effActif = alshEffectifDe(iso) !== null;
-      if (effActif && !recurrent) ajoutes += 1;
-      if (!effActif && recurrent) retires += 1;
-    }
-    return ajoutes - retires;
-  }, [mode, mois, estDansPeriode, alshRecurrent, alshEffectifDe]);
-
-  const events = useMemo<EventInput[]>(() => {
-    if (mode === 'ALSH') {
-      const evts: EventInput[] = [];
-      for (const iso of joursDuMois(mois)) {
-        if (!estDansPeriode(iso)) continue;
-        const eff = alshEffectifDe(iso);
-        const recurrent = alshRecurrent(iso);
-        const explicite = alshExplicite(iso);
-        if (eff) {
-          // Réservé effectivement : ajout ponctuel hors récurrence → vert,
-          // sinon couleur du mode (récurrence, éventuellement ajustée explicitement).
-          const ajoute = !recurrent && explicite !== undefined;
-          const titre =
-            eff.type === 'COMPLETE'
-              ? eff.repas
-                ? 'Journée + repas'
-                : 'Journée'
-              : 'Demi-journée';
-          evts.push(evt(iso, ajoute ? couleurAjout : couleur, titre));
-        } else if (recurrent) {
-          // Jour récurrent retiré ponctuellement (exception `alsh:false`) → rouge.
-          evts.push(evt(iso, couleurRet, 'Retiré'));
-        }
-      }
-      return evts;
-    }
-
-    const evts: EventInput[] = [];
-    for (const iso of joursPeriode) {
-      const t = inscriptionsTemplate(iso);
-      const eff = effectif(iso);
-      if (mode === 'CANTINE') {
-        const tActif = t.cantine ?? false;
-        if (eff.cantine && !tActif) {
-          evts.push(evt(iso, couleurAjout, 'Ajouté'));
-        } else if (eff.cantine && tActif) {
-          evts.push(evt(iso, couleur, 'Cantine'));
-        } else if (!eff.cantine && tActif) {
-          evts.push(evt(iso, couleurRet, 'Retiré'));
-        }
-      } else {
-        const tActif = (t.periMatin ?? false) || (t.periSoir ?? false);
-        const effActif = eff.matin || eff.soir;
-        const change =
-          eff.matin !== (t.periMatin ?? false) ||
-          eff.soir !== (t.periSoir ?? false);
-        const titre =
-          eff.matin && eff.soir ? 'Matin + soir' : eff.matin ? 'Matin' : 'Soir';
-        if (effActif) {
-          evts.push(evt(iso, change ? couleurAjout : couleur, titre));
-        } else if (tActif) {
-          evts.push(evt(iso, couleurRet, 'Retiré'));
-        }
-      }
-    }
-    return evts;
-  }, [
-    mode,
-    mois,
-    joursPeriode,
-    estDansPeriode,
-    alshEffectifDe,
-    alshRecurrent,
-    alshExplicite,
-    inscriptionsTemplate,
-    effectif,
-    couleur,
-    couleurAjout,
-    couleurRet,
-  ]);
-
-  const joursDuMoisListe = useMemo<string[]>(
-    () => (mode === 'ALSH' ? joursDuMois(mois) : joursPeriode),
-    [mode, mois, joursPeriode],
+  const ecartJours = useMemo(
+    () => ecartJoursAbcm(ctx, mode, joursPeriode),
+    [ctx, mode, joursPeriode],
   );
 
   const envoyer = useCallback(
@@ -368,83 +219,59 @@ export function CalendrierAbcm({
   const ouvrirAjustement = useCallback(
     (iso: string) => {
       if (mode === 'ALSH' || !estDansPeriode(iso)) return;
-      const eff = effectif(iso);
       setPortee('mois');
-      setDialogForm({ cantine: eff.cantine, matin: eff.matin, soir: eff.soir });
-      setDialogDate(iso);
+      setChoixAjustement(effectifJour(ctx, iso));
+      setDateAjustement(iso);
     },
-    [mode, estDansPeriode, effectif],
-  );
-
-  /** Calcule l'exception à stocker pour une date (vide si conforme au template). */
-  const exceptionPourDate = useCallback(
-    (
-      iso: string,
-      choix: { cantine: boolean; matin: boolean; soir: boolean },
-    ): ExceptionAbcm | null => {
-      const t = inscriptionsTemplate(iso);
-      const exc: ExceptionAbcm = { date: iso };
-      let differe = false;
-      if (mode === 'CANTINE') {
-        if (choix.cantine !== (t.cantine ?? false)) {
-          exc.cantine = choix.cantine;
-          differe = true;
-        }
-      } else {
-        if (choix.matin !== (t.periMatin ?? false)) {
-          exc.periMatin = choix.matin;
-          differe = true;
-        }
-        if (choix.soir !== (t.periSoir ?? false)) {
-          exc.periSoir = choix.soir;
-          differe = true;
-        }
-      }
-      return differe ? exc : null;
-    },
-    [mode, inscriptionsTemplate],
+    [mode, estDansPeriode, ctx, setPortee],
   );
 
   const confirmerAjustement = useCallback(() => {
-    if (dialogDate === null) return;
-    const date = dialogDate;
+    if (dateAjustement === null || mode === 'ALSH') return;
+    const date = dateAjustement;
     const jourSemaine = jourSemaineDeIso(date);
 
     if (portee === 'tous') {
-      const t = inscriptionsTemplate(date);
-      const nouvelle = { ...semaineAbcm };
+      const nouvelle = { ...ctx.semaine };
       nouvelle[jourSemaine] =
         mode === 'CANTINE'
-          ? { ...t, cantine: dialogForm.cantine }
-          : { ...t, periMatin: dialogForm.matin, periSoir: dialogForm.soir };
+          ? {
+              ...inscriptionsTemplate(ctx, date),
+              cantine: choixAjustement.cantine,
+            }
+          : {
+              ...inscriptionsTemplate(ctx, date),
+              periMatin: choixAjustement.matin,
+              periSoir: choixAjustement.soir,
+            };
       // Message en conséquences concrètes : ce que devient ce jour de semaine,
       // chaque semaine (le rappel des effets communs vit dans la modale).
       const nouvelEtat =
         mode === 'CANTINE'
-          ? dialogForm.cantine
+          ? choixAjustement.cantine
             ? 'la cantine sera réservée'
             : 'la cantine ne sera plus réservée'
-          : dialogForm.matin && dialogForm.soir
+          : choixAjustement.matin && choixAjustement.soir
             ? 'l’accueil périscolaire du matin et du soir sera réservé'
-            : dialogForm.matin
+            : choixAjustement.matin
               ? 'seul l’accueil périscolaire du matin sera réservé'
-              : dialogForm.soir
+              : choixAjustement.soir
                 ? 'seul l’accueil périscolaire du soir sera réservé'
                 : 'l’accueil périscolaire ne sera plus réservé';
       demanderConfirmationDurable(
         nouvelle,
         `Tous les ${jourSemaine.toLowerCase()}s, ${nouvelEtat}.`,
       );
-      setDialogDate(null);
+      setDateAjustement(null);
       return;
     }
 
-    const exc = exceptionPourDate(date, dialogForm);
-    const avaitException = exceptions.some((e) => e.date === date);
+    const exc = exceptionPourDate(ctx, mode, date, choixAjustement);
+    const avaitException = exceptionDe(ctx, date) !== undefined;
     const reste = exceptions.filter((e) => e.date !== date);
     const nouvelles = exc !== null ? [...reste, exc] : reste;
     setExceptions(nouvelles);
-    setDialogDate(null);
+    setDateAjustement(null);
     envoyer(joursAlsh, pai, nouvelles);
     if (exc !== null) {
       annoncer(`Jour ajusté le ${formaterDateFr(date)}`);
@@ -452,13 +279,11 @@ export function CalendrierAbcm({
       annoncer(`Ajustement retiré le ${formaterDateFr(date)}`);
     }
   }, [
-    dialogDate,
-    dialogForm,
+    dateAjustement,
+    choixAjustement,
     portee,
     mode,
-    semaineAbcm,
-    inscriptionsTemplate,
-    exceptionPourDate,
+    ctx,
     exceptions,
     joursAlsh,
     pai,
@@ -468,13 +293,13 @@ export function CalendrierAbcm({
   ]);
 
   const reinitialiserJour = useCallback(() => {
-    if (dialogDate === null) return;
-    const nouvelles = exceptions.filter((e) => e.date !== dialogDate);
+    if (dateAjustement === null) return;
+    const nouvelles = exceptions.filter((e) => e.date !== dateAjustement);
     setExceptions(nouvelles);
-    setDialogDate(null);
+    setDateAjustement(null);
     envoyer(joursAlsh, pai, nouvelles);
-    annoncer(`Ajustement retiré le ${formaterDateFr(dialogDate)}`);
-  }, [dialogDate, exceptions, joursAlsh, pai, envoyer, annoncer]);
+    annoncer(`Ajustement retiré le ${formaterDateFr(dateAjustement)}`);
+  }, [dateAjustement, exceptions, joursAlsh, pai, envoyer, annoncer]);
 
   // --- ALSH -----------------------------------------------------------------
 
@@ -483,16 +308,16 @@ export function CalendrierAbcm({
       if (mode !== 'ALSH' || !iso.startsWith(mois) || !estDansPeriode(iso))
         return;
       // Prérempli depuis l'état EFFECTIF (explicite > exception > récurrence).
-      const eff = alshEffectifDe(iso);
+      const eff = alshEffectifDe(ctx, iso);
       setPortee('mois');
-      setPopoverForm(
+      setFormuleAlsh(
         eff
           ? { type: eff.type, repas: eff.repas ?? false }
           : { type: 'COMPLETE', repas: false },
       );
-      setPopoverDate(iso);
+      setDateAlsh(iso);
     },
-    [mode, mois, estDansPeriode, alshEffectifDe, setPortee],
+    [mode, mois, estDansPeriode, ctx, setPortee],
   );
 
   const handleDateClick = useCallback(
@@ -504,55 +329,52 @@ export function CalendrierAbcm({
   );
 
   const confirmerAlsh = useCallback(() => {
-    if (popoverDate === null) return;
-    const date = popoverDate;
+    if (dateAlsh === null) return;
+    const date = dateAlsh;
     const jourSemaine = jourSemaineDeIso(date);
 
     // Portée durable : la formule devient la récurrence hebdomadaire du contrat.
     if (portee === 'tous') {
-      const t = inscriptionsTemplate(date);
-      const nouvelle = { ...semaineAbcm };
+      const nouvelle = { ...ctx.semaine };
       nouvelle[jourSemaine] = {
-        ...t,
+        ...inscriptionsTemplate(ctx, date),
         alsh: {
-          type: popoverForm.type,
-          ...(popoverForm.repas ? { repas: true } : {}),
+          type: formuleAlsh.type,
+          ...(formuleAlsh.repas ? { repas: true } : {}),
         },
       };
       const detail =
-        popoverForm.type === 'DEMI'
+        formuleAlsh.type === 'DEMI'
           ? 'une demi-journée sera réservée'
-          : popoverForm.repas
+          : formuleAlsh.repas
             ? 'une journée avec repas sera réservée'
             : 'une journée sera réservée';
       demanderConfirmationDurable(
         nouvelle,
         `Tous les ${jourSemaine.toLowerCase()}s, ${detail}.`,
       );
-      setPopoverDate(null);
+      setDateAlsh(null);
       return;
     }
 
     // Ponctuel : un jour explicite prime et lève une éventuelle exception `alsh:false`.
-    const existait = alshEffectifDe(date) !== null;
+    const existait = alshEffectifDe(ctx, date) !== null;
     const nouveaux = joursAlsh.filter((j) => j.date !== date);
-    nouveaux.push({ date, type: popoverForm.type, repas: popoverForm.repas });
+    nouveaux.push({ date, type: formuleAlsh.type, repas: formuleAlsh.repas });
     const nvExceptions = exceptions.filter((e) => e.date !== date);
     setJoursAlsh(nouveaux);
     setExceptions(nvExceptions);
-    setPopoverDate(null);
+    setDateAlsh(null);
     envoyer(nouveaux, pai, nvExceptions);
     annoncer(
       `Journée ALSH ${existait ? 'modifiée' : 'ajoutée'} le ${formaterDateFr(date)}`,
     );
   }, [
-    popoverDate,
-    popoverForm,
+    dateAlsh,
+    formuleAlsh,
     portee,
-    semaineAbcm,
-    inscriptionsTemplate,
+    ctx,
     demanderConfirmationDurable,
-    alshEffectifDe,
     joursAlsh,
     exceptions,
     pai,
@@ -561,30 +383,22 @@ export function CalendrierAbcm({
   ]);
 
   const supprimerAlsh = useCallback(() => {
-    if (popoverDate === null) return;
-    const date = popoverDate;
+    if (dateAlsh === null) return;
+    const date = dateAlsh;
     // Retire le jour effectif : lève le jour explicite, puis neutralise la
     // récurrence hebdomadaire par une exception `alsh:false` si elle réserverait
     // encore ce jour ; sinon nettoie l'exception résiduelle.
     const nouveaux = joursAlsh.filter((j) => j.date !== date);
     const reste = exceptions.filter((e) => e.date !== date);
-    const nvExceptions = alshRecurrent(date)
+    const nvExceptions = alshRecurrent(ctx, date)
       ? [...reste, { date, alsh: false }]
       : reste;
     setJoursAlsh(nouveaux);
     setExceptions(nvExceptions);
-    setPopoverDate(null);
+    setDateAlsh(null);
     envoyer(nouveaux, pai, nvExceptions);
     annoncer(`Journée ALSH retirée le ${formaterDateFr(date)}`);
-  }, [
-    popoverDate,
-    joursAlsh,
-    exceptions,
-    alshRecurrent,
-    pai,
-    envoyer,
-    annoncer,
-  ]);
+  }, [dateAlsh, joursAlsh, exceptions, ctx, pai, envoyer, annoncer]);
 
   const handlePaiChange = useCallback(
     (val: boolean) => {
@@ -595,21 +409,57 @@ export function CalendrierAbcm({
     [joursAlsh, exceptions, envoyer, annoncer],
   );
 
-  const aExistant = (iso: string) => exceptions.some((e) => e.date === iso);
+  // --- Listes clavier -------------------------------------------------------
+
+  // ALSH : le mois ENTIER est listé (la garde de période est portée par
+  // `ouvrirSaisieAlsh`) ; les autres modes ne listent que la période.
+  const lignesClavier = useMemo<LigneJourClavier[]>(() => {
+    const jours = mode === 'ALSH' ? joursDuMois(mois) : joursPeriode;
+    return jours.map((jour) => {
+      const libelle = formaterDateFr(jour);
+      if (mode === 'ALSH') {
+        const eff = alshEffectifDe(ctx, jour);
+        return {
+          date: jour,
+          libelle,
+          etat: eff ? libelleAlsh(eff) : '—',
+          action: eff ? 'Modifier' : 'Saisir',
+          actionAriaLabel: eff
+            ? `Modifier la journée ALSH du ${libelle}`
+            : `Saisir une journée ALSH le ${libelle}`,
+        };
+      }
+      const actif = effectifActif(mode, effectifJour(ctx, jour));
+      return {
+        date: jour,
+        libelle,
+        etat: actif ? 'Réservé' : '—',
+        action: 'Ajuster',
+        actionAriaLabel: `Ajuster le ${libelle} (${
+          actif ? 'réservé' : 'non réservé'
+        })`,
+      };
+    });
+  }, [mode, mois, joursPeriode, ctx]);
 
   return (
-    <div>
-      {/* AQ-05 : annonce des mutations du calendrier aux lecteurs d'écran. */}
-      <p {...regionLiveProps} className="sr-only" />
-      <BarreStatutCalendrier
-        etat={etat}
-        enregistreA={enregistreA}
-        erreur={erreur}
-        onReessayer={reessayer}
-        erreurDurable={erreurDurable}
-        succesDurable={succesDurable}
-      >
-        {mode === 'CANTINE' && (
+    <SocleCalendrier
+      calendrier={calendrier}
+      legende={{
+        couleur: couleurs.mode,
+        libelle:
+          mode === 'CANTINE'
+            ? 'Cantine (contrat)'
+            : mode === 'PERISCOLAIRE'
+              ? 'Périscolaire (contrat)'
+              : 'ALSH (contrat)',
+        ecartJours,
+      }}
+      mois={mois}
+      events={events}
+      onDateClick={handleDateClick}
+      barre={
+        mode === 'CANTINE' ? (
           <label
             style={{
               display: 'flex',
@@ -628,315 +478,70 @@ export function CalendrierAbcm({
             />
             PAI (Projet d&apos;accueil individualisé)
           </label>
-        )}
-
-        {mode === 'ALSH' && (
+        ) : mode === 'ALSH' ? (
           <span className="muted" style={{ fontSize: '0.82rem' }}>
             Cliquer sur un jour pour ajouter, modifier ou retirer une journée
             ALSH, ou utiliser la liste ci-dessous au clavier.
           </span>
-        )}
-      </BarreStatutCalendrier>
-
-      {mode !== 'ALSH' && (
-        <>
-          <LegendePlanning
-            couleurGarde={couleur}
-            libelleGarde={
-              mode === 'CANTINE'
-                ? 'Cantine (contrat)'
-                : 'Périscolaire (contrat)'
-            }
-            ecartJours={ecartJours}
-          />
-          <div
-            style={{ fontSize: '0.82rem', marginBottom: '0.5rem' }}
-            className="muted"
-          >
-            Cliquer sur un jour pour ajouter ou retirer la prestation, ou
-            utiliser la liste ci-dessous au clavier.
-          </div>
-        </>
-      )}
-
-      {mode === 'ALSH' && (
-        <LegendePlanning
-          couleurGarde={couleur}
-          libelleGarde="ALSH (contrat)"
-          ecartJours={ecartJoursAlsh}
+        ) : undefined
+      }
+      // Le mode ALSH place sa consigne dans la barre de statut ci-dessus.
+      consigne={
+        mode === 'ALSH'
+          ? undefined
+          : 'Cliquer sur un jour pour ajouter ou retirer la prestation, ou utiliser la liste ci-dessous au clavier.'
+      }
+    >
+      {lignesClavier.length > 0 && (
+        <ListeJoursClavier
+          legende={
+            mode === 'ALSH'
+              ? 'Saisir une journée ALSH (accessible au clavier)'
+              : 'Ajuster un jour (accessible au clavier)'
+          }
+          jours={lignesClavier}
+          onAction={mode === 'ALSH' ? ouvrirSaisieAlsh : ouvrirAjustement}
         />
       )}
 
-      <CalendrierMois
-        mois={mois}
-        events={events}
-        onDateClick={handleDateClick}
-      />
-
-      {/* Alternative clavier ALSH. */}
-      {mode === 'ALSH' && joursDuMoisListe.length > 0 && (
-        <fieldset style={{ marginTop: '1rem' }}>
-          <legend>Saisir une journée ALSH (accessible au clavier)</legend>
-          <ul className="liste-nue">
-            {joursDuMoisListe.map((jour) => {
-              const eff = alshEffectifDe(jour);
-              const libelleJour = formaterDateFr(jour);
-              return (
-                <li
-                  key={jour}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.2rem 0',
-                  }}
-                >
-                  <span style={{ minWidth: '8rem' }}>{libelleJour}</span>
-                  <span className="muted" style={{ fontSize: '0.82rem' }}>
-                    {eff
-                      ? eff.type === 'COMPLETE'
-                        ? eff.repas
-                          ? 'Journée + repas'
-                          : 'Journée'
-                        : 'Demi-journée'
-                      : '—'}
-                  </span>
-                  <Bouton
-                    variante="secondaire"
-                    onClick={() => {
-                      ouvrirSaisieAlsh(jour);
-                    }}
-                    aria-label={
-                      eff
-                        ? `Modifier la journée ALSH du ${libelleJour}`
-                        : `Saisir une journée ALSH le ${libelleJour}`
-                    }
-                  >
-                    {eff ? 'Modifier' : 'Saisir'}
-                  </Bouton>
-                </li>
-              );
-            })}
-          </ul>
-        </fieldset>
-      )}
-
-      {/* Alternative clavier cantine / périscolaire. */}
-      {mode !== 'ALSH' && joursDuMoisListe.length > 0 && (
-        <fieldset style={{ marginTop: '1rem' }}>
-          <legend>Ajuster un jour (accessible au clavier)</legend>
-          <ul className="liste-nue">
-            {joursDuMoisListe.map((jour) => {
-              const eff = effectif(jour);
-              const actif =
-                mode === 'CANTINE' ? eff.cantine : eff.matin || eff.soir;
-              const libelleJour = formaterDateFr(jour);
-              return (
-                <li
-                  key={jour}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    padding: '0.2rem 0',
-                  }}
-                >
-                  <span style={{ minWidth: '8rem' }}>{libelleJour}</span>
-                  <span className="muted" style={{ fontSize: '0.82rem' }}>
-                    {actif ? 'Réservé' : '—'}
-                  </span>
-                  <Bouton
-                    variante="secondaire"
-                    onClick={() => {
-                      ouvrirAjustement(jour);
-                    }}
-                    aria-label={`Ajuster le ${libelleJour} (${
-                      actif ? 'réservé' : 'non réservé'
-                    })`}
-                  >
-                    Ajuster
-                  </Bouton>
-                </li>
-              );
-            })}
-          </ul>
-        </fieldset>
-      )}
-
-      {/* Modale ajustement cantine / périscolaire. */}
-      {dialogDate !== null && (
-        <Modale
-          titre={`Ajuster le ${formaterDateFr(dialogDate)}`}
-          onClose={() => {
-            setDialogDate(null);
+      {dateAjustement !== null && mode !== 'ALSH' && (
+        <ModaleAjustementAbcm
+          date={dateAjustement}
+          mode={mode}
+          valeurs={choixAjustement}
+          onChangeValeurs={setChoixAjustement}
+          portee={portee}
+          onChangePortee={setPortee}
+          onConfirmer={confirmerAjustement}
+          onReinitialiser={
+            portee === 'mois' && exceptionDe(ctx, dateAjustement) !== undefined
+              ? reinitialiserJour
+              : undefined
+          }
+          onFermer={() => {
+            setDateAjustement(null);
           }}
-        >
-          {mode === 'CANTINE' ? (
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                margin: 0,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={dialogForm.cantine}
-                onChange={(e) => {
-                  setDialogForm((f) => ({ ...f, cantine: e.target.checked }));
-                }}
-              />
-              Cantine
-            </label>
-          ) : (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.3rem',
-              }}
-            >
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  margin: 0,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={dialogForm.matin}
-                  onChange={(e) => {
-                    setDialogForm((f) => ({ ...f, matin: e.target.checked }));
-                  }}
-                />
-                Matin
-              </label>
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  margin: 0,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={dialogForm.soir}
-                  onChange={(e) => {
-                    setDialogForm((f) => ({ ...f, soir: e.target.checked }));
-                  }}
-                />
-                Soir
-              </label>
-            </div>
-          )}
-
-          <ChoixPortee valeur={portee} onChange={setPortee} nom="abcm" />
-
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-            <Bouton onClick={confirmerAjustement}>Confirmer</Bouton>
-            {portee === 'mois' && aExistant(dialogDate) && (
-              <Bouton variante="secondaire" onClick={reinitialiserJour}>
-                Réinitialiser
-              </Bouton>
-            )}
-            <Bouton
-              variante="secondaire"
-              onClick={() => {
-                setDialogDate(null);
-              }}
-            >
-              Annuler
-            </Bouton>
-          </div>
-        </Modale>
+        />
       )}
 
-      {/* Modale ALSH. */}
-      {popoverDate !== null && (
-        <Modale
-          titre={`Journée ALSH du ${formaterDateFr(popoverDate)}`}
-          onClose={() => {
-            setPopoverDate(null);
+      {dateAlsh !== null && (
+        <ModaleJourneeAlsh
+          date={dateAlsh}
+          valeurs={formuleAlsh}
+          onChangeValeurs={setFormuleAlsh}
+          portee={portee}
+          onChangePortee={setPortee}
+          onConfirmer={confirmerAlsh}
+          onSupprimer={
+            portee === 'mois' && alshEffectifDe(ctx, dateAlsh) !== null
+              ? supprimerAlsh
+              : undefined
+          }
+          onFermer={() => {
+            setDateAlsh(null);
           }}
-        >
-          <label>
-            Type
-            <select
-              value={popoverForm.type}
-              onChange={(e) => {
-                setPopoverForm((f) => ({
-                  ...f,
-                  type: e.target.value as 'COMPLETE' | 'DEMI',
-                }));
-              }}
-            >
-              <option value="COMPLETE">Journée complète</option>
-              <option value="DEMI">Demi-journée</option>
-            </select>
-          </label>
-
-          <label
-            style={{
-              flexDirection: 'row',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              marginTop: '0.5rem',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={popoverForm.repas}
-              onChange={(e) => {
-                setPopoverForm((f) => ({ ...f, repas: e.target.checked }));
-              }}
-            />
-            Repas inclus
-          </label>
-
-          <ChoixPortee valeur={portee} onChange={setPortee} nom="alsh" />
-
-          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
-            <Bouton onClick={confirmerAlsh}>Confirmer</Bouton>
-            {portee === 'mois' && alshEffectifDe(popoverDate) !== null && (
-              <Bouton variante="secondaire" onClick={supprimerAlsh}>
-                Supprimer
-              </Bouton>
-            )}
-            <Bouton
-              variante="secondaire"
-              onClick={() => {
-                setPopoverDate(null);
-              }}
-            >
-              Annuler
-            </Bouton>
-          </div>
-        </Modale>
+        />
       )}
-
-      {/* Confirmation d'une modification durable du contrat. */}
-      <ModaleContratDurable
-        confirmation={confirmationDurable}
-        onConfirmer={confirmerDurable}
-        onAnnuler={annulerDurable}
-      />
-    </div>
+    </SocleCalendrier>
   );
-}
-
-/** Fabrique un événement FullCalendar « pleine journée ». */
-function evt(date: string, couleur: string, titre: string): EventInput {
-  return {
-    id: `${titre}-${date}`,
-    start: date,
-    allDay: true,
-    backgroundColor: couleur,
-    borderColor: couleur,
-    title: titre,
-  };
 }

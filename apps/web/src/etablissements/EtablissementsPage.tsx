@@ -151,10 +151,9 @@ function EtablissementForm({
     };
 
     try {
-      const reponse =
-        edition && etablissement
-          ? await api.modifierEtablissement(foyerId, etablissement.id, corps)
-          : await api.creerEtablissement(foyerId, corps);
+      const reponse = edition
+        ? await api.modifierEtablissement(foyerId, etablissement.id, corps)
+        : await api.creerEtablissement(foyerId, corps);
       onEnregistre(reponse);
     } catch (err) {
       if (err instanceof ApiError) {

@@ -237,10 +237,9 @@ export function ContratForm({
           nbMensualites: parseInt(nbMensualites, 10),
           semaineType,
         };
-        const reponse =
-          edition && contrat
-            ? await api.modifierContrat(contrat.id, saisie)
-            : await api.creerContrat(saisie);
+        const reponse = edition
+          ? await api.modifierContrat(contrat.id, saisie)
+          : await api.creerContrat(saisie);
         contratLocal = {
           ...reponse,
           heuresAnnuellesContractualisees:
@@ -255,19 +254,18 @@ export function ContratForm({
           semaineAbcm: construireSemaineAbcmComplete(semaineAbcm),
           premiereInscription,
         };
-        const reponse =
-          edition && contrat
-            ? await api.modifierContrat(contrat.id, saisie)
-            : await api.creerContrat(saisie);
+        const reponse = edition
+          ? await api.modifierContrat(contrat.id, saisie)
+          : await api.creerContrat(saisie);
         contratLocal = {
           ...reponse,
           semaineAbcm: saisie.semaineAbcm,
         };
       }
 
-      if (contratLocal !== undefined) {
-        onCree(contratLocal);
-      }
+      // Les deux branches ci-dessus affectent `contratLocal` : il est ici
+      // toujours défini (la garde qui s'y trouvait était morte).
+      onCree(contratLocal);
     } catch (err) {
       if (err instanceof ApiError) {
         const erreurs = extraireErreurs(err.corps);

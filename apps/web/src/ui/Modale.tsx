@@ -92,7 +92,7 @@ export function Modale({
     return () => {
       document.removeEventListener('keydown', onKeyDown);
       // Restaure le focus sur le déclencheur à la fermeture.
-      declencheur?.focus?.();
+      declencheur?.focus();
     };
   }, [onClose, refFocusInitial]);
 

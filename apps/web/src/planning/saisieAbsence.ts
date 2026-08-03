@@ -2,6 +2,8 @@ import type { PlageHoraire, SemaineTypeCreche } from '../types/bff';
 import { jourSemaineDeIso } from '../utils/dates';
 import { classerAbsence } from './etatJourGarde';
 import {
+  ARRIVEE_DEFAUT,
+  DEPART_DEFAUT,
   minutesDeHhmm,
   plageDepuisHeures,
   plageValide,
@@ -18,10 +20,7 @@ import {
 // stockée (durée = fin − début) en est dérivée — l'utilisateur ne saisit plus
 // directement la fenêtre, ce qui levait l'ambiguïté « départ à 16h » → 8h déduites.
 export type TypeAbsence =
-  | 'journee'
-  | 'departAvance'
-  | 'arriveeRetardee'
-  | 'personnalise';
+  'journee' | 'departAvance' | 'arriveeRetardee' | 'personnalise';
 
 // Heures saisies : `heure` pour les types à un seul champ (départ avancé /
 // arrivée retardée), `arrivee`/`depart` pour la fenêtre libre « personnalisé ».
@@ -30,6 +29,27 @@ export interface SaisieHeures {
   depart: string;
   heure: string;
 }
+
+/**
+ * Saisie COMPLÈTE d'une absence dans un formulaire. Forme commune à la modale
+ * d'un jour et à la saisie en lot : les deux collectent exactement les mêmes
+ * champs, seule leur mise en page diffère.
+ */
+export interface FormAbsence extends SaisieHeures {
+  typeAbsence: TypeAbsence;
+  preavisJours: number;
+  certificatMaladie: boolean;
+}
+
+/** Formulaire d'absence vierge : journée entière, sans préavis ni certificat. */
+export const FORM_ABSENCE_VIDE: FormAbsence = {
+  arrivee: ARRIVEE_DEFAUT,
+  depart: DEPART_DEFAUT,
+  heure: '',
+  typeAbsence: 'journee',
+  preavisJours: 0,
+  certificatMaladie: false,
+};
 
 // Options (et ordre) du sélecteur de type d'absence, partagées modale ↔ lot.
 export const TYPES_ABSENCE: readonly {
