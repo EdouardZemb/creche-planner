@@ -1,5 +1,5 @@
 {
-  "total": 658,
+  "total": 649,
   "parRegle": {
     "@typescript-eslint/require-await": 196,
     "@typescript-eslint/unbound-method": 97,
@@ -9,11 +9,12 @@
     "@typescript-eslint/no-extraneous-class": 45,
     "@typescript-eslint/no-unsafe-assignment": 27,
     "@typescript-eslint/no-useless-constructor": 27,
-    "react-hooks/exhaustive-deps": 11,
-    "@typescript-eslint/no-unnecessary-condition": 8,
+    "react-hooks/set-state-in-effect": 8,
     "@typescript-eslint/no-invalid-void-type": 7,
-    "react-hooks/set-state-in-effect": 5,
+    "react-hooks/exhaustive-deps": 3,
+    "@typescript-eslint/no-unnecessary-condition": 2,
     "@typescript-eslint/no-unused-vars": 2,
+    "react-hooks/refs": 2,
     "@typescript-eslint/no-unsafe-argument": 1
   }
 }

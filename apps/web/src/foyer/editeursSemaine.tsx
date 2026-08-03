@@ -130,7 +130,8 @@ export interface AbcmEditorProps {
 }
 
 export function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
-  const montrerCantine = mode === 'CANTINE' || mode === 'PERISCOLAIRE';
+  // La cantine est proposée dans LES DEUX modes servis par cet éditeur (un
+  // contrat périscolaire peut inclure le repas) : elle n'a donc pas de garde.
   const montrerPeriMatin = mode === 'PERISCOLAIRE';
   const montrerPeriSoir = mode === 'PERISCOLAIRE';
 
@@ -171,7 +172,7 @@ export function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
             <th scope="col" style={{ textAlign: 'left', paddingRight: '1rem' }}>
               Jour
             </th>
-            {montrerCantine && <th scope="col">Cantine</th>}
+            <th scope="col">Cantine</th>
             {montrerPeriMatin && <th scope="col">Péri matin</th>}
             {montrerPeriSoir && <th scope="col">Péri soir</th>}
           </tr>
@@ -187,18 +188,16 @@ export function AbcmEditor({ mode, semaineAbcm, onChange }: AbcmEditorProps) {
                 >
                   {LIBELLES_JOURS[jour]}
                 </th>
-                {montrerCantine && (
-                  <td style={{ textAlign: 'center' }}>
-                    <input
-                      type="checkbox"
-                      checked={insc.cantine === true}
-                      onChange={(e) => {
-                        mettreAJour(jour, 'cantine', e.target.checked);
-                      }}
-                      aria-label={`Cantine ${LIBELLES_JOURS[jour]}`}
-                    />
-                  </td>
-                )}
+                <td style={{ textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={insc.cantine === true}
+                    onChange={(e) => {
+                      mettreAJour(jour, 'cantine', e.target.checked);
+                    }}
+                    aria-label={`Cantine ${LIBELLES_JOURS[jour]}`}
+                  />
+                </td>
                 {montrerPeriMatin && (
                   <td style={{ textAlign: 'center' }}>
                     <input

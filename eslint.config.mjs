@@ -241,13 +241,27 @@ export default [
     // react-hooks v7 (format flat) : inclut les règles du React Compiler
     // (purity, immutability, static-components, set-state-in-render, refs…) qui
     // signalent le code non compilable / non sûr pour la mémoïsation auto.
+    //
+    // Le glob inclut `apps/web/**/*.ts` : les hooks du dépôt n'ont PAS de JSX et
+    // vivent donc en `.ts` (`useAsync`, `useFoyer`, `useSaisieServeur`,
+    // `useSaisieCreche`…). Limitées aux `.tsx`, ces règles ne voyaient aucun
+    // d'entre eux — un angle mort de MÊME nature que celui des libs sans
+    // `coverage-summary.json` (lot D2) : ce n'est pas le code qui était propre,
+    // c'est le linter qui ne regardait pas. Corollaire à retenir : déplacer un
+    // effet d'un composant `.tsx` vers un hook `.ts` faisait disparaître ses
+    // diagnostics du compteur sans rien corriger.
     ...reactHooks.configs.flat['recommended-latest'],
-    files: ['**/*.jsx', '**/*.tsx'],
+    files: ['**/*.jsx', '**/*.tsx', 'apps/web/**/*.ts'],
   },
   { ...jsxA11y.flatConfigs.recommended, files: ['**/*.jsx', '**/*.tsx'] },
   {
-    files: ['**/*.jsx', '**/*.tsx'],
-    settings: { react: { version: 'detect' } },
+    // Ratchet des règles react-hooks. Glob ALIGNÉ sur celui du plugin ci-dessus
+    // (hooks en `.ts` compris) — sinon un hook `.ts` échapperait au ratchet et
+    // hériterait de la sévérité `error` du preset, ce qui casserait la CI.
+    // Bloc SÉPARÉ du bloc `react/*` qui suit : les règles `react/jsx-*` ne sont
+    // définies que pour les fichiers JSX (`react.configs.flat.recommended`) et
+    // les référencer sur un `.ts` sortirait « Definition for rule not found ».
+    files: ['**/*.jsx', '**/*.tsx', 'apps/web/**/*.ts'],
     rules: {
       // rules-of-hooks reste en erreur (critique). exhaustive-deps en « warn »
       // (recommandation React : autofix risqué). TODO ratchet.
@@ -261,6 +275,12 @@ export default [
       'react-hooks/refs': 'warn',
       'react-hooks/preserve-manual-memoization': 'warn',
       'react-hooks/immutability': 'warn',
+    },
+  },
+  {
+    files: ['**/*.jsx', '**/*.tsx'],
+    settings: { react: { version: 'detect' } },
+    rules: {
       'react/jsx-no-useless-fragment': 'error',
       'react/self-closing-comp': 'error',
       'react/jsx-boolean-value': ['error', 'never'],
