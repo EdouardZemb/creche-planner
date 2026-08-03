@@ -45,3 +45,16 @@ updates:
       - 'ci'
     commit-message:
       prefix: 'ci'
+    groups:
+      # `github/codeql-action/init` et `github/codeql-action/analyze` sont deux
+      # sous-actions du MÊME dépôt, utilisées dans le MÊME job de `codeql.yml`.
+      # `analyze` relit le fichier de configuration écrit par `init` et échoue si
+      # les versions diffèrent (« Loaded a configuration file for version '4.37.0',
+      # but running version '4.37.4' », job en `configuration error`). Sans ce
+      # groupe, Dependabot ouvre une PR par sous-action (#269 `analyze` et #270
+      # `init`, 2026-08-02) : chacune ne bouge qu'une moitié du couple et rougit
+      # le check « Analyse CodeQL (javascript-typescript) ». Le groupe force les
+      # deux à monter dans UNE seule PR, donc toujours en phase.
+      codeql-action:
+        patterns:
+          - 'github/codeql-action*'
