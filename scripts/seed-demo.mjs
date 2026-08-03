@@ -264,13 +264,14 @@ function estMoisScolaire(mois) {
 // --- Client HTTP ----------------------------------------------------------
 
 /**
- * Fenêtre de rejeu des réponses 502/503 de la gateway. `attendreGateway` ne
- * prouve que la gateway elle-même : ses services amont (svc-foyer notamment,
- * circuit breaker) peuvent ne pas encore accepter d'appels — la toute première
- * écriture (`POST /foyers`) recevait alors un 503 « erreur du service amont »
- * (flaky CI documenté depuis #165). Un 502/503 de la gateway signifie que
- * l'amont n'a pas traité la requête (breaker ouvert, connexion refusée) : la
- * rejouer ne crée pas de doublon. Toute autre erreur échoue franchement.
+ * Fenêtre de rejeu des réponses 502/503 de la gateway. Depuis le lot B3,
+ * `attendreGateway` sonde la readiness de la CHAÎNE (les 5 amonts prêts) : la
+ * cause racine du flaky CI documenté depuis #165 — la première écriture
+ * (`POST /foyers`) partant vers un svc-foyer encore en migration — est fermée
+ * en amont. Ce rejeu reste la ceinture pour ce que la readiness ne couvre pas :
+ * un disjoncteur encore ouvert côté gateway (état client, pas état d'amont) se
+ * referme au premier succès. Un 502/503 signifie que l'amont n'a pas traité la
+ * requête : la rejouer ne crée pas de doublon. Toute autre erreur échoue franchement.
  */
 const REJEU_ECHEANCE_MS = 30_000;
 const REJEU_PAUSE_MS = 1_000;
@@ -306,23 +307,36 @@ async function http(methode, chemin, corps, { rejouerAmont = true } = {}) {
 
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Attend que la gateway réponde (toute réponse HTTP = service prêt). */
+/**
+ * Readiness de la CHAÎNE. `BASE_URL` finit par `/api/v1` : remonter d'un cran
+ * donne `<origine>/api/health`, la readiness de la gateway — qui, depuis le lot
+ * B3, n'est verte que si les 5 amonts le sont (base + migrations + NATS de
+ * chacun). C'est la sonde qu'il fallait attendre depuis le début : l'ancienne
+ * (`GET /couts`, « toute réponse HTTP = prêt ») ne prouvait que le process de la
+ * gateway, d'où les 502/503 de la première écriture.
+ */
+const SANTE_URL = new URL('../health', `${BASE_URL}/`).toString();
+
+/** Attend que la gateway ET ses amonts soient prêts (readiness 2xx). */
 async function attendreGateway(essaisMax = 60) {
-  process.stdout.write('⏳ Attente de la gateway BFF');
+  process.stdout.write('⏳ Attente de la chaîne (gateway + amonts)');
   for (let i = 0; i < essaisMax; i++) {
     try {
-      // Sonde sans effet de bord : 400 (param manquant) = service debout.
-      await fetch(`${BASE_URL}/couts?mois=2026-01`);
-      process.stdout.write(' ✓\n');
-      return;
+      // 503 = un amont pas encore prêt : on repasse, ce n'est pas une erreur.
+      const reponse = await fetch(SANTE_URL);
+      if (reponse.ok) {
+        process.stdout.write(' ✓\n');
+        return;
+      }
     } catch {
-      process.stdout.write('.');
-      await pause(2000);
+      // Gateway pas encore à l'écoute : même traitement qu'un 503.
     }
+    process.stdout.write('.');
+    await pause(2000);
   }
   process.stdout.write('\n');
   throw new Error(
-    `Gateway injoignable sur ${BASE_URL} après ${essaisMax} essais`,
+    `Chaîne non prête sur ${SANTE_URL} après ${essaisMax} essais`,
   );
 }
 

@@ -432,12 +432,21 @@ function versionDeployee() {
   return '';
 }
 
-/** Porte 3 — santé gateway (`/api/health`). Retourne le code de sortie de curl. */
+/**
+ * Porte 3 — santé gateway (`/api/health`). Retourne le code de sortie de curl.
+ *
+ * Depuis le lot B3, cette readiness agrège celle des **5 amonts** (base +
+ * migrations + NATS de chacun) : la porte ne valide plus « la gateway répond »
+ * mais « toute la chaîne accepte du trafic » — c'est ce qui la rend capable
+ * d'attraper un service au schéma en retard AVANT le seed. Corollaire : la
+ * fenêtre de patience doit couvrir les migrations d'un démarrage à froid, d'où
+ * 20 × 3 s ≈ 60 s (curl réessaie les 5xx, donc les 503 de readiness).
+ */
 function verifierSante() {
   const curlArgs = [
     '--fail',
     '--retry',
-    '10',
+    '20',
     '--retry-delay',
     '3',
     '--retry-connrefused',
