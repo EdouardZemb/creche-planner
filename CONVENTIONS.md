@@ -136,9 +136,12 @@ orthographié n'élargit pas la contrainte, il la **resserre** sans le dire.
   e2e Playwright + axe.
 - Convention de nommage : `*.test.ts(x)` côté `apps/web`, `*.spec.ts` côté
   services/libs.
-- Piège : `nx test <projet>` ne **type-check pas** (Vitest transpile sans
-  vérifier les types). Pour valider un changement : `pnpm nx run-many -t
-typecheck test -p <projet>`.
+- Vitest transpile sans vérifier les types, mais `nx test <projet>` **tire son
+  `typecheck`** (arête `dependsOn` posée sur les 7 cibles écrites à la main et
+  dans les `targetDefaults`) : une seule commande suffit pour valider un
+  changement. Cf. [CONTRIBUTING.md § Pièges](CONTRIBUTING.md), source unique sur
+  la boucle de dev — et `pnpm pieges`, qui refuse la réapparition de l'ancienne
+  consigne dans un plan.
 
 ## 6. Outillage évalué mais différé
 

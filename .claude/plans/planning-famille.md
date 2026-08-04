@@ -109,7 +109,7 @@ US-33-01/02 : le mardi scolaire de référence s'affiche — enfant 1 « École 
 - Les prestations se lisent par mois : une semaine à cheval sur deux mois = deux lectures — le client famille les fusionne (piège classique du repo, cf. `ecrireSemaineBesoins`, `apps/web/src/api/client.ts:600`).
 - Une semaine à cheval sur une **date d'effet** de version : mode/établissement changent en cours de semaine — résoudre la version **par jour**, jamais par semaine (D1).
 - Le mercredi ALSH et les vacances viennent du calendrier + saisies — ne pas réinventer de règle « mercredi » en dur (tout est donnée depuis le plan 31).
-- Builder `contracts-kernel`/`shared-semaine` avant `nx test web` (neutralisé si le lot B2 de consolidation — `dependsOn ^build` — est livré ; vérifier). `viderCacheAsync()` est déjà appelé globalement par le setup (`apps/web/src/test-setup.ts:19-20`) — rien à ajouter dans les tests.
+- `viderCacheAsync()` est déjà appelé globalement par le setup (`apps/web/src/test-setup.ts:19-20`) — rien à ajouter dans les tests.
 
 ---
 

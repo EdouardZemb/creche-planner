@@ -106,8 +106,8 @@ Filet de tests :                     L7 ──▶ L8 ; L6 ──▶ L8   (L8 EN 
 
 **Commandes de vérification (exactes)**
 
-- Web : **`pnpm nx run-many -t typecheck test -p web`** — ⚠️ **`nx test web` seul NE typecheck PAS** (piège documenté). Puis **`pnpm nx lint web`**.
-- Service (`<svc>` ∈ {`svc-notifications`, `svc-foyer`, `api-gateway`}) : **`pnpm nx run-many -t typecheck test -p <svc>`** puis **`pnpm nx lint <svc>`**.
+- Web : **`pnpm nx test web`** (le type-check est une arête de la cible) puis **`pnpm nx lint web`**.
+- Service (`<svc>` ∈ {`svc-notifications`, `svc-foyer`, `api-gateway`}) : **`pnpm nx test <svc>`** puis **`pnpm nx lint <svc>`**.
 - e2e web (Playwright mocké, `dependsOn build`) : **`pnpm nx e2e web`**. e2e stack (⚠️ **destructif**, `docker compose down -v`) : `pnpm nx e2e-stack web`.
 - Pacts : les specs **consumer** régénèrent les fichiers `/pacts/*.json`. **`/pacts` est dans `.prettierignore`** → **ne jamais reformater** ces JSON, ne jamais les éditer à la main. Provider verify = replay contre le vrai bundle + Postgres.
 - Garde-déploiement : `node .github/workflows/scripts/can-i-deploy.mjs` doit rester **COMPATIBLE**.
@@ -116,7 +116,7 @@ Filet de tests :                     L7 ──▶ L8 ; L6 ──▶ L8   (L8 EN 
 
 **Pièges d'environnement**
 
-- **Worktrees** : si l'exécution se fait dans un worktree git, **préfixer tous les chemins** — sinon on édite par erreur le clone principal (« faux vert »). Après `pnpm install` dans un worktree, refaire l'install si les symlinks `node_modules/@creche-planner/*` sont périmés (via PowerShell, pas Bash).
+- **Environnement de travail** : `pnpm preflight` en début de session — cf. [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md), source unique sur la boucle de dev.
 - **Provider pact specs** spawnent `dist/main.js` : **builder le bundle** (`pnpm nx build <svc>`) avant le verify, sinon on rejoue un bundle périmé (faux vert).
 - Tout **libellé vu par le parent** modifié doit être répercuté dans les specs qui l'assertent (unit + e2e).
 

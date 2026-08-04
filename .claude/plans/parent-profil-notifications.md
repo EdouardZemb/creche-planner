@@ -229,8 +229,8 @@ preferences[] }`.
   ⇒ `can-i-deploy.mjs` inchangé.
 - **Tests** : unit `*.spec.ts` (service préférences, invariant ≥1 canal, désabo one-shot), projection
   idempotente, property-based si pertinent, e2e `*.stack.e2e.spec.ts` (parent coupe l'e-mail → n'est
-  plus destinataire ; désabonnement via lien). Rappel piège : `nx test` ne typecheck pas →
-  `nx run-many -t typecheck test -p web`.
+  plus destinataire ; désabonnement via lien). Boucle de dev :
+  [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md).
 - **Migrations** : générées drizzle-kit, additives (2 tables), snapshot + `_journal.json`.
 
 ## 7. RGPD / sécurité

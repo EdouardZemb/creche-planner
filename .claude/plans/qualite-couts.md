@@ -80,16 +80,8 @@ doit être un chiffre vrai).
   `corepack pnpm@10.34.2 install`, `corepack pnpm@10.34.2 nx run-many -t lint typecheck test -p web`.
 - **Travailler dans le clone principal**
   `C:\Users\edoua\Documents\Claude\Projects\Documents courtier\creche-planner-public`.
-  Piège « faux vert » : des worktrees ont déjà édité le mauvais clone ; le
-  worktree `nifty-jackson-350eee` est un dossier vide non enregistré (git
-  résout vers le clone principal). Ne pas créer de worktree ; préfixer tous les
-  chemins.
-- Si les symlinks `node_modules/@creche-planner/*` sont cassés :
-  `corepack pnpm@10.34.2 install --force` **via PowerShell** (jamais Git Bash).
-- `nx test web` **ne typecheck pas** : toujours
-  `corepack pnpm@10.34.2 nx run-many -t typecheck test -p <projets>`.
-- Si `nx test web` échoue en résolution de modules : builder d'abord les libs
-  (`corepack pnpm@10.34.2 nx run-many -t build -p contracts-kernel shared-semaine`).
+- Environnement de travail : `pnpm preflight` en début de session — cf.
+  [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md), source unique sur la boucle de dev.
 
 **Code**
 
@@ -125,8 +117,7 @@ doit être un chiffre vrai).
 **Vérification UI locale** (lots front)
 
 - Stack réelle : `docker compose` du repo + seed, puis arrêter le conteneur web
-  et lancer Vite dev sur :4200 (procédure connue du repo ; si les shims `.bin`
-  sont périmés après un `pnpm install`, les régénérer par `install --force`).
+  et lancer Vite dev sur :4200 (procédure connue du repo).
 - Tester au viewport **375 px** (et 320 px pour le tableau) — aucune barre de
   scroll horizontale ne doit apparaître sur la page.
 

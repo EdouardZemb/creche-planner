@@ -52,8 +52,9 @@ Pour chaque SUT (System Under Test = un fichier source du domaine) :
   commande = une transition ; le runner explore des **séquences** de transitions, ce qui
   réalise mécaniquement le critère 0-switch / 1-switch et au-delà).
 
-> Note d'outillage (cf. §4) : `nx test` **exécute** les specs mais ne **type-check** pas
-> aussi strictement que `nx typecheck`. Les specs MBT doivent passer **les deux** cibles.
+> Note d'outillage (cf. §4) : les specs MBT doivent passer les cibles `test` **et**
+> `typecheck` — ce que `nx test <projet>` fait désormais d'une seule commande, le
+> type-check étant une arête de `test` (cf. [CONTRIBUTING.md § Pièges](../CONTRIBUTING.md)).
 
 ## 2. Catalogue des modèles
 
@@ -211,10 +212,11 @@ ID modèle → type → critère de couverture → fichier de test `*.mbt.spec.t
 - **0 bug de production trouvé** : les modèles **confirment la conformité** du code à la
   doc 02 (oracle métier). La valeur est la **traçabilité du critère** et la robustesse des
   invariants (milliers d'entrées générées), pas une correction de défaut.
-- **Note méthodologique** : `nx test` **exécute** les specs mais ne **type-check** pas aussi
-  strictement que `nx typecheck`. Une spec MBT peut donc « passer » `nx test` tout en ayant
-  une erreur de typage : les specs MBT doivent passer **les deux** cibles
-  (`nx run-many -t typecheck test`).
+- **Note méthodologique** : Vitest exécute les specs sans vérifier les types aussi
+  strictement que `tsc`. Une spec MBT peut donc être exécutée avec succès tout en portant
+  une erreur de typage — d'où l'exigence que les specs MBT passent les cibles `test` **et**
+  `typecheck`. Depuis que `typecheck` est une arête de `test`, `nx test <projet>` couvre
+  les deux (cf. [CONTRIBUTING.md § Pièges](../CONTRIBUTING.md)).
 
 > Suite logique de l'audit ISTQB du dépôt (CT-UT, docs 11/12 ; CT-MBT, ce document) : la
 > qualité est **outillée et déclarée**, du modèle métier (doc 02) jusqu'au critère de

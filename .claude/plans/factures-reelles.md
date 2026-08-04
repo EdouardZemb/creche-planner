@@ -570,9 +570,8 @@ et spécifiques :
 
 1. **Domaine** : `corepack pnpm@10.34.2 nx test facturation-domain` et `nx test
 tarification-domain` (100 % couverture ; crédit d'impôt : <6/≥6, cantine/repas exclus,
-   plafond, garde alternée, versions de barème). ⚠️ `nx test` ne typecheck PAS :
-   `nx run-many -t typecheck test -p facturation-domain tarification-domain …` ; piège
-   worktree : builder `contracts-kernel`/`shared-semaine` avant `nx test web`.
+   plafond, garde alternée, versions de barème) — le type-check et les builds de libs
+   viennent avec la cible `test`, cf. [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md).
    **Build/lint des projets affectés** : `corepack pnpm@10.34.2 nx affected -t build lint`.
 2. **Contrats** : `nx test contracts-facturation` (payloads valides/invalides,
    FactureEnregistree ET FactureSupprimee).

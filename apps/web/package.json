@@ -18,6 +18,9 @@
       },
       "dev": {
         "continuous": true,
+        "dependsOn": [
+          "^build"
+        ],
         "executor": "nx:run-commands",
         "options": {
           "command": "vite --port 4200 --host",
@@ -26,6 +29,9 @@
       },
       "serve": {
         "continuous": true,
+        "dependsOn": [
+          "^build"
+        ],
         "executor": "nx:run-commands",
         "options": {
           "command": "vite --port 4200 --host",
@@ -34,6 +40,9 @@
       },
       "preview": {
         "continuous": true,
+        "dependsOn": [
+          "^build"
+        ],
         "executor": "nx:run-commands",
         "options": {
           "command": "vite preview --port 4200",

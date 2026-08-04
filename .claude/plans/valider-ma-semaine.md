@@ -66,8 +66,8 @@ demandée** :
 ## Conventions et pièges transverses (valables pour TOUS les lots)
 
 - **pnpm via corepack, toujours** : `corepack pnpm@10.34.2 …` (jamais le pnpm global 8.x).
-- **Nx pour toute tâche** : `corepack pnpm@10.34.2 nx run-many -t lint typecheck test -p <projets>`.
-  ⚠️ `nx test web` **ne typecheck pas** : lancer `nx run-many -t typecheck test -p web`.
+- **Nx pour toute tâche** : `corepack pnpm@10.34.2 nx run-many -t lint test -p <projets>` (le
+  type-check est une arête de la cible `test`).
 - **Repo** : travailler dans le clone `creche-planner-public`, `main` protégée → branche
   - PR + check `ci`. Commitlint : sujet ≤ 100 caractères.
 - **ESLint 9 flat config type-aware** (ratchet warn→error) ; `verbatimModuleSyntax`
@@ -79,10 +79,8 @@ demandée** :
   modification d'interaction, **régénérer les pacts à blanc** (supprimer puis regénérer)
   pour éviter les doublons de merge. `can-i-deploy` doit rester vert : ne faire que des
   ajouts de champs **optionnels** dans les réponses/requêtes.
-- **Worktree** : si l'exécution passe par un git worktree, préfixer TOUS les chemins par
-  le worktree (piège « faux vert » : éditer le clone principal par erreur) ; un worktree
-  frais n'a pas de `node_modules` → `corepack pnpm@10.34.2 install` d'abord ; builder
-  les libs avant `nx test web` : `nx run-many -t build -p contracts-kernel shared-semaine`.
+- **Environnement de travail** : `pnpm preflight` en début de session — cf.
+  [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md), source unique sur la boucle de dev.
 - **e2e stack** : specs dans `apps/web/e2e/*.stack.e2e.spec.ts` (config
   `apps/web/playwright.stack.config.ts`). L'orchestrateur e2e-stack est **destructif**
   (`docker compose down -v`) — ne pas le lancer sur une stack de dev en cours d'usage.
@@ -90,8 +88,7 @@ demandée** :
   seulement par méthode attrape le retry — filtrer aussi par **statut** (204/200).
   Réutiliser les helpers de `apps/web/e2e/support/` (dont `stack.ts`).
 - **Vérif UI locale** : stack docker + seed, puis stopper le conteneur web et lancer Vite
-  dev sur :4200 (voir mémoire projet « Vérif UI locale ») ; piège : builder
-  `shared-semaine` avant, shims `.bin` périmés après un `pnpm install`.
+  dev sur :4200 (voir mémoire projet « Vérif UI locale »).
 - **Libellés** : tout changement de texte visible du parent doit être répercuté dans les
   tests composants ET les specs `apps/web/e2e/*.stack.e2e.spec.ts` qui l'assertent.
 
@@ -426,7 +423,6 @@ doit apparaître dans le mois — preuve bout-en-bout avec le lot 2a).
 
 ### Pièges connus
 
-- `nx test web` ne typecheck pas (voir transverses) ; builder les libs d'abord.
 - `getByDisplayValue` n'existe pas dans Playwright (mémoire projet) — pour les e2e
   ultérieurs, prévoir des sélecteurs par rôle/label.
 - Les specs e2e existantes assertent des libellés du planning : si un libellé visible

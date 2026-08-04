@@ -119,12 +119,12 @@ le même palier « prototype → produit pro » que les écrans.
 
 - Package manager : **`corepack pnpm@10.34.2`** (jamais le pnpm global 8.x). Toutes les
   commandes nx passent par `pnpm nx …`.
-- **`nx test <projet>` ne typecheck PAS.** Pour un projet, lancer systématiquement :
-  `pnpm nx run-many -t typecheck test lint -p <projet>` (ex. `-p web`, `-p svc-notifications`).
+- Vérification d'un projet : `pnpm nx run-many -t test lint -p <projet>` (ex. `-p web`,
+  `-p svc-notifications`) — le type-check est une arête de la cible `test`.
 - Lint : ESLint 9 **flat config type-aware**, ratchet `warn → error` (un nouveau warning
   casse la CI). Pas de `eslint-disable` sans justification.
-- **Windows** : pour les commandes qui touchent `node_modules`/symlinks (`pnpm install`),
-  utiliser **PowerShell**, jamais Git Bash.
+- Environnement de travail : `pnpm preflight` en début de session — cf.
+  [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md), source unique sur la boucle de dev.
 
 **Code (web)**
 
@@ -144,16 +144,12 @@ le même palier « prototype → produit pro » que les écrans.
 
 **Pièges globaux du repo**
 
-- **Worktree** : si l'exécution se fait dans un git worktree, **préfixer tous les chemins**
-  par le répertoire du worktree — sinon les éditions partent dans le **clone principal** et
-  donnent un « faux vert ». Vérifier `git rev-parse --show-toplevel` avant d'éditer. Un
-  worktree neuf n'a pas de `node_modules` → `pnpm install` d'abord (PowerShell).
 - **`/pacts` est dans `.prettierignore`** : ne pas reformater les fichiers de `pacts/`.
 - **`nx test web`** tourne sous vitest ; le **Service Worker (PWA) n'est PAS actif en `vite
 dev`** — il ne l'est qu'en build de prod. Toute vérif offline passe par un **build +
   preview** (ou la stack docker), cf. Lot 4.
 - Vérif UI locale : cf. le mémo repo `verif-ui-locale-stack.md` — stack docker + seed, puis
-  `web` en Vite dev :4200. Builder `shared-semaine` avant `nx test web` si besoin.
+  `web` en Vite dev :4200.
 
 **Branche & PR**
 
@@ -284,8 +280,7 @@ votre famille…` (glyphe `…`, cohérent avec le reste de l'app). _(Le reste d
 **Pièges connus.** `viewport-fit=cover` **sans** l'inset-top de l'en-tête (point 2) tuck le
 contenu sous l'encoche : les deux vont **ensemble**. Ne pas mettre de `min-height` sur
 `.app-header a` de façon à toucher aussi `.nav-onglets a` (la règle mobile est plus
-spécifique, mais vérifier au 375px qu'aucune régression d'alignement n'apparaît). `nx test
-web` ne typecheck pas → lancer la commande combinée.
+spécifique, mais vérifier au 375px qu'aucune régression d'alignement n'apparaît).
 
 **Modèle d'exécution recommandé.** **Opus 4.8** pour orchestrer, mais l'essentiel est
 mécanique : les points 1, 2, 3, 5, 6 (CSS/HTML) sont **délégables à Sonnet 5** une fois la
@@ -400,8 +395,7 @@ composants isolés qui montent une page sans `Coquille`.
 **Pièges connus.** Ne pas déclencher une boucle de rendu en mettant le titre du contexte en
 dépendance de l'effet d'annonce (utiliser un `ref`, cf. `refAnnonce` existant). Les tests de
 pages isolées (`*.test.tsx`) montent souvent la page **sans** `Coquille`/`TitrePageProvider` :
-la valeur par défaut du contexte doit rendre `useTitrePage` inoffensif (setter no-op). `nx
-test web` ne typecheck pas.
+la valeur par défaut du contexte doit rendre `useTitrePage` inoffensif (setter no-op).
 
 **Modèle d'exécution recommandé.** **Opus 4.8** — le point 3 (source de vérité du titre,
 ordre des effets, non-régression du focus) demande du jugement. Le point 2 (remplacement
@@ -484,8 +478,7 @@ manuel. `Intl.ListFormat` est natif (aucune dépendance).
 **Pièges connus.** `MesFoyersPage` est aussi touchée par le Lot 1 (prop `titrePrincipal` sur
 la branche 0-foyer, App.tsx:93 pour la branche N — qui **disparaît** ici) : après ce lot,
 `titrePrincipal` ne subsiste que sur la branche 0-foyer (App.tsx:83). Ne pas casser le routage
-`Accueil` (App.tsx:43-55) qui redirige vers `/mes-foyers` en cas de N foyers. `nx test web` ne
-typecheck pas.
+`Accueil` (App.tsx:43-55) qui redirige vers `/mes-foyers` en cas de N foyers.
 
 **Dépendance.** **Lot 2 mergé** (utilise `ChargementPage`). Ordonner après Lot 1 et Lot 2.
 
@@ -1142,7 +1135,7 @@ helpers de rendu jour + `dateLongueFr`/`libelleMode`. Tokens CSS existants.
 `SemaineBesoins` **existe déjà** — juste **propager** `contrats`/`jours`, ne pas re-fetcher.
 **Réutiliser le même rendu de jour que l'écran** (sinon incohérence écran ↔ mail = perte de
 confiance). Le « jour effectif » = base ⊕ exceptions datées : **ne pas réinventer** la fusion.
-`nx test web` ne typecheck pas. **Garder la confirmation explicite** avant l'envoi réel (mail à
+**Garder la confirmation explicite** avant l'envoi réel (mail à
 une vraie crèche). Établissement **non-routable** = pas d'édition (garder `CarteNonRoutable`).
 
 **Modèle d'exécution recommandé.** **Opus 4.8** — composition lisible du domaine, réutilisation

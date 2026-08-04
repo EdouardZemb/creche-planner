@@ -28,8 +28,8 @@ Décisions structurantes déjà prises (détail dans les lots) :
 
 ## Conventions communes à TOUS les lots (lire avant chaque lot)
 
-- **Lieu de travail** : clone `creche-planner-public` (jamais l'original). `main` protégée → branche + PR + check `ci`. Si worktree : **préfixer tous les chemins par le worktree** (piège récurrent : édition du clone principal par accident) ; un worktree frais n'a pas de `node_modules` → `corepack pnpm@10.34.2 install` d'abord (jamais le pnpm global 8.x ; sous Windows, `pnpm install --force` via **PowerShell**, pas Git Bash, si les symlinks `@creche-planner/*` cassent).
-- **Commandes** : toujours via nx préfixé — `pnpm nx …`. **`nx test web` ne type-check pas** → la vérification front est `pnpm nx run-many -t typecheck test -p web`. Avant tout test/typecheck web : `pnpm nx run-many -t build -p contracts-kernel shared-semaine` (sinon erreurs de résolution `dist/index.d.ts`).
+- **Lieu de travail** : clone `creche-planner-public` (jamais l'original). `main` protégée → branche + PR + check `ci`. Environnement de travail : `pnpm preflight` (worktree, liens `workspace:*`, shims, ports Pact) — cf. [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md), source unique.
+- **Commandes** : toujours via nx préfixé — `pnpm nx …`. La vérification front est `pnpm nx test web` (le type-check et les builds de libs sont des arêtes de la cible).
 - **Lint** : ESLint 9 flat config type-aware (ratchet warn→error ; ne pas introduire de warning). `verbatimModuleSyntax` **web uniquement** → `import type` pour tout import de type dans `apps/web`. `prefer-const`, `noUncheckedIndexedAccess` actifs. Commitlint : sujet ≤ 100 caractères.
 - **Pact** : les pactes vivent à plat dans `/pacts` (consumer unique `api-gateway`). Après toute modif de contrat : régénérer **à blanc** (`rm -f pacts/*.json` puis `pnpm nx test api-gateway`) — ne jamais laisser un merge de pactes créer des doublons. `/pacts` est dans `.prettierignore` : ne pas le formatter. La CI a un job `pact-drift` (régénère et exige zéro diff) et `pact-can-i-deploy` (`.github/workflows/scripts/can-i-deploy.mjs`, surrogate offline).
 - **Migrations** : Drizzle forward-only, jouées au boot (`libs/nest-commons/src/lib/database/migration.service.ts`). Génération : `pnpm drizzle-kit generate` depuis le service (config `drizzle.config.ts`, sortie `src/database/migrations/NNNN_slug.sql` + `meta/_journal.json`). **Additives uniquement dans ce chantier.**
@@ -39,7 +39,7 @@ Décisions structurantes déjà prises (détail dans les lots) :
   3. Pour faire apparaître l'encart « Valider la semaine suivante » : insérer une notification à valider —
      `docker compose exec -T postgres-notifications psql -U notifications -d notifications -c "INSERT INTO notification_hebdo (id, contrat_id, foyer_id, semaine_iso, type, statut, snapshot) VALUES (gen_random_uuid(), '<contratId>', '<foyerId>', '<YYYY-Www>', 'VALIDATION_HEBDO', 'A_VALIDER', '{}') ON CONFLICT DO NOTHING;"`
   4. Observer à **375×812**. En local sans identité CF, la cloche et « Mon profil » sont absents/refusés : **normal** (environnemental).
-  - Pour du hot-reload : `docker compose stop web && docker compose rm -f web` puis `pnpm nx serve web` (proxy `/api` → gateway :3000). Piège : shims `.bin` Windows périmés après pnpm install → `rm -rf apps/web/node_modules/.bin` + re-install.
+  - Pour du hot-reload : `docker compose stop web && docker compose rm -f web` puis `pnpm nx serve web` (proxy `/api` → gateway :3000).
 - **e2e stack** : `validation-semaine.stack.e2e.spec.ts` et consorts tournent en CI (`e2e-stack`) ; l'orchestrateur est **destructif** (`down -v`). Tout libellé visible modifié doit être répercuté dans les specs `apps/web/e2e/*.stack.e2e.spec.ts`.
 
 ---

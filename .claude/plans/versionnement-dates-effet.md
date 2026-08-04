@@ -39,8 +39,9 @@ Après ce chantier : toute donnée « à effet dans le temps » est une suite de
 
 ## 4. Conventions transversales (valables pour TOUS les lots)
 
-- **Package manager** : toujours `corepack pnpm@10.34.2 …` (jamais le pnpm global 8.x). `nx test` ne typecheck **pas** → toujours `nx run-many -t typecheck test -p …`. Avant tout test/typecheck web : `corepack pnpm@10.34.2 nx run-many -t build -p contracts-kernel shared-semaine`.
-- **Git** : clone `creche-planner-public`, main protégée → 1 PR par lot, check `ci` vert. Commits conventionnels FR, sujet ≤ 100 chars. Éviter les worktrees (piège « faux vert » documenté) ; si `pnpm install` casse les symlinks `@creche-planner/*` : PowerShell + `--force`.
+- **Package manager** : toujours `corepack pnpm@10.34.2 …` (jamais le pnpm global 8.x). `nx test <projet>` tire son type-check et les builds de libs (arêtes de la cible).
+- **Git** : clone `creche-planner-public`, main protégée → 1 PR par lot, check `ci` vert. Commits conventionnels FR, sujet ≤ 100 chars.
+- **Environnement de travail** : `pnpm preflight` en début de session — cf. [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md), source unique sur la boucle de dev.
 - **Lint** : ESLint 9 flat config type-aware, ratchet warn→error ; `verbatimModuleSyntax` **web uniquement** (`import type`) ; `readonly T[]` ; `noUncheckedIndexedAccess`.
 - **Pact** : fichiers commités dans `/pacts` (dans `.prettierignore`). Après toute modif de contrat : régénérer **à blanc** (`rm -f pacts/*.json` puis `nx test api-gateway`). Jobs CI `pact-drift` + `pact-can-i-deploy`.
 - **Migrations** : Drizzle forward-only jouées au boot ; génération `drizzle-kit generate` **depuis le dossier du service**. Prochains numéros au 2026-07-19 : referentiel `0002`, tarification `0004`, planification `0008`, foyer `0004`, notifications `0018` — vérifier au moment du lot.
@@ -307,7 +308,7 @@ Le parent saisit la grille d'une nouvelle année (depuis le PDF de l'établissem
 
 ### Pièges connus
 
-- `contracts-kernel` est buildé avant les tests web — l'ajout d'export impose de rebuilder (`nx run-many -t build -p contracts-kernel`).
+- L'arête `^build` de la cible `test` reconstruit `contracts-kernel` : un export ajouté est pris en compte sans geste manuel.
 - Ne pas toucher aux **valeurs** ni à l'ordre des unions (les types OpenAPI générés du web y sont sensibles).
 
 ---

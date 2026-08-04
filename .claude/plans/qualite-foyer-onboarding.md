@@ -80,10 +80,10 @@ consommateurs NATS idempotents (`processed_event`), validation Zod double barri�
 ## 4. Conventions et commandes (valables pour tous les lots)
 
 - **Package manager** : toujours `corepack pnpm@10.34.2 ...` (jamais le pnpm global 8.x).
-  `pnpm install --force` doit être lancé depuis **PowerShell** (symlinks
-  `node_modules/@creche-planner/*`), jamais Git Bash.
-- **Tâches via nx** : `corepack pnpm@10.34.2 nx run-many -t lint typecheck test -p <projets>`.
-  ⚠️ `nx test web` ne **typecheck pas** — toujours lancer `typecheck` explicitement.
+- **Environnement de travail** : `pnpm preflight` en début de session — cf.
+  [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md), source unique sur la boucle de dev.
+- **Tâches via nx** : `corepack pnpm@10.34.2 nx run-many -t lint test -p <projets>` (le
+  type-check est une arête de la cible `test`).
 - **ESLint 9 flat config type-aware** (ratchet warn→error) : `prefer-const`,
   `noUncheckedIndexedAccess`, `ReadonlyArray<T>` interdit → `readonly T[]`, `z.uuid()` (pas
   `z.string().uuid()` déprécié), `z.array(...).readonly()` pour les tableaux readonly.
@@ -99,14 +99,10 @@ consommateurs NATS idempotents (`processed_event`), validation Zod double barri�
   est **destructif** (`down -v`). L'identité s'injecte via `x-dev-user-email` (dev uniquement).
   `getByDisplayValue` n'existe pas en Playwright.
 - **Vérification UI locale** : stack Docker + seed, puis stopper le conteneur web et lancer Vite
-  dev sur :4200 (pièges : builder `shared-semaine` d'abord ; shims `.bin` périmés après
-  `pnpm install`). Vérifier en ~375 px de large (mobile-first).
+  dev sur :4200. Vérifier en ~375 px de large (mobile-first).
 - **Migrations svc-foyer** : SQL dans `apps/svc-foyer/src/database/migrations/`, embarquées par
   webpack dans `dist/database/migrations` et appliquées **au boot** (`MigrationService`). Nommer
   `000N_<slug>.sql` en suivant la numérotation existante (dernière : `0002_unique_naoko.sql`).
-- **Worktrees** : ⚠️ piège « faux vert » — si l'exécution passe par un worktree, préfixer tous les
-  chemins, sinon on édite le clone principal. Le worktree `nifty-jackson-350eee` est un dossier
-  vide non enregistré : travailler dans le clone principal.
 
 **Fichiers pivots** (mêmes chemins dans tous les lots) :
 

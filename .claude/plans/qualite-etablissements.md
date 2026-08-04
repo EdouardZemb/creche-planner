@@ -71,21 +71,16 @@ tort) que sa crèche est prévenue.
 
 - Gestionnaire de paquets : **`corepack pnpm@10.34.2`** (jamais le pnpm global 8.x). Toute
   tâche passe par **nx** : `corepack pnpm@10.34.2 nx …` (ou `pnpm nx …`).
-- **`pnpm install --force`** (réparation des symlinks `node_modules/@creche-planner/*`) se
-  lance **via PowerShell**, jamais via Bash.
-- **Piège worktree** : travailler dans le **clone principal**
-  `…/Documents courtier/creche-planner-public`. Certains worktrees enregistrés pointent en
-  fait vers un dossier vide (git résout alors vers le clone principal) → **préfixer les
-  chemins absolus** pour ne pas éditer le mauvais arbre (« faux vert »).
+- **Environnement de travail** : `pnpm preflight` en début de session — cf.
+  [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md), source unique sur la boucle de dev.
+  Travailler dans le **clone principal** `…/Documents courtier/creche-planner-public`.
 
 **Typage & tests (piège récurrent).**
 
-- **`nx test web` ne typecheck PAS.** Pour la partie web, lancer **`nx run-many -t typecheck
-test -p web`**. Pour un service backend : `nx run-many -t typecheck test lint -p <projet>`.
-- **Builder les libs de contrats avant les tests web/BFF** qui en dépendent
-  (`contracts-kernel`, `contracts-planification`, `shared-semaine`) : `nx run-many -t build
--p contracts-kernel contracts-planification shared-semaine` si un import `@creche-planner/*`
-  ne résout pas.
+- Vérification : **`nx test web`** pour la partie web, `nx run-many -t test lint -p <projet>`
+  pour un service backend — le type-check et les builds de libs de contrats
+  (`contracts-kernel`, `contracts-planification`, `shared-semaine`) sont des arêtes de la
+  cible `test`.
 - Cible d'ensemble : `nx affected -t typecheck lint test` doit rester **vert** avant PR.
 
 **Conventions de code (déjà en vigueur, à respecter à la lettre).**
@@ -290,8 +285,7 @@ l'absence de `types` (ils le doivent : `optional`). **Ne pas** modifier le sché
 
 ### Comment vérifier
 
-1. `corepack pnpm@10.34.2 nx run-many -t typecheck test lint -p web` (rappel : `nx test web`
-   seul **ne typecheck pas**).
+1. `corepack pnpm@10.34.2 nx run-many -t test lint -p web`.
 2. UI locale (stack + Vite `:4200`, cf. §2), route `/foyers/:id/etablissements` :
    - 375px : créer une crèche **sans** e-mail → vérifier l'avertissement sur la carte ;
    - vider la liste (ou foyer neuf) → vérifier l'`EtatVide` ;
@@ -303,12 +297,10 @@ l'absence de `types` (ils le doivent : `optional`). **Ne pas** modifier le sché
 
 ### Pièges connus
 
-- **`nx test web` ne typecheck pas** → utiliser `run-many -t typecheck test`.
 - **E2E libellés** : « Établissements » est asserté dans `parcours`/`a11y` e2e → répercuter.
 - **`EtatVide` API** : lire `ui/EtatVide.tsx` pour la forme exacte de `ActionEtatVide`
   (`onClick` vs `href`, `primaire`).
 - **Ne pas** retirer `--gris`/toucher aux tokens ; **ne pas** inventer `--jaune`.
-- **Worktree** : préfixer les chemins (faux vert).
 
 ### Modèle d'exécution
 
@@ -480,8 +472,6 @@ Dans le `map` de `concernes` (`b.enfants.length > 0`), **brancher sur `b.routabl
   dans `envoyer()` (pas dans `construire()`), sinon la relecture d'un non-routable planterait.
 - **`z.uuid()` / zod** : suivre les patterns existants du service (pas de `z.string().uuid()`
   déprécié si le repo utilise `z.uuid()`).
-- **`nx test web` ne typecheck pas** ; **builder les libs de contrats** si un import ne
-  résout pas.
 
 ### Modèle d'exécution
 
@@ -750,9 +740,7 @@ null`).
 
 ### Comment vérifier
 
-1. `corepack pnpm@10.34.2 nx run-many -t typecheck test -p web` (dont
-   `delaiPreavis.test.ts`). Builder `shared-semaine` d'abord si `joursDeLaSemaine` ne résout
-   pas.
+1. `corepack pnpm@10.34.2 nx test web` (dont `delaiPreavis.test.ts`).
 2. UI locale (stack + Vite `:4200`) : ouvrir une notification du mardi → `EditeurSemaine` ;
    pour une crèche à préavis « jeudi 12 h » et une école à « 2 jours ouvrés », vérifier les
    deux libellés de date limite (375px + desktop). Forcer une semaine dont le délai est
@@ -763,7 +751,6 @@ null`).
 - **Calcul de date** : la date limite d'un préavis « jeudi » pour la semaine N+1 est le jeudi
   de la semaine N (**précédente**), pas celui de la semaine cible — bien reculer dans
   `[lundiCible−7, lundiCible−1]`.
-- **`nx test web` ne typecheck pas** ; **builder `shared-semaine`** au besoin.
 - **Pas d'appel `Date`/`Math.random` dans le module pur** (testabilité) — injecter
   `aujourdhui`.
 - Vérifier les **noms exacts** des utils de `utils/dates.ts` avant de les appeler

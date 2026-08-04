@@ -111,7 +111,7 @@ etablissement
 
 ## 4. Découpage en phases / PR
 
-> Chaque phase = 1 PR, branche depuis `main`, check `ci` requis. Convention repo : `corepack pnpm@10.34.2`, lint ESLint 9 flat type-aware (ratchet warn→error), `verbatimModuleSyntax` web-only, `nx run-many -t typecheck test -p <projet>` (⚠️ `nx test` seul ne typecheck pas), Pact + drift OpenAPI à garder verts.
+> Chaque phase = 1 PR, branche depuis `main`, check `ci` requis. Convention repo : `corepack pnpm@10.34.2`, lint ESLint 9 flat type-aware (ratchet warn→error), `verbatimModuleSyntax` web-only, `nx test <projet>` (le type-check vient avec — cf. [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md)), Pact + drift OpenAPI à garder verts.
 
 ### P1 — Modèle établissement (backend isolé)
 
@@ -183,7 +183,7 @@ etablissement
 - **Atomicité création à la volée** : le nouvel établissement et le contrat doivent être créés dans la **même transaction** (sinon contrat orphelin / établissement fantôme).
 - **Cross-service** : ne PAS faire pointer un contrat (planification) vers un établissement vivant dans notifications. C'est précisément pourquoi on déplace la propriété en planification (P1) avant le lien (P2).
 - **Préavis partagé** : extraire `preavisRegleSchema` dans une lib partagée pour éviter une 3ᵉ copie.
-- **Pièges connus repo** (mémoire) : `nx test` ne typecheck pas → `nx run-many -t typecheck test -p <projet>` ; specs e2e `*.stack.e2e.spec.ts` sensibles aux libellés/données seedées ; `ReadonlyArray<T>`→`readonly T[]` (lint) ; working tree partagé → merges 100% server-side.
+- **Pièges connus repo** (cf. [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md) pour la boucle de dev) : specs e2e `*.stack.e2e.spec.ts` sensibles aux libellés/données seedées ; `ReadonlyArray<T>`→`readonly T[]` (lint) ; working tree partagé → merges 100% server-side.
 
 ---
 
