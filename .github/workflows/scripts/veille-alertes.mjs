@@ -41,11 +41,15 @@
  *
  * ── JETON ───────────────────────────────────────────────────────────────────
  * `GITHUB_TOKEN` + `permissions: security-events: read` suffit pour le code
- * scanning. Pour `dependabot/alerts`, la couverture du jeton par défaut est
- * variable selon la configuration du dépôt : si l'endpoint répond 403, le run part
- * au ROUGE avec un message explicite et la marche à suivre (poser un secret
- * `ALERTS_TOKEN`, PAT avec le scope `security_events`). On ne DEVINE jamais : on
- * signale. `ALERTS_TOKEN` est utilisé en priorité s'il existe.
+ * scanning. Pour `dependabot/alerts`, un 403 recouvre DEUX causes opposées, et
+ * le message d'aide les distingue en lisant le corps de la réponse :
+ *   - « Dependabot alerts are disabled for this repository » → la fonctionnalité
+ *     est éteinte. Aucun jeton n'y changera rien : l'activer dans Settings →
+ *     Code security. C'est le cas observé le 2026-08-05 ;
+ *   - tout autre 403 → couverture insuffisante du jeton par défaut : poser un
+ *     secret `ALERTS_TOKEN` (PAT, scope `security_events`), prioritaire s'il existe.
+ * On ne DEVINE jamais : on signale — et on signale la BONNE marche à suivre,
+ * sous peine d'envoyer fabriquer un PAT inutile.
  *
  * Zéro dépendance npm (Node pur, `fetch` natif).
  *
@@ -54,7 +58,9 @@
  *   ALERTS_TOKEN         PAT optionnel, prioritaire (scope `security_events`)
  *   GITHUB_REPOSITORY    défaut EdouardZemb/creche-planner
  *   ALERTES_SEUIL        sévérités qui font rougir (défaut `critical,high`)
- *   ALERTES_DRY_RUN=1    jeu d'essai synthétique, aucun appel réseau (mise au point)
+ *   ALERTES_DRY_RUN      jeu d'essai synthétique, aucun appel réseau : `1` (charge
+ *                        hostile, chemin ALERTES) ou `dependabot-desactive`
+ *                        (403 « alerts are disabled », chemin POINT MORT)
  *   GITHUB_STEP_SUMMARY  fichier de résumé (posé par Actions)
  */
 
@@ -62,7 +68,12 @@ import { appendFileSync } from 'node:fs';
 
 const REPO = process.env.GITHUB_REPOSITORY ?? 'EdouardZemb/creche-planner';
 const TOKEN = process.env.ALERTS_TOKEN || process.env.GITHUB_TOKEN || '';
-const DRY_RUN = process.env.ALERTES_DRY_RUN === '1';
+// `ALERTES_DRY_RUN=dependabot-desactive` : seconde variante du jeu d'essai, qui
+// rejoue le 403 « alerts are disabled » observé le 2026-08-05 pour vérifier que
+// l'aide affichée pointe vers Settings et NON vers un PAT à fabriquer.
+const CAS_DEPENDABOT_DESACTIVE =
+  process.env.ALERTES_DRY_RUN === 'dependabot-desactive';
+const DRY_RUN = process.env.ALERTES_DRY_RUN === '1' || CAS_DEPENDABOT_DESACTIVE;
 // `||` et NON `??` : sur cron, `github.event.inputs.seuil` vaut la chaîne VIDE
 // (pas `undefined`). Avec `??` le seuil serait `[]`, donc plus aucune alerte
 // « au-dessus du seuil » — un FAUX VERT, précisément ce que ce script combat.
@@ -247,6 +258,11 @@ function compter(alertes, severite) {
  *
  * Ce jeu contient une alerte `high` : `ALERTES_DRY_RUN=1` sort donc en `exit=1`
  * (chemin ALERTES), c'est normal — il exerce le cas « findings » de bout en bout.
+ *
+ * `ALERTES_DRY_RUN=dependabot-desactive` substitue à la source Dependabot le 403
+ * « alerts are disabled » réellement observé le 2026-08-05 : sortie en `exit=1`
+ * elle aussi (chemin POINT MORT), mais elle vérifie que l'aide affichée envoie
+ * vers Settings → Code security et pas vers un `ALERTS_TOKEN` sans effet.
  */
 function jeuDEssai() {
   return {
@@ -256,21 +272,28 @@ function jeuDEssai() {
         { rule: { security_severity_level: null, id: 'js/unused-local' } },
       ],
     },
-    dependabot: {
-      ok: /** @type {const} */ (true),
-      alertes: [
-        {
-          number: 7,
-          html_url: 'https://exemple-malveillant.test/hameçonnage',
-          dependency: { package: { name: 'paquet-piege' } },
-          security_advisory: {
-            severity: 'high',
-            summary:
-              'Faille\n\n## Faux titre\n[cliquez ici](https://exemple-malveillant.test) <img src=x onerror=alert(1)> | colonne',
-          },
+    dependabot: CAS_DEPENDABOT_DESACTIVE
+      ? {
+          ok: /** @type {const} */ (false),
+          statut: 403,
+          detail:
+            '{"message":"Dependabot alerts are disabled for this repository.","documentation_url":"https://docs.github.com/rest/dependabot/alerts#list-dependabot-alerts-for-a-repository","status":"403"}',
+        }
+      : {
+          ok: /** @type {const} */ (true),
+          alertes: [
+            {
+              number: 7,
+              html_url: 'https://exemple-malveillant.test/hameçonnage',
+              dependency: { package: { name: 'paquet-piege' } },
+              security_advisory: {
+                severity: 'high',
+                summary:
+                  'Faille\n\n## Faux titre\n[cliquez ici](https://exemple-malveillant.test) <img src=x onerror=alert(1)> | colonne',
+              },
+            },
+          ],
         },
-      ],
-    },
   };
 }
 
@@ -291,7 +314,7 @@ const sources = DRY_RUN
 dire(`# Veille alertes de sécurité — ${REPO}`);
 dire('');
 dire(
-  `Seuil de blocage : **${SEUIL.join(', ')}**${DRY_RUN ? ' — ⚠️ jeu d’essai (`ALERTES_DRY_RUN=1`)' : ''}`,
+  `Seuil de blocage : **${SEUIL.join(', ')}**${DRY_RUN ? ` — ⚠️ jeu d’essai (\`ALERTES_DRY_RUN=${CAS_DEPENDABOT_DESACTIVE ? 'dependabot-desactive' : '1'}\`)` : ''}`,
 );
 dire('');
 
@@ -305,7 +328,8 @@ const bloquants = [];
  * @param {any} resultat
  * @param {(a: any) => string} severite
  * @param {(a: any) => string} decrire
- * @param {string} aide
+ * @param {string | ((r: any) => string)} aide marche à suivre, éventuellement
+ *   calculée depuis le résultat (un même statut peut avoir plusieurs causes).
  */
 function rapporter(titre, resultat, severite, decrire, aide) {
   dire(`## ${titre}`);
@@ -323,7 +347,7 @@ function rapporter(titre, resultat, severite, decrire, aide) {
     dire('');
     dire(`> ${assainir(resultat.detail, 300)}`);
     dire('');
-    dire(aide);
+    dire(typeof aide === 'function' ? aide(resultat) : aide);
     dire('');
     pointsMorts.push(`${titre} (statut ${resultat.statut})`);
     return;
@@ -379,10 +403,17 @@ rapporter(
   severiteDependabot,
   (a) =>
     `${assainir(a?.dependency?.package?.name, 80) || 'paquet inconnu'} — ${assainir(a?.security_advisory?.summary) || 'sans résumé'} ${refAlerte(a?.number, a?.html_url)}`,
-  'Un `403` ici signifie que le `GITHUB_TOKEN` par défaut ne couvre pas ' +
-    '`dependabot/alerts` sur ce dépôt. Poser alors un secret Actions `ALERTS_TOKEN` ' +
-    '(PAT avec le scope `security_events`) : le script le préfère au jeton par défaut. ' +
-    'Vérifier aussi que les alertes Dependabot sont activées dans Settings → Code security.',
+  // Deux causes opposées derrière le même 403 : le corps de la réponse tranche.
+  // Test de PRÉSENCE seulement — la valeur elle-même n'est jamais rendue ici
+  // sans passer par `assainir()` (cf. rapporter()).
+  (resultat) =>
+    /dependabot alerts are disabled/i.test(String(resultat?.detail ?? ''))
+      ? 'Les alertes Dependabot sont **désactivées sur le dépôt** : aucun jeton ne ' +
+        'lèvera ce 403. Les activer dans Settings → Code security → Dependabot alerts. ' +
+        'Inutile de poser un `ALERTS_TOKEN` tant que la fonctionnalité est éteinte.'
+      : 'Ce `403` signifie que le `GITHUB_TOKEN` par défaut ne couvre pas ' +
+        '`dependabot/alerts` sur ce dépôt. Poser un secret Actions `ALERTS_TOKEN` ' +
+        '(PAT avec le scope `security_events`) : le script le préfère au jeton par défaut.',
 );
 
 dire('## Verdict');

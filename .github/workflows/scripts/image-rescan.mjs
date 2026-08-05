@@ -53,7 +53,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, writeFileSync, rmSync } from 'node:fs';
+import { appendFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -245,7 +245,13 @@ function envoyerEmail(subject, body) {
       '',
       body,
     ].join('\r\n') + '\r\n';
-  const file = join(tmpdir(), `cve-rescan-mail-${process.pid}.eml`);
+  // Répertoire temporaire à nom ALÉATOIRE (0700), pas un fichier au nom
+  // prédictible dans `/tmp` : `cve-rescan-mail-<pid>.eml` était devinable, donc
+  // pré-créable en lien symbolique par un autre utilisateur de la machine —
+  // l'écriture aurait suivi le lien (CodeQL `js/insecure-temporary-file`,
+  // alerte #17). `mkdtempSync` échoue si le chemin existe déjà.
+  const dossier = mkdtempSync(join(tmpdir(), 'cve-rescan-'));
+  const file = join(dossier, 'mail.eml');
   writeFileSync(file, eml, 'utf8');
   try {
     const r = spawnSync(
@@ -276,7 +282,7 @@ function envoyerEmail(subject, body) {
     return true;
   } finally {
     try {
-      rmSync(file, { force: true });
+      rmSync(dossier, { recursive: true, force: true });
     } catch {
       /* best-effort */
     }

@@ -91,3 +91,43 @@ describe('CoutController — gardes de paramètres', () => {
     );
   });
 });
+
+/**
+ * Confusion de type par altération de paramètre (CodeQL
+ * `js/type-confusion-through-parameter-tampering`, alertes #20/#21).
+ *
+ * Express parse `?mois[]=2026-01` en **tableau**. `RegExp.test` stringifiant son
+ * argument, `['2026-01']` satisfaisait la regex tout en restant un tableau : il
+ * traversait la garde typé `string`, et en aval `mois.slice(0, 4)` rendait un
+ * tableau — donc `Number(...)` un `NaN`, et les frais fixes ABCM de première
+ * année n'étaient jamais facturés. Aucune erreur, juste un montant faux.
+ *
+ * Les gardes testent désormais `typeof === 'string'` d'abord : un tableau à un
+ * seul élément doit être **refusé**, pas déplié.
+ */
+describe('CoutController — altération de paramètre (tableau)', () => {
+  it('refuse un mois passé en tableau à un élément (400)', () => {
+    const { ctrl, coutMois } = controleur();
+
+    expect(() => ctrl.coutMois(FOYER, ['2026-01'])).toThrow(
+      BadRequestException,
+    );
+    expect(coutMois).not.toHaveBeenCalled();
+  });
+
+  it('refuse un foyer passé en tableau à un élément (400)', () => {
+    const { ctrl, coutMois } = controleur();
+
+    expect(() => ctrl.coutMois([FOYER], '2026-01')).toThrow(
+      BadRequestException,
+    );
+    expect(coutMois).not.toHaveBeenCalled();
+  });
+
+  it('refuse une année passée en tableau à un élément (400)', () => {
+    const { ctrl, coutAnnuel } = controleur();
+
+    expect(() => ctrl.coutAnnuel(FOYER, ['2026'])).toThrow(BadRequestException);
+    expect(coutAnnuel).not.toHaveBeenCalled();
+  });
+});

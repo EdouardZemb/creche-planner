@@ -1129,3 +1129,24 @@ jobs:
             echo "$SORTIE"; exit 1
           fi
           echo "✅ Un appel en échec reste un POINT MORT."
+
+      - name: 403 « Dependabot désactivé » — la marche à suivre doit viser Settings
+        run: |
+          # Le 403 du 2026-08-05 disait « Dependabot alerts are disabled for this
+          # repository » : aucun PAT ne le lève. Un message d'aide qui réclamerait
+          # quand même un `ALERTS_TOKEN` enverrait le lecteur fabriquer un jeton
+          # inutile pendant que la veille reste aveugle. On verrouille le tri.
+          set +e
+          set -uo pipefail
+          SORTIE=$(ALERTES_DRY_RUN=dependabot-desactive node .github/workflows/scripts/veille-alertes.mjs)
+          CODE=$?
+
+          echec() { echo "::error::$1"; echo "--- sortie obtenue ---"; echo "$SORTIE"; exit 1; }
+
+          [ "$CODE" -eq 1 ] || echec "un 403 doit rester un POINT MORT (exit 1), obtenu $CODE"
+          echo "$SORTIE" | grep -qF 'Settings → Code security' \
+            || echec "l'aide doit renvoyer vers l'activation dans Settings → Code security"
+          if echo "$SORTIE" | grep -q 'Poser un secret Actions .ALERTS_TOKEN'; then
+            echec "l'aide réclame un PAT alors que la fonctionnalité est désactivée"
+          fi
+          echo "✅ Un 403 « désactivé » oriente vers l'activation, pas vers un PAT."

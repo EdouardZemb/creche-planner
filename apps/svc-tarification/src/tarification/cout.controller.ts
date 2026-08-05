@@ -7,6 +7,14 @@ import {
 } from './cout.service.js';
 
 // Mois borné 01-12 (AQ-04, doc 27 : l'ancienne `\d{2}` acceptait « 2026-13 »).
+//
+// Les gardes ci-dessous testent `typeof === 'string'` AVANT la regex, et les
+// paramètres de requête sont typés `unknown` : Express parse `?mois[]=2026-09`
+// en TABLEAU, et `RegExp.test` stringifie son argument — `['2026-09']` passait
+// donc la regex tout en restant un tableau typé `string` en aval, où
+// `mois.slice(0, 4)` rend un tableau et `Number(...)` un NaN silencieux (frais
+// fixes ABCM de première année jamais facturés). CodeQL
+// `js/type-confusion-through-parameter-tampering`, alertes #20/#21.
 const ISO_MOIS = /^\d{4}-(0[1-9]|1[0-2])$/;
 const ANNEE = /^\d{4}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -25,8 +33,8 @@ export class CoutController {
   @ScopeFoyerInterServices({ query: 'foyer' })
   @Get()
   coutMois(
-    @Query('foyer') foyerId?: string,
-    @Query('mois') mois?: string,
+    @Query('foyer') foyerId?: unknown,
+    @Query('mois') mois?: unknown,
     @Query('simule') simule?: string,
   ): Promise<CoutMoisVue> {
     return this.couts.coutMois(
@@ -40,8 +48,8 @@ export class CoutController {
   @ScopeFoyerInterServices({ query: 'foyer' })
   @Get('annuel')
   coutAnnuel(
-    @Query('foyer') foyerId?: string,
-    @Query('annee') annee?: string,
+    @Query('foyer') foyerId?: unknown,
+    @Query('annee') annee?: unknown,
     @Query('simule') simule?: string,
   ): Promise<CoutAnnuelVue> {
     return this.couts.coutAnnuel(
@@ -51,15 +59,15 @@ export class CoutController {
     );
   }
 
-  private exigerFoyer(foyerId: string | undefined): string {
-    if (foyerId === undefined || !UUID.test(foyerId)) {
+  private exigerFoyer(foyerId: unknown): string {
+    if (typeof foyerId !== 'string' || !UUID.test(foyerId)) {
       throw new BadRequestException('paramètre « foyer » requis (UUID)');
     }
     return foyerId;
   }
 
-  private exigerMois(mois: string | undefined): string {
-    if (mois === undefined || !ISO_MOIS.test(mois)) {
+  private exigerMois(mois: unknown): string {
+    if (typeof mois !== 'string' || !ISO_MOIS.test(mois)) {
       throw new BadRequestException(
         'paramètre « mois » requis au format YYYY-MM',
       );
@@ -67,8 +75,8 @@ export class CoutController {
     return mois;
   }
 
-  private exigerAnnee(annee: string | undefined): number {
-    if (annee === undefined || !ANNEE.test(annee)) {
+  private exigerAnnee(annee: unknown): number {
+    if (typeof annee !== 'string' || !ANNEE.test(annee)) {
       throw new BadRequestException(
         'paramètre « annee » requis au format YYYY',
       );
