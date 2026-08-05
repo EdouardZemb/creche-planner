@@ -72,11 +72,58 @@ suppression `// codeql[...]` en dur, qui masquerait aussi une vraie régression.
 Sévérité _medium_ : elle ne franchit pas le seuil `critical,high`, donc elle ne fait
 pas rougir `veille-alertes.yml`.
 
-**Si `dependabot/alerts` répond 403 en CI.** La couverture du `GITHUB_TOKEN` par
-défaut sur cet endpoint dépend de la configuration du dépôt. Le run part au rouge
-avec la marche à suivre : poser un secret Actions `ALERTS_TOKEN` (PAT, scope
-`security_events`), que le script préfère au jeton par défaut. **Ne pas** « régler »
-le problème en rendant l'erreur silencieuse.
+**Si `dependabot/alerts` répond 403 en CI — lire le CORPS, deux causes opposées.**
+
+| Corps de la réponse                                   | Cause                                                | Remède                                                                                         |
+| ----------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `Dependabot alerts are disabled for this repository.` | fonctionnalité **éteinte** sur le dépôt              | l'activer dans **Settings → Code security → Dependabot alerts**. Aucun jeton n'y changera rien |
+| tout autre 403                                        | couverture insuffisante du `GITHUB_TOKEN` par défaut | poser un secret Actions `ALERTS_TOKEN` (PAT, scope `security_events`), préféré par le script   |
+
+⚠️ **C'est le premier cas qui est survenu** (runs des 2026-08-04 et 05). La première
+version du message d'aide menait avec le PAT et ne citait l'activation qu'en
+seconde ligne : elle envoyait fabriquer un jeton **sans aucun effet** pendant que
+la veille restait aveugle. Le script trie désormais sur le corps de la réponse, et
+le job `veille-alertes-autotest` verrouille le tri via
+`ALERTES_DRY_RUN=dependabot-desactive` (rejoue le 403 réel ; assertions : sortie 1,
+« Settings → Code security » présent, `ALERTS_TOKEN` absent).
+
+**Action restante, hors de portée d'une session distante** : activer les alertes
+Dependabot dans Settings. Tant que ce n'est pas fait, `veille-alertes.yml` reste
+ROUGE en POINT MORT — c'est le comportement voulu, pas une régression à « corriger ».
+
+**Ne pas** « régler » un 403 en rendant l'erreur silencieuse.
+
+**Tri des 5 alertes CodeQL ≥ seuil du 2026-08-05** (run 30987623430). Les détails
+d'alerte ne sont **pas** lisibles d'ici (`code-scanning/alerts` → 403, cf. plus
+haut) : le tri s'est fait en relisant le code depuis les couples règle/fichier du
+résumé. Verdicts, une fois pour toutes :
+
+| Alerte   | Règle                                           | Verdict                                               |
+| -------- | ----------------------------------------------- | ----------------------------------------------------- |
+| #20, #21 | `js/type-confusion-through-parameter-tampering` | **vrai positif, exploitable** → corrigé               |
+| #17      | `js/insecure-temporary-file`                    | vrai, impact faible → corrigé (`mkdtempSync`)         |
+| #12, #1  | `js/clear-text-logging`                         | faux positif → **à dismisser** dans l'onglet Security |
+
+**#20/#21 — le seul vrai défaut, et il est silencieux.** `cout.controller.ts`
+validait avec `ISO_MOIS.test(mois)`. `RegExp.test` **stringifie** son argument :
+Express parse `?mois[]=2026-09` en tableau, et `['2026-09'].toString()` satisfait
+la regex. Un tableau traversait donc la garde **typé `string`**, et en aval
+`Number(mois.slice(0, 4))` rendait `NaN` — les frais fixes ABCM de première année
+n'étaient jamais facturés. Aucune exception, aucun log : juste un montant faux.
+Corrigé par `typeof x !== 'string'` en tête des trois gardes + paramètres de requête
+typés `unknown` (le `string` déclaré était précisément le mensonge exploité).
+Verrouillé par 3 tests. **Portée limitée à la facturation, pas à l'autorisation** :
+`ScopeFoyerGuard.couvert()` compare via `Array.includes`, qu'un tableau ne satisfait
+jamais → il échoue _fermé_ (403). Réflexe à garder : une regex n'est pas un
+validateur de type, elle coerce.
+
+**#12/#1 — faux positif, mais quasi-accident.** Les seuls sinks sont les traces
+`$ ${cmd} ${args.join(' ')}` de `run()`/`runCapture()`, et aucun chemin d'appel n'y
+fait passer de secret : `sonde()` (`apply-observability.mjs`) construit bien un
+`Authorization: Basic <base64(admin:GRAFANA_ADMIN_PWD)>` mais appelle `spawnSync`
+**directement**, sans log. Router `sonde()` par `run()` publierait le mot de passe
+admin Grafana dans le journal de déploiement — le faux positif est à un refactor
+près de devenir vrai. À dismisser, pas à « corriger ».
 
 **Divergence assumée avec `image-scan.yml`.** La veille CVE des images est non
 bloquante (findings ⇒ vert + e-mail). Ici les findings passent au **rouge**, parce
