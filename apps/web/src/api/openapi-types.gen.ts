@@ -11,7 +11,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Liveness/readiness de la gateway */
+        /**
+         * Readiness de la gateway (toute la chaîne)
+         * @description La gateway n’est prête que si la READINESS de ses 5 amonts l’est — donc base + migrations + NATS de chacun (lot B3). Une sonde terminus par amont : le corps du 503 NOMME le service fautif. Consommée par la Porte 3 du déploiement et le smoke CI ; le heartbeat, lui, sonde la liveness (`/api/health/live`) — un amont dégradé ne doit pas faire taire le dead man’s switch.
+         */
         get: {
             parameters: {
                 query?: never;
@@ -21,15 +24,100 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description La gateway est vivante. */
+                /** @description La chaîne est prête. */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": {
-                            status: string;
-                        };
+                        "application/json": components["schemas"]["HealthCheckResult"];
+                    };
+                };
+                /** @description Au moins un amont n’est pas prêt (nommé dans `error`/`details`). */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HealthCheckResult"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/health/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Liveness de la gateway (aucune dépendance)
+         * @description Le process répond. AUCUNE dépendance externe n’est sondée — c’est la contrainte des lots A6/A7 : les healthchecks compose et la sonde blackbox doivent rester ici, sinon un amont dégradé provoque des restarts en cascade.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Le process gateway est vivant. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HealthCheckResult"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/referentiel/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Santé du référentiel vue à travers la gateway
+         * @description Parcours distribué de la DoD : `gateway → svc-referentiel → /health → DB`, avec propagation du `traceparent`. Relaie la réponse du service après validation contre le contrat partagé.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Réponse de santé du référentiel, relayée telle quelle. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HealthCheckResult"];
                     };
                 };
             };
@@ -962,6 +1050,282 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/a-valider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lister les semaines à valider d’un foyer
+         * @description Indicateur in-app de l’encart de validation. Chaque notification est ENRICHIE par la gateway (jointure avec les contrats du foyer) du prénom de l’enfant et du mode, pour distinguer N lignes d’une même semaine.
+         */
+        get: {
+            parameters: {
+                query: {
+                    foyer: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Semaines à valider du foyer. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NotificationAValiderVue"][];
+                    };
+                };
+                /** @description Paramètre « foyer » manquant. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/semaine/{foyerId}/{semaineIso}/besoins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Vue hebdomadaire consolidée et éditable d’un foyer
+         * @description Agrège les contrats actifs sur la semaine (mêmes bornes que le scheduler de notification) et, pour chacun, ses besoins datés extraits des saisies mensuelles RÉELLES, rattachés à leur établissement par le lien explicite `contrat.etablissementId`. Lecture seule : l’écran d’édition écrit par `PUT /contrats/{id}/plannings/semaine/{semaineIso}`.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    foyerId: string;
+                    semaineIso: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Semaine consolidée du foyer. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SemaineBesoinsVue"];
+                    };
+                };
+                /** @description Semaine ISO invalide (format `YYYY-Www`). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/semaine/{foyerId}/{semaineIso}/envois": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Suivi des envois de la semaine (lecture seule) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    foyerId: string;
+                    semaineIso: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Statut persistant du rappel aux parents et des récaps aux établissements. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SuiviEnvoisVue"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/semaine/{foyerId}/{semaineIso}/etablissements/{etablissementId}/brouillon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Régénérer le brouillon du récap agrégé d’un établissement
+         * @description Relecture avant envoi : un seul mail par établissement regroupant tous les enfants du foyer dont la semaine a été validée avec modifications.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    foyerId: string;
+                    semaineIso: string;
+                    etablissementId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Brouillon régénéré. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BrouillonEtablissementVue"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/validations/{contratId}/{semaineIso}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Valider la semaine d’un contrat */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    contratId: string;
+                    semaineIso: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Semaine validée (avec ou sans modifications). */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ValidationResultat"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/envois/etablissement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Envoyer le récap agrégé à un établissement
+         * @description Action sortante RÉELLE (après relecture), idempotente sur `(foyer, semaine, établissement)`. `sujet`/`corps` portent le texte édité par le parent : les deux ensemble ou aucun des deux (400 sinon).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        foyerId: string;
+                        semaineIso: string;
+                        /** Format: uuid */
+                        etablissementId: string;
+                        sujet?: string;
+                        corps?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Issue de l’envoi (réel ou neutralisé en dry-run). */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EnvoiEtablissementResultat"];
+                    };
+                };
+                /** @description Corps invalide, ou `sujet`/`corps` fournis l’un sans l’autre. */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/contrats": {
         parameters: {
             query?: never;
@@ -1037,6 +1401,99 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contrats/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Modifier les paramètres versionnés courants d’un contrat
+         * @description Correction NON destructive de la version courante (SFD 30 lot 4) : les plannings saisis survivent. L’URL BFF est restée stable (le web « durcit » un contrat par ce chemin) mais le relais vise `PUT /contrats/{id}/version-courante` en amont ; l’identité du contrat (enfant, mode, établissement) n’est PAS versionnable.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        mode: "CRECHE_PSU" | "CANTINE" | "PERISCOLAIRE" | "ALSH";
+                        /** Format: uuid */
+                        foyerId: string;
+                        enfant: string;
+                        /** Format: uuid */
+                        enfantId: string;
+                        /** Format: date */
+                        valideDu: string;
+                        /** Format: date */
+                        valideAu: string | null;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description Contrat modifié. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ContratVue"];
+                    };
+                };
+                /** @description Contrat inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        /** Supprimer un contrat de garde */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Contrat supprimé (pas de contenu). */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Contrat inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -1270,7 +1727,37 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Lire la saisie de planning d’un mois (réelle ou simulée) */
+        get: {
+            parameters: {
+                query?: {
+                    simule?: boolean;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                    mois: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description La saisie enregistrée du mois, ou `null` si aucune saisie. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description Saisie mensuelle relayée telle quelle (même forme ouverte que le corps du PUT). */
+                            saisie: {
+                                [key: string]: unknown;
+                            } | null;
+                        };
+                    };
+                };
+            };
+        };
         /** Écrire le planning mensuel (réel ou simulé) */
         put: {
             parameters: {
@@ -1294,6 +1781,61 @@ export interface paths {
             responses: {
                 /** @description Planning enregistré (pas de contenu). */
                 204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/contrats/{id}/plannings/semaine/{semaineIso}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Éditer les besoins d’UNE semaine (réels ou simulés)
+         * @description Édite les catégories DATÉES d’une seule semaine sans écraser le reste du/des mois recouverts : la fusion read-modify-write est faite par svc-planification. Les scalaires mensuels (`complementMinutes`, `pai`) sont hors périmètre de cette route.
+         */
+        put: {
+            parameters: {
+                query?: {
+                    simule?: boolean;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                    semaineIso: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description Besoins enregistrés (pas de contenu). */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Semaine ISO invalide (format `YYYY-Www`). */
+                400: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2030,6 +2572,162 @@ export interface components {
             alshJourneeCompleteCentimes: number;
             alshDemiJourneeCentimes: number;
             alshRepasCentimes: number;
+        };
+        /** @description Résultat de sonde `@nestjs/terminus` : `status` global + un objet par indicateur. `info` (indicateurs `up`) et `error` (indicateurs `down`) sont des vues partielles de `details`, qui les contient tous — d’où le nom de l’amont fautif dans le corps d’un 503 (lot B3). */
+        HealthCheckResult: {
+            /** @enum {string} */
+            status: "ok" | "error" | "shutting_down";
+            info?: {
+                [key: string]: unknown;
+            };
+            error?: {
+                [key: string]: unknown;
+            };
+            details: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Une semaine à valider (indicateur in-app). `enfant`/`mode` sont AJOUTÉS par la gateway (jointure avec les contrats du foyer) pour distinguer N lignes d’une même semaine ; ils sont absents si le contrat n’est plus listé — l’écran retombe sur son libellé de repli. */
+        NotificationAValiderVue: {
+            /** Format: uuid */
+            contratId: string;
+            /** Format: uuid */
+            foyerId: string;
+            semaineIso: string;
+            /** @enum {string} */
+            statut: "A_VALIDER" | "VALIDEE" | "VALIDEE_AVEC_MODIFS";
+            /** Format: date-time */
+            notifieeLe: string;
+            enfant?: string;
+            mode?: string;
+        };
+        /** @description Jours modifiés entre le snapshot de notification et la relecture. `avant`/`apres` sont relayés TELS QUELS par la gateway (forme propriété de svc-notifications) : volontairement non décrits ici. */
+        DeltaModifs: {
+            jours: {
+                /** Format: date */
+                date: string;
+                avant: unknown;
+                apres: unknown;
+            }[];
+        };
+        /** @description Résultat de la validation d’une semaine par le parent. */
+        ValidationResultat: {
+            /** Format: uuid */
+            contratId: string;
+            semaineIso: string;
+            /** @enum {string} */
+            statut: "A_VALIDER" | "VALIDEE" | "VALIDEE_AVEC_MODIFS";
+            deltaModifs: components["schemas"]["DeltaModifs"] | null;
+        };
+        /** @description Un enfant du foyer concerné par le récap agrégé d’un établissement. */
+        EnfantBrouillonVue: {
+            /** Format: uuid */
+            contratId: string;
+            enfant: string;
+            deltaModifs: components["schemas"]["DeltaModifs"];
+        };
+        /** @description Brouillon régénérable du mail AGRÉGÉ par établissement (un seul mail regroupant tous les enfants du foyer validés avec modifications). `routable: false` signale un établissement non joignable (sans e-mail ou archivé) — l’écran affiche l’avertissement au lieu du bouton d’envoi, et `destinataire` vaut alors `''`. `dryRun` = un envoi réel serait neutralisé (bac à sable / allowlist). */
+        BrouillonEtablissementVue: {
+            /** Format: uuid */
+            foyerId: string;
+            semaineIso: string;
+            /** Format: uuid */
+            etablissementId: string;
+            etablissementLibelle: string;
+            destinataire: string;
+            sujet: string;
+            corps: string;
+            texte: string;
+            enfants: components["schemas"]["EnfantBrouillonVue"][];
+            routable: boolean;
+            /** @enum {string|null} */
+            raisonNonRoutable: "SANS_EMAIL" | "ARCHIVE" | null;
+            dryRun: boolean;
+        };
+        /** @description Issue réelle de l’envoi du récap agrégé à un établissement (idempotent sur `(foyer, semaine, établissement)`). */
+        EnvoiEtablissementResultat: {
+            /** Format: uuid */
+            foyerId: string;
+            semaineIso: string;
+            /** Format: uuid */
+            etablissementId: string;
+            destinataire: string;
+            /** @enum {string} */
+            statut: "EN_COURS" | "ENVOYE" | "ECHEC" | "DRY_RUN";
+            messageId: string | null;
+            erreur: string | null;
+            /** Format: date-time */
+            envoyeLe: string | null;
+        };
+        /** @description Livraison du récap du mardi vers UN parent (ledger `envoi_recap_parent`). */
+        SuiviRappelParent: {
+            email: string;
+            /** @enum {string} */
+            statut: "ENVOYE" | "DRY_RUN" | "ECHEC";
+            /** Format: date-time */
+            envoyeLe: string | null;
+            essais: number;
+        };
+        /** @description État d’envoi du rappel hebdomadaire du mardi aux parents (agrégat foyer + détail par parent). */
+        SuiviRappelHebdo: {
+            /** @enum {string} */
+            statut: "A_ENVOYER" | "ENVOYE" | "DRY_RUN" | "ECHEC" | "ABANDONNE";
+            /** Format: date-time */
+            envoyeLe: string | null;
+            erreur: string | null;
+            parents: components["schemas"]["SuiviRappelParent"][];
+        };
+        /** @description État d’envoi du récap agrégé vers un établissement (ledger `envoi_etablissement`). */
+        SuiviEnvoiEtablissement: {
+            /** Format: uuid */
+            etablissementId: string;
+            /** @enum {string} */
+            statut: "EN_COURS" | "ENVOYE" | "ECHEC" | "DRY_RUN";
+            /** Format: date-time */
+            envoyeLe: string | null;
+            erreur: string | null;
+            destinataire: string | null;
+        };
+        /** @description Suivi PERSISTANT des envois d’une `(foyer, semaine)` (lecture seule) : `rappel` est `null` si la semaine n’a jamais été programmée. */
+        SuiviEnvoisVue: {
+            /** Format: uuid */
+            foyerId: string;
+            semaineIso: string;
+            rappel: components["schemas"]["SuiviRappelHebdo"] | null;
+            etablissements: components["schemas"]["SuiviEnvoiEtablissement"][];
+        };
+        /** @description Établissement réel concerné par la semaine (entité libre, svc-planification) — clé de groupement de l’écran d’édition. */
+        EtablissementConcerneVue: {
+            /** Format: uuid */
+            etablissementId: string;
+            libelle: string;
+            preavisRegle: components["schemas"]["PreavisRegle"] | null;
+        };
+        /** @description Un contrat actif de la semaine avec ses besoins datés. `besoins` (jour `YYYY-MM-DD` → catégories datées), `semaineType` et `semaineAbcm` sont RELAYÉS TELS QUELS depuis svc-planification : la gateway n’en valide que l’enveloppe, ils restent donc ouverts ici (même parti pris que le corps de `PUT …/plannings/{mois}`). */
+        ContratBesoinsVue: {
+            /** Format: uuid */
+            contratId: string;
+            enfant: string;
+            /** @enum {string} */
+            mode: "CRECHE_PSU" | "CANTINE" | "PERISCOLAIRE" | "ALSH";
+            /** Format: uuid */
+            etablissementId: string | null;
+            besoins: {
+                [key: string]: unknown;
+            };
+            semaineType?: {
+                [key: string]: unknown;
+            };
+            semaineAbcm?: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Vue consolidée d’une semaine éditable du foyer (lecture seule) : les 7 jours, les établissements concernés et les contrats actifs avec leurs besoins datés. Ouverte depuis une notification A_VALIDER. */
+        SemaineBesoinsVue: {
+            semaineIso: string;
+            jours: string[];
+            etablissements: components["schemas"]["EtablissementConcerneVue"][];
+            contrats: components["schemas"]["ContratBesoinsVue"][];
         };
     };
     responses: never;
