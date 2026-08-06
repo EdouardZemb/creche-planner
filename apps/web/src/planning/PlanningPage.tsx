@@ -9,6 +9,8 @@ import { libelleMode } from '../utils/libelles';
 import { Badge } from '../ui/Badge';
 import { EtatVide } from '../ui/EtatVide';
 import { ChargementPage } from '../ui/ChargementPage';
+import { FrontiereErreur } from '../layout/FrontiereErreur';
+import { ChunkEnErreur } from '../layout/EcransRecuperation';
 import { PanneauCoutMois } from '../couts/PanneauCoutMois';
 import { EncartValidation } from '../notifications/EncartValidation';
 import type { ContratLocal } from '../types/bff';
@@ -428,29 +430,44 @@ export function PlanningPage() {
                           </div>
 
                           {contratActif !== null ? (
-                            <Suspense
-                              fallback={
-                                <ChargementPage message="Chargement du calendrier…" />
-                              }
-                            >
-                              {contratActif.mode === 'CRECHE_PSU' ? (
-                                <CalendrierCreche
-                                  contrat={contratActif}
-                                  mois={mois}
-                                  simule={simule}
-                                  onEnregistre={handleEnregistre}
-                                  onContratModifie={handleContratModifie}
-                                />
-                              ) : (
-                                <CalendrierAbcm
-                                  contrat={contratActif}
-                                  mois={mois}
-                                  simule={simule}
-                                  onEnregistre={handleEnregistre}
-                                  onContratModifie={handleContratModifie}
-                                />
+                            // C7 : frontière autour du `<Suspense>`. Un chunk
+                            // `lazy()` qui n'arrive pas (réseau coupé, fichier
+                            // disparu après un déploiement) est un mode de
+                            // défaillance DISTINCT d'une exception de rendu, et
+                            // le seul que `<Suspense>` ne couvre pas : son
+                            // `fallback` sert l'attente, pas l'échec. Réarmée au
+                            // changement de contrat pour ne pas coller à l'écran.
+                            <FrontiereErreur
+                              origine="chunk"
+                              clesReinitialisation={[contratActif.id]}
+                              rendu={() => (
+                                <ChunkEnErreur quoi="Le calendrier" />
                               )}
-                            </Suspense>
+                            >
+                              <Suspense
+                                fallback={
+                                  <ChargementPage message="Chargement du calendrier…" />
+                                }
+                              >
+                                {contratActif.mode === 'CRECHE_PSU' ? (
+                                  <CalendrierCreche
+                                    contrat={contratActif}
+                                    mois={mois}
+                                    simule={simule}
+                                    onEnregistre={handleEnregistre}
+                                    onContratModifie={handleContratModifie}
+                                  />
+                                ) : (
+                                  <CalendrierAbcm
+                                    contrat={contratActif}
+                                    mois={mois}
+                                    simule={simule}
+                                    onEnregistre={handleEnregistre}
+                                    onContratModifie={handleContratModifie}
+                                  />
+                                )}
+                              </Suspense>
+                            </FrontiereErreur>
                           ) : (
                             <div className="muted">
                               Sélectionnez un contrat.

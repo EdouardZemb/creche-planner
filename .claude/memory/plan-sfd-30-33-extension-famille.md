@@ -21,7 +21,7 @@ metadata:
 
 **Révision complète des plans 2026-07-30/31** (workflow multi-agents : audit ancrages + croisement inter-plans + réécriture + QC) — les 3 plans 31/32/33 et `factures-reelles.md` (ex `streamed-juggling-pudding.md`, renommé) sont ré-ancrés sur le code réel post-plan-30 (main `9aee291`). Décisions inter-plans consignées DANS les fichiers :
 
-- **Ordre d'exécution : consolidation (R1 train n°16 + C0 + B2 + C5) → 31 → 32 → 33 → factures** ; exécution séquentielle obligatoire sur les surfaces partagées (`gateway.openapi.ts` + oracle « 37 routes » depuis D6, types générés, pacts, `services.json`, `TYPES_NOTIFICATION`).
+- **Ordre d'exécution : consolidation (R1 train n°16 + C0 + B2 + C5) → 31 → 32 → 33 → factures** ; exécution séquentielle obligatoire sur les surfaces partagées (`gateway.openapi.ts` + oracle « 38 routes » depuis C7, types générés, pacts, `services.json`, `TYPES_NOTIFICATION`).
 - **Lot 5 du plan 31 (alerte vacances) RETIRÉ** — absorbé par le plan 33 lot 5 (`CONFLITS_FAMILLE`/CF-03) ; retirer un type de `TYPES_NOTIFICATION` ≠ revert simple (5-6 points de contact : foyer-events, bff.dto, preferences.util, MonProfilPage, OpenAPI/types).
 - **`joursFeries(annee, regime)` hissé en shared-kernel** (pas planification-domain : depConstraints Nx interdisent l'import depuis famille-domain) ; régimes FR/FR_ALSACE_MOSELLE, CH_BL ajouté par le 32.
 - **Plan 33 GELÉ** tant que 31 lots 1-3 et 32 lots 1-3 pas mergés ; son read-model `contrat_garde` refondu PAR VERSION (leçon #257, PK surrogate).
