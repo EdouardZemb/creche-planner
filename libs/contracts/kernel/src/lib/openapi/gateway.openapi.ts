@@ -569,6 +569,34 @@ export const gatewayOpenApiDocument = {
         },
         required: ['status', 'details'],
       },
+      ErreurClient: {
+        type: 'object',
+        description:
+          'Plantage remonté par le navigateur (lot C7). `route` est le `pathname` ' +
+          'SEUL — jamais la query : les liens profonds portent `?semaine=` et ' +
+          '`?enfant=<prénom>`, données personnelles qui n’ont rien à faire dans un ' +
+          'journal d’exploitation. Les bornes sont appliquées des deux côtés (le ' +
+          'client tronque, la gateway refuse).',
+        properties: {
+          origine: {
+            type: 'string',
+            description:
+              'Où l’erreur a été interceptée : frontière racine, frontière de ' +
+              'route, chargement d’un module `lazy()`, `window.onerror`, ou ' +
+              'promesse rejetée sans `catch`.',
+            enum: ['application', 'route', 'chunk', 'globale', 'promesse'],
+          },
+          message: { type: 'string', minLength: 1, maxLength: 500 },
+          route: { type: 'string', minLength: 1, maxLength: 300 },
+          pile: { type: 'string', maxLength: 4000 },
+          composant: {
+            type: 'string',
+            maxLength: 1000,
+            description: 'Tête de la pile de composants React, si connue.',
+          },
+        },
+        required: ['origine', 'message', 'route'],
+      },
       NotificationAValiderVue: {
         type: 'object',
         description:
@@ -1642,6 +1670,34 @@ export const gatewayOpenApiDocument = {
             description:
               'Dernier canal actif d’un type de service : ce canal ne peut être ' +
               'coupé (gérez vos préférences).',
+          },
+          '429': { description: 'Trop de requêtes (limitation de débit).' },
+        },
+      },
+    },
+    '/api/v1/erreurs-client': {
+      post: {
+        summary: 'Signaler un plantage survenu dans le navigateur',
+        description:
+          'Point de collecte MÊME-ORIGINE des erreurs client (lot C7). Le web y ' +
+          'poste ce que ses frontières d’erreur React interceptent, ainsi que les ' +
+          'exceptions hors rendu et les promesses rejetées. La gateway journalise ' +
+          'la ligne (préfixe « PLANTAGE CLIENT »), corrélée par le `trace_id` de ' +
+          'la requête ; rien n’est stocké et rien ne sort du domaine. Envoi ' +
+          'best-effort et plafonné côté client ; la route reste soumise à la ' +
+          'limitation de débit.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ErreurClient' },
+            },
+          },
+        },
+        responses: {
+          '204': { description: 'Signalement journalisé.' },
+          '400': {
+            description: 'Corps invalide (origine inconnue, bornes dépassées).',
           },
           '429': { description: 'Trop de requêtes (limitation de débit).' },
         },

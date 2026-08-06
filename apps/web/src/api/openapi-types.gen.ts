@@ -1050,6 +1050,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/erreurs-client": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Signaler un plantage survenu dans le navigateur
+         * @description Point de collecte MÊME-ORIGINE des erreurs client (lot C7). Le web y poste ce que ses frontières d’erreur React interceptent, ainsi que les exceptions hors rendu et les promesses rejetées. La gateway journalise la ligne (préfixe « PLANTAGE CLIENT »), corrélée par le `trace_id` de la requête ; rien n’est stocké et rien ne sort du domaine. Envoi best-effort et plafonné côté client ; la route reste soumise à la limitation de débit.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ErreurClient"];
+                };
+            };
+            responses: {
+                /** @description Signalement journalisé. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Corps invalide (origine inconnue, bornes dépassées). */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Trop de requêtes (limitation de débit). */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notifications/a-valider": {
         parameters: {
             query?: never;
@@ -2586,6 +2641,19 @@ export interface components {
             details: {
                 [key: string]: unknown;
             };
+        };
+        /** @description Plantage remonté par le navigateur (lot C7). `route` est le `pathname` SEUL — jamais la query : les liens profonds portent `?semaine=` et `?enfant=<prénom>`, données personnelles qui n’ont rien à faire dans un journal d’exploitation. Les bornes sont appliquées des deux côtés (le client tronque, la gateway refuse). */
+        ErreurClient: {
+            /**
+             * @description Où l’erreur a été interceptée : frontière racine, frontière de route, chargement d’un module `lazy()`, `window.onerror`, ou promesse rejetée sans `catch`.
+             * @enum {string}
+             */
+            origine: "application" | "route" | "chunk" | "globale" | "promesse";
+            message: string;
+            route: string;
+            pile?: string;
+            /** @description Tête de la pile de composants React, si connue. */
+            composant?: string;
         };
         /** @description Une semaine à valider (indicateur in-app). `enfant`/`mode` sont AJOUTÉS par la gateway (jointure avec les contrats du foyer) pour distinguer N lignes d’une même semaine ; ils sont absents si le contrat n’est plus listé — l’écran retombe sur son libellé de repli. */
         NotificationAValiderVue: {
