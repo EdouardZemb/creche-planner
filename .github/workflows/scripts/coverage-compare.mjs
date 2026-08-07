@@ -36,6 +36,24 @@ const BASELINE_ECRITE = 'coverage-baseline/coverage-baseline.json';
 
 const root = process.cwd().replace(/\\/g, '/');
 
+// Lot D8 — le glob `**/` matche AUSSI les copies d'artefacts rangées par Nx
+// dans `.nx/cache/<hash>/<projet>/test-output/...` (et tout ce qui traînerait
+// sous `node_modules`). En CI le step « Cache Nx » RESTAURE `.nx/cache` avant
+// de lancer les tests : ces copies sont donc présentes au moment où ce script
+// s'exécute. Comme `projectName()` découpe sur `/test-output`, chacune devient
+// un « projet » distinct nommé `.nx/cache/<hash>/<projet>` — d'où des lignes
+// fantômes dans le résumé, des totaux comptés plusieurs fois, et (côté
+// ratchet) une baseline qui s'alourdit de clés qui ne se recroiseront jamais.
+// Aucun faux échec, mais une mesure fausse — donc à filtrer à la source.
+const HORS_PERIMETRE = /(^|\/)(\.nx|node_modules)\//;
+
+/** Rapports réellement produits par le run courant (hors caches et deps). */
+function rapports(motif) {
+  return globSync(motif).filter(
+    (f) => !HORS_PERIMETRE.test(f.replace(/\\/g, '/')),
+  );
+}
+
 /** Nom de projet = segment de chemin précédant `/test-output` (cf. test-summary.mjs). */
 function projectName(file) {
   const rel = file.replace(/\\/g, '/').replace(`${root}/`, '');
@@ -44,7 +62,7 @@ function projectName(file) {
 
 // 1. Couverture du run courant, par projet (lignes/branches/fonctions/instructions).
 const courant = {};
-for (const file of globSync(
+for (const file of rapports(
   '**/test-output/vitest/coverage/coverage-summary.json',
 )) {
   const total = JSON.parse(readFileSync(file, 'utf8')).total ?? {};
