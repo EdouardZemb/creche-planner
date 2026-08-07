@@ -554,23 +554,410 @@ export const gatewayOpenApiDocument = {
           'alshRepasCentimes',
         ],
       },
+      HealthCheckResult: {
+        type: 'object',
+        description:
+          'Résultat de sonde `@nestjs/terminus` : `status` global + un objet ' +
+          'par indicateur. `info` (indicateurs `up`) et `error` (indicateurs ' +
+          '`down`) sont des vues partielles de `details`, qui les contient tous ' +
+          '— d’où le nom de l’amont fautif dans le corps d’un 503 (lot B3).',
+        properties: {
+          status: { type: 'string', enum: ['ok', 'error', 'shutting_down'] },
+          info: { type: 'object', additionalProperties: true },
+          error: { type: 'object', additionalProperties: true },
+          details: { type: 'object', additionalProperties: true },
+        },
+        required: ['status', 'details'],
+      },
+      ErreurClient: {
+        type: 'object',
+        description:
+          'Plantage remonté par le navigateur (lot C7). `route` est le `pathname` ' +
+          'SEUL — jamais la query : les liens profonds portent `?semaine=` et ' +
+          '`?enfant=<prénom>`, données personnelles qui n’ont rien à faire dans un ' +
+          'journal d’exploitation. Les bornes sont appliquées des deux côtés (le ' +
+          'client tronque, la gateway refuse).',
+        properties: {
+          origine: {
+            type: 'string',
+            description:
+              'Où l’erreur a été interceptée : frontière racine, frontière de ' +
+              'route, chargement d’un module `lazy()`, `window.onerror`, ou ' +
+              'promesse rejetée sans `catch`.',
+            enum: ['application', 'route', 'chunk', 'globale', 'promesse'],
+          },
+          message: { type: 'string', minLength: 1, maxLength: 500 },
+          route: { type: 'string', minLength: 1, maxLength: 300 },
+          pile: { type: 'string', maxLength: 4000 },
+          composant: {
+            type: 'string',
+            maxLength: 1000,
+            description: 'Tête de la pile de composants React, si connue.',
+          },
+        },
+        required: ['origine', 'message', 'route'],
+      },
+      NotificationAValiderVue: {
+        type: 'object',
+        description:
+          'Une semaine à valider (indicateur in-app). `enfant`/`mode` sont ' +
+          'AJOUTÉS par la gateway (jointure avec les contrats du foyer) pour ' +
+          'distinguer N lignes d’une même semaine ; ils sont absents si le ' +
+          'contrat n’est plus listé — l’écran retombe sur son libellé de repli.',
+        properties: {
+          contratId: { type: 'string', format: 'uuid' },
+          foyerId: { type: 'string', format: 'uuid' },
+          semaineIso: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' },
+          statut: {
+            type: 'string',
+            enum: ['A_VALIDER', 'VALIDEE', 'VALIDEE_AVEC_MODIFS'],
+          },
+          notifieeLe: { type: 'string', format: 'date-time' },
+          enfant: { type: 'string' },
+          mode: { type: 'string' },
+        },
+        required: [
+          'contratId',
+          'foyerId',
+          'semaineIso',
+          'statut',
+          'notifieeLe',
+        ],
+      },
+      DeltaModifs: {
+        type: 'object',
+        description:
+          'Jours modifiés entre le snapshot de notification et la relecture. ' +
+          '`avant`/`apres` sont relayés TELS QUELS par la gateway (forme ' +
+          'propriété de svc-notifications) : volontairement non décrits ici.',
+        properties: {
+          jours: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                date: { type: 'string', format: 'date' },
+                avant: {},
+                apres: {},
+              },
+              required: ['date', 'avant', 'apres'],
+            },
+          },
+        },
+        required: ['jours'],
+      },
+      ValidationResultat: {
+        type: 'object',
+        description: 'Résultat de la validation d’une semaine par le parent.',
+        properties: {
+          contratId: { type: 'string', format: 'uuid' },
+          semaineIso: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' },
+          statut: {
+            type: 'string',
+            enum: ['A_VALIDER', 'VALIDEE', 'VALIDEE_AVEC_MODIFS'],
+          },
+          deltaModifs: {
+            oneOf: [
+              { $ref: '#/components/schemas/DeltaModifs' },
+              { type: 'null' },
+            ],
+          },
+        },
+        required: ['contratId', 'semaineIso', 'statut', 'deltaModifs'],
+      },
+      EnfantBrouillonVue: {
+        type: 'object',
+        description:
+          'Un enfant du foyer concerné par le récap agrégé d’un établissement.',
+        properties: {
+          contratId: { type: 'string', format: 'uuid' },
+          enfant: { type: 'string' },
+          deltaModifs: { $ref: '#/components/schemas/DeltaModifs' },
+        },
+        required: ['contratId', 'enfant', 'deltaModifs'],
+      },
+      BrouillonEtablissementVue: {
+        type: 'object',
+        description:
+          'Brouillon régénérable du mail AGRÉGÉ par établissement (un seul ' +
+          'mail regroupant tous les enfants du foyer validés avec ' +
+          'modifications). `routable: false` signale un établissement non ' +
+          'joignable (sans e-mail ou archivé) — l’écran affiche l’avertissement ' +
+          "au lieu du bouton d’envoi, et `destinataire` vaut alors `''`. " +
+          '`dryRun` = un envoi réel serait neutralisé (bac à sable / allowlist).',
+        properties: {
+          foyerId: { type: 'string', format: 'uuid' },
+          semaineIso: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' },
+          etablissementId: { type: 'string', format: 'uuid' },
+          etablissementLibelle: { type: 'string' },
+          destinataire: { type: 'string' },
+          sujet: { type: 'string' },
+          corps: { type: 'string' },
+          texte: { type: 'string' },
+          enfants: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/EnfantBrouillonVue' },
+          },
+          routable: { type: 'boolean' },
+          raisonNonRoutable: {
+            type: ['string', 'null'],
+            enum: ['SANS_EMAIL', 'ARCHIVE', null],
+          },
+          dryRun: { type: 'boolean' },
+        },
+        required: [
+          'foyerId',
+          'semaineIso',
+          'etablissementId',
+          'etablissementLibelle',
+          'destinataire',
+          'sujet',
+          'corps',
+          'texte',
+          'enfants',
+          'routable',
+          'raisonNonRoutable',
+          'dryRun',
+        ],
+      },
+      EnvoiEtablissementResultat: {
+        type: 'object',
+        description:
+          'Issue réelle de l’envoi du récap agrégé à un établissement ' +
+          '(idempotent sur `(foyer, semaine, établissement)`).',
+        properties: {
+          foyerId: { type: 'string', format: 'uuid' },
+          semaineIso: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' },
+          etablissementId: { type: 'string', format: 'uuid' },
+          destinataire: { type: 'string' },
+          statut: {
+            type: 'string',
+            enum: ['EN_COURS', 'ENVOYE', 'ECHEC', 'DRY_RUN'],
+          },
+          messageId: { type: ['string', 'null'] },
+          erreur: { type: ['string', 'null'] },
+          envoyeLe: { type: ['string', 'null'], format: 'date-time' },
+        },
+        required: [
+          'foyerId',
+          'semaineIso',
+          'etablissementId',
+          'destinataire',
+          'statut',
+          'messageId',
+          'erreur',
+          'envoyeLe',
+        ],
+      },
+      SuiviRappelParent: {
+        type: 'object',
+        description:
+          'Livraison du récap du mardi vers UN parent (ledger ' +
+          '`envoi_recap_parent`).',
+        properties: {
+          email: { type: 'string' },
+          statut: { type: 'string', enum: ['ENVOYE', 'DRY_RUN', 'ECHEC'] },
+          envoyeLe: { type: ['string', 'null'], format: 'date-time' },
+          essais: { type: 'integer' },
+        },
+        required: ['email', 'statut', 'envoyeLe', 'essais'],
+      },
+      SuiviRappelHebdo: {
+        type: 'object',
+        description:
+          'État d’envoi du rappel hebdomadaire du mardi aux parents (agrégat ' +
+          'foyer + détail par parent).',
+        properties: {
+          statut: {
+            type: 'string',
+            enum: ['A_ENVOYER', 'ENVOYE', 'DRY_RUN', 'ECHEC', 'ABANDONNE'],
+          },
+          envoyeLe: { type: ['string', 'null'], format: 'date-time' },
+          erreur: { type: ['string', 'null'] },
+          parents: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/SuiviRappelParent' },
+          },
+        },
+        required: ['statut', 'envoyeLe', 'erreur', 'parents'],
+      },
+      SuiviEnvoiEtablissement: {
+        type: 'object',
+        description:
+          'État d’envoi du récap agrégé vers un établissement (ledger ' +
+          '`envoi_etablissement`).',
+        properties: {
+          etablissementId: { type: 'string', format: 'uuid' },
+          statut: {
+            type: 'string',
+            enum: ['EN_COURS', 'ENVOYE', 'ECHEC', 'DRY_RUN'],
+          },
+          envoyeLe: { type: ['string', 'null'], format: 'date-time' },
+          erreur: { type: ['string', 'null'] },
+          destinataire: { type: ['string', 'null'] },
+        },
+        required: [
+          'etablissementId',
+          'statut',
+          'envoyeLe',
+          'erreur',
+          'destinataire',
+        ],
+      },
+      SuiviEnvoisVue: {
+        type: 'object',
+        description:
+          'Suivi PERSISTANT des envois d’une `(foyer, semaine)` (lecture ' +
+          'seule) : `rappel` est `null` si la semaine n’a jamais été programmée.',
+        properties: {
+          foyerId: { type: 'string', format: 'uuid' },
+          semaineIso: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' },
+          rappel: {
+            oneOf: [
+              { $ref: '#/components/schemas/SuiviRappelHebdo' },
+              { type: 'null' },
+            ],
+          },
+          etablissements: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/SuiviEnvoiEtablissement' },
+          },
+        },
+        required: ['foyerId', 'semaineIso', 'rappel', 'etablissements'],
+      },
+      EtablissementConcerneVue: {
+        type: 'object',
+        description:
+          'Établissement réel concerné par la semaine (entité libre, ' +
+          'svc-planification) — clé de groupement de l’écran d’édition.',
+        properties: {
+          etablissementId: { type: 'string', format: 'uuid' },
+          libelle: { type: 'string' },
+          preavisRegle: {
+            oneOf: [
+              { $ref: '#/components/schemas/PreavisRegle' },
+              { type: 'null' },
+            ],
+          },
+        },
+        required: ['etablissementId', 'libelle', 'preavisRegle'],
+      },
+      ContratBesoinsVue: {
+        type: 'object',
+        description:
+          'Un contrat actif de la semaine avec ses besoins datés. `besoins` ' +
+          '(jour `YYYY-MM-DD` → catégories datées), `semaineType` et ' +
+          '`semaineAbcm` sont RELAYÉS TELS QUELS depuis svc-planification : ' +
+          'la gateway n’en valide que l’enveloppe, ils restent donc ouverts ici ' +
+          '(même parti pris que le corps de `PUT …/plannings/{mois}`).',
+        properties: {
+          contratId: { type: 'string', format: 'uuid' },
+          enfant: { type: 'string' },
+          mode: {
+            type: 'string',
+            enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+          },
+          etablissementId: { type: ['string', 'null'], format: 'uuid' },
+          besoins: { type: 'object', additionalProperties: true },
+          semaineType: { type: 'object', additionalProperties: true },
+          semaineAbcm: { type: 'object', additionalProperties: true },
+        },
+        required: ['contratId', 'enfant', 'mode', 'etablissementId', 'besoins'],
+      },
+      SemaineBesoinsVue: {
+        type: 'object',
+        description:
+          'Vue consolidée d’une semaine éditable du foyer (lecture seule) : ' +
+          'les 7 jours, les établissements concernés et les contrats actifs ' +
+          'avec leurs besoins datés. Ouverte depuis une notification A_VALIDER.',
+        properties: {
+          semaineIso: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' },
+          jours: {
+            type: 'array',
+            items: { type: 'string', format: 'date' },
+          },
+          etablissements: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/EtablissementConcerneVue' },
+          },
+          contrats: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/ContratBesoinsVue' },
+          },
+        },
+        required: ['semaineIso', 'jours', 'etablissements', 'contrats'],
+      },
     },
   },
   paths: {
     '/api/health': {
       get: {
-        summary: 'Liveness/readiness de la gateway',
+        summary: 'Readiness de la gateway (toute la chaîne)',
+        description:
+          'La gateway n’est prête que si la READINESS de ses 5 amonts l’est — ' +
+          'donc base + migrations + NATS de chacun (lot B3). Une sonde terminus ' +
+          'par amont : le corps du 503 NOMME le service fautif. Consommée par la ' +
+          'Porte 3 du déploiement et le smoke CI ; le heartbeat, lui, sonde la ' +
+          'liveness (`/api/health/live`) — un amont dégradé ne doit pas faire ' +
+          'taire le dead man’s switch.',
         security: [],
         responses: {
           '200': {
-            description: 'La gateway est vivante.',
+            description: 'La chaîne est prête.',
             content: {
               'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: { status: { type: 'string' } },
-                  required: ['status'],
-                },
+                schema: { $ref: '#/components/schemas/HealthCheckResult' },
+              },
+            },
+          },
+          '503': {
+            description:
+              'Au moins un amont n’est pas prêt (nommé dans `error`/`details`).',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/HealthCheckResult' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/health/live': {
+      get: {
+        summary: 'Liveness de la gateway (aucune dépendance)',
+        description:
+          'Le process répond. AUCUNE dépendance externe n’est sondée — c’est ' +
+          'la contrainte des lots A6/A7 : les healthchecks compose et la sonde ' +
+          'blackbox doivent rester ici, sinon un amont dégradé provoque des ' +
+          'restarts en cascade.',
+        security: [],
+        responses: {
+          '200': {
+            description: 'Le process gateway est vivant.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/HealthCheckResult' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/referentiel/health': {
+      get: {
+        summary: 'Santé du référentiel vue à travers la gateway',
+        description:
+          'Parcours distribué de la DoD : `gateway → svc-referentiel → /health ' +
+          '→ DB`, avec propagation du `traceparent`. Relaie la réponse du ' +
+          'service après validation contre le contrat partagé.',
+        security: [],
+        responses: {
+          '200': {
+            description:
+              'Réponse de santé du référentiel, relayée telle quelle.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/HealthCheckResult' },
               },
             },
           },
@@ -1288,6 +1675,250 @@ export const gatewayOpenApiDocument = {
         },
       },
     },
+    '/api/v1/erreurs-client': {
+      post: {
+        summary: 'Signaler un plantage survenu dans le navigateur',
+        description:
+          'Point de collecte MÊME-ORIGINE des erreurs client (lot C7). Le web y ' +
+          'poste ce que ses frontières d’erreur React interceptent, ainsi que les ' +
+          'exceptions hors rendu et les promesses rejetées. La gateway journalise ' +
+          'la ligne (préfixe « PLANTAGE CLIENT »), corrélée par le `trace_id` de ' +
+          'la requête ; rien n’est stocké et rien ne sort du domaine. Envoi ' +
+          'best-effort et plafonné côté client ; la route reste soumise à la ' +
+          'limitation de débit.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/ErreurClient' },
+            },
+          },
+        },
+        responses: {
+          '204': { description: 'Signalement journalisé.' },
+          '400': {
+            description: 'Corps invalide (origine inconnue, bornes dépassées).',
+          },
+          '429': { description: 'Trop de requêtes (limitation de débit).' },
+        },
+      },
+    },
+    '/api/v1/notifications/a-valider': {
+      get: {
+        summary: 'Lister les semaines à valider d’un foyer',
+        description:
+          'Indicateur in-app de l’encart de validation. Chaque notification est ' +
+          'ENRICHIE par la gateway (jointure avec les contrats du foyer) du ' +
+          'prénom de l’enfant et du mode, pour distinguer N lignes d’une même ' +
+          'semaine.',
+        parameters: [
+          {
+            name: 'foyer',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Semaines à valider du foyer.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'array',
+                  items: {
+                    $ref: '#/components/schemas/NotificationAValiderVue',
+                  },
+                },
+              },
+            },
+          },
+          '400': { description: 'Paramètre « foyer » manquant.' },
+        },
+      },
+    },
+    '/api/v1/notifications/semaine/{foyerId}/{semaineIso}/besoins': {
+      get: {
+        summary: 'Vue hebdomadaire consolidée et éditable d’un foyer',
+        description:
+          'Agrège les contrats actifs sur la semaine (mêmes bornes que le ' +
+          'scheduler de notification) et, pour chacun, ses besoins datés ' +
+          'extraits des saisies mensuelles RÉELLES, rattachés à leur ' +
+          'établissement par le lien explicite `contrat.etablissementId`. ' +
+          'Lecture seule : l’écran d’édition écrit par ' +
+          '`PUT /contrats/{id}/plannings/semaine/{semaineIso}`.',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'semaineIso',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Semaine consolidée du foyer.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SemaineBesoinsVue' },
+              },
+            },
+          },
+          '400': { description: 'Semaine ISO invalide (format `YYYY-Www`).' },
+        },
+      },
+    },
+    '/api/v1/notifications/semaine/{foyerId}/{semaineIso}/envois': {
+      get: {
+        summary: 'Suivi des envois de la semaine (lecture seule)',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'semaineIso',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' },
+          },
+        ],
+        responses: {
+          '200': {
+            description:
+              'Statut persistant du rappel aux parents et des récaps aux ' +
+              'établissements.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SuiviEnvoisVue' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/notifications/semaine/{foyerId}/{semaineIso}/etablissements/{etablissementId}/brouillon':
+      {
+        get: {
+          summary: 'Régénérer le brouillon du récap agrégé d’un établissement',
+          description:
+            'Relecture avant envoi : un seul mail par établissement regroupant ' +
+            'tous les enfants du foyer dont la semaine a été validée avec ' +
+            'modifications.',
+          parameters: [
+            {
+              name: 'foyerId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'semaineIso',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' },
+            },
+            {
+              name: 'etablissementId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Brouillon régénéré.',
+              content: {
+                'application/json': {
+                  schema: {
+                    $ref: '#/components/schemas/BrouillonEtablissementVue',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    '/api/v1/notifications/validations/{contratId}/{semaineIso}': {
+      post: {
+        summary: 'Valider la semaine d’un contrat',
+        parameters: [
+          {
+            name: 'contratId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'semaineIso',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Semaine validée (avec ou sans modifications).',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ValidationResultat' },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/v1/notifications/envois/etablissement': {
+      post: {
+        summary: 'Envoyer le récap agrégé à un établissement',
+        description:
+          'Action sortante RÉELLE (après relecture), idempotente sur ' +
+          '`(foyer, semaine, établissement)`. `sujet`/`corps` portent le texte ' +
+          'édité par le parent : les deux ensemble ou aucun des deux (400 sinon).',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  foyerId: { type: 'string', format: 'uuid' },
+                  semaineIso: { type: 'string', pattern: '^\\d{4}-W\\d{2}$' },
+                  etablissementId: { type: 'string', format: 'uuid' },
+                  sujet: { type: 'string', minLength: 1, maxLength: 300 },
+                  corps: { type: 'string', minLength: 1, maxLength: 20000 },
+                },
+                required: ['foyerId', 'semaineIso', 'etablissementId'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Issue de l’envoi (réel ou neutralisé en dry-run).',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/EnvoiEtablissementResultat',
+                },
+              },
+            },
+          },
+          '400': {
+            description:
+              'Corps invalide, ou `sujet`/`corps` fournis l’un sans l’autre.',
+          },
+        },
+      },
+    },
     '/api/v1/contrats': {
       get: {
         summary: 'Lister les contrats d’un foyer',
@@ -1372,6 +2003,85 @@ export const gatewayOpenApiDocument = {
               },
             },
           },
+        },
+      },
+    },
+    '/api/v1/contrats/{id}': {
+      put: {
+        summary: 'Modifier les paramètres versionnés courants d’un contrat',
+        description:
+          'Correction NON destructive de la version courante (SFD 30 lot 4) : ' +
+          'les plannings saisis survivent. L’URL BFF est restée stable (le web ' +
+          '« durcit » un contrat par ce chemin) mais le relais vise ' +
+          '`PUT /contrats/{id}/version-courante` en amont ; l’identité du ' +
+          'contrat (enfant, mode, établissement) n’est PAS versionnable.',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Mêmes champs que la création (le BFF réutilise le schéma) ; ' +
+                  'les paramètres mode-spécifiques passent en ' +
+                  'additionalProperties et sont validés par svc-planification.',
+                additionalProperties: true,
+                properties: {
+                  mode: {
+                    type: 'string',
+                    enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+                  },
+                  foyerId: { type: 'string', format: 'uuid' },
+                  enfant: { type: 'string' },
+                  enfantId: { type: 'string', format: 'uuid' },
+                  valideDu: { type: 'string', format: 'date' },
+                  valideAu: { type: ['string', 'null'], format: 'date' },
+                },
+                required: [
+                  'mode',
+                  'foyerId',
+                  'enfant',
+                  'enfantId',
+                  'valideDu',
+                  'valideAu',
+                ],
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Contrat modifié.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ContratVue' },
+              },
+            },
+          },
+          '404': { description: 'Contrat inconnu.' },
+        },
+      },
+      delete: {
+        summary: 'Supprimer un contrat de garde',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '204': { description: 'Contrat supprimé (pas de contenu).' },
+          '404': { description: 'Contrat inconnu.' },
         },
       },
     },
@@ -1561,6 +2271,52 @@ export const gatewayOpenApiDocument = {
       },
     },
     '/api/v1/contrats/{id}/plannings/{mois}': {
+      get: {
+        summary: 'Lire la saisie de planning d’un mois (réelle ou simulée)',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'mois',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', pattern: '^\\d{4}-\\d{2}$' },
+          },
+          {
+            name: 'simule',
+            in: 'query',
+            required: false,
+            schema: { type: 'boolean' },
+          },
+        ],
+        responses: {
+          '200': {
+            description:
+              'La saisie enregistrée du mois, ou `null` si aucune saisie.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    saisie: {
+                      type: ['object', 'null'],
+                      description:
+                        'Saisie mensuelle relayée telle quelle (même forme ' +
+                        'ouverte que le corps du PUT).',
+                      additionalProperties: true,
+                    },
+                  },
+                  required: ['saisie'],
+                },
+              },
+            },
+          },
+        },
+      },
       put: {
         summary: 'Écrire le planning mensuel (réel ou simulé)',
         parameters: [
@@ -1600,6 +2356,58 @@ export const gatewayOpenApiDocument = {
         },
         responses: {
           '204': { description: 'Planning enregistré (pas de contenu).' },
+        },
+      },
+    },
+    '/api/v1/contrats/{id}/plannings/semaine/{semaineIso}': {
+      put: {
+        summary: 'Éditer les besoins d’UNE semaine (réels ou simulés)',
+        description:
+          'Édite les catégories DATÉES d’une seule semaine sans écraser le ' +
+          'reste du/des mois recouverts : la fusion read-modify-write est faite ' +
+          'par svc-planification. Les scalaires mensuels ' +
+          '(`complementMinutes`, `pai`) sont hors périmètre de cette route.',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'semaineIso',
+            in: 'path',
+            required: true,
+            schema: {
+              type: 'string',
+              pattern: '^\\d{4}-W(0[1-9]|[1-4]\\d|5[0-3])$',
+            },
+          },
+          {
+            name: 'simule',
+            in: 'query',
+            required: false,
+            schema: { type: 'boolean' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Besoins datés de la semaine. Structure laissée ouverte via ' +
+                  'additionalProperties ; champs usuels : joursSupplementaires, ' +
+                  'absences, ajustements, exceptions, joursAlsh.',
+                additionalProperties: true,
+              },
+            },
+          },
+        },
+        responses: {
+          '204': { description: 'Besoins enregistrés (pas de contenu).' },
+          '400': { description: 'Semaine ISO invalide (format `YYYY-Www`).' },
         },
       },
     },
