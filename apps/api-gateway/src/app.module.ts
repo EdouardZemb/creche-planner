@@ -5,6 +5,7 @@ import { buildLoggerParams } from '@creche-planner/observability';
 import { BffModule } from './bff/bff.module.js';
 import { ClientsModule } from './clients/clients.module.js';
 import { HealthModule } from './health/health.module.js';
+import { ObservabiliteModule } from './observabilite/observabilite.module.js';
 import { OpenApiModule } from './openapi/openapi.module.js';
 import { ReferentielModule } from './referentiel/referentiel.module.js';
 import { SecurityModule } from './security/security.module.js';
@@ -18,6 +19,7 @@ import { SecurityModule } from './security/security.module.js';
     HealthModule,
     ReferentielModule,
     BffModule,
+    ObservabiliteModule,
     OpenApiModule,
   ],
 })

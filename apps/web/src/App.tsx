@@ -26,6 +26,8 @@ import { Entete } from './layout/Entete';
 import { GardeFoyer } from './layout/GardeFoyer';
 import { PageIntrouvable } from './layout/PageIntrouvable';
 import { titreDepuisPathname } from './layout/titreDepuisPathname';
+import { FrontiereErreur } from './layout/FrontiereErreur';
+import { ApplicationEnErreur, PageEnErreur } from './layout/EcransRecuperation';
 
 /**
  * Coquille applicative rendue à l'intérieur du routeur : c'est ici que vit
@@ -66,26 +68,39 @@ function Coquille() {
       {/* UT-02 CA1 : cible de focus programmatique (tabindex=-1) et CA3 : ancre
           du lien d'évitement « Aller au contenu » (#contenu) préservée. */}
       <main id="contenu" tabIndex={-1} ref={refCible}>
-        <Routes>
-          <Route path="/" element={<Accueil />} />
-          <Route path="/mes-foyers" element={<MesFoyersPage />} />
-          <Route path="/mon-profil" element={<MonProfilPage />} />
-          <Route path="/tarifs" element={<TarifsPage />} />
-          <Route path="/desabonnement" element={<DesabonnementPage />} />
-          <Route path="/foyers/new" element={<FoyerFormPage />} />
-          <Route path="/foyers/:foyerId" element={<GardeFoyer />}>
-            {/* /foyers/:id nu rendait une page blanche (aucune route index) :
+        {/* C7 : frontière de ROUTE. Placée à l'intérieur de `<main>`, donc sous
+            l'en-tête et la barre d'onglets : une page qui plante laisse la
+            navigation utilisable. `clesReinitialisation={[pathname]}` la réarme
+            à chaque navigation — sans quoi le premier plantage figerait l'écran
+            de récupération sur toutes les destinations suivantes. */}
+        <FrontiereErreur
+          origine="route"
+          clesReinitialisation={[pathname]}
+          rendu={({ reinitialiser }) => (
+            <PageEnErreur reinitialiser={reinitialiser} />
+          )}
+        >
+          <Routes>
+            <Route path="/" element={<Accueil />} />
+            <Route path="/mes-foyers" element={<MesFoyersPage />} />
+            <Route path="/mon-profil" element={<MonProfilPage />} />
+            <Route path="/tarifs" element={<TarifsPage />} />
+            <Route path="/desabonnement" element={<DesabonnementPage />} />
+            <Route path="/foyers/new" element={<FoyerFormPage />} />
+            <Route path="/foyers/:foyerId" element={<GardeFoyer />}>
+              {/* /foyers/:id nu rendait une page blanche (aucune route index) :
                 on renvoie vers le tableau de bord, porte d'entrée du foyer. */}
-            <Route index element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard" element={<DashboardJourPage />} />
-            <Route path="contrats" element={<ContratsPage />} />
-            <Route path="planning" element={<PlanningPage />} />
-            <Route path="couts" element={<CoutsAnnuelsPage />} />
-            <Route path="etablissements" element={<EtablissementsPage />} />
-            <Route path="modifier" element={<FoyerModifierPage />} />
-          </Route>
-          <Route path="*" element={<PageIntrouvable />} />
-        </Routes>
+              <Route index element={<Navigate to="dashboard" replace />} />
+              <Route path="dashboard" element={<DashboardJourPage />} />
+              <Route path="contrats" element={<ContratsPage />} />
+              <Route path="planning" element={<PlanningPage />} />
+              <Route path="couts" element={<CoutsAnnuelsPage />} />
+              <Route path="etablissements" element={<EtablissementsPage />} />
+              <Route path="modifier" element={<FoyerModifierPage />} />
+            </Route>
+            <Route path="*" element={<PageIntrouvable />} />
+          </Routes>
+        </FrontiereErreur>
       </main>
     </TitrePageContext.Provider>
   );
@@ -94,9 +109,21 @@ function Coquille() {
 export function App() {
   return (
     <BrowserRouter>
-      <MoiProvider>
-        <Coquille />
-      </MoiProvider>
+      {/* C7 : frontière RACINE. La frontière de route ne couvre que `<Routes>` ;
+          celle-ci rattrape ce qui l'entoure — en-tête (dont la pastille « à
+          valider », qui interroge l'API), contexte de session, coquille. C'est
+          exactement là qu'était le plantage rencontré en C1. Elle vit SOUS le
+          routeur pour que son écran de récupération dispose du contexte de
+          navigation, et ne porte aucune clé de réinitialisation : réarmer
+          rejouerait le même rendu cassé. */}
+      <FrontiereErreur
+        origine="application"
+        rendu={() => <ApplicationEnErreur />}
+      >
+        <MoiProvider>
+          <Coquille />
+        </MoiProvider>
+      </FrontiereErreur>
     </BrowserRouter>
   );
 }
