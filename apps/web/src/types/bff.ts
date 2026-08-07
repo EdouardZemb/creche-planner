@@ -413,55 +413,45 @@ export interface LirePlanningReponse {
 
 // ---- Notifications : validation hebdomadaire (Lot 4) -----------------------
 //
-// Hand-typé (comme la saisie de planning) : les routes BFF
-// `/api/v1/notifications/*` ne sont pas décrites dans l'OpenAPI de la gateway —
-// il n'y a donc rien à dériver. svc-notifications en est la spécification.
+// DÉRIVÉES du contrat depuis le lot D6 : les 6 routes `/api/v1/notifications/*`
+// sont décrites dans l'OpenAPI de la gateway. Elles ne l'étaient pas — la garde
+// `openapi.couverture.spec.ts` (api-gateway) l'a montré en confrontant le
+// document au graphe de modules Nest — et ces types étaient alors un miroir
+// manuel de svc-notifications que rien ne réconciliait.
 
-/** Statut de la validation d'une semaine. */
+/** Statut de la validation d'une semaine — dérivé de l'enum du contrat. */
 export type StatutNotification =
-  'A_VALIDER' | 'VALIDEE' | 'VALIDEE_AVEC_MODIFS';
+  SchemaComposant<'NotificationAValiderVue'>['statut'];
 
 /**
- * Une semaine à valider (indicateur in-app). Enrichie par le BFF (jointure avec les
+ * Une semaine à valider (indicateur in-app) — dérivée de
+ * `components.schemas.NotificationAValiderVue`. Enrichie par le BFF (jointure avec les
  * contrats du foyer) du prénom de l'enfant et du mode de garde, pour distinguer N lignes
  * d'une même semaine dans l'encart. `enfant`/`mode` sont absents si le contrat n'est plus
  * listé côté BFF (l'écran retombe alors sur le libellé de repli « Planning de la … »).
  */
-export interface NotificationAValider {
-  contratId: string;
-  foyerId: string;
-  semaineIso: string; // `YYYY-Www`
-  statut: StatutNotification;
-  notifieeLe: string; // ISO 8601
-  enfant?: string; // prénom du contrat (enrichi BFF)
-  mode?: string; // mode de garde (chaîne libre ; passer par libelleMode)
-}
+export type NotificationAValider = SchemaComposant<'NotificationAValiderVue'>;
 
-/** Un jour modifié entre le snapshot de notification et la relecture. */
-export interface DeltaJour {
-  date: string; // `YYYY-MM-DD`
-  avant: unknown;
-  apres: unknown;
-}
+/**
+ * Un jour modifié entre le snapshot de notification et la relecture — dérivé du
+ * sous-schéma `jours[]` de `DeltaModifs`. `avant`/`apres` restent `unknown` : le
+ * contrat les laisse ouverts (forme propriété de svc-notifications).
+ */
+export type DeltaJour = SchemaComposant<'DeltaModifs'>['jours'][number];
 
-/** Jours modifiés à la validation (forme libre relayée par la gateway). */
-export interface DeltaModifs {
-  jours: DeltaJour[];
-}
+/** Jours modifiés à la validation — dérivés de `components.schemas.DeltaModifs`. */
+export type DeltaModifs = SchemaComposant<'DeltaModifs'>;
 
-/** Résultat d'une validation de semaine. */
-export interface ValidationResultat {
-  contratId: string;
-  semaineIso: string;
-  statut: StatutNotification;
-  deltaModifs: DeltaModifs | null;
-}
+/** Résultat d'une validation de semaine — dérivé de `components.schemas.ValidationResultat`. */
+export type ValidationResultat = SchemaComposant<'ValidationResultat'>;
 
 // ---- Notifications : vue hebdomadaire consolidée éditable ------------------
 //
-// Hand-typé : la route BFF `GET /api/v1/notifications/semaine/:foyerId/:semaineIso/
-// besoins` n'est pas décrite dans l'OpenAPI de la gateway (agrégation orientée
-// écran de svc-planification + svc-notifications) → rien à dériver.
+// Dérivée du contrat (D6), SAUF les besoins datés et les semaines-types : la
+// gateway les relaie tels quels depuis svc-planification et n'en valide que
+// l'enveloppe, donc le contrat les décrit ouverts (`additionalProperties: true`).
+// Le front garde ses formes précises pour ces champs-là et les greffe sur le
+// type dérivé — même patron que `ContratVersionVue` plus haut.
 
 /** Entrées datées d'un jour (mêmes catégories que la saisie mensuelle). */
 export interface SaisieJourBesoins {
@@ -475,43 +465,44 @@ export interface SaisieJourBesoins {
 /** Besoins d'une semaine : jour `YYYY-MM-DD` → entrées (jours vides omis). */
 export type BesoinsSemaine = Record<string, SaisieJourBesoins>;
 
-/** Établissement réel concerné par la semaine (entité libre, `svc-planification`). */
-export interface EtablissementConcerne {
-  /** Identifiant de l'établissement réel (clé de groupement à l'écran). */
-  etablissementId: string;
-  libelle: string;
-  /** Règle de préavis, `null` si l'établissement ne l'a pas (encore) renseignée. */
-  preavisRegle: PreavisRegle | null;
-}
+/**
+ * Établissement réel concerné par la semaine (entité libre, `svc-planification`)
+ * — dérivé de `components.schemas.EtablissementConcerneVue`. `preavisRegle` est
+ * `null` si l'établissement ne l'a pas (encore) renseignée.
+ */
+export type EtablissementConcerne = SchemaComposant<'EtablissementConcerneVue'>;
 
-/** Un contrat actif de la semaine, avec ses besoins datés et son établissement. */
-export interface ContratBesoinsSemaine {
-  contratId: string;
-  enfant: string;
-  mode: Mode;
-  /** Lien explicite vers l'établissement réel (P3), `null` si non rattaché. */
-  etablissementId: string | null;
+/**
+ * Un contrat actif de la semaine, avec ses besoins datés et son établissement —
+ * dérivé de `components.schemas.ContratBesoinsVue`, dont les trois champs
+ * ouverts sont re-typés ici pour un accès sûr côté écran.
+ *
+ * `semaineType`/`semaineAbcm` sont le planning de BASE du contrat, fourni selon
+ * le mode : ils permettent d'afficher les horaires planifiés d'un jour normal
+ * sans ouvrir la saisie. Les entrées datées de `besoins` restent les exceptions
+ * qui priment sur cette base.
+ */
+export type ContratBesoinsSemaine = Omit<
+  SchemaComposant<'ContratBesoinsVue'>,
+  'besoins' | 'semaineType' | 'semaineAbcm'
+> & {
   besoins: BesoinsSemaine;
-  /**
-   * Planning de BASE (semaine-type) du contrat, fourni selon le mode : permet
-   * d'afficher les horaires planifiés d'un jour normal sans ouvrir la saisie. Les
-   * entrées datées de `besoins` restent les exceptions qui priment sur cette base.
-   */
   semaineType?: SemaineTypeCreche;
   semaineAbcm?: SemaineAbcm;
-}
+};
 
 /**
  * Vue consolidée d'une semaine éditable du foyer : les 7 jours, les établissements
  * concernés et les contrats actifs avec leurs besoins, groupables à l'écran par
- * enfant → établissement/mode. Ouverte depuis une notification A_VALIDER.
+ * enfant → établissement/mode. Ouverte depuis une notification A_VALIDER. Dérivée
+ * de `components.schemas.SemaineBesoinsVue` (contrats re-typés, cf. ci-dessus).
  */
-export interface SemaineBesoins {
-  semaineIso: string; // `YYYY-Www`
-  jours: string[]; // 7 jours `YYYY-MM-DD`, lundi → dimanche
-  etablissements: EtablissementConcerne[];
+export type SemaineBesoins = Omit<
+  SchemaComposant<'SemaineBesoinsVue'>,
+  'contrats'
+> & {
   contrats: ContratBesoinsSemaine[];
-}
+};
 
 // ---- Notifications : mail au service AGRÉGÉ par établissement (Phase 4) -----
 //
@@ -519,119 +510,80 @@ export interface SemaineBesoins {
 // les enfants du foyer dont la semaine a été validée avec modifications (remplace
 // l'envoi par-contrat du Lot 6).
 
-/** Un enfant du foyer concerné par le récap d'un établissement (diff figé du Lot 4). */
-export interface EnfantBrouillon {
-  contratId: string;
-  enfant: string;
-  deltaModifs: DeltaModifs;
-}
+/**
+ * Un enfant du foyer concerné par le récap d'un établissement (diff figé du Lot 4)
+ * — dérivé de `components.schemas.EnfantBrouillonVue`.
+ */
+export type EnfantBrouillon = SchemaComposant<'EnfantBrouillonVue'>;
 
 /**
  * Brouillon régénérable du mail **agrégé par établissement** adressé au service
- * (crèche / école ABCM) après relecture humaine. `dryRun` indique qu'un envoi réel
+ * (crèche / école ABCM) après relecture humaine — dérivé de
+ * `components.schemas.BrouillonEtablissementVue`. `dryRun` indique qu'un envoi réel
  * serait neutralisé (bac à sable ou destinataire hors allowlist) → bandeau
- * d'avertissement avant l'envoi. `enfants` vide ⇒ rien à envoyer pour cet établissement.
+ * d'avertissement avant l'envoi. `enfants` vide ⇒ rien à envoyer pour cet
+ * établissement. `routable: false` ⇒ **aucun envoi possible** (crèche sans e-mail
+ * ou archivée) : le front affiche un avertissement au lieu du bouton d'envoi, et
+ * `destinataire` vaut `''`. `'ARCHIVE'` a la **priorité** sur `'SANS_EMAIL'`.
  */
-export interface BrouillonEtablissement {
-  foyerId: string;
-  semaineIso: string;
-  /** Identifiant réel de l'établissement destinataire (read model `etablissement`, P3). */
-  etablissementId: string;
-  etablissementLibelle: string;
-  /** Adresse visée ; chaîne vide `''` quand non routable (ne lire que si `routable`). */
-  destinataire: string;
-  sujet: string;
-  corps: string; // HTML rendu, figé à l'envoi
-  texte: string; // aperçu texte brut
-  enfants: EnfantBrouillon[];
-  /**
-   * Faux ⇒ **aucun envoi possible** (crèche sans e-mail ou archivée) : le front affiche
-   * un avertissement au lieu du bouton d'envoi. Routable ⇔ e-mail présent **ET** actif.
-   */
-  routable: boolean;
-  /**
-   * Raison de non-routabilité quand `routable === false`, sinon `null`. `'ARCHIVE'` a la
-   * **priorité** sur `'SANS_EMAIL'` (une crèche archivée est signalée « archivée »).
-   */
-  raisonNonRoutable: 'SANS_EMAIL' | 'ARCHIVE' | null;
-  dryRun: boolean;
-}
+export type BrouillonEtablissement =
+  SchemaComposant<'BrouillonEtablissementVue'>;
 
 /**
  * Objet + corps **édités par le parent** transmis à l'envoi d'un récap
  * établissement (L8/L9) : texte brut, échappé et journalisé tel quel côté service.
- * Les deux champs vont ensemble (fournis ou omis) ; mêmes bornes que le DTO svc :
- * objet non vide ≤ 300, corps non vide ≤ 20000.
+ * Dérivé des champs optionnels du requestBody de
+ * `POST /api/v1/notifications/envois/etablissement` — ils y sont optionnels car
+ * l'invariant « les deux ensemble ou aucun » n'est pas exprimable en JSON Schema
+ * côté gateway (il est vérifié par le DTO Zod, 400 sinon) ; ici on les rend requis
+ * puisque ce type EST le cas « les deux fournis ».
  */
-export interface CorpsEnvoiEtablissement {
-  sujet: string;
-  corps: string;
-}
+export type CorpsEnvoiEtablissement = Required<
+  Pick<
+    CorpsRequeteJson<'/api/v1/notifications/envois/etablissement', 'post'>,
+    'sujet' | 'corps'
+  >
+>;
 
-/** Statut d'un envoi de récap au service. */
-export type StatutEnvoi = 'EN_COURS' | 'ENVOYE' | 'ECHEC' | 'DRY_RUN';
+/** Statut d'un envoi de récap au service — dérivé de l'enum du contrat. */
+export type StatutEnvoi =
+  SchemaComposant<'EnvoiEtablissementResultat'>['statut'];
 
-/** Résultat d'un envoi agrégé par établissement (action sortante réelle, idempotente). */
-export interface EnvoiEtablissementResultat {
-  foyerId: string;
-  semaineIso: string;
-  etablissementId: string;
-  destinataire: string;
-  statut: StatutEnvoi;
-  messageId: string | null;
-  erreur: string | null;
-  envoyeLe: string | null;
-}
+/**
+ * Résultat d'un envoi agrégé par établissement (action sortante réelle,
+ * idempotente) — dérivé de `components.schemas.EnvoiEtablissementResultat`.
+ */
+export type EnvoiEtablissementResultat =
+  SchemaComposant<'EnvoiEtablissementResultat'>;
 
 // ---- Notifications : suivi des envois (B1, lecture seule) -------------------
 //
-// Hand-typé : la route BFF `GET /api/v1/notifications/semaine/:foyerId/:semaineIso/
-// envois` n'est pas décrite dans l'OpenAPI de la gateway (agrégation orientée écran) →
-// rien à dériver. Miroir du schéma Zod du client gateway.
+// Dérivées du contrat depuis D6 (la route `GET …/semaine/{foyerId}/{semaineIso}/
+// envois` y est décrite) : le miroir manuel du schéma Zod du client gateway a
+// disparu au profit de la chaîne document → openapi-typescript.
 
 /** Statut de livraison du rappel du mardi vers UN parent. */
-export type StatutRappelParent = 'ENVOYE' | 'DRY_RUN' | 'ECHEC';
+export type StatutRappelParent = SchemaComposant<'SuiviRappelParent'>['statut'];
 
 /** Statut de l'envoi du rappel hebdo du mardi (agrégat foyer). */
-export type StatutRappelHebdo =
-  'A_ENVOYER' | 'ENVOYE' | 'DRY_RUN' | 'ECHEC' | 'ABANDONNE';
+export type StatutRappelHebdo = SchemaComposant<'SuiviRappelHebdo'>['statut'];
 
 /** Livraison du récap du mardi vers un parent (ledger `envoi_recap_parent`). */
-export interface SuiviRappelParent {
-  email: string;
-  statut: StatutRappelParent;
-  envoyeLe: string | null;
-  essais: number;
-}
+export type SuiviRappelParent = SchemaComposant<'SuiviRappelParent'>;
 
 /** État d'envoi du rappel hebdo du mardi aux parents (+ détail par parent). */
-export interface SuiviRappelHebdo {
-  statut: StatutRappelHebdo;
-  envoyeLe: string | null;
-  erreur: string | null;
-  parents: SuiviRappelParent[];
-}
+export type SuiviRappelHebdo = SchemaComposant<'SuiviRappelHebdo'>;
 
 /** État d'envoi du récap agrégé vers un établissement (`envoi_etablissement`). */
-export interface SuiviEnvoiEtablissement {
-  etablissementId: string;
-  statut: StatutEnvoi;
-  envoyeLe: string | null;
-  erreur: string | null;
-  destinataire: string | null;
-}
+export type SuiviEnvoiEtablissement =
+  SchemaComposant<'SuiviEnvoiEtablissement'>;
 
 /**
  * Suivi **persistant** des envois d'une `(foyer, semaine)` (B1) : statut du rappel aux
  * parents (`null` si la semaine n'a jamais été programmée) et des récaps aux
  * établissements. Affiché dans le bloc « Suivi des envois » de l'encart de validation.
  */
-export interface SuiviEnvois {
-  foyerId: string;
-  semaineIso: string;
-  rappel: SuiviRappelHebdo | null;
-  etablissements: SuiviEnvoiEtablissement[];
-}
+export type SuiviEnvois = SchemaComposant<'SuiviEnvoisVue'>;
 
 // Contrat enrichi conservé côté client (le BFF ne renvoie pas la semaine-type ;
 // on la mémorise pour piloter le calendrier). Voir utils/store.ts.

@@ -11,11 +11,20 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(gatewayOpenApiDocument.info.version).toBe('1.0.0');
   });
 
-  it('expose exactement les 27 routes attendues', () => {
+  // ⚠️ Portée de cet oracle : il fige la liste attendue pour la rendre VISIBLE en
+  // revue (tout ajout de route doit se voir dans le diff). Il ne prouve PAS que le
+  // document couvre le service réel — les deux côtés y sont écrits à la main. Cette
+  // preuve-là est faite par `apps/api-gateway/src/openapi/openapi.couverture.spec.ts`
+  // (lot D6), qui confronte le document au graphe de modules Nest et exige l'égalité
+  // dans les deux sens. C'est lui qui a montré que 12 opérations servies — dont les
+  // 6 routes `/notifications/*` — n'étaient documentées nulle part.
+  it('expose exactement les 38 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
         '/api/health',
+        '/api/health/live',
+        '/api/referentiel/health',
         '/api/openapi.json',
         '/api/v1/foyers',
         '/api/v1/foyers/{id}',
@@ -32,11 +41,20 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/moi/notifications',
         '/api/v1/moi/notifications/{id}/lu',
         '/api/v1/desabonnement',
+        '/api/v1/erreurs-client',
+        '/api/v1/notifications/a-valider',
+        '/api/v1/notifications/envois/etablissement',
+        '/api/v1/notifications/semaine/{foyerId}/{semaineIso}/besoins',
+        '/api/v1/notifications/semaine/{foyerId}/{semaineIso}/envois',
+        '/api/v1/notifications/semaine/{foyerId}/{semaineIso}/etablissements/{etablissementId}/brouillon',
+        '/api/v1/notifications/validations/{contratId}/{semaineIso}',
         '/api/v1/contrats',
+        '/api/v1/contrats/{id}',
         '/api/v1/contrats/{id}/versions',
         '/api/v1/contrats/{id}/versions/{versionId}',
         '/api/v1/contrats/{id}/versions/{versionId}/impact',
         '/api/v1/contrats/{id}/plannings/{mois}',
+        '/api/v1/contrats/{id}/plannings/semaine/{semaineIso}',
         '/api/v1/couts',
         '/api/v1/couts/annuel',
         '/api/v1/referentiel/grilles',
@@ -151,10 +169,62 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     ]);
   });
 
+  it('expose la validation hebdomadaire (/notifications/*)', () => {
+    const aValider =
+      gatewayOpenApiDocument.paths['/api/v1/notifications/a-valider'].get;
+    expect(aValider.parameters[0].name).toBe('foyer');
+    expect(aValider.parameters[0].required).toBe(true);
+    expect(
+      aValider.responses['200'].content['application/json'].schema,
+    ).toEqual({
+      type: 'array',
+      items: { $ref: '#/components/schemas/NotificationAValiderVue' },
+    });
+
+    const valider =
+      gatewayOpenApiDocument.paths[
+        '/api/v1/notifications/validations/{contratId}/{semaineIso}'
+      ].post;
+    expect(valider.responses['200'].content['application/json'].schema).toEqual(
+      {
+        $ref: '#/components/schemas/ValidationResultat',
+      },
+    );
+
+    // Invariant du DTO gateway : `sujet`/`corps` vont ensemble (400 sinon).
+    const envoi =
+      gatewayOpenApiDocument.paths['/api/v1/notifications/envois/etablissement']
+        .post;
+    expect(
+      envoi.requestBody.content['application/json'].schema.required,
+    ).toEqual(['foyerId', 'semaineIso', 'etablissementId']);
+    expect(envoi.responses['400']).toBeDefined();
+  });
+
+  it('distingue readiness (/api/health) et liveness (/api/health/live)', () => {
+    // Contrainte A6/A7 : compose et blackbox sondent la LIVENESS (aucune
+    // dépendance) — sinon un amont dégradé provoque des restarts en cascade.
+    // Depuis B3, `/api/health` porte la readiness des 5 amonts, donc un 503.
+    expect(
+      Object.keys(gatewayOpenApiDocument.paths['/api/health'].get.responses),
+    ).toEqual(['200', '503']);
+    expect(
+      Object.keys(
+        gatewayOpenApiDocument.paths['/api/health/live'].get.responses,
+      ),
+    ).toEqual(['200']);
+  });
+
   it('marque les routes publiques avec security: []', () => {
     expect(gatewayOpenApiDocument.paths['/api/health'].get.security).toEqual(
       [],
     );
+    expect(
+      gatewayOpenApiDocument.paths['/api/health/live'].get.security,
+    ).toEqual([]);
+    expect(
+      gatewayOpenApiDocument.paths['/api/referentiel/health'].get.security,
+    ).toEqual([]);
     expect(
       gatewayOpenApiDocument.paths['/api/openapi.json'].get.security,
     ).toEqual([]);
@@ -185,6 +255,13 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(schemas.CreerEtablissementCorps).toBeDefined();
     expect(schemas.PreavisRegle).toBeDefined();
     expect(schemas.GrilleAbcmVue).toBeDefined();
+    expect(schemas.HealthCheckResult).toBeDefined();
+    expect(schemas.NotificationAValiderVue).toBeDefined();
+    expect(schemas.ValidationResultat).toBeDefined();
+    expect(schemas.SemaineBesoinsVue).toBeDefined();
+    expect(schemas.BrouillonEtablissementVue).toBeDefined();
+    expect(schemas.EnvoiEtablissementResultat).toBeDefined();
+    expect(schemas.SuiviEnvoisVue).toBeDefined();
   });
 
   it('expose le serveur local de la gateway', () => {

@@ -44,11 +44,14 @@ export default defineConfig(() => ({
       // Ratchet relevé au lot 3 (mesuré 83,6/79,6/68,1/84,1).
       // Ratchet relevé au lot 4 « Fondations » (scoping par ressource : décorateurs
       // sur foyer.controller + spec d'intégration enforce) — mesuré 84,5/80,6/69,2/85,0.
+      // Lot D8 : mesuré 84,86 / 80,78 / 70,43 / 85,27 — le plancher de
+      // FONCTIONS (67) était le plus en retard du dépôt (les autres services
+      // sont à 83-92). Seuil reposé au mesuré arrondi vers le bas.
       thresholds: {
-        statements: 82,
-        branches: 78,
-        functions: 67,
-        lines: 83,
+        statements: 84,
+        branches: 80,
+        functions: 70,
+        lines: 85,
       },
     },
     testTimeout: 60000,

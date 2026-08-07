@@ -64,11 +64,20 @@ export default defineConfig(() => ({
       // Ratchet relevé au lot 4 « SFD 30 » (routes versionnement BFF + client :
       // specs contrats.controller + client versions) — mesuré
       // 71,9 / 72,8 / 61,2 / 71,8, marge ~2 pts.
+      // Lot D8 : le seuil n'avait plus été remonté depuis, alors que D1
+      // (migration vers `libs/resilience`) puis C7 (route `erreurs-client` +
+      // ses specs) ont fait monter le mesuré à 83,90 / 81,07 / 65,67 / 84,42.
+      // Un seuil 15 pts sous le mesuré n'est pas neutre : il AUTORISE la
+      // régression jusqu'à ce plancher, et le second filet
+      // (`coverage-compare.mjs`) ne bloque qu'une baisse > 0,5 pt ENTRE DEUX
+      // RUNS — une érosion lente passait entre les deux. Seuil reposé au
+      // mesuré arrondi vers le bas (pas de marge : la mesure est déterministe,
+      // et c'est la marge qui avait laissé le retard s'installer).
       thresholds: {
-        statements: 69,
-        branches: 70,
-        functions: 59,
-        lines: 69,
+        statements: 83,
+        branches: 81,
+        functions: 65,
+        lines: 84,
       },
     },
   },
