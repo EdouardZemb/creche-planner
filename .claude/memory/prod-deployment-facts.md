@@ -77,3 +77,16 @@ La prod **tire** les images GHCR `ghcr.io/edouardzemb/creche-planner/<svc>:<IMAG
 **`scripts/deploy.mjs` est la SEULE voie de déploiement légitime** (doc 24 §9 / doc 26) : un `docker compose up` manuel ne crée pas de GitHub Deployment (DORA aveugle). Rollback = re-déployer une version/SHA antérieur (`IMAGE_TAG=<v_ou_sha> DEPLOY_REF=<v_ou_sha> node scripts/deploy.mjs`) ; pour un rollback **uniforme**, viser une version de train ou un SHA de commit de release (où les 6 ont une image), sinon un `:<sha>` n'existe que pour les services affectés.
 
 **Source de vérité = CE repo public `EdouardZemb/creche-planner` (un seul repo, non archivé).** L'alias serveur `github-creche` pointe sur le même repo GitHub (juste une deploy key dédiée `~/.ssh/creche_deploy`). Le « repo privé archivé » dont l'utilisateur se souvenait = ce repo AVANT d'être rendu public + ré-importé (`4f36e3e chore: import initial public`, 17 juin). La « dérive » est donc purement temporelle : le clone de déploiement `/home/edouard/creche-planner` était à `4f36e3e`, ~30 commits derrière origin/main. Pas de réconciliation de fork à faire — juste rattraper et déployer via `scripts/deploy.mjs`.
+
+**RATE-LIMIT GATEWAY — par client sur le LAN, encore par tunnel sur le public (AM-32, doc 34).** Corrigé le 2026-08-08 ([PR #298](https://github.com/EdouardZemb/creche-planner/pull/298), squash `7f9f599`) : `RATE_LIMIT_PROXY_HOPS` câble `trust proxy`, à **2** dans `docker-compose.server.yml` (client → Caddy → `web`/nginx → gateway, donc deux sauts à ignorer), `1` en pile locale, `0` par défaut. Avant ce correctif, `req.ip` valait le pair TCP — l'adresse de nginx pour **tout** le trafic — et les 120 req/min étaient une fenêtre unique partagée.
+
+**Ce qui reste (geste à faire depuis le LAN).** Pour le trafic entrant par le **tunnel Cloudflare**, le pair de Caddy est `cloudflared` et `docker/Caddyfile` ne déclare pas de `trusted_proxies` : la clé retombe sur une adresse unique pour tout l'extérieur. Le débit public reste donc borné **par tunnel, pas par client**. Fermer le point demande un `trusted_proxies` côté Caddy, puis une **vérification sur la pile réelle** — relever un `X-Forwarded-For` tel que la gateway le voit, par l'entrée publique (`https://creche.testlens.dev`) _et_ par l'entrée LAN (`https://192.168.1.129:8443`), et confirmer que le nombre de sauts à ignorer est bien le même. S'il diffère, un `RATE_LIMIT_PROXY_HOPS` numérique unique ne peut pas être correct pour les deux entrées.
+
+Méthode de relevé sans toucher à la gateway : nginx est le dernier maillon et compose lui-même l'en-tête, donc ce qu'il envoie est exactement ce que la gateway reçoit. Dans `apps/web/nginx.conf`, le temps du relevé :
+
+```nginx
+log_format releve '$remote_addr | recu="$http_x_forwarded_for" | envoye="$proxy_add_x_forwarded_for"';
+access_log /var/log/nginx/access.log releve;
+```
+
+Recharger `web`, charger l'app par chaque entrée, lire `docker logs creche-planner-web-1`, puis retirer le `log_format`. ⚠️ **Ne pas deviner la valeur** : un `trust proxy` trop permissif est pire que le défaut — `X-Forwarded-For` devient falsifiable et l'évasion du compteur tient en un `curl -H`.
