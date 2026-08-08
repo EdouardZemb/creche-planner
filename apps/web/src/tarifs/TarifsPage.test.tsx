@@ -29,7 +29,13 @@ vi.mock('../api/client', () => ({
   },
 }));
 
+// AN-16 : la publication est réservée à l'admin côté BFF ; la page ne doit pas
+// proposer un geste que le serveur refuserait. On stube `useMoi` plutôt que de
+// monter `MoiProvider` — c'est le seul droit que cette page consulte.
+vi.mock('../session/MoiContext', () => ({ useMoi: vi.fn() }));
+
 import { api, ApiError } from '../api/client';
+import { useMoi } from '../session/MoiContext';
 
 function ligne(overrides: Partial<GrilleAbcmVue> = {}): GrilleAbcmVue {
   return {
@@ -68,6 +74,15 @@ describe('TarifsPage', () => {
   beforeEach(() => {
     vi.mocked(api.listerGrilles).mockReset();
     vi.mocked(api.publierGrille).mockReset();
+    // Défaut permissif de `MoiContext` (allowlist `ADMIN_EMAILS` vide) : c'est
+    // l'état de la prod actuelle, et celui que supposent les cas ci-dessous.
+    vi.mocked(useMoi).mockReturnValue({
+      email: null,
+      admin: true,
+      foyers: [],
+      loading: false,
+      recharger: () => undefined,
+    });
   });
 
   it('regroupe les grilles par période et affiche leur statut', async () => {
@@ -149,5 +164,31 @@ describe('TarifsPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toMatch(/chevauche/i);
     });
+  });
+
+  it('AN-16 : masque le formulaire de publication pour un non-admin', async () => {
+    vi.mocked(useMoi).mockReturnValue({
+      email: 'parent@example.test',
+      admin: false,
+      foyers: ['foyer-1'],
+      loading: false,
+      recharger: () => undefined,
+    });
+    vi.mocked(api.listerGrilles).mockResolvedValue([ligne()]);
+
+    monter();
+
+    // Le catalogue reste lisible : c'est l'écriture qui est réservée.
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /grilles/i }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole('heading', { name: /publier une nouvelle grille/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /publier la grille/i }),
+    ).not.toBeInTheDocument();
   });
 });

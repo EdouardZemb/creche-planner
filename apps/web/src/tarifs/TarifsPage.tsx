@@ -6,6 +6,7 @@ import { formaterDateFr } from '../utils/dates';
 import { messageErreur } from '../utils/erreurs';
 import { useAsync } from '../hooks/useAsync';
 import { useTitrePage } from '../hooks/useTitrePage';
+import { useMoi } from '../session/MoiContext';
 import { Spinner } from '../ui/Spinner';
 import { EtatVide } from '../ui/EtatVide';
 import { Bouton } from '../ui/Bouton';
@@ -152,6 +153,12 @@ function nombre(valeur: string): number {
 export function TarifsPage() {
   useTitrePage('Tarifs');
   const idPrefixe = useId();
+  // Publier une grille est une écriture du référentiel **global** : elle pilote le
+  // calcul de coût de tous les foyers, et le BFF la réserve à l'admin (AN-16). On
+  // masque donc le formulaire au lieu d'offrir un geste que le serveur refuserait —
+  // le catalogue, lui, reste lisible par tout parent. `moi.admin` est permissif tant
+  // qu'aucun `ADMIN_EMAILS` n'est posé : l'écran est donc inchangé aujourd'hui.
+  const { admin } = useMoi();
   const {
     data: grilles,
     loading,
@@ -322,103 +329,105 @@ export function TarifsPage() {
           ))}
       </section>
 
-      <section aria-labelledby={`${idPrefixe}-form`} className="mt-5">
-        <h2 id={`${idPrefixe}-form`} style={{ fontSize: '1.1rem' }}>
-          Publier une nouvelle grille
-        </h2>
-        <form onSubmit={soumettre} noValidate>
-          <div
-            style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--esp-3)' }}
-          >
-            <label style={{ display: 'flex', flexDirection: 'column' }}>
-              <span>À partir du</span>
-              <input
-                type="date"
-                value={valideDu}
-                onChange={(e) => {
-                  setValideDu(e.target.value);
-                }}
-                required
-              />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column' }}>
-              <span>Jusqu’au (facultatif)</span>
-              <input
-                type="date"
-                value={valideAu}
-                onChange={(e) => {
-                  setValideAu(e.target.value);
-                }}
-              />
-            </label>
-          </div>
-
-          {tranches.map((t, index) => {
-            const niveau = NIVEAUX_TRANCHE[index] ?? index + 1;
-            return (
-              <fieldset
-                key={niveau}
-                className="mt-3"
-                style={{
-                  border: '1px solid var(--bordure)',
-                  borderRadius: '10px',
-                  padding: 'var(--esp-3)',
-                }}
-              >
-                <legend>Tranche {niveau} (montants en euros)</legend>
-                {POSTES.map((poste) => {
-                  const idChamp = `${idPrefixe}-t${String(niveau)}-${poste.cle}`;
-                  return (
-                    <label
-                      key={poste.cle}
-                      htmlFor={idChamp}
-                      className="mt-2"
-                      style={{ display: 'flex', flexDirection: 'column' }}
-                    >
-                      <span>
-                        {poste.libelle}
-                        {poste.requis ? '' : ' (facultatif)'}
-                      </span>
-                      <input
-                        id={idChamp}
-                        type="number"
-                        inputMode="decimal"
-                        step="0.01"
-                        min="0"
-                        value={t[poste.cle]}
-                        onChange={(e) => {
-                          majTranche(index, poste.cle, e.target.value);
-                        }}
-                        required={poste.requis}
-                      />
-                    </label>
-                  );
-                })}
-              </fieldset>
-            );
-          })}
-
-          {messageEnvoi !== null && (
-            <p
-              ref={alerteRef}
-              role="alert"
-              tabIndex={-1}
-              className="debit mt-3"
+      {admin && (
+        <section aria-labelledby={`${idPrefixe}-form`} className="mt-5">
+          <h2 id={`${idPrefixe}-form`} style={{ fontSize: '1.1rem' }}>
+            Publier une nouvelle grille
+          </h2>
+          <form onSubmit={soumettre} noValidate>
+            <div
+              style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--esp-3)' }}
             >
-              {messageEnvoi}
-            </p>
-          )}
-          {succes !== null && (
-            <p role="status" className="credit mt-3">
-              {succes}
-            </p>
-          )}
+              <label style={{ display: 'flex', flexDirection: 'column' }}>
+                <span>À partir du</span>
+                <input
+                  type="date"
+                  value={valideDu}
+                  onChange={(e) => {
+                    setValideDu(e.target.value);
+                  }}
+                  required
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column' }}>
+                <span>Jusqu’au (facultatif)</span>
+                <input
+                  type="date"
+                  value={valideAu}
+                  onChange={(e) => {
+                    setValideAu(e.target.value);
+                  }}
+                />
+              </label>
+            </div>
 
-          <Bouton type="submit" disabled={envoiEnCours} className="mt-3">
-            {envoiEnCours ? 'Enregistrement…' : 'Publier la grille'}
-          </Bouton>
-        </form>
-      </section>
+            {tranches.map((t, index) => {
+              const niveau = NIVEAUX_TRANCHE[index] ?? index + 1;
+              return (
+                <fieldset
+                  key={niveau}
+                  className="mt-3"
+                  style={{
+                    border: '1px solid var(--bordure)',
+                    borderRadius: '10px',
+                    padding: 'var(--esp-3)',
+                  }}
+                >
+                  <legend>Tranche {niveau} (montants en euros)</legend>
+                  {POSTES.map((poste) => {
+                    const idChamp = `${idPrefixe}-t${String(niveau)}-${poste.cle}`;
+                    return (
+                      <label
+                        key={poste.cle}
+                        htmlFor={idChamp}
+                        className="mt-2"
+                        style={{ display: 'flex', flexDirection: 'column' }}
+                      >
+                        <span>
+                          {poste.libelle}
+                          {poste.requis ? '' : ' (facultatif)'}
+                        </span>
+                        <input
+                          id={idChamp}
+                          type="number"
+                          inputMode="decimal"
+                          step="0.01"
+                          min="0"
+                          value={t[poste.cle]}
+                          onChange={(e) => {
+                            majTranche(index, poste.cle, e.target.value);
+                          }}
+                          required={poste.requis}
+                        />
+                      </label>
+                    );
+                  })}
+                </fieldset>
+              );
+            })}
+
+            {messageEnvoi !== null && (
+              <p
+                ref={alerteRef}
+                role="alert"
+                tabIndex={-1}
+                className="debit mt-3"
+              >
+                {messageEnvoi}
+              </p>
+            )}
+            {succes !== null && (
+              <p role="status" className="credit mt-3">
+                {succes}
+              </p>
+            )}
+
+            <Bouton type="submit" disabled={envoiEnCours} className="mt-3">
+              {envoiEnCours ? 'Enregistrement…' : 'Publier la grille'}
+            </Bouton>
+          </form>
+        </section>
+      )}
     </div>
   );
 }

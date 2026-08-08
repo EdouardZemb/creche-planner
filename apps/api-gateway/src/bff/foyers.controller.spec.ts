@@ -371,9 +371,14 @@ describe('FoyersController · liste scopée à l’identité (lot 5)', () => {
     expect(vue).toEqual([AUTRE_FOYER]);
   });
 
-  it('gating admin inactif (ADMIN_EMAILS vide) : permissif ⇒ liste complète', async () => {
+  // AN-15 — ce cas assertait l'inverse : « gating admin inactif ⇒ permissif ⇒ liste
+  // complète ». Le défaut n'était donc pas seulement écrit, il était **tenu par un
+  // test** : aucune porte ne pouvait le trouver. L'idiome « allowlist vide ⇒ tout le
+  // monde passe » vaut pour une affordance d'écran, pas pour une réponse qui porte le
+  // revenu et le RFR de tous les foyers de la base.
+  it('ADMIN_EMAILS vide : un client identifié ne voit QUE ses foyers', async () => {
     const lister = vi.fn().mockResolvedValue([FOYER, AUTRE_FOYER]);
-    const foyersParEmail = vi.fn();
+    const foyersParEmail = vi.fn().mockResolvedValue(['foyer-2']);
     const controller = new FoyersController({
       lister,
       foyersParEmail,
@@ -384,8 +389,24 @@ describe('FoyersController · liste scopée à l’identité (lot 5)', () => {
       identite: { email: 'parent@example.test' },
     });
 
-    expect(vue).toHaveLength(2);
-    expect(foyersParEmail).not.toHaveBeenCalled();
+    expect(foyersParEmail).toHaveBeenCalledWith('parent@example.test');
+    expect(vue).toEqual([AUTRE_FOYER]);
+  });
+
+  it('ADMIN_EMAILS vide : aucun foyer rattaché ⇒ liste vide, pas la liste globale', async () => {
+    const lister = vi.fn().mockResolvedValue([FOYER, AUTRE_FOYER]);
+    const foyersParEmail = vi.fn().mockResolvedValue([]);
+    const controller = new FoyersController({
+      lister,
+      foyersParEmail,
+    } as unknown as FoyerClient);
+
+    const vue = await controller.lister({
+      headers: {},
+      identite: { email: 'inconnu@example.test' },
+    });
+
+    expect(vue).toEqual([]);
   });
 });
 

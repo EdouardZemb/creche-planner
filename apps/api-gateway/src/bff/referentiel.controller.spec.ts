@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HttpException } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { ADMIN_KEY } from '../security/admin.decorator.js';
 import type { ReferentielClient } from '../clients/referentiel.client.js';
 import { ErreurAmont } from '../clients/appel-resilient.js';
 import { ReferentielBffController } from './referentiel.controller.js';
@@ -74,5 +76,43 @@ describe('ReferentielBffController (BFF, SFD 30 lot 6)', () => {
     expect(err).toBeInstanceOf(HttpException);
     expect((err as HttpException).getStatus()).toBe(409);
     expect((err as HttpException).getResponse()).toEqual(corpsErreur);
+  });
+});
+
+/**
+ * AN-16 — le référentiel est **global**, ce qui justifie l'absence de scoping par
+ * foyer et impose l'inverse pour l'écriture : une grille ou un barème pilote le
+ * calcul de coût de **tous** les foyers. On vérifie la métadonnée plutôt que le 403,
+ * parce que c'est elle le contrat entre la route et l'`AdminGuard` — le guard, lui,
+ * a ses propres tests, et il est opt-in (allowlist vide ⇒ inactif).
+ */
+describe('ReferentielBffController · écritures réservées à l’admin (AN-16)', () => {
+  const reflector = new Reflector();
+  // Lecture indexée du prototype : référencer `Classe.prototype.methode` en direct
+  // déclencherait `unbound-method` (le ratchet ESLint ne se relève pas).
+  const handlers = ReferentielBffController.prototype as unknown as Record<
+    string,
+    () => unknown
+  >;
+  // `noUncheckedIndexedAccess` : la lecture indexée peut être `undefined`. On le
+  // traite plutôt que de l'écraser — une méthode renommée doit faire échouer le test,
+  // pas le rendre vert sur une métadonnée absente.
+  const lireAdmin = (nom: string) => {
+    const handler = handlers[nom];
+    if (handler === undefined) {
+      throw new Error(`handler inconnu sur le contrôleur : ${nom}`);
+    }
+    return reflector.get<boolean | undefined>(ADMIN_KEY, handler);
+  };
+
+  it.each(['publierGrille', 'publierBaremePsu', 'publierBaremeTranches'])(
+    '%s est marquée @AdminSeulement',
+    (nom) => {
+      expect(lireAdmin(nom)).toBe(true);
+    },
+  );
+
+  it('la lecture du catalogue reste ouverte à tout parent', () => {
+    expect(lireAdmin('listerGrilles')).toBeUndefined();
   });
 });

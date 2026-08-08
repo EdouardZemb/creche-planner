@@ -15,7 +15,13 @@ FROM --platform=linux/amd64 node:24-slim AS build
 WORKDIR /app
 RUN corepack enable
 COPY . .
-RUN pnpm install --no-frozen-lockfile
+# `--frozen-lockfile` : l'arbre construit ici doit être EXACTEMENT celui que la CI
+# a audité (`pnpm audit --prod`, Trivy). En `--no-frozen-lockfile`, un manifeste
+# désynchronisé se « corrige » silencieusement en re-résolvant des versions — les
+# portes de sécurité validaient alors un arbre qui n'est pas celui livré (LE-27).
+# Le stage 2 garde son `--no-frozen-lockfile`, pour la raison écrite juste au-dessus
+# de lui : il installe à partir d'un package.json qu'on vient délibérément de réécrire.
+RUN pnpm install --frozen-lockfile
 ARG APP
 RUN pnpm nx prune "$APP" --skip-nx-cache
 

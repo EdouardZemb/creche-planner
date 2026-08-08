@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import {
   type CanActivate,
   type ExecutionContext,
@@ -50,11 +51,26 @@ export class TokenAuthGuard implements CanActivate {
     if (
       entete === undefined ||
       !entete.startsWith(prefixe) ||
-      entete.slice(prefixe.length) !== authToken
+      !egalTempsConstant(entete.slice(prefixe.length), authToken)
     ) {
       throw new UnauthorizedException("jeton d'API manquant ou invalide");
     }
 
     return true;
   }
+}
+
+/**
+ * Égalité de deux secrets en **temps constant**. `!==` révèle, par le temps de
+ * réponse, la longueur du préfixe commun — c'est peu exploitable au travers d'un
+ * réseau, mais le dépôt compare déjà ses autres secrets ainsi (`verifierJeton`,
+ * `verifierAssertion`) et l'incohérence n'avait pas de raison d'être.
+ *
+ * La comparaison de **longueur** reste, elle, à temps variable : `timingSafeEqual`
+ * exige des tampons de même taille, et la longueur d'un jeton n'est pas le secret.
+ */
+function egalTempsConstant(fourni: string, attendu: string): boolean {
+  const a = Buffer.from(fourni, 'utf8');
+  const b = Buffer.from(attendu, 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
 }

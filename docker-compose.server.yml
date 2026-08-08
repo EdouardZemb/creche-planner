@@ -313,6 +313,19 @@ services:
       CORS_ORIGINS: ${SERVER_ORIGIN:?defini .env.server}
       # Retour à la valeur de prod (le 100000 du base est un réglage E2E).
       RATE_LIMIT_MAX: '120'
+      # Relais de confiance entre la gateway et le client (`trust proxy`), dérivé de
+      # la topologie de CE fichier : client → Caddy (`docker/Caddyfile`, qui pose
+      # `X-Forwarded-For`) → `web` (nginx, qui le complète) → gateway. La gateway voit
+      # donc `[client, caddy]` avec nginx pour pair TCP, soit DEUX sauts à ignorer.
+      # Surcharge le `1` du fichier de base, qui ne décrit pas cette pile.
+      #
+      # PÉRIMÈTRE — pour le trafic entrant par le tunnel Cloudflare, le pair de Caddy
+      # est `cloudflared` et le Caddyfile ne déclare pas de `trusted_proxies` : la
+      # clé retombe alors sur une adresse unique pour tout l'extérieur. Le débit reste
+      # borné, mais par tunnel et non par client — c'est le trafic LAN direct que ce
+      # réglage sépare réellement. Fermer ce point demande `trusted_proxies` côté
+      # Caddy, à vérifier sur la pile réelle (hors d'atteinte d'une session distante).
+      RATE_LIMIT_PROXY_HOPS: '2'
       # Auth par jeton : VOLONTAIREMENT non défini. La gateway n'est pas joignable
       # depuis le LAN (reverse-proxy + pare-feu) ; un token côté SPA fuiterait dans
       # le bundle JS sans gain réseau. Décommenter SEULEMENT si la gateway devait
