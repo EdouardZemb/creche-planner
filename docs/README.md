@@ -22,6 +22,7 @@ renumérotés — trop de liens existants en dépendent.
 | Reprendre le projet           | [doc 06](06-etat-davancement.md) (état d'avancement & guide de reprise)                                             |
 | Déployer / exploiter          | [doc 24](exploitation/24-plan-deploiement-serveur-ct-qdo.md) + [runbook](exploitation/runbook-deploiement.md)       |
 | Comprendre un choix technique | [ADR](adr/) (0001 → 0006)                                                                                           |
+| Écrire ou revoir un document  | [doc 35](35-politique-documentation.md) (politique de documentation)                                                |
 
 ## Spécification fonctionnelle & produit
 
@@ -33,11 +34,16 @@ renumérotés — trop de liens existants en dépendent.
 | [16 — Ajustement de planning par jour](16-ajustement-planning.md) | Ajout/retrait d'un jour, heures, portée réel/simulé                              |
 | [19 — Registre de risque produit](19-registre-risque-produit.md)  | Risques produit identifiés et mitigations                                        |
 
-### SFD à l'étude (brouillons, séquence 30 → 33)
+### SFD 30 — livrée (déployée en prod le 2026-07-29)
+
+| Doc                                                                          | Contenu                                                                        |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [30 — SFD Versionnement à date d'effet](30-sfd-versionnement-dates-effet.md) | Avenants, grilles/barèmes versionnés, passé immuable — socle des docs 31/32/33 |
+
+### SFD à l'étude (brouillons, séquence 31 → 33)
 
 | Doc                                                                                   | Contenu                                                                             |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| [30 — SFD Versionnement à date d'effet](30-sfd-versionnement-dates-effet.md)          | Avenants, grilles/barèmes versionnés, passé immuable — socle des docs 31/32/33      |
 | [31 — SFD Calendriers & vacances scolaires](31-sfd-calendriers-vacances-scolaires.md) | Calendrier d'ouverture par établissement, import zone scolaire + retouches          |
 | [32 — SFD Travail, congés & revenus](32-sfd-travail-conges-revenus.md)                | Contrats de travail (FR/CH, frontalier), absences typées, soldes CP/heures, revenus |
 | [33 — SFD Planning famille](33-sfd-planning-famille.md)                               | Vue commune « qui fait quoi, où, avec qui », trajets, détection de conflits         |
@@ -54,15 +60,16 @@ renumérotés — trop de liens existants en dépendent.
 
 ## Développement (standards & avancement)
 
-| Doc                                                                 | Contenu                                                                                               |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| [CONTRIBUTING.md](../CONTRIBUTING.md) (racine)                      | Prérequis, commandes de base, workflow PR — le point d'entrée contributeur                            |
-| [CONVENTIONS.md](../CONVENTIONS.md) (racine)                        | Conventions TS/React outillées : strict, React Compiler, ratchet ESLint, frontières Nx, branded types |
-| [03 — Standards de développement](03-standards-developpement.md)    | Clean code, SOLID, hexagonal, tests, Git, CI — la référence détaillée                                 |
-| [05 — Plan de développement](05-plan-de-developpement.md)           | **Document historique** (phases initiales) — l'état réel vit en doc 06                                |
-| [06 — État d'avancement & guide de reprise](06-etat-davancement.md) | Source de vérité de l'avancement, arborescence, commandes                                             |
-| [08 — Plan d'implémentation UX](08-plan-implementation-ux.md)       | Sessions d'exécution de la doc 07                                                                     |
-| [Runbook — migration Nx](runbook-nx-migrate.md)                     | `nx migrate` pas-à-pas, pièges peer-deps, pourquoi les PR Dependabot `@nx/*` se ferment               |
+| Doc                                                                 | Contenu                                                                                                    |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| [CONTRIBUTING.md](../CONTRIBUTING.md) (racine)                      | Prérequis, commandes de base, workflow PR — le point d'entrée contributeur                                 |
+| [CONVENTIONS.md](../CONVENTIONS.md) (racine)                        | Conventions TS/React outillées : strict, React Compiler, ratchet ESLint, frontières Nx, branded types      |
+| [03 — Standards de développement](03-standards-developpement.md)    | Clean code, SOLID, hexagonal, tests, Git, CI — la référence détaillée                                      |
+| [35 — Politique de documentation](35-politique-documentation.md)    | Normes retenues, un document/un quadrant, portes `pnpm liens` et `pnpm faits`, et ce qui n'est PAS outillé |
+| [05 — Plan de développement](05-plan-de-developpement.md)           | **Document historique** (phases initiales) — l'état réel vit en doc 06                                     |
+| [06 — État d'avancement & guide de reprise](06-etat-davancement.md) | Source de vérité de l'avancement, arborescence, commandes                                                  |
+| [08 — Plan d'implémentation UX](08-plan-implementation-ux.md)       | Sessions d'exécution de la doc 07                                                                          |
+| [Runbook — migration Nx](runbook-nx-migrate.md)                     | `nx migrate` pas-à-pas, pièges peer-deps, pourquoi les PR Dependabot `@nx/*` se ferment                    |
 
 ## Accessibilité
 

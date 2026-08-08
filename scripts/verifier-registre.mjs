@@ -561,7 +561,27 @@ const SONDES = [
   {
     nom: 'compteur de motif faux',
     code: 'compteur-faux',
-    abimer: (texte) => texte.replace('(×8)', '(×7)'),
+    // Le compteur du PREMIER motif, quel qu'il soit, incrémenté : la valeur
+    // devient fausse par construction. La version d'origine visait le littéral
+    // « (×8) » et a cessé de tester quoi que ce soit dès que MO-1 a gagné une
+    // occurrence — une sonde ne doit pas se périmer à chaque leçon consignée.
+    // La mutation est bornée à la SECTION des motifs : une citation du même
+    // motif ailleurs dans le document (une leçon qui raconte cette sonde, par
+    // exemple) détournerait sinon la mutation vers du texte que la porte
+    // n'évalue pas — et la sonde passerait au vert sans rien prouver.
+    abimer: (texte) => {
+      const debut = texte.indexOf('## 4. Motifs');
+      if (debut === -1) return texte;
+      const fin = texte.indexOf('\n## ', debut + 1);
+      const section = texte.slice(debut, fin === -1 ? undefined : fin);
+      const abimee = section.replace(
+        /\(×(\d+)\)/,
+        (_, compte) => `(×${Number(compte) + 1})`,
+      );
+      return (
+        texte.slice(0, debut) + abimee + (fin === -1 ? '' : texte.slice(fin))
+      );
+    },
   },
   {
     nom: 'occurrence oubliée par son motif',

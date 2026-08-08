@@ -284,7 +284,7 @@ Chaque session démarre par le **prompt de lancement** ci-dessous (§5), à coll
 
 > Préambule commun à coller en tête de **chaque** prompt :
 >
-> « Projet `creche-planner` (Nx monorepo, front `apps/web` React 18 + Vite). Lis d'abord
+> « Projet `creche-planner` (Nx monorepo, front `apps/web` React + Vite). Lis d'abord
 > `docs/07-spec-ux-navigation.md` et `docs/08-plan-implementation-ux.md`. Tu réalises **uniquement
 > le lot indiqué** : ne modifie **que** les fichiers listés pour ce lot. Front-only, aucune
 > dépendance npm, interfaces de props stables. Respecte les standards `docs/03`. Travaille en TDD

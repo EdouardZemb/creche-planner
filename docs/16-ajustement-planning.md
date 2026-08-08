@@ -1,5 +1,7 @@
 # 16 — Ajustement de planning par jour (ajout / retrait, heures, portée)
 
+> Statut : **Établi** · 2026-08-08 — fonctionnalité livrée et en production.
+
 |               |                                                                                                                                                                                                                                              |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Objet**     | Documenter la fonctionnalité « ajuster le planning d'un enfant **jour par jour** » : ajouter/retirer un jour, saisir une absence (heures d'arrivée/départ), choisir la **portée** (ce mois vs durable).                                      |

@@ -163,7 +163,7 @@ jobs:
       - name: Pièges morts recopiés dans les plans et la doc (bloquant)
         run: node scripts/verifier-pieges-doc.mjs
 
-      # Registre d'améliorations (doc 34) — les leçons et les pistes trouvées en
+      # Registre d'améliorations (doc 35) — les leçons et les pistes trouvées en
       # cours de lot vivaient en prose dans MEMORY.md : le motif « le défaut est
       # dans le périmètre de l'outil » y a été relevé HUIT fois sans jamais
       # devenir une garde, et les tableaux d'audit AQ-xx/AUD-xx se sont périmés
@@ -176,6 +176,49 @@ jobs:
         run: |
           node scripts/verifier-registre.mjs --autotest
           node scripts/verifier-registre.mjs
+
+      # Politique de documentation (doc 35), volet « navigation ». Un lien mort
+      # ne se voit qu'en le suivant : renommer un fichier, renommer un titre
+      # (l'ancre suit le titre) ou déplacer un document vers `exploitation/`
+      # n'échouait nulle part. Ce step vérifie les liens INTERNES et leurs
+      # ancres ; les URL externes restent hors périmètre (une porte de CI ne
+      # doit pas dépendre d'un site tiers).
+      - name: Liens internes de la documentation (bloquant)
+        run: |
+          node scripts/verifier-liens-doc.mjs --autotest
+          node scripts/verifier-liens-doc.mjs
+
+      # Politique de documentation (doc 35), volet « faits dérivés ». Le README
+      # a annoncé `0.8.0` quand la coupe était `0.15.0`, et « React 18 » sur un
+      # front en 19 — deux dérives en six semaines, toutes deux des RECOPIES
+      # manuelles de valeurs qu'un outil écrit déjà. Ce step confronte les faits
+      # cités (version coupée, projets Nx, ports de la pile locale, chaîne
+      # d'outils) à leur source, au lieu de les relire.
+      - name: Faits de la documentation vs leurs sources (bloquant)
+        run: |
+          node scripts/verifier-faits-doc.mjs --autotest
+          node scripts/verifier-faits-doc.mjs
+
+      # Politique de documentation (doc 35 §4), volet « cycle de revue »
+      # (ISO/IEC/IEEE 26511). Un document qui ne dit ni ce qu'il est, ni depuis
+      # quand, ne répond pas à la seule question qu'on lui pose quand il est
+      # ancien. Trois formes d'en-tête sont acceptées — relevées dans le dépôt,
+      # pas décrétées. La porte ne juge PAS la valeur du statut : décider qu'un
+      # « À valider » est validé n'appartient pas à une machine.
+      - name: Statut daté des documents (bloquant)
+        run: |
+          node scripts/verifier-statut-doc.mjs --autotest
+          node scripts/verifier-statut-doc.mjs
+
+      # Politique de documentation (doc 35 §5), volet « traçabilité »
+      # (ISO/IEC/IEEE 29148, les DEUX sens) : une exigence définie que nul test
+      # ne nomme laisse un trou de couverture ; un test qui cite une exigence
+      # disparue laisse une preuve qui n'atteste plus rien. Cliquet : les deux
+      # familles (CT 18/18, UT 10/10) sont complètes au moment où il est posé.
+      - name: Traçabilité exigence vs test (bloquant)
+        run: |
+          node scripts/verifier-tracabilite-doc.mjs --autotest
+          node scripts/verifier-tracabilite-doc.mjs
 
       # P1-2 (doc 18 §8) — publier les MÉTRIQUES de test, pas seulement le vert/rouge.
       # Les reporters JUnit + couverture lcov/json-summary sont activés en CI par les

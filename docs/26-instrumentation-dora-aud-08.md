@@ -1,5 +1,7 @@
 # Instrumentation des métriques DORA (AUD-08) — design
 
+> Statut : **Réalisé** · 2026-08-08 — instrumentation livrée (workflow `dora.yml`).
+
 > **Origine** : clôture de la dernière action ouverte du [plan d'audit CI/CD
 > (doc 25)](25-audit-cicd-remediation.md), **AUD-08** — _métriques DORA non
 > instrumentées_. Différée depuis la Session C faute de **mécanisme de déploiement
