@@ -24,6 +24,7 @@
 - [pnpm via corepack](pnpm-corepack-version.md) — toujours `corepack pnpm@10.34.2`, jamais le pnpm global 8.x.
 - [Clone propre -public](repo-clean-clone-location.md) — bosser dans `-public`, jamais pousser depuis l'original ; main protégée, PR + check `ci`.
 - [Conventions strictes](code-conventions-strict.md) — ESLint 9 flat config type-aware (ratchet warn→error), React layer au root, verbatimModuleSyntax web-only, branded types.
+- [Piège CI non déclenchée par un push distant](piege-ci-non-declenchee-push-distant.md) — depuis une session distante, un `git push` sur une PR ne crée **aucun** run (échec silencieux : rien de rouge, mais le check requis n'existe pas) ; fermer/rouvrir la PR le déclenche.
 - [Piège `prettier --check` local (CRLF)](piege-prettier-check-crlf.md) — échoue sur TOUS les .md/.json en local (autocrlf) ; juger sur `git diff`, jamais sur `--check`.
 - [Piège SCA rouge sans diff](piege-sca-rouge-sans-diff.md) — `main` rouge job `security` sans commit deps = base CVE Trivy qui bouge ; comparer au run précédent avant de fouiller le diff.
 - [Piège CodeQL `init`/`analyze` désynchronisés](piege-codeql-action-init-analyze-desync.md) — « configuration error » sur PR Dependabot ≠ alerte de sécurité ; corrigé par le groupe `codeql-action`.
