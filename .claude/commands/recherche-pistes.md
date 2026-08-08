@@ -1,16 +1,18 @@
-# Prompt — Explorer, cartographier et prioriser les pistes d'amélioration du crèche-planner
+---
+description: Cartographier et prioriser les pistes d'amélioration (recherche divergente), puis rédiger un plan d'exécution auto-portant sur les pistes retenues
+---
 
-> **Comment l'utiliser :** colle le bloc ci-dessous comme premier message d'une session
-> **Fable 5**, ouverte à la racine de ce dépôt. Le prompt se déroule en deux temps : d'abord
-> une **recherche divergente** (une carte de pistes que tu tries), puis, sur la/les piste(s)
-> que tu choisis, un **plan d'exécution**.
+# Explorer, cartographier et prioriser les pistes d'amélioration du crèche-planner
+
+> **Déroulé :** deux temps — d'abord une **recherche divergente** (une carte de pistes que
+> l'utilisateur trie), puis, sur la/les piste(s) qu'il choisit, un **plan d'exécution**.
 >
-> **Répartition des rôles :** ce prompt s'adresse au **chercheur-planificateur (Fable 5)**.
-> Fable **ne code pas** — il produit (1) une **carte des pistes** puis (2) un **plan
-> d'exécution**. Ce plan sera ensuite **exécuté par une session Opus 4.8 séparée**, qui n'aura
-> PAS accès à cette conversation. Toute la valeur du prompt est donc de diverger largement pour
-> ne rien rater, puis de converger vers un plan **assez précis et auto-portant pour qu'Opus 4.8
-> l'exécute sans rien redemander**.
+> **Répartition des rôles :** cette commande s'adresse au **chercheur-planificateur**, dans
+> une session ouverte à la racine de ce dépôt. Il **ne code pas** — il produit (1) une
+> **carte des pistes** puis (2) un **plan d'exécution**. Ce plan sera ensuite **exécuté par
+> une session séparée**, qui n'aura PAS accès à cette conversation. Toute la valeur de la
+> commande est donc de diverger largement pour ne rien rater, puis de converger vers un plan
+> **assez précis et auto-portant pour que l'exécutant travaille sans rien redemander**.
 
 ---
 

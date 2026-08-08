@@ -22,6 +22,23 @@
 
 <!-- nx configuration end-->
 
+# Commandes clés du dépôt
+
+- Toujours `corepack pnpm@10.34.2 …`, jamais le pnpm global (une autre majeure
+  réécrit `pnpm-lock.yaml` dans un format que la CI refuse).
+- `pnpm preflight` en début de session (le hook SessionStart le lance
+  automatiquement) : vérifie l'environnement complet — pnpm, Node, arbre de
+  travail, liens workspace, binaires installés, chaîne Nx, ports Pact, hooks
+  git — en quelques secondes, zéro réseau.
+- `pnpm check` avant de pousser (`lint typecheck test build` sur tout le
+  workspace) ; `pnpm pieges` et `pnpm frontieres` sont des steps bloquants du
+  job `ci`, rejouables en local en < 1 s.
+- Vérité sur le format : `git diff`, jamais `prettier --check` local (artefact
+  CRLF sous Windows — cf. la fiche mémoire dédiée).
+- Refonte CSS/web : prouver l'iso-rendu avec `nx run web:e2e-visuel` puis
+  `node scripts/comparer-empreinte.mjs avant.json apres.json` (poste ou CI
+  uniquement, la pile locale est requise).
+
 # Contexte projet pour les sessions distantes
 
 Ce dépôt embarque son propre contexte de travail, pour qu'une session lancée
@@ -34,11 +51,17 @@ reparte avec le même historique de décisions.
   positifs déjà tranchés.
 - **`.claude/plans/`** — plans de chantier détaillés (lots, décisions, critères
   d'acceptation). Le plan est la source de vérité du découpage en lots.
+- **`.claude/commands/`** — commandes slash du projet : `/executer-lot` (le
+  rituel d'exécution d'un lot de plan), `/recherche-pistes` (cartographie des
+  pistes d'amélioration), `/upgrade-qualite-mobile` (audit + plan qualité d'une
+  fonctionnalité).
 - **`docs/06-etat-davancement.md`** — journal d'avancement fonctionnel.
 
 Si une session distante apprend un fait durable (piège, décision, état de
 prod), l'écrire dans `.claude/memory/` et l'indexer dans `MEMORY.md` : c'est
-la seule voie pour qu'il revienne sur le poste principal.
+la seule voie pour qu'il revienne sur le poste principal. **L'entrée d'index
+fait 2 lignes maximum** — le journal détaillé vit dans la fiche, jamais dans
+l'index, qui est lu à chaque début de session.
 
 ⚠️ **Ce qui n'est jamais versionné ici.** Ce dépôt est **public**. Les fiches
 de mémoire décrivant l'accès au serveur ou la posture de sécurité — politique
