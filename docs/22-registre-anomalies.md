@@ -42,6 +42,8 @@
 | AN-12 | Édition / suppression de contrat absente (seul le planning mensuel éditable)                                              |   🟧    | Validation manuelle (backlog)            | P7 Gateway/UI           | doc 06 §13 (backlog 1)   |   🔄   |
 | AN-13 | Prestations non filtrées par période de validité côté **domaine**                                                         |   🟧    | Validation manuelle (backlog)            | P5 Planification        | doc 06 §13 (backlog 2)   |  🔄¹   |
 | AN-14 | Allowlist mailer compare le `to` **entier** (`includes`), pas par destinataire → bloque tout dès qu'un foyer a ≥2 parents |   🟧    | Revue de code (activation envoi réel)    | Lot 2 Notifications     | PR #128                  |   ✅   |
+| AN-15 | Rate-limit de la gateway compté sur l'IP du reverse-proxy : un seul compteur pour **tous** les foyers                     |   🟧    | Revue de code (audit sécurité)           | P7 Gateway              | doc 34 `AM-27`           |   🔄   |
+| AN-16 | `GET /api/referentiel/health` publique, sans cache ni délai d'expiration, touche la base à chaque appel                   |   🟨    | Revue de code (audit sécurité)           | P7 Gateway              | doc 34 `AM-28`           |   🔄   |
 
 > ¹ AN-13 : **atténué** côté affichage (les calendriers front filtrent par `[valideDu, valideAu]`,
 > cf. AN-04) ; la garde de période est **correcte côté `svc-tarification`** (coût juste). Le
@@ -52,7 +54,8 @@
 ## 3. DDP par niveau de détection
 
 Defect Detection Percentage = part des défauts **trouvés** à chaque niveau (sur 12 défauts clos
-AN-01..11 et AN-14 ; les 2 ouverts AN-12/13 (validation manuelle) sont hors calcul DDP).
+AN-01..11 et AN-14 ; les 4 ouverts AN-12/13 (validation manuelle) et AN-15/16 (audit sécurité)
+sont hors calcul DDP).
 
 | Niveau de détection        | Défauts trouvés           | DDP      |
 | -------------------------- | ------------------------- | -------- |
