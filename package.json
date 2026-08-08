@@ -12,6 +12,7 @@
     "preflight": "node scripts/preflight.mjs",
     "frontieres": "node scripts/verifier-frontieres.mjs",
     "pieges": "node scripts/verifier-pieges-doc.mjs",
+    "registre": "node scripts/verifier-registre.mjs",
     "liens": "node scripts/verifier-liens-doc.mjs",
     "faits": "node scripts/verifier-faits-doc.mjs",
     "statuts": "node scripts/verifier-statut-doc.mjs",

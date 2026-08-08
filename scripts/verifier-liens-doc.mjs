@@ -104,13 +104,23 @@ function erreur(portee, message, remede) {
   );
 }
 
-/** Lit un fichier texte, ou rend `null` s'il est absent/illisible. */
-function lireTexte(chemin) {
+/**
+ * Lecteur de fichiers, INJECTABLE : `--autotest` le remplace pour abîmer une
+ * source en mémoire. Le disque n'est jamais modifié par une sonde.
+ *
+ * @type {(relatif: string) => string | null}
+ */
+let lecteur = (relatif) => {
   try {
-    return fs.readFileSync(chemin, 'utf8');
+    return fs.readFileSync(path.join(RACINE, relatif), 'utf8');
   } catch {
     return null;
   }
+};
+
+/** Lit un fichier texte (chemin RELATIF au dépôt), ou `null` s'il est illisible. */
+function lireTexte(relatif) {
+  return lecteur(relatif);
 }
 
 /**
@@ -236,13 +246,18 @@ function estExterne(cible) {
   return /^(https?:|mailto:|tel:|ftp:|data:|#L\d)/.test(cible);
 }
 
-function main() {
+/**
+ * Joue la vérification complète et rend le compte de liens vérifiés. Réentrant :
+ * les constats sont remis à zéro à chaque appel, sans quoi `--autotest`
+ * cumulerait ceux d'une sonde sur l'autre.
+ */
+function executer() {
+  erreurs.length = 0;
+  avertissements.length = 0;
   const documents = [
     ...DOCUMENTS_RACINE,
     ...REPERTOIRES.flatMap((r) => listerMarkdown(r)),
   ];
-
-  console.log('Liens internes de la documentation');
 
   if (documents.length === 0) {
     erreur(
@@ -250,7 +265,7 @@ function main() {
       'aucun document markdown lu — le script est-il lancé depuis le dépôt ?',
       'vérifier `REPERTOIRES` et `DOCUMENTS_RACINE`.',
     );
-    return conclure(0, 0);
+    return { documents: 0, liens: 0 };
   }
 
   /** Cache des ancres par fichier : un document est visé par beaucoup de liens. */
@@ -259,7 +274,7 @@ function main() {
   const ancresDe = (relatif) => {
     const connu = ancresParFichier.get(relatif);
     if (connu !== undefined) return connu;
-    const contenu = lireTexte(path.join(RACINE, relatif));
+    const contenu = lireTexte(relatif);
     const ancres = contenu === null ? null : ancresDuDocument(contenu);
     ancresParFichier.set(relatif, ancres);
     return ancres;
@@ -272,7 +287,7 @@ function main() {
   let liensVerifies = 0;
 
   for (const document of documents) {
-    const contenu = lireTexte(path.join(RACINE, document));
+    const contenu = lireTexte(document);
     if (contenu === null) continue;
     const repertoire = path.dirname(document);
 
@@ -348,7 +363,7 @@ function main() {
     );
   }
 
-  return conclure(documents.length, liensVerifies);
+  return { documents: documents.length, liens: liensVerifies };
 }
 
 /** @param {number} documents @param {number} liens */
@@ -370,4 +385,82 @@ function conclure(documents, liens) {
   process.exitCode = erreurs.length > 0 ? 1 : 0;
 }
 
-main();
+/**
+ * Les sondes : chacune abîme un document EN MÉMOIRE et exige le constat
+ * correspondant. Une mutation sans effet est un échec — la cible a bougé, et la
+ * sonde ne teste plus rien (AM-21 / LE-08 du registre, doc 34 §5).
+ *
+ * @type {{ nom: string, fichier: string, abimer: (texte: string) => string, attendu: RegExp }[]}
+ */
+const SONDES = [
+  {
+    nom: 'lien vers un fichier inexistant',
+    fichier: 'docs/README.md',
+    abimer: (texte) =>
+      texte.replace('](01-spec-fonctionnelle.md)', '](01-spec-envolee.md)'),
+    attendu: /cible inexistante/i,
+  },
+  {
+    nom: 'ancre qui ne correspond à aucun titre',
+    fichier: 'docs/35-politique-documentation.md',
+    abimer: (texte) =>
+      texte.replace('(README.md)', '(README.md#chapitre-fantome)'),
+    attendu: /ancre inconnue/i,
+  },
+];
+
+if (process.argv.includes('--autotest')) {
+  process.exitCode = autotest();
+} else {
+  console.log('Liens internes de la documentation');
+  const { documents, liens } = executer();
+  conclure(documents, liens);
+}
+
+/** Rejoue les sondes ; rend 0 si toutes mordent et si le témoin est vert. */
+function autotest() {
+  const surDisque = lecteur;
+  let echecs = 0;
+
+  executer();
+  if (erreurs.length > 0) {
+    console.error(
+      `❌ témoin : l’état réel lève déjà ${erreurs.length} constat(s) — les sondes ne prouveraient rien.`,
+    );
+    echecs += 1;
+  }
+
+  for (const sonde of SONDES) {
+    const origine = surDisque(sonde.fichier);
+    if (origine === null) {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : ${sonde.fichier} illisible — la sonde a perdu sa cible.`,
+      );
+      echecs += 1;
+      continue;
+    }
+    const abime = sonde.abimer(origine);
+    if (abime === origine) {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : la mutation n’a rien changé — la ligne visée a bougé.`,
+      );
+      echecs += 1;
+      continue;
+    }
+    lecteur = (relatif) =>
+      relatif === sonde.fichier ? abime : surDisque(relatif);
+    executer();
+    lecteur = surDisque;
+    if (erreurs.some((constat) => sonde.attendu.test(constat.message))) {
+      console.log(`✅ sonde « ${sonde.nom} » — la porte mord.`);
+    } else {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : aucun constat attendu — la porte ne mord pas.`,
+      );
+      echecs += 1;
+    }
+  }
+
+  console.log(`\n${SONDES.length} sonde(s) rejouée(s), ${echecs} échec(s).`);
+  return echecs === 0 ? 0 : 1;
+}

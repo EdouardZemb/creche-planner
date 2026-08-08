@@ -22,6 +22,23 @@
 
 <!-- nx configuration end-->
 
+# Commandes clés du dépôt
+
+- Toujours `corepack pnpm@10.34.2 …`, jamais le pnpm global (une autre majeure
+  réécrit `pnpm-lock.yaml` dans un format que la CI refuse).
+- `pnpm preflight` en début de session (le hook SessionStart le lance
+  automatiquement) : vérifie l'environnement complet — pnpm, Node, arbre de
+  travail, liens workspace, binaires installés, chaîne Nx, ports Pact, hooks
+  git — en quelques secondes, zéro réseau.
+- `pnpm check` avant de pousser (`lint typecheck test build` sur tout le
+  workspace) ; `pnpm pieges` et `pnpm frontieres` sont des steps bloquants du
+  job `ci`, rejouables en local en < 1 s.
+- Vérité sur le format : `git diff`, jamais `prettier --check` local (artefact
+  CRLF sous Windows — cf. la fiche mémoire dédiée).
+- Refonte CSS/web : prouver l'iso-rendu avec `nx run web:e2e-visuel` puis
+  `node scripts/comparer-empreinte.mjs avant.json apres.json` (poste ou CI
+  uniquement, la pile locale est requise).
+
 # Contexte projet pour les sessions distantes
 
 Ce dépôt embarque son propre contexte de travail, pour qu'une session lancée
@@ -34,11 +51,17 @@ reparte avec le même historique de décisions.
   positifs déjà tranchés.
 - **`.claude/plans/`** — plans de chantier détaillés (lots, décisions, critères
   d'acceptation). Le plan est la source de vérité du découpage en lots.
+- **`.claude/commands/`** — commandes slash du projet : `/executer-lot` (le
+  rituel d'exécution d'un lot de plan), `/recherche-pistes` (cartographie des
+  pistes d'amélioration), `/upgrade-qualite-mobile` (audit + plan qualité d'une
+  fonctionnalité).
 - **`docs/06-etat-davancement.md`** — journal d'avancement fonctionnel.
 
 Si une session distante apprend un fait durable (piège, décision, état de
 prod), l'écrire dans `.claude/memory/` et l'indexer dans `MEMORY.md` : c'est
-la seule voie pour qu'il revienne sur le poste principal.
+la seule voie pour qu'il revienne sur le poste principal. **L'entrée d'index
+fait 2 lignes maximum** — le journal détaillé vit dans la fiche, jamais dans
+l'index, qui est lu à chaque début de session.
 
 ⚠️ **Ce qui n'est jamais versionné ici.** Ce dépôt est **public**. Les fiches
 de mémoire décrivant l'accès au serveur ou la posture de sécurité — politique
@@ -59,3 +82,32 @@ façon pas joindre le serveur, ces détails ne lui servent à rien.
 
 Une session distante produit donc du **code et des PR** ; les releases et les
 vérifications live attendent un accès au poste principal.
+
+# Boucle d'amélioration — où atterrit ce qu'on apprend
+
+Un lot produit toujours deux choses en plus de son code : des **pistes** qu'on ne traite pas
+maintenant, et des **leçons** sur ce qui nous a trompés. Elles ont longtemps été écrites en prose
+dans `MEMORY.md` : lisibles, mais impossibles à trier, à compter et à clore — au point qu'un même
+motif y a été relevé huit fois sans jamais devenir une garde.
+
+Elles vont désormais dans **[`docs/34-registre-ameliorations.md`](docs/34-registre-ameliorations.md)** :
+
+- une **piste** (`AM-xx`) — quelque chose à faire, avec son **critère de sortie** ;
+- une **leçon** (`LE-xx`) — pourquoi on s'est trompé, avec sa **prévention** ;
+- un **motif** (`MO-x`) — l'agrégat des leçons qui se répètent. **À la troisième récurrence, on
+  n'écrit plus une leçon : on écrit une porte** ;
+- un **défaut produit** ne va pas là : il va en `AN-xx` ([doc 22](docs/22-registre-anomalies.md)).
+
+Trois gestes, dans cet ordre :
+
+1. **Au moment du constat** — `/consigner <le constat>`. Une phrase suffit ; la commande numérote,
+   remplit les colonnes et rattache le motif.
+2. **Avant d'exécuter un lot** — commencer par un **constat négatif** : vérifier l'énoncé contre le
+   code réel, et regarder la **sortie** de l'outil censé garder le sujet, pas seulement son code.
+   C'est ce geste, et lui seul, qui a trouvé les défauts les plus coûteux de ce dépôt.
+3. **À l'ouverture de la PR** — déclarer les identifiants consignés (case du gabarit), puis
+   `pnpm registre` (la porte tourne sans `node_modules`).
+
+Le §5 du registre est la carte des **portes** du dépôt, avec deux colonnes qu'aucune autre doc ne
+porte : **ce que la porte ne couvre pas**, et **sa sonde négative**. Toute porte ajoutée au dépôt
+s'y inscrit, avec sa sonde — le nombre de portes sans sonde ne peut que baisser.

@@ -36,7 +36,7 @@ corepack pnpm frontieres
 # Cf. la section « Pièges » ci-dessous.
 corepack pnpm pieges
 
-# Documentation (< 1 s, steps bloquants du job `ci`, cf. doc 34) :
+# Documentation (< 1 s, steps bloquants du job `ci`, cf. doc 35) :
 # `liens` = liens internes et ancres morts ; `faits` = valeurs citées qui
 # contredisent leur source (version coupée, projets Nx, ports, chaîne d'outils).
 corepack pnpm liens
@@ -74,7 +74,7 @@ piège de la première liste (registre dans `scripts/verifier-pieges-doc.mjs`).
 | Course `dist/` entre `build` et `typecheck` (`ENOTEMPTY` puis cascade `TS6305`)                 | les `tsconfig.app.json` émettent dans `./out-tsc/app`, plus dans le `dist/` que webpack efface               |
 | Contexte Nx jamais contraint, miroir de vocabulaire divergent                                   | `pnpm frontieres` (cf. [CONVENTIONS.md §4](CONVENTIONS.md))                                                  |
 | Warnings ESLint qui remontent en silence                                                        | `lint-baseline.json` versionnée, step bloquant du job `ci`                                                   |
-| Lien interne mort (fichier déplacé, titre renommé — l'ancre suit le titre)                      | `pnpm liens` (cf. [doc 34](docs/34-politique-documentation.md))                                              |
+| Lien interne mort (fichier déplacé, titre renommé — l'ancre suit le titre)                      | `pnpm liens` (cf. [doc 35](docs/35-politique-documentation.md))                                              |
 | Fait recopié qui dérive de sa source (version coupée, projets, ports, chaîne d'outils)          | `pnpm faits` (idem)                                                                                          |
 | Document sans statut ni date : « est-ce que ça vaut encore ? » sans réponse                     | `pnpm statuts` (idem)                                                                                        |
 | Exigence `CT`/`UT` sans test qui la nomme, ou test citant une exigence disparue                 | `pnpm tracabilite` (idem)                                                                                    |

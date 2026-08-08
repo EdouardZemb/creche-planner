@@ -22,7 +22,7 @@ renumérotés — trop de liens existants en dépendent.
 | Reprendre le projet           | [doc 06](06-etat-davancement.md) (état d'avancement & guide de reprise)                                             |
 | Déployer / exploiter          | [doc 24](exploitation/24-plan-deploiement-serveur-ct-qdo.md) + [runbook](exploitation/runbook-deploiement.md)       |
 | Comprendre un choix technique | [ADR](adr/) (0001 → 0006)                                                                                           |
-| Écrire ou revoir un document  | [doc 34](34-politique-documentation.md) (politique de documentation)                                                |
+| Écrire ou revoir un document  | [doc 35](35-politique-documentation.md) (politique de documentation)                                                |
 
 ## Spécification fonctionnelle & produit
 
@@ -65,7 +65,7 @@ renumérotés — trop de liens existants en dépendent.
 | [CONTRIBUTING.md](../CONTRIBUTING.md) (racine)                      | Prérequis, commandes de base, workflow PR — le point d'entrée contributeur                                 |
 | [CONVENTIONS.md](../CONVENTIONS.md) (racine)                        | Conventions TS/React outillées : strict, React Compiler, ratchet ESLint, frontières Nx, branded types      |
 | [03 — Standards de développement](03-standards-developpement.md)    | Clean code, SOLID, hexagonal, tests, Git, CI — la référence détaillée                                      |
-| [34 — Politique de documentation](34-politique-documentation.md)    | Normes retenues, un document/un quadrant, portes `pnpm liens` et `pnpm faits`, et ce qui n'est PAS outillé |
+| [35 — Politique de documentation](35-politique-documentation.md)    | Normes retenues, un document/un quadrant, portes `pnpm liens` et `pnpm faits`, et ce qui n'est PAS outillé |
 | [05 — Plan de développement](05-plan-de-developpement.md)           | **Document historique** (phases initiales) — l'état réel vit en doc 06                                     |
 | [06 — État d'avancement & guide de reprise](06-etat-davancement.md) | Source de vérité de l'avancement, arborescence, commandes                                                  |
 | [08 — Plan d'implémentation UX](08-plan-implementation-ux.md)       | Sessions d'exécution de la doc 07                                                                          |
@@ -105,12 +105,16 @@ renumérotés — trop de liens existants en dépendent.
 
 Registres d'actions à **ID stables**, statut re-vérifié dans le code :
 
-| Doc                                                                                   | Contenu                                                 |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| [18 — Audit gestion des tests (CTAL-TM/TMMi)](18-audit-gestion-tests-ctal-tm-tmmi.md) | Maturité de la gestion de test, actions P1/P2           |
-| [25 — Audit CI/CD & remédiation](25-audit-cicd-remediation.md)                        | Actions AUD-01→16 (16/16 livrées) + journal d'exécution |
-| [26 — Instrumentation DORA (AUD-08)](26-instrumentation-dora-aud-08.md)               | Design du wrapper de déploiement + métriques DORA       |
-| [27 — Audit global & remédiation](27-audit-global-remediation.md)                     | Actions AQ-01→18 (statut détaillé au §1)                |
+| Doc                                                                                   | Contenu                                                                              |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [18 — Audit gestion des tests (CTAL-TM/TMMi)](18-audit-gestion-tests-ctal-tm-tmmi.md) | Maturité de la gestion de test, actions P1/P2                                        |
+| [25 — Audit CI/CD & remédiation](25-audit-cicd-remediation.md)                        | Actions AUD-01→16 (16/16 livrées) + journal d'exécution                              |
+| [26 — Instrumentation DORA (AUD-08)](26-instrumentation-dora-aud-08.md)               | Design du wrapper de déploiement + métriques DORA                                    |
+| [27 — Audit global & remédiation](27-audit-global-remediation.md)                     | Actions AQ-01→18 (statut détaillé au §1)                                             |
+| [34 — Registre d'améliorations, leçons et portes](34-registre-ameliorations.md)       | Registre **vivant** : pistes AM-xx, leçons LE-xx, motifs MO-x, inventaire des portes |
+
+> La doc 34 est la seule de cette section qui ne se **clôt** pas : les docs 18/25/27 sont des
+> instantanés d'audit, elle est le flux qui les remplace (gardée par `pnpm registre`).
 
 > [`README-nx-template.md`](README-nx-template.md) est le README généré par Nx à la
 > création du workspace, conservé pour référence — ce n'est pas une doc du projet.

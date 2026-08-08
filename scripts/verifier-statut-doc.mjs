@@ -16,7 +16,7 @@
  * C'est délibéré : une machine peut constater l'absence d'un état, elle ne peut
  * pas savoir qu'une spécification marquée « À valider » décrit en réalité du
  * code parti en production. Cette question-là revient au propriétaire du
- * produit, et la doc 34 §4 la lui pose nommément.
+ * produit, et la doc 35 §4 la lui pose nommément.
  *
  * ## Les trois formes acceptées
  *
@@ -80,13 +80,23 @@ function erreur(portee, message, remede) {
   );
 }
 
-/** Lit un fichier texte, ou rend `null` s'il est absent/illisible. */
-function lireTexte(relatif) {
+/**
+ * Lecteur de fichiers, INJECTABLE : `--autotest` le remplace pour abîmer une
+ * source en mémoire. Le disque n'est jamais modifié par une sonde.
+ *
+ * @type {(relatif: string) => string | null}
+ */
+let lecteur = (relatif) => {
   try {
     return fs.readFileSync(path.join(RACINE, relatif), 'utf8');
   } catch {
     return null;
   }
+};
+
+/** Lit un fichier texte, ou rend `null` s'il est absent/illisible. */
+function lireTexte(relatif) {
+  return lecteur(relatif);
 }
 
 /**
@@ -121,19 +131,24 @@ const MOTIF_STATUT =
 /** Une date ISO, seule forme de date acceptée (les conventions du dépôt l'imposent partout). */
 const MOTIF_DATE = /\b20\d{2}-\d{2}-\d{2}\b/;
 
-function main() {
+/**
+ * Joue la vérification complète et rend les constats. Réentrant : les listes
+ * sont remises à zéro à chaque appel, sans quoi `--autotest` cumulerait les
+ * constats d'une sonde sur l'autre et conclurait juste par accident.
+ */
+function executer() {
+  erreurs.length = 0;
+  avertissements.length = 0;
   const documents = listerMarkdown('docs');
   const exemptes = new Map(SANS_STATUT.map((e) => [e.fichier, e.raison]));
   const exemptesVues = new Set();
-
-  console.log('Statut daté des documents');
 
   if (documents.length === 0) {
     erreur(
       'balayage',
       'aucun document markdown lu sous `docs/` — le script est-il lancé depuis le dépôt ?',
     );
-    return conclure(0);
+    return 0;
   }
 
   let verifies = 0;
@@ -154,13 +169,13 @@ function main() {
       erreur(
         document,
         `ni statut ni date dans les ${LIGNES_DE_TETE} premières lignes.`,
-        'ajouter un bandeau `> Statut : **<état>** · <AAAA-MM-JJ>` sous le titre (cf. doc 34 §4).',
+        'ajouter un bandeau `> Statut : **<état>** · <AAAA-MM-JJ>` sous le titre (cf. doc 35 §4).',
       );
     } else if (!aStatut) {
       erreur(
         document,
         `une date est présente, mais aucun statut : rien ne dit ce que le document EST aujourd’hui.`,
-        'ajouter le statut à côté de la date (cf. doc 34 §4).',
+        'ajouter le statut à côté de la date (cf. doc 35 §4).',
       );
     } else if (!aDate) {
       erreur(
@@ -181,7 +196,7 @@ function main() {
     }
   }
 
-  return conclure(verifies);
+  return verifies;
 }
 
 /** @param {number} verifies */
@@ -203,4 +218,84 @@ function conclure(verifies) {
   process.exitCode = erreurs.length > 0 ? 1 : 0;
 }
 
-main();
+/**
+ * Les sondes : chacune abîme une source EN MÉMOIRE et exige que la porte lève
+ * un constat dont le message correspond. Une mutation sans effet est un échec —
+ * cela signifie que la ligne visée a bougé et que la sonde ne teste plus rien.
+ *
+ * @type {{ nom: string, fichier: string, abimer: (texte: string) => string, attendu: RegExp }[]}
+ */
+const SONDES = [
+  {
+    nom: 'bandeau de statut retiré',
+    fichier: 'docs/16-ajustement-planning.md',
+    abimer: (texte) => texte.replace(/^> Statut : .*$/m, ''),
+    attendu: /aucun statut/i,
+  },
+  {
+    nom: 'statut présent mais non daté',
+    fichier: 'docs/17-tests-model-based-ct-mbt.md',
+    abimer: (texte) => texte.replace(/\b20\d{2}-\d{2}-\d{2}\b/g, 'récemment'),
+    attendu: /sans date/i,
+  },
+];
+
+if (process.argv.includes('--autotest')) {
+  process.exitCode = autotest();
+} else {
+  console.log('Statut daté des documents');
+  conclure(executer());
+}
+
+/** Rejoue les sondes ; rend 0 si toutes mordent et si le témoin est vert. */
+function autotest() {
+  const surDisque = lecteur;
+  let echecs = 0;
+
+  // Témoin : des sondes ne prouvent rien si l'état réel est déjà rouge.
+  executer();
+  if (erreurs.length > 0) {
+    console.error(
+      `❌ témoin : l’état réel lève déjà ${erreurs.length} constat(s) — les sondes ne prouveraient rien.`,
+    );
+    echecs += 1;
+  }
+
+  for (const sonde of SONDES) {
+    const origine = surDisque(sonde.fichier);
+    if (origine === null) {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : ${sonde.fichier} illisible — la sonde a perdu sa cible.`,
+      );
+      echecs += 1;
+      continue;
+    }
+    const abime = sonde.abimer(origine);
+    if (abime === origine) {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : la mutation n’a rien changé — la ligne visée a bougé, la sonde ne teste plus rien.`,
+      );
+      echecs += 1;
+      continue;
+    }
+    lecteur = (relatif) =>
+      relatif === sonde.fichier ? abime : surDisque(relatif);
+    executer();
+    lecteur = surDisque;
+    const mord = erreurs.some(
+      (constat) =>
+        constat.portee.startsWith(sonde.fichier) &&
+        sonde.attendu.test(constat.message),
+    );
+    if (mord) console.log(`✅ sonde « ${sonde.nom} » — la porte mord.`);
+    else {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : aucun constat attendu — la porte ne mord pas.`,
+      );
+      echecs += 1;
+    }
+  }
+
+  console.log(`\n${SONDES.length} sonde(s) rejouée(s), ${echecs} échec(s).`);
+  return echecs === 0 ? 0 : 1;
+}

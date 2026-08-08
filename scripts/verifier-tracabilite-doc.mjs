@@ -8,7 +8,7 @@
  * ## Pourquoi ce script existe
  *
  * ISO/IEC/IEEE 29148 demande d'une exigence qu'elle soit **vérifiable** et
- * **traçable** (doc 34 §2). Ce dépôt le fait déjà, à la main et bien : les cas de
+ * **traçable** (doc 35 §2). Ce dépôt le fait déjà, à la main et bien : les cas de
  * test du modèle de coût portent `CT-01..20`, les exigences d'utilisabilité
  * `UT-01..10`, et les suites nomment ces identifiants dans leurs `it(...)`.
  *
@@ -101,13 +101,23 @@ function erreur(portee, message, remede) {
   );
 }
 
-/** Lit un fichier texte, ou rend `null` s'il est absent/illisible. */
-function lireTexte(relatif) {
+/**
+ * Lecteur de fichiers, INJECTABLE : `--autotest` le remplace pour abîmer une
+ * source en mémoire. Le disque n'est jamais modifié par une sonde.
+ *
+ * @type {(relatif: string) => string | null}
+ */
+let lecteur = (relatif) => {
   try {
     return fs.readFileSync(path.join(RACINE, relatif), 'utf8');
   } catch {
     return null;
   }
+};
+
+/** Lit un fichier texte, ou rend `null` s'il est absent/illisible. */
+function lireTexte(relatif) {
+  return lecteur(relatif);
 }
 
 /**
@@ -154,9 +164,14 @@ function identifiants(texte, motif) {
   return trouves;
 }
 
-function main() {
-  console.log('Traçabilité exigence ↔ test');
-
+/**
+ * Joue la vérification complète. Réentrant : les constats sont remis à zéro à
+ * chaque appel, sans quoi `--autotest` cumulerait ceux d'une sonde sur l'autre.
+ *
+ * @param {boolean} [silencieux]
+ */
+function executer(silencieux) {
+  erreurs.length = 0;
   let totalDefinis = 0;
   let totalFichiersTest = 0;
 
@@ -224,10 +239,12 @@ function main() {
       }
     }
 
-    console.log(
-      `  ${famille.id} : ${definis.size} définis dans ${famille.specification}, ` +
-        `${cites.size} cités dans ${fichiers.length} fichiers de test.`,
-    );
+    if (silencieux !== true) {
+      console.log(
+        `  ${famille.id} : ${definis.size} définis dans ${famille.specification}, ` +
+          `${cites.size} cités dans ${fichiers.length} fichiers de test.`,
+      );
+    }
   }
 
   if (totalDefinis === 0 || totalFichiersTest === 0) {
@@ -236,7 +253,10 @@ function main() {
       'aucune famille n’a pu être confrontée — le script n’a rien vérifié.',
     );
   }
+}
 
+/** Affiche les constats et fixe le code de sortie. */
+function conclure() {
   console.log('');
   for (const c of erreurs) {
     console.log(`  ERREUR [${c.portee}] ${c.message}`);
@@ -246,4 +266,81 @@ function main() {
   process.exitCode = erreurs.length > 0 ? 1 : 0;
 }
 
-main();
+/**
+ * Les sondes : les deux SENS de la traçabilité doivent mordre, sans quoi la
+ * porte n'en garde qu'un (AM-21 / LE-08 du registre, doc 34 §5).
+ *
+ * @type {{ nom: string, fichier: string, abimer: (texte: string) => string, attendu: RegExp }[]}
+ */
+const SONDES = [
+  {
+    nom: 'exigence définie que nul test ne nomme',
+    fichier: 'docs/02-modele-de-cout.md',
+    abimer: (texte) => `${texte}\n- **CT-21** — cas ajouté par la sonde.\n`,
+    attendu: /CT-21.*AUCUN test/is,
+  },
+  {
+    nom: 'test citant une exigence disparue',
+    fichier: 'docs/11-spec-accessibilite-ct-ut.md',
+    // On retire UT-09 de la SPEC : les tests qui le nomment deviennent alors
+    // des preuves orphelines — c'est le second sens de la traçabilité.
+    abimer: (texte) => texte.replace(/UT-09/g, 'UT-XX'),
+    attendu: /UT-09.*n’est défini nulle part|UT-09.*n'est défini nulle part/is,
+  },
+];
+
+if (process.argv.includes('--autotest')) {
+  process.exitCode = autotest();
+} else {
+  console.log('Traçabilité exigence ↔ test');
+  executer();
+  conclure();
+}
+
+/** Rejoue les sondes ; rend 0 si toutes mordent et si le témoin est vert. */
+function autotest() {
+  const surDisque = lecteur;
+  let echecs = 0;
+
+  executer(true);
+  if (erreurs.length > 0) {
+    console.error(
+      `❌ témoin : l’état réel lève déjà ${erreurs.length} constat(s) — les sondes ne prouveraient rien.`,
+    );
+    echecs += 1;
+  }
+
+  for (const sonde of SONDES) {
+    const origine = surDisque(sonde.fichier);
+    if (origine === null) {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : ${sonde.fichier} illisible — la sonde a perdu sa cible.`,
+      );
+      echecs += 1;
+      continue;
+    }
+    const abime = sonde.abimer(origine);
+    if (abime === origine) {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : la mutation n’a rien changé — la ligne visée a bougé.`,
+      );
+      echecs += 1;
+      continue;
+    }
+    lecteur = (relatif) =>
+      relatif === sonde.fichier ? abime : surDisque(relatif);
+    executer(true);
+    lecteur = surDisque;
+    if (erreurs.some((constat) => sonde.attendu.test(constat.message))) {
+      console.log(`✅ sonde « ${sonde.nom} » — la porte mord.`);
+    } else {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : aucun constat attendu — la porte ne mord pas.`,
+      );
+      echecs += 1;
+    }
+  }
+
+  console.log(`\n${SONDES.length} sonde(s) rejouée(s), ${echecs} échec(s).`);
+  return echecs === 0 ? 0 : 1;
+}

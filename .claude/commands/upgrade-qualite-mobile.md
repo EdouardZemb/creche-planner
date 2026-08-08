@@ -1,14 +1,17 @@
-# Prompt — Concevoir le plan qui fait passer le crèche-planner du prototype à l'app pro
+---
+description: Auditer une fonctionnalité existante (UX mobile + backend) et rédiger le plan par lots qui la fait passer de prototype à produit professionnel
+---
 
-> **Comment l'utiliser :** colle le bloc ci-dessous comme premier message d'une session
-> **Fable 5**. Traite d'abord UNE fonctionnalité à la fois. Le prompt est volontairement
-> exigeant sur la phase de questions : ne le laisse pas la sauter.
+# Concevoir le plan qui fait passer le crèche-planner du prototype à l'app pro
+
+> **Déroulé :** traiter UNE fonctionnalité à la fois. La commande est volontairement
+> exigeante sur la phase de questions : ne pas la sauter.
 >
-> **Répartition des rôles :** ce prompt s'adresse au **planificateur (Fable 5)**. Fable
-> **ne code pas** — il produit un **plan d'exécution**. Ce plan sera ensuite **exécuté par
-> une session Opus 4.8 séparée**, qui n'aura PAS accès à cette conversation. Toute la valeur
-> du prompt est donc de produire un plan **assez précis et auto-portant pour qu'Opus 4.8
-> l'exécute sans rien redemander**.
+> **Répartition des rôles :** cette commande s'adresse au **planificateur**. Il **ne code
+> pas** — il produit un **plan d'exécution**. Ce plan sera ensuite **exécuté par une session
+> séparée**, qui n'aura PAS accès à cette conversation. Toute la valeur de la commande est
+> donc de produire un plan **assez précis et auto-portant pour que l'exécutant travaille
+> sans rien redemander**.
 
 ---
 

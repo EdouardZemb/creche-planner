@@ -1,4 +1,4 @@
-# 34 — Politique de documentation
+# 35 — Politique de documentation
 
 > Statut : **Établi** · 2026-08-08 · Revue : à chaque ajout de porte documentaire
 > Ce que ce dépôt attend d'un document, quelles normes il emprunte, et ce que
@@ -108,8 +108,17 @@ d'une seconde et sans réseau :
 | `pnpm statuts`     | Un document de `docs/` qui n'annonce ni ce qu'il est, ni depuis quand (ISO/IEC/IEEE 26511)                                                                |
 | `pnpm tracabilite` | Une exigence définie que nul test ne nomme, ou un test qui cite une exigence que plus aucune spécification ne définit (ISO/IEC/IEEE 29148, les deux sens) |
 
-Elles s'ajoutent à `pnpm frontieres` (frontières Nx et miroirs de vocabulaire) et
-`pnpm pieges` (pièges morts recopiés), déjà en place.
+Elles s'ajoutent à `pnpm frontieres` (frontières Nx et miroirs de vocabulaire),
+`pnpm pieges` (pièges morts recopiés) et `pnpm registre` (le registre vivant de
+la [doc 34](34-registre-ameliorations.md)), déjà en place.
+
+**Chacune embarque ses sondes négatives**, rejouables par
+`pnpm <porte> --autotest` et jouées en CI **avant** le verdict : la sonde abîme
+la source en mémoire et exige le constat correspondant ; une mutation sans effet
+échoue, parce qu'elle signifie que la cible a bougé et que la sonde ne teste plus
+rien. Un témoin non abîmé doit rester vert, sans quoi les sondes ne prouvent
+rien. C'est la règle `AM-21` du registre — le plafond de portes sans sonde ne se
+relève pas, et ces quatre-là l'ont respecté dès leur arrivée.
 
 **Ce que `pnpm tracabilite` est, honnêtement** : un **cliquet**, pas une
 découverte. Les deux familles sont complètes au jour où elle est écrite — `CT`

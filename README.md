@@ -222,7 +222,7 @@ régression silencieuse :
 - **documentation** : `pnpm liens` (liens internes et ancres), `pnpm faits` (les
   valeurs citées confrontées à leur source), `pnpm statuts` (statut daté de
   chaque document) et `pnpm tracabilite` (exigences `CT`/`UT` ↔ tests, dans les
-  deux sens), cf. [doc 34](docs/34-politique-documentation.md) ;
+  deux sens), cf. [doc 35](docs/35-politique-documentation.md) ;
 - **dérive de contrats** : `pact-drift`, `pact-can-i-deploy`, types OpenAPI du
   front régénérés et comparés à l'octet ;
 - **E2E** web mocké, smoke stack et E2E stack réelle sur les images affectées ;

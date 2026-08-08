@@ -9,5 +9,73 @@
   },
   "enabledPlugins": {
     "nx@nx-claude-plugins": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "corepack pnpm@10.34.2 preflight || true",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/formatage-post-edition.mjs\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git fetch:*)",
+      "Bash(git worktree list:*)",
+      "Bash(corepack pnpm@10.34.2 preflight:*)",
+      "Bash(corepack pnpm@10.34.2 pieges:*)",
+      "Bash(corepack pnpm@10.34.2 frontieres:*)",
+      "Bash(corepack pnpm@10.34.2 check:*)",
+      "Bash(corepack pnpm@10.34.2 lint:*)",
+      "Bash(corepack pnpm@10.34.2 test:*)",
+      "Bash(corepack pnpm@10.34.2 typecheck:*)",
+      "Bash(corepack pnpm@10.34.2 build:*)",
+      "Bash(corepack pnpm@10.34.2 nx test:*)",
+      "Bash(corepack pnpm@10.34.2 nx lint:*)",
+      "Bash(corepack pnpm@10.34.2 nx typecheck:*)",
+      "Bash(corepack pnpm@10.34.2 nx build:*)",
+      "Bash(corepack pnpm@10.34.2 nx run-many:*)",
+      "Bash(corepack pnpm@10.34.2 nx affected:*)",
+      "Bash(corepack pnpm@10.34.2 nx graph:*)",
+      "Bash(corepack pnpm@10.34.2 nx show:*)",
+      "Bash(pnpm preflight:*)",
+      "Bash(pnpm pieges:*)",
+      "Bash(pnpm frontieres:*)",
+      "Bash(pnpm check:*)",
+      "Bash(pnpm nx test:*)",
+      "Bash(pnpm nx lint:*)",
+      "Bash(pnpm nx typecheck:*)",
+      "Bash(pnpm nx build:*)",
+      "Bash(pnpm nx run-many:*)",
+      "Bash(pnpm nx affected:*)",
+      "Bash(pnpm nx graph:*)",
+      "Bash(pnpm nx show:*)",
+      "Bash(node scripts/preflight.mjs:*)",
+      "Bash(node scripts/verifier-pieges-doc.mjs:*)",
+      "Bash(node scripts/verifier-frontieres.mjs:*)",
+      "Bash(node scripts/comparer-empreinte.mjs:*)"
+    ]
   }
 }

@@ -131,7 +131,7 @@ const EXCEPTIONS = [
       'phrase au passé qui relate ce que la Phase 8 A LIVRÉ (« React 18 + Vite PWA ») : vraie à sa date, dans la section Contexte.',
   },
   {
-    fichier: 'docs/34-politique-documentation.md',
+    fichier: 'docs/35-politique-documentation.md',
     fait: 'React',
     raison:
       'CITATION verbatim du constat de gouvernance du 2026-07-02 (« périmé : Phase 9, React 18, 4 services ») : ' +
@@ -182,13 +182,23 @@ function avertir(portee, message, remede) {
   );
 }
 
-/** Lit un fichier texte, ou rend `null` s'il est absent/illisible. */
-function lireTexte(relatif) {
+/**
+ * Lecteur de fichiers, INJECTABLE : `--autotest` le remplace pour abîmer une
+ * source en mémoire. Le disque n'est jamais modifié par une sonde.
+ *
+ * @type {(relatif: string) => string | null}
+ */
+let lecteur = (relatif) => {
   try {
     return fs.readFileSync(path.join(RACINE, relatif), 'utf8');
   } catch {
     return null;
   }
+};
+
+/** Lit un fichier texte, ou rend `null` s'il est absent/illisible. */
+function lireTexte(relatif) {
+  return lecteur(relatif);
 }
 
 /** Lit un JSON, ou rend `null`. */
@@ -665,13 +675,19 @@ function verifierVersionsTechno(documents) {
   }
 }
 
-function main() {
+/**
+ * Joue les quatre vérifications. Réentrant : constats et faits confrontés sont
+ * remis à zéro à chaque appel, sans quoi `--autotest` cumulerait ceux d'une
+ * sonde sur l'autre et conclurait juste par accident.
+ */
+function executer() {
+  erreurs.length = 0;
+  avertissements.length = 0;
+  faitsVerifies.clear();
   const documents = [
     ...DOCUMENTS_RACINE,
     ...REPERTOIRES.flatMap((r) => lister(r, (nom) => nom.endsWith('.md'))),
   ];
-
-  console.log('Faits de la documentation confrontés à leurs sources');
 
   if (documents.length === 0) {
     erreur(
@@ -701,8 +717,13 @@ function main() {
     }
   }
 
+  return { documents: documents.length, attendus: ATTENDUS.length };
+}
+
+/** Affiche les constats et fixe le code de sortie. */
+function conclure({ documents, attendus }) {
   console.log(
-    `  ${documents.length} documents balayés, ${faitsVerifies.size}/${ATTENDUS.length} faits confrontés à leur source, ` +
+    `  ${documents} documents balayés, ${faitsVerifies.size}/${attendus} faits confrontés à leur source, ` +
       `${EXCEPTIONS.length} exceptions déclarées.\n`,
   );
   for (const c of erreurs) {
@@ -719,4 +740,94 @@ function main() {
   process.exitCode = erreurs.length > 0 ? 1 : 0;
 }
 
-main();
+/**
+ * Les sondes : un fait par sonde, parce qu'une porte à quatre faits peut mordre
+ * sur l'un et être aveugle sur les trois autres. Deux d'entre elles ont
+ * d'ailleurs trouvé un angle mort réel à leur premier passage (LE-18, LE-19).
+ *
+ * @type {{ nom: string, fichier: string, abimer: (texte: string) => string, attendu: RegExp }[]}
+ */
+const SONDES = [
+  {
+    nom: 'version citée ≠ version coupée',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace(/version `\d+\.\d+\.\d+`/, 'version `0.8.0`'),
+    attendu: /version citée .* ≠ version coupée/i,
+  },
+  {
+    nom: 'projet absent de l’arborescence',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace('planification/, notifications/', 'planification/'),
+    attendu: /n’apparaît pas dans l’arborescence/i,
+  },
+  {
+    nom: 'port fantôme',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace('localhost:3006/api/health', 'localhost:3009/api/health'),
+    attendu: /la pile locale ne le publie pas/i,
+  },
+  {
+    nom: 'version de techno périmée',
+    fichier: 'README.md',
+    abimer: (texte) => texte.replace('React 19 + Vite 8', 'React 18 + Vite 8'),
+    attendu: /« React 18 »/i,
+  },
+];
+
+if (process.argv.includes('--autotest')) {
+  process.exitCode = autotest();
+} else {
+  console.log('Faits de la documentation confrontés à leurs sources');
+  conclure(executer());
+}
+
+/** Rejoue les sondes ; rend 0 si toutes mordent et si le témoin est vert. */
+function autotest() {
+  const surDisque = lecteur;
+  let echecs = 0;
+
+  executer();
+  if (erreurs.length > 0) {
+    console.error(
+      `❌ témoin : l’état réel lève déjà ${erreurs.length} constat(s) — les sondes ne prouveraient rien.`,
+    );
+    echecs += 1;
+  }
+
+  for (const sonde of SONDES) {
+    const origine = surDisque(sonde.fichier);
+    if (origine === null) {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : ${sonde.fichier} illisible — la sonde a perdu sa cible.`,
+      );
+      echecs += 1;
+      continue;
+    }
+    const abime = sonde.abimer(origine);
+    if (abime === origine) {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : la mutation n’a rien changé — la ligne visée a bougé.`,
+      );
+      echecs += 1;
+      continue;
+    }
+    lecteur = (relatif) =>
+      relatif === sonde.fichier ? abime : surDisque(relatif);
+    executer();
+    lecteur = surDisque;
+    if (erreurs.some((constat) => sonde.attendu.test(constat.message))) {
+      console.log(`✅ sonde « ${sonde.nom} » — la porte mord.`);
+    } else {
+      console.error(
+        `❌ sonde « ${sonde.nom} » : aucun constat attendu — la porte ne mord pas.`,
+      );
+      echecs += 1;
+    }
+  }
+
+  console.log(`\n${SONDES.length} sonde(s) rejouée(s), ${echecs} échec(s).`);
+  return echecs === 0 ? 0 : 1;
+}

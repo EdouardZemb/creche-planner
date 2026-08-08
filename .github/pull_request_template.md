@@ -9,6 +9,7 @@
 - [ ] Tout **parcours utilisateur modifié** est couvert/maj par un test E2E stack réelle (`*.stack.e2e.spec.ts`).
 - [ ] Documentation à jour si une règle métier ou une convention a changé (`docs/`).
 - [ ] Pas de TODO non tracké ; questions `Q-xx` résolues ou explicitement reportées.
+- [ ] **Registre** ([doc 34](../docs/34-registre-ameliorations.md)) : pistes et leçons vues pendant ce lot consignées (`AM-xx`, `LE-xx`) — ou « néant », et pourquoi.
 - [ ] Pour un correctif (`fix:`) : ligne **« Cause racine : … — Prévention : … »** dans le commit + test de non-régression (cf. [doc 03](../docs/03-standards-developpement.md) §8).
 
 ## Revue assistée par IA
