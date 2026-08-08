@@ -163,6 +163,24 @@ jobs:
       - name: Pièges morts recopiés dans les plans et la doc (bloquant)
         run: node scripts/verifier-pieges-doc.mjs
 
+      # Politique de documentation (doc 34), volet « navigation ». Un lien mort
+      # ne se voit qu'en le suivant : renommer un fichier, renommer un titre
+      # (l'ancre suit le titre) ou déplacer un document vers `exploitation/`
+      # n'échouait nulle part. Ce step vérifie les liens INTERNES et leurs
+      # ancres ; les URL externes restent hors périmètre (une porte de CI ne
+      # doit pas dépendre d'un site tiers).
+      - name: Liens internes de la documentation (bloquant)
+        run: node scripts/verifier-liens-doc.mjs
+
+      # Politique de documentation (doc 34), volet « faits dérivés ». Le README
+      # a annoncé `0.8.0` quand la coupe était `0.15.0`, et « React 18 » sur un
+      # front en 19 — deux dérives en six semaines, toutes deux des RECOPIES
+      # manuelles de valeurs qu'un outil écrit déjà. Ce step confronte les faits
+      # cités (version coupée, projets Nx, ports de la pile locale, chaîne
+      # d'outils) à leur source, au lieu de les relire.
+      - name: Faits de la documentation vs leurs sources (bloquant)
+        run: node scripts/verifier-faits-doc.mjs
+
       # P1-2 (doc 18 §8) — publier les MÉTRIQUES de test, pas seulement le vert/rouge.
       # Les reporters JUnit + couverture lcov/json-summary sont activés en CI par les
       # vitest.config.mts (gardés par `process.env.CI`). On agrège un résumé lisible

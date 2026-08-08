@@ -36,6 +36,12 @@ corepack pnpm frontieres
 # Cf. la section « Pièges » ci-dessous.
 corepack pnpm pieges
 
+# Documentation (< 1 s, steps bloquants du job `ci`, cf. doc 34) :
+# `liens` = liens internes et ancres morts ; `faits` = valeurs citées qui
+# contredisent leur source (version coupée, projets Nx, ports, chaîne d'outils).
+corepack pnpm liens
+corepack pnpm faits
+
 # Un seul projet : `nx test <projet>` déclenche désormais son `typecheck` et le
 # build des libs dont il dépend (`targetDefaults` de nx.json + `dependsOn` des
 # cibles écrites à la main). Plus besoin de builder les libs à la main.
@@ -66,6 +72,8 @@ piège de la première liste (registre dans `scripts/verifier-pieges-doc.mjs`).
 | Course `dist/` entre `build` et `typecheck` (`ENOTEMPTY` puis cascade `TS6305`)                 | les `tsconfig.app.json` émettent dans `./out-tsc/app`, plus dans le `dist/` que webpack efface               |
 | Contexte Nx jamais contraint, miroir de vocabulaire divergent                                   | `pnpm frontieres` (cf. [CONVENTIONS.md §4](CONVENTIONS.md))                                                  |
 | Warnings ESLint qui remontent en silence                                                        | `lint-baseline.json` versionnée, step bloquant du job `ci`                                                   |
+| Lien interne mort (fichier déplacé, titre renommé — l'ancre suit le titre)                      | `pnpm liens` (cf. [doc 34](docs/34-politique-documentation.md))                                              |
+| Fait recopié qui dérive de sa source (version coupée, projets, ports, chaîne d'outils)          | `pnpm faits` (idem)                                                                                          |
 
 > `pnpm preflight` **détecte et nomme**, il ne répare pas. Pour les trois
 > premières lignes, le remède est le même : relancer `corepack pnpm install`

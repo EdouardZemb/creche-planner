@@ -216,7 +216,7 @@ re-commit du pact fait **échouer la CI** ; le cas nominal reste vert.
 
 ### AQ-03 — Remplacer le cast `as unknown as PrestationRM` · P1
 
-**Constat.** [cout.service.ts:366](../apps/svc-tarification/src/couts/cout.service.ts) :
+**Constat.** [cout.service.ts:366](../apps/svc-tarification/src/tarification/cout.service.ts) :
 `prestation as unknown as PrestationRM` sur le chemin de calcul des coûts. Le
 double cast neutralise le typage strict à l'endroit le plus critique du projet
 (jsonb → domaine).
@@ -311,7 +311,7 @@ DEC-07, doc 09).
 
 **Implémentation.** Générer une lib Nx (invoquer le skill `nx-generate`) — nom
 suggéré `libs/nest-commons`, tags `type:infrastructure`, `context:shared` pour
-respecter les frontières ([.eslintrc.json](../.eslintrc.json)). Y déplacer :
+respecter les frontières ([eslint.config.mjs](../eslint.config.mjs)). Y déplacer :
 `DomainExceptionFilter`, le module NATS générique (connexion + publication outbox),
 la fabrique de module database (paramétrée par schéma). Migrer les 4 services un
 par un, suite verte entre chaque.
@@ -464,7 +464,7 @@ reproductible documentée dans la doc 20/21.
 (`libs/contracts/*/src/lib/events/`) — pas de source unique de vérité.
 (2) La configuration de rétention des streams JetStream n'est documentée nulle
 part. (3) Le rebinding des consommateurs est à délai fixe (5 s) dans
-[jetstream.consumer.ts](../apps/svc-tarification/src/consumers/jetstream.consumer.ts)
+[projection.service.ts](../apps/svc-tarification/src/consumers/projection.service.ts)
 au lieu d'un backoff exponentiel.
 
 **Implémentation.** (1) Un `asyncapi.yaml` par contexte dans
@@ -480,7 +480,7 @@ référencées par les README de libs ; doc rétention publiée ; backoff testé
 > **MÀJ 2026-07-02 — 🔶 partiellement livré.** Le point (3) est réglé autrement que
 > par l'esquisse : le rebinding à délai fixe a laissé place au **backoff progressif natif
 > JetStream** (`ConsumerConfig.backoff` = 1 s/5 s/15 s/30 s + `max_deliver`,
-> [jetstream.consumer.ts](../apps/svc-tarification/src/consumers/jetstream.consumer.ts)).
+> [projection.service.ts](../apps/svc-tarification/src/consumers/projection.service.ts)).
 > Restent ouverts : (1) AsyncAPI par contexte, (2) doc de rétention des streams
 > (seule la rétention Loki est documentée dans `observabilite.md`, pas celle de JetStream).
 

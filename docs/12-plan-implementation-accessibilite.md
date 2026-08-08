@@ -256,7 +256,7 @@ mais merge après pour éviter le rebase).
 
 > Préambule commun à coller en tête de **chaque** prompt :
 >
-> « Projet `creche-planner` (Nx monorepo, front `apps/web` React 18 + Vite). Lis d'abord
+> « Projet `creche-planner` (Nx monorepo, front `apps/web` React + Vite). Lis d'abord
 > `docs/11-spec-accessibilite-ct-ut.md` et `docs/12-plan-implementation-accessibilite.md`. Tu
 > réalises **uniquement le lot indiqué** : ne modifie **que** les fichiers listés. Front-only,
 > aucune dépendance npm, interfaces de props stables, aucun changement de calcul/contrat d'API.
