@@ -98,12 +98,16 @@ renumérotés — trop de liens existants en dépendent.
 
 Registres d'actions à **ID stables**, statut re-vérifié dans le code :
 
-| Doc                                                                                   | Contenu                                                 |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| [18 — Audit gestion des tests (CTAL-TM/TMMi)](18-audit-gestion-tests-ctal-tm-tmmi.md) | Maturité de la gestion de test, actions P1/P2           |
-| [25 — Audit CI/CD & remédiation](25-audit-cicd-remediation.md)                        | Actions AUD-01→16 (16/16 livrées) + journal d'exécution |
-| [26 — Instrumentation DORA (AUD-08)](26-instrumentation-dora-aud-08.md)               | Design du wrapper de déploiement + métriques DORA       |
-| [27 — Audit global & remédiation](27-audit-global-remediation.md)                     | Actions AQ-01→18 (statut détaillé au §1)                |
+| Doc                                                                                   | Contenu                                                                              |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [18 — Audit gestion des tests (CTAL-TM/TMMi)](18-audit-gestion-tests-ctal-tm-tmmi.md) | Maturité de la gestion de test, actions P1/P2                                        |
+| [25 — Audit CI/CD & remédiation](25-audit-cicd-remediation.md)                        | Actions AUD-01→16 (16/16 livrées) + journal d'exécution                              |
+| [26 — Instrumentation DORA (AUD-08)](26-instrumentation-dora-aud-08.md)               | Design du wrapper de déploiement + métriques DORA                                    |
+| [27 — Audit global & remédiation](27-audit-global-remediation.md)                     | Actions AQ-01→18 (statut détaillé au §1)                                             |
+| [34 — Registre d'améliorations, leçons et portes](34-registre-ameliorations.md)       | Registre **vivant** : pistes AM-xx, leçons LE-xx, motifs MO-x, inventaire des portes |
+
+> La doc 34 est la seule de cette section qui ne se **clôt** pas : les docs 18/25/27 sont des
+> instantanés d'audit, elle est le flux qui les remplace (gardée par `pnpm registre`).
 
 > [`README-nx-template.md`](README-nx-template.md) est le README généré par Nx à la
 > création du workspace, conservé pour référence — ce n'est pas une doc du projet.

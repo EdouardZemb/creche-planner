@@ -12,6 +12,7 @@
     "preflight": "node scripts/preflight.mjs",
     "frontieres": "node scripts/verifier-frontieres.mjs",
     "pieges": "node scripts/verifier-pieges-doc.mjs",
+    "registre": "node scripts/verifier-registre.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
     "e2e:stack": "node scripts/e2e-stack.mjs",
     "prepare": "husky"
