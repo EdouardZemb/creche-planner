@@ -163,6 +163,20 @@ jobs:
       - name: Pièges morts recopiés dans les plans et la doc (bloquant)
         run: node scripts/verifier-pieges-doc.mjs
 
+      # Registre d'améliorations (doc 34) — les leçons et les pistes trouvées en
+      # cours de lot vivaient en prose dans MEMORY.md : le motif « le défaut est
+      # dans le périmètre de l'outil » y a été relevé HUIT fois sans jamais
+      # devenir une garde, et les tableaux d'audit AQ-xx/AUD-xx se sont périmés
+      # faute de preuve attachée à leur statut. Ce step rend la forme opposable
+      # (identifiants contigus, pas de statut sans preuve ni critère de sortie,
+      # compteurs de motifs recalculés dans les deux sens, règle « 3ᵉ récurrence
+      # = porte », ratchet des portes sans sonde négative) et publie le backlog
+      # ouvert dans le résumé du run. `--autotest` rejoue ses propres sondes.
+      - name: Registre d'améliorations — forme, preuves et compteurs (bloquant)
+        run: |
+          node scripts/verifier-registre.mjs --autotest
+          node scripts/verifier-registre.mjs
+
       # P1-2 (doc 18 §8) — publier les MÉTRIQUES de test, pas seulement le vert/rouge.
       # Les reporters JUnit + couverture lcov/json-summary sont activés en CI par les
       # vitest.config.mts (gardés par `process.env.CI`). On agrège un résumé lisible
