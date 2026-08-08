@@ -41,6 +41,8 @@ corepack pnpm pieges
 # contredisent leur source (version coupée, projets Nx, ports, chaîne d'outils).
 corepack pnpm liens
 corepack pnpm faits
+corepack pnpm statuts        # statut daté en tête de chaque document de docs/
+corepack pnpm tracabilite    # exigences CT/UT ↔ tests, dans les deux sens
 
 # Un seul projet : `nx test <projet>` déclenche désormais son `typecheck` et le
 # build des libs dont il dépend (`targetDefaults` de nx.json + `dependsOn` des
@@ -74,6 +76,8 @@ piège de la première liste (registre dans `scripts/verifier-pieges-doc.mjs`).
 | Warnings ESLint qui remontent en silence                                                        | `lint-baseline.json` versionnée, step bloquant du job `ci`                                                   |
 | Lien interne mort (fichier déplacé, titre renommé — l'ancre suit le titre)                      | `pnpm liens` (cf. [doc 34](docs/34-politique-documentation.md))                                              |
 | Fait recopié qui dérive de sa source (version coupée, projets, ports, chaîne d'outils)          | `pnpm faits` (idem)                                                                                          |
+| Document sans statut ni date : « est-ce que ça vaut encore ? » sans réponse                     | `pnpm statuts` (idem)                                                                                        |
+| Exigence `CT`/`UT` sans test qui la nomme, ou test citant une exigence disparue                 | `pnpm tracabilite` (idem)                                                                                    |
 
 > `pnpm preflight` **détecte et nomme**, il ne répare pas. Pour les trois
 > premières lignes, le remède est le même : relancer `corepack pnpm install`

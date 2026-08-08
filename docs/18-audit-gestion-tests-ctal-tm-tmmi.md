@@ -1,5 +1,7 @@
 # 18 — Audit de la gestion des tests (ISTQB CTAL-TM v3.0) & maturité d'industrialisation (TMMi)
 
+> Statut : **Relevé daté** · 2026-08-08 — rapport d’audit : vrai à sa date, remédiation P1/P2 close.
+
 > **Type** : rapport d'audit (lecture seule). Aucun code ni artefact n'a été modifié par cet
 > exercice — le livrable est ce document.
 > **Date** : 2026-06-07.

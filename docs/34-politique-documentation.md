@@ -65,8 +65,14 @@ date. C'est ce qui justifie que les portes ci-dessous le traitent à part.
 
 ## 4. Ce qu'un document doit porter
 
-- **Un statut daté.** `> Statut : **<état>** · <date>` en tête. Un statut sans
-  date ne se relit pas : rien ne dit s'il vaut encore.
+- **Un statut daté** (outillé : `pnpm statuts`). Trois formes sont acceptées,
+  parce qu'elles ont été **relevées** dans le dépôt plutôt que décrétées : le
+  bandeau `> Statut : **<état>** · <date>`, la liste d'en-tête des ADR
+  (`- **Statut** :` + `- **Date** :`) et le tableau d'en-tête (`| **Statut** |`).
+  Un statut sans date ne se relit pas : rien ne dit s'il vaut encore. La date est
+  celle où le statut a été **affirmé**, pas celle de la dernière modification du
+  fichier — cette dernière est déjà dans git, et la recopier serait précisément
+  ce que §4 interdit.
 - **Un quadrant identifiable** (§3). Un document qui en mélange deux se scinde.
 - **Aucun fait recopié** qu'un outil écrit déjà — cf. §5. Si un fait DOIT être
   cité (lisibilité), il entre dans le registre de la porte, qui le confronte à
@@ -74,24 +80,44 @@ date. C'est ce qui justifie que les portes ci-dessous le traitent à part.
 - **Les liens internes plutôt que les chemins en prose** : un lien est vérifié
   par la CI, une phrase « voir le fichier X » ne l'est pas.
 
-> **État mesuré au 2026-08-08** : 12 specs portent encore « Statut : À valider »
-> alors que leur contenu est en production, et 26 fichiers de `docs/` n'ont
-> aucun en-tête de statut. Ce n'est **pas** outillé aujourd'hui : rendre la règle
-> bloquante demande de traiter ce passif d'abord. C'est un lot identifié, pas une
-> intention.
+> **Deux mesures, dont une correction.** La première version de ce document
+> annonçait « 26 fichiers sans en-tête de statut » : c'était faux, parce que la
+> mesure ne cherchait qu'UNE des trois formes. Le compte réel sur 48 documents :
+> **32 portaient déjà statut et date**, 16 n'avaient pas de statut — 14 après
+> retrait de l'index et du gabarit Nx, tous complétés depuis. La porte est donc
+> verte, et la leçon est celle du dépôt : une mesure trop étroite accuse à tort
+> aussi sûrement qu'elle rassure à tort.
+>
+> **Reste une question qui n'appartient pas à la machine** : **14 documents**
+> portent un statut « à valider » — docs 01, 02, 03, 04, 07, 08, 09, 10, 11, 12
+> et les SFD 30 → 33. Pour les SFD 31 → 33, c'est exact : elles attendent le PO.
+> Pour les onze autres, le contenu est **livré et en production** (la SFD 30 est
+> déployée depuis le 2026-07-29). Une machine peut constater l'absence d'un
+> statut, elle ne peut pas décider qu'une validation a eu lieu : **c'est un geste
+> du propriétaire du produit**, et il est nommé ici pour ne plus être invisible.
 
 ## 5. Ce que l'outillage garantit
 
-Deux portes, toutes deux **bloquantes** dans le job `ci`, toutes deux jouables en
-moins d'une seconde et sans réseau :
+Quatre portes, toutes **bloquantes** dans le job `ci`, toutes jouables en moins
+d'une seconde et sans réseau :
 
-| Porte        | Ce qu'elle refuse                                                                                                                          |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pnpm liens` | Un lien interne mort : cible inexistante, ou **ancre** ne correspondant à aucun titre du document visé (l'ancre suit le texte du titre)    |
-| `pnpm faits` | Une valeur citée qui contredit sa source : version coupée, projets Nx de l'arborescence, ports publiés par la pile locale, chaîne d'outils |
+| Porte              | Ce qu'elle refuse                                                                                                                                         |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm liens`       | Un lien interne mort : cible inexistante, ou **ancre** ne correspondant à aucun titre du document visé (l'ancre suit le texte du titre)                   |
+| `pnpm faits`       | Une valeur citée qui contredit sa source : version coupée, projets Nx de l'arborescence, ports publiés par la pile locale, chaîne d'outils                |
+| `pnpm statuts`     | Un document de `docs/` qui n'annonce ni ce qu'il est, ni depuis quand (ISO/IEC/IEEE 26511)                                                                |
+| `pnpm tracabilite` | Une exigence définie que nul test ne nomme, ou un test qui cite une exigence que plus aucune spécification ne définit (ISO/IEC/IEEE 29148, les deux sens) |
 
 Elles s'ajoutent à `pnpm frontieres` (frontières Nx et miroirs de vocabulaire) et
 `pnpm pieges` (pièges morts recopiés), déjà en place.
+
+**Ce que `pnpm tracabilite` est, honnêtement** : un **cliquet**, pas une
+découverte. Les deux familles sont complètes au jour où elle est écrite — `CT`
+18/18 (la numérotation saute simplement 09 et 19, qui n'existent dans aucune
+source) et `UT` 10/10. Elle ne trouve rien aujourd'hui ; elle empêche le prochain
+écart. Et elle vérifie la **citation**, pas la pertinence : qu'un test nomme
+`CT-07` ne dit pas qu'il éprouve ce que `CT-07` décrit. Aucune machine ne le
+dirait — c'est le travail de la revue.
 
 **Ce que `pnpm faits` NE peut pas savoir**, et il faut le connaître pour ne pas se
 croire couvert : le dépôt sait quelle version a été **coupée** par `nx release`,
@@ -101,13 +127,18 @@ donc des **faits humains**, tenus par les fiches de `.claude/memory/`. La porte
 garantit une chose précise : la version citée est bien une version coupée, et les
 7 services applicatifs sont alignés dessus.
 
-Les deux portes suivent la contrainte de conception des scripts de ce dépôt :
+Les quatre portes suivent la contrainte de conception des scripts de ce dépôt :
 **aucune conclusion par défaut**. Un balayage qui ne lit aucun document, une
 source devenue illisible, ou un fait qui a disparu du document, font **échouer**
 le script au lieu de rendre « rien à signaler » — un balayage à vide est
 indiscernable d'un succès. La session qui a écrit ces portes s'y est fait
-prendre en direct : un « 0 violation » rassurant venait d'un binaire de mesure
-désinstallé entre deux commandes.
+prendre trois fois, et c'est la meilleure raison de garder la règle : un
+« 0 violation » rassurant venait d'un binaire de mesure désinstallé entre deux
+commandes ; une comparaison par sous-chaîne laissait `svc-notifications/` valoir
+présence de `notifications/` ; et une liste d'extensions de test incomplète
+(`.test.tsx` oubliée) a accusé quatre exigences d'être sans test alors qu'elles
+en avaient un. Les trois ont été trouvées en **sondant la porte contre un défaut
+connu**, jamais en lisant son résultat vert.
 
 ## 6. Ce qui n'est PAS outillé, et pourquoi
 
@@ -127,10 +158,20 @@ dimensionnée.
 - **Liens externes** — les joindre demande le réseau, et une porte de CI qui
   dépend d'un site tiers échoue pour des raisons qui ne sont pas celles du dépôt.
   Coût assumé : un lien externe mort survit.
-- **Traçabilité exigence ↔ test** (29148) — les identifiants existent déjà
-  (`CT-01..20`, `UT-01..10`, `DV-01`) ; l'oracle qui vérifierait que chacun est
-  couvert reste à écrire.
-- **Statut daté obligatoire** (§4) — bloqué par le passif mesuré ci-dessus.
+- **Traçabilité au-delà de `CT` et `UT`** — les deux familles de la doc 02 et de
+  la doc 11 sont tracées par `pnpm tracabilite`. D'autres identifiants circulent
+  (`DV-01`, `AQ-xx`, `AUD-xx`, `DEC-xx`) sans spécification unique qui en fasse
+  foi : les tracer demanderait d'abord de désigner ce document-là, famille par
+  famille. Non fait, et c'est un choix — un oracle pointé sur une source
+  ambiguë ne garde rien.
+- **Le sens « exigence → implémentation »** — `pnpm tracabilite` demande qu'un
+  **test** nomme l'exigence. Les `UT` sont aussi citées dans le code des
+  composants, ce qui est une autre relation 29148, non vérifiée ici.
+- **La VALEUR d'un statut** — `pnpm statuts` exige qu'un document dise ce qu'il
+  est et depuis quand ; il ne peut pas savoir qu'un « À valider » recouvre du
+  code parti en production (§4). Ce geste-là est celui du PO.
+- **Le découpage de `docs/06`** (§3) — 2 221 lignes qui mélangent journal,
+  référence d'état et guide de reprise. Nommé, dimensionné, non fait.
 - **Fraîcheur d'un document** — aucune machine ne sait qu'une phrase est devenue
   fausse si aucune source ne la contredit. C'est la limite de fond : les portes
   attrapent les faits **dérivables**, pas les affirmations. Le reste relève de la

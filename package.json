@@ -14,6 +14,8 @@
     "pieges": "node scripts/verifier-pieges-doc.mjs",
     "liens": "node scripts/verifier-liens-doc.mjs",
     "faits": "node scripts/verifier-faits-doc.mjs",
+    "statuts": "node scripts/verifier-statut-doc.mjs",
+    "tracabilite": "node scripts/verifier-tracabilite-doc.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
     "e2e:stack": "node scripts/e2e-stack.mjs",
     "prepare": "husky"

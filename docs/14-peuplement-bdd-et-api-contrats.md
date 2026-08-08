@@ -1,5 +1,7 @@
 # 14 — Peuplement de la base (jeu de données de référence) & consommation de l'API par le front
 
+> Statut : **Établi** · 2026-08-08 — jeu de données de référence et consommation de l’API, toujours en vigueur.
+
 |               |                                                                                                                                                                                      |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Objet**     | Amorcer la base avec le **jeu de données de référence** (foyer type à deux enfants) et faire en sorte que le front lise ses contrats **depuis l'API** (au lieu du `sessionStorage`). |

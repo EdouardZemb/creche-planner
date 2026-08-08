@@ -1,5 +1,7 @@
 # Audit CI/CD & plan de remédiation
 
+> Statut : **Relevé daté** · 2026-08-08 — rapport d’audit : AUD-01→16 toutes faites.
+
 > **Origine** : audit de la pipeline CI/CD et de sa documentation (session du 2026-06-09),
 > mené selon OWASP CI/CD Security Top 10, OpenSSF Scorecard / SLSA, NIST SSDF,
 > DORA Four Keys et le syllabus ISTQB **CT-QDO** déjà revendiqué par le projet

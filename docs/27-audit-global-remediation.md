@@ -1,5 +1,7 @@
 # Audit global & plan de remédiation (architecture, code, web, tests, produit)
 
+> Statut : **Actif** · 2026-08-08 — remédiation encore ouverte : AQ-14/15 partielles, AQ-17/18 ouvertes.
+
 > **Origine** : audit complet du 2026-06-11 (architecture, qualité du code backend,
 > frontend PWA, stratégie de test & CI/CD, pertinence fonctionnelle, organisation
 > du dépôt), mené en six analyses parallèles puis contre-vérifié sur les constats

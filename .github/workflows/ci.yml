@@ -181,6 +181,23 @@ jobs:
       - name: Faits de la documentation vs leurs sources (bloquant)
         run: node scripts/verifier-faits-doc.mjs
 
+      # Politique de documentation (doc 34 §4), volet « cycle de revue »
+      # (ISO/IEC/IEEE 26511). Un document qui ne dit ni ce qu'il est, ni depuis
+      # quand, ne répond pas à la seule question qu'on lui pose quand il est
+      # ancien. Trois formes d'en-tête sont acceptées — relevées dans le dépôt,
+      # pas décrétées. La porte ne juge PAS la valeur du statut : décider qu'un
+      # « À valider » est validé n'appartient pas à une machine.
+      - name: Statut daté des documents (bloquant)
+        run: node scripts/verifier-statut-doc.mjs
+
+      # Politique de documentation (doc 34 §5), volet « traçabilité »
+      # (ISO/IEC/IEEE 29148, les DEUX sens) : une exigence définie que nul test
+      # ne nomme laisse un trou de couverture ; un test qui cite une exigence
+      # disparue laisse une preuve qui n'atteste plus rien. Cliquet : les deux
+      # familles (CT 18/18, UT 10/10) sont complètes au moment où il est posé.
+      - name: Traçabilité exigence vs test (bloquant)
+        run: node scripts/verifier-tracabilite-doc.mjs
+
       # P1-2 (doc 18 §8) — publier les MÉTRIQUES de test, pas seulement le vert/rouge.
       # Les reporters JUnit + couverture lcov/json-summary sont activés en CI par les
       # vitest.config.mts (gardés par `process.env.CI`). On agrège un résumé lisible

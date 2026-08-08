@@ -219,9 +219,10 @@ régression silencieuse :
   comparaison à la baseline glissante de `main` — un projet qui perd plus de
   0,5 pt de couverture lignes échoue (`coverage-compare.mjs`) ;
 - **warnings ESLint** figés dans `lint-baseline.json` (aucun ajout accepté) ;
-- **documentation** : `pnpm liens` (liens internes et ancres) et `pnpm faits`
-  (les valeurs citées confrontées à leur source), cf.
-  [doc 34](docs/34-politique-documentation.md) ;
+- **documentation** : `pnpm liens` (liens internes et ancres), `pnpm faits` (les
+  valeurs citées confrontées à leur source), `pnpm statuts` (statut daté de
+  chaque document) et `pnpm tracabilite` (exigences `CT`/`UT` ↔ tests, dans les
+  deux sens), cf. [doc 34](docs/34-politique-documentation.md) ;
 - **dérive de contrats** : `pact-drift`, `pact-can-i-deploy`, types OpenAPI du
   front régénérés et comparés à l'octet ;
 - **E2E** web mocké, smoke stack et E2E stack réelle sur les images affectées ;
