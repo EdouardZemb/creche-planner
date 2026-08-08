@@ -17,6 +17,10 @@
 - **Commit** : commit de correction (`fix:`/`perf:`) ; chaque correction porte un **test de
   non-régression** (politique [doc 21](21-politique-strategie-test.md) §1.2).
 - **Statut** : ✅ résolu · 🔄 ouvert (backlog).
+- **Périmètre** : ce registre porte les défauts **produit** (montant faux, parcours cassé, donnée
+  abîmée). Ce qu'on apprend sur la **façon de travailler** — pistes non traitées, leçons de
+  méthode, périmètre réel des portes — va en [doc 34](34-registre-ameliorations.md), qui est un
+  registre **vivant** et non un instantané.
 
 ---
 

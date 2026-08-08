@@ -4,7 +4,10 @@
 > lien vers la fiche. Le journal détaillé (sessions, décisions, chiffres, pièges datés)
 > vit dans la **fiche**, jamais ici : cet index est lu à chaque début de session, chaque
 > ligne superflue y est payée à chaque session. Quand un chantier se clôt, replier son
-> historique dans sa fiche et descendre l'entrée en « Archives ».
+> historique dans sa fiche et descendre l'entrée en « Archives ». Les **pistes et
+> leçons** de lot ne s'écrivent plus ici : elles vont au registre (doc 34, `/consigner`).
+
+- [Registre d'améliorations (doc 34)](../../docs/34-registre-ameliorations.md) — **où atterrissent désormais les pistes et les leçons** trouvées en cours de lot (`AM-xx`/`LE-xx`/motifs `MO-x`), avec l'inventaire des portes et leur périmètre déclaré ; porte `pnpm registre` (step bloquant du job `ci`), commandes `/consigner` et `/revue-processus`.
 
 ## Chantiers actifs
 

@@ -44,8 +44,8 @@ Suivre ce rituel dans l'ordre. Il encode les leçons payées par les lots préc�
 ## 5. Prouver avant de pousser
 
 - `corepack pnpm@10.34.2 nx affected -t lint typecheck test build --base=main`
-- `corepack pnpm@10.34.2 frontieres` et `corepack pnpm@10.34.2 pieges` (steps bloquants du
-  job `ci`, < 1 s chacun).
+- `corepack pnpm@10.34.2 frontieres`, `corepack pnpm@10.34.2 pieges` et
+  `corepack pnpm@10.34.2 registre` (steps bloquants du job `ci`, < 1 s chacun).
 - Ratchet ESLint : la baseline (`.github/workflows/lint-baseline.json`) ne monte jamais ;
   signaler les règles tombées à zéro (promotion gratuite en `error`).
 - Si du CSS ou des composants web sont touchés : prouver l'iso-rendu avec
@@ -60,7 +60,10 @@ Suivre ce rituel dans l'ordre. Il encode les leçons payées par les lots préc�
 
 ## 7. Capitaliser
 
-- Découvertes durables (piège, décision, fait de prod) → fiche du chantier dans
-  `.claude/memory/`, et entrée d'index **≤ 2 lignes** dans `MEMORY.md` (le journal détaillé
-  vit dans la fiche, jamais dans l'index).
+- **Pistes et leçons** trouvées en cours de lot → `/consigner` (registre doc 34, `AM-xx`/
+  `LE-xx`/motifs) — plus jamais en prose dans `MEMORY.md` ; déclarer les identifiants
+  consignés dans la PR.
+- Faits durables d'un chantier (décision, état de prod, piège daté) → fiche du chantier
+  dans `.claude/memory/`, et entrée d'index **≤ 2 lignes** dans `MEMORY.md` (le journal
+  détaillé vit dans la fiche, jamais dans l'index).
 - Avancement fonctionnel → `docs/06-etat-davancement.md` si applicable.
