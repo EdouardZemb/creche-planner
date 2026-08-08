@@ -33,11 +33,16 @@ renumérotés — trop de liens existants en dépendent.
 | [16 — Ajustement de planning par jour](16-ajustement-planning.md) | Ajout/retrait d'un jour, heures, portée réel/simulé                              |
 | [19 — Registre de risque produit](19-registre-risque-produit.md)  | Risques produit identifiés et mitigations                                        |
 
-### SFD à l'étude (brouillons, séquence 30 → 33)
+### SFD 30 — livrée (déployée en prod le 2026-07-29)
+
+| Doc                                                                          | Contenu                                                                        |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [30 — SFD Versionnement à date d'effet](30-sfd-versionnement-dates-effet.md) | Avenants, grilles/barèmes versionnés, passé immuable — socle des docs 31/32/33 |
+
+### SFD à l'étude (brouillons, séquence 31 → 33)
 
 | Doc                                                                                   | Contenu                                                                             |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| [30 — SFD Versionnement à date d'effet](30-sfd-versionnement-dates-effet.md)          | Avenants, grilles/barèmes versionnés, passé immuable — socle des docs 31/32/33      |
 | [31 — SFD Calendriers & vacances scolaires](31-sfd-calendriers-vacances-scolaires.md) | Calendrier d'ouverture par établissement, import zone scolaire + retouches          |
 | [32 — SFD Travail, congés & revenus](32-sfd-travail-conges-revenus.md)                | Contrats de travail (FR/CH, frontalier), absences typées, soldes CP/heures, revenus |
 | [33 — SFD Planning famille](33-sfd-planning-famille.md)                               | Vue commune « qui fait quoi, où, avec qui », trajets, détection de conflits         |
