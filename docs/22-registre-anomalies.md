@@ -42,11 +42,11 @@
 | AN-12 | Édition / suppression de contrat absente (seul le planning mensuel éditable)                                                                                                      |   🟧    | Validation manuelle (backlog)            | P7 Gateway/UI           | doc 06 §13 (backlog 1)   |   🔄   |
 | AN-13 | Prestations non filtrées par période de validité côté **domaine**                                                                                                                 |   🟧    | Validation manuelle (backlog)            | P5 Planification        | doc 06 §13 (backlog 2)   |  🔄¹   |
 | AN-14 | Allowlist mailer compare le `to` **entier** (`includes`), pas par destinataire → bloque tout dès qu'un foyer a ≥2 parents                                                         |   🟧    | Revue de code (activation envoi réel)    | Lot 2 Notifications     | PR #128                  |   ✅   |
-| AN-15 | `GET /api/v1/foyers` renvoie les revenus et RFR de **tous** les foyers : `ADMIN_EMAILS` vide ⇒ tout appelant est traité comme admin                                               |   🟥    | Revue de code (audit sécurité)           | P7 Gateway              | —                        |   🔄   |
-| AN-16 | Publication du catalogue tarifaire ouverte à tout appelant : aucun contrôle de rôle sur les trois `POST /api/v1/referentiel/*`, qui pilotent le calcul de coût de tous les foyers |   🟧    | Revue de code (audit sécurité)           | P7 Gateway              | —                        |   🔄   |
-| AN-17 | Rate-limit non appliqué par client : sans `trust proxy`, `req.ip` vaut l'IP de nginx ⇒ une seule fenêtre de 120 req/min partagée par tout le trafic                               |   🟧    | Revue de code (audit sécurité)           | P9 Durcissement         | —                        |   🔄   |
-| AN-18 | La `Map` du rate-limit n'est jamais purgée alors que son en-tête l'affirme ; inerte tant qu'AN-17 la réduit à une clé, fuite mémoire non bornée dès qu'AN-17 est corrigé seul     |   🟨    | Revue de code (audit sécurité)           | P9 Durcissement         | —                        |   🔄   |
-| AN-19 | `GATEWAY_TOKEN=""` est lu comme un jeton **vide valide**, alors que le garde-fou de démarrage le traite comme absent : les deux lectures divergent                                |   🟨    | Revue de code (audit sécurité)           | P9 Durcissement         | —                        |   🔄   |
+| AN-15 | `GET /api/v1/foyers` renvoie les revenus et RFR de **tous** les foyers : `ADMIN_EMAILS` vide ⇒ tout appelant est traité comme admin                                               |   🟥    | Revue de code (audit sécurité)           | P7 Gateway              | `7f9f599`                |   ✅   |
+| AN-16 | Publication du catalogue tarifaire ouverte à tout appelant : aucun contrôle de rôle sur les trois `POST /api/v1/referentiel/*`, qui pilotent le calcul de coût de tous les foyers |   🟧    | Revue de code (audit sécurité)           | P7 Gateway              | `7f9f599`                |   ✅   |
+| AN-17 | Rate-limit non appliqué par client : sans `trust proxy`, `req.ip` vaut l'IP de nginx ⇒ une seule fenêtre de 120 req/min partagée par tout le trafic                               |   🟧    | Revue de code (audit sécurité)           | P9 Durcissement         | `7f9f599`                |   ✅   |
+| AN-18 | La `Map` du rate-limit n'est jamais purgée alors que son en-tête l'affirme ; inerte tant qu'AN-17 la réduit à une clé, fuite mémoire non bornée dès qu'AN-17 est corrigé seul     |   🟨    | Revue de code (audit sécurité)           | P9 Durcissement         | `7f9f599`                |   ✅   |
+| AN-19 | `GATEWAY_TOKEN=""` est lu comme un jeton **vide valide**, alors que le garde-fou de démarrage le traite comme absent : les deux lectures divergent                                |   🟨    | Revue de code (audit sécurité)           | P9 Durcissement         | `7f9f599`                |   ✅   |
 
 > ¹ AN-13 : **atténué** côté affichage (les calendriers front filtrent par `[valideDu, valideAu]`,
 > cf. AN-04) ; la garde de période est **correcte côté `svc-tarification`** (coût juste). Le
@@ -56,34 +56,37 @@
 
 ## 3. DDP par niveau de détection
 
-Defect Detection Percentage = part des défauts **trouvés** à chaque niveau (sur 12 défauts clos
-AN-01..11 et AN-14 ; les ouverts AN-12/13 (validation manuelle) et AN-15..19 (audit sécurité,
-correction en cours) sont hors calcul DDP et y seront intégrés à leur clôture).
+Defect Detection Percentage = part des défauts **trouvés** à chaque niveau (sur 17 défauts clos
+AN-01..11 et AN-14..19 ; les 2 ouverts AN-12/13 (validation manuelle) sont hors calcul DDP).
 
 | Niveau de détection        | Défauts trouvés           | DDP      |
 | -------------------------- | ------------------------- | -------- |
-| **E2E stack réelle**       | AN-01, 02, 03, 04, 05, 10 | **50 %** |
-| a11y (axe-core)            | AN-07, 08                 | 17 %     |
-| Performance                | AN-06                     | 8 %      |
-| Smoke-stack                | AN-09                     | 8 %      |
-| Composant (non-régression) | AN-11                     | 8 %      |
-| Revue de code (audit)      | AN-14                     | 8 %      |
+| **E2E stack réelle**       | AN-01, 02, 03, 04, 05, 10 | **35 %** |
+| **Revue de code (audit)**  | AN-14, 15, 16, 17, 18, 19 | **35 %** |
+| a11y (axe-core)            | AN-07, 08                 | 12 %     |
+| Performance                | AN-06                     | 6 %      |
+| Smoke-stack                | AN-09                     | 6 %      |
+| Composant (non-régression) | AN-11                     | 6 %      |
 | Unitaire domaine           | 0                         | 0 %      |
 
 ### Lecture
 
-- **L'E2E stack réelle est le filet le plus productif** (50 % des défauts) : tous des défauts
-  **d'intégration** que l'E2E **mocké** ne pouvait pas révéler — confirme empiriquement la règle
-  d'équipe ([doc 03](03-standards-developpement.md) §6) née de la doc 14.
+- **Deux filets à égalité (35 % chacun), et ils ne prennent pas les mêmes défauts.** L'E2E stack
+  réelle prend des défauts **d'intégration** que l'E2E mocké ne pouvait pas révéler (confirme
+  empiriquement la règle d'équipe, [doc 03](03-standards-developpement.md) §6, née de la doc 14).
+  La revue de code, elle, prend ce qu'**aucun test ne peut prendre** : une garde qui fonctionne
+  exactement comme écrit, mais dont le comportement par défaut est faux (AN-15 était même **tenu
+  par un test** qui assertait la permissivité). Un niveau de test valide un attendu ; il ne
+  questionne pas l'attendu.
 - **0 défaut trouvé au niveau unitaire domaine** : cohérent avec la couverture 100 % + MBT (les
   défauts ne sont **pas** dans la logique pure mais aux **frontières** — DTO, persistance, intégration,
   rendu). → Angle d'amélioration : étendre BVA/tables de décision aux DTO d'entrée (suivi P3-5).
-- **Aucune fuite vers la production** : tous les défauts clos ont été pris **avant** mise en usage,
-  par un niveau de test ou la validation — mais la **fuite inter-niveaux** (unit → intégration) est
-  réelle et désormais **mesurée** (et non plus masquée par l'auto-évaluation « 0 bug »). AN-14
-  dormait certes dans du code **déployé** (envoi réel actif), mais la revue de code l'a pris avant
-  tout déclenchement en usage : les chemins d'envoi actuels (récap = 1 mail/parent, mail service =
-  1 adresse) ne passent jamais de `to` multiple.
+- **Aucune fuite constatée en usage réel**, mais six défauts dormaient dans du code **déployé** :
+  AN-14 (envoi réel actif) et AN-15..19 (audit sécurité). Aucun n'a été déclenché — AN-15 exige un
+  second foyer, que le déploiement mono-foyer n'a jamais eu — mais la formule « pris avant mise en
+  usage » ne vaut plus : ils ont été pris **après** mise en production, et par une relecture, pas
+  par une porte. La **fuite inter-niveaux** (unit → intégration) reste réelle et mesurée (et non
+  plus masquée par l'auto-évaluation « 0 bug »).
 
 ---
 
