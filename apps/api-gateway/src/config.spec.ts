@@ -213,3 +213,64 @@ describe('loadConfig — secret d’assertion inter-services (lot 3)', () => {
     expect(loadConfig().assertionSecret).toBeUndefined();
   });
 });
+
+describe('loadConfig — jeton machine, vide ≡ absent (AN-20)', () => {
+  let envInitial: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    envInitial = { ...process.env };
+    delete process.env['GATEWAY_TOKEN'];
+  });
+
+  afterEach(() => {
+    process.env = envInitial;
+  });
+
+  it('lit le jeton posé, trimé', () => {
+    process.env['GATEWAY_TOKEN'] = '  jeton  ';
+    expect(loadConfig().authToken).toBe('jeton');
+  });
+
+  // `verifierConfigProduction` traite déjà « vide » comme « absent » (cf. plus haut) :
+  // `loadConfig` doit dire la même chose, sinon un `GATEWAY_TOKEN=` passe le garde-fou
+  // de démarrage puis arme le guard sur un jeton vide.
+  it('vide ou blanc ⇒ undefined, comme le garde-fou de démarrage', () => {
+    process.env['GATEWAY_TOKEN'] = '';
+    expect(loadConfig().authToken).toBeUndefined();
+    process.env['GATEWAY_TOKEN'] = '   ';
+    expect(loadConfig().authToken).toBeUndefined();
+  });
+});
+
+describe('loadConfig — relais de confiance (AN-15)', () => {
+  let envInitial: NodeJS.ProcessEnv;
+
+  beforeEach(() => {
+    envInitial = { ...process.env };
+    delete process.env['RATE_LIMIT_PROXY_HOPS'];
+  });
+
+  afterEach(() => {
+    process.env = envInitial;
+  });
+
+  it('0 par défaut : aucun relais de confiance', () => {
+    expect(loadConfig().proxyHops).toBe(0);
+  });
+
+  it('lit un entier positif', () => {
+    process.env['RATE_LIMIT_PROXY_HOPS'] = '2';
+    expect(loadConfig().proxyHops).toBe(2);
+  });
+
+  // Un réglage de confiance illisible doit valoir « je ne fais confiance à personne ».
+  // Le laisser filer en NaN ferait passer `trust proxy` à une valeur que Express
+  // interprète à sa façon — sur un réglage de sécurité, on ne devine pas.
+  it.each(['abc', '-1', '1.5', ''])(
+    'retombe sur 0 pour une valeur inexploitable (%s)',
+    (valeur) => {
+      process.env['RATE_LIMIT_PROXY_HOPS'] = valeur;
+      expect(loadConfig().proxyHops).toBe(0);
+    },
+  );
+});

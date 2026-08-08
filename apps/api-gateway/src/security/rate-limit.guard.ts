@@ -19,13 +19,24 @@ import { loadConfig } from '../config.js';
  * Remarques :
  * - Les routes `@Public()` sont **aussi** limitées (le health-check peut être
  *   spammé), donc aucune exemption ici.
- * - L'état est purement en mémoire (perdu au redémarrage). On élague les
- *   buckets vides pour éviter une croissance non bornée de la Map.
+ * - L'état est purement en mémoire, **par instance** (perdu au redémarrage) : à
+ *   remplacer par un store partagé le jour d'une réplication (`AM-16`).
+ * - La clé est `req.ip`, qui ne désigne le **client** que si `trust proxy` est
+ *   réglé sur la topologie réelle — c'est fait dans `app.config.ts` depuis
+ *   `RATE_LIMIT_PROXY_HOPS`. Sans lui, toutes les requêtes passant par un
+ *   reverse-proxy partageaient une seule fenêtre (AN-15).
+ * - Les buckets **vidés** par la purge de fenêtre sont **retirés** de la Map :
+ *   sans cela elle croît indéfiniment, une entrée par clé jamais revue. Ce n'est
+ *   pas cosmétique — une fois la clé devenue l'IP cliente (AN-15), c'est
+ *   l'appelant qui choisit combien d'entrées créer (AN-19).
  */
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   /** Horodatages (ms) des requêtes récentes, par clé client. */
   private readonly hits = new Map<string, number[]>();
+
+  /** Instant (ms) du prochain balayage d'élagage — au plus un par fenêtre. */
+  private prochainElagage = 0;
 
   /**
    * Horloge injectable (testabilité). `@Optional()` : Nest ne tente pas de
@@ -60,7 +71,32 @@ export class RateLimitGuard implements CanActivate {
 
     recents.push(now);
     this.hits.set(cle, recents);
+    this.elaguer(now, seuil, fenetreMs);
 
     return true;
+  }
+
+  /**
+   * Retire les clés dont **toutes** les entrées sont sorties de la fenêtre. La Map
+   * ne décroissait jamais : chaque clé vue une fois y restait pour la durée de vie
+   * du processus (AN-19).
+   *
+   * Le balayage est **amorti** — au plus un par fenêtre, pas un par requête : un
+   * balayage à chaque appel serait en O(clients actifs) par requête, donc quadratique
+   * sous la charge distribuée que ce guard est précisément censé encaisser. Entre
+   * deux balayages la Map peut dépasser les clients actifs, mais d'au plus une
+   * fenêtre de trafic — bornée, contrairement à l'ancienne croissance monotone.
+   */
+  private elaguer(now: number, seuil: number, fenetreMs: number): void {
+    if (now < this.prochainElagage) {
+      return;
+    }
+    this.prochainElagage = now + fenetreMs;
+    for (const [cle, horodatages] of this.hits) {
+      const dernier = horodatages.at(-1);
+      if (dernier === undefined || dernier <= seuil) {
+        this.hits.delete(cle);
+      }
+    }
   }
 }

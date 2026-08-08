@@ -28,7 +28,7 @@ import {
   valider,
 } from './bff.dto.js';
 import { loadConfig } from '../config.js';
-import { estAdmin, estGatingAdminActif } from '../security/admin.js';
+import { estAdmin } from '../security/admin.js';
 import { CreationFoyerUnique } from '../security/creation-foyer-unique.decorator.js';
 import { FoyerScope } from '../security/foyer-scope.decorator.js';
 import type { RequeteIdentifiable } from '../security/identite.js';
@@ -91,25 +91,37 @@ export class FoyersController {
    * Liste les foyers. **Scopée à l'identité** (lot 5) :
    * - **identité absente** (mode hérité, sans Cloudflare) → liste **complète**
    *   (compatibilité : le web borne alors via `/moi`) ;
-   * - **admin** (∈ `ADMIN_EMAILS`, ou gating admin inactif) → liste **complète**
-   *   (provisioning) ;
-   * - **non-admin identifié** → uniquement **ses** foyers (`foyersParEmail`).
+   * - **admin** (∈ `ADMIN_EMAILS`) → liste **complète** (provisioning) ;
+   * - **tout autre client identifié** → uniquement **ses** foyers
+   *   (`foyersParEmail`), y compris quand `ADMIN_EMAILS` est **vide**.
+   *
+   * Ce dernier point est le correctif d'**AN-17**. La route reprenait l'idiome
+   * « allowlist vide ⇒ gating désactivé, tout le monde passe » de l'`AdminGuard`.
+   * Cet idiome est juste pour une **affordance** (faut-il afficher l'écran de
+   * création ? cf. `MoiVue.admin`) : au pire on montre un bouton que le serveur
+   * refusera. Il ne l'est pas pour une **décision d'autorisation sur des données** :
+   * ici, « aucun admin désigné » devenait « tout le monde est admin », et la
+   * réponse porte les revenus et le RFR de **tous** les foyers de la base. Un
+   * défaut d'activation permissif ne se transporte pas d'un affichage vers une
+   * lecture de données.
+   *
+   * Ni `FOYER_AUTHZ_ENFORCE` ni le scoping aval ne rattrapaient ce trou (LE-26) :
+   * la route n'a **pas de `@FoyerScope`** (aucun `foyerId` unique à comparer), donc
+   * `AppartenanceGuard` la laisse passer d'emblée, et l'appel aval part sans
+   * `?parentEmail=`, donc le `ScopeFoyerGuard` de `svc-foyer` n'a rien à comparer
+   * non plus. Le scope est appliqué **ici**, explicitement, et nulle part ailleurs.
    *
    * Le filtrage se fait **côté gateway** (server-to-server) : svc-foyer renvoie
    * tout, on ne relaie au client que l'intersection. `MesFoyersPage` fonctionne
-   * sans changement (elle reçoit déjà la liste à afficher). **Pas de `@FoyerScope`**
-   * (route sans `foyerId` unique) : le scope est appliqué ici explicitement.
+   * sans changement (elle reçoit déjà la liste à afficher).
    */
   @Get()
   lister(@Req() req?: RequeteIdentifiable): Promise<FoyerVue[]> {
     const email = req?.identite?.email;
     const { adminEmails } = loadConfig();
-    // Gating admin inactif (`ADMIN_EMAILS` vide) ⇒ permissif : tout le monde est
-    // « admin » et voit tout (prod actuelle inchangée). Sans identité : mode hérité.
-    const admin = estGatingAdminActif(adminEmails)
-      ? estAdmin(email, adminEmails)
-      : true;
-    if (email === undefined || admin) {
+    // Sans identité : mode hérité (aucun critère de filtrage ne serait vérifiable ;
+    // la barrière reste Cloudflare Access au bord, cf. `AM-30`).
+    if (email === undefined || estAdmin(email, adminEmails)) {
       return relayer(() => this.foyers.lister());
     }
     return relayer(async () => {

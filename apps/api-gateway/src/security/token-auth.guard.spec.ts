@@ -68,4 +68,22 @@ describe('TokenAuthGuard', () => {
       guard.canActivate(fakeContext({ authorization: 'Bearer secret' })),
     ).toBe(true);
   });
+
+  // AN-20 — `verifierConfigProduction()` traite une valeur vide comme absente ; le
+  // guard la lisait comme un jeton dont la valeur est la chaîne vide, si bien que
+  // toute requête sans « Authorization: Bearer » (avec l'espace) était rejetée. Les
+  // deux lectures doivent dire la même chose.
+  it('GATEWAY_TOKEN vide vaut jeton absent : auth désactivée', () => {
+    process.env['GATEWAY_TOKEN'] = '   ';
+    const guard = new TokenAuthGuard(fakeReflector(false));
+    expect(guard.canActivate(fakeContext({}))).toBe(true);
+  });
+
+  it('rejette un jeton de longueur différente sans lever d’erreur de comparaison', () => {
+    process.env['GATEWAY_TOKEN'] = 'jeton-attendu';
+    const guard = new TokenAuthGuard(fakeReflector(false));
+    expect(() =>
+      guard.canActivate(fakeContext({ authorization: 'Bearer court' })),
+    ).toThrow(UnauthorizedException);
+  });
 });

@@ -26,24 +26,28 @@
 
 ## 2. Registre
 
-| ID    | Anomalie                                                                                                                  | Gravité | Niveau de détection                      | Phase d'intro.          | Commit / réf.            | Statut |
-| ----- | ------------------------------------------------------------------------------------------------------------------------- | :-----: | ---------------------------------------- | ----------------------- | ------------------------ | :----: |
-| AN-01 | Barre de navigation non réactive : contrats invisibles après création foyer                                               |   🟧    | E2E stack réelle (validation navigateur) | P8 Web                  | `10d5f8d`                |   ✅   |
-| AN-02 | `semaineType`/`semaineAbcm` tronqués (pas les 7 jours envoyés)                                                            |   🟥    | E2E stack réelle                         | P8 Web                  | `79afcc6`                |   ✅   |
-| AN-03 | Heures annuelles fractionnaires rejetées (colonne `integer` → 885,5 → 500)                                                |   🟥    | E2E stack réelle                         | P5 Planification        | `c7993ba`                |   ✅   |
-| AN-04 | Garde de période absente des calendriers : jours « Cantine » fantômes                                                     |   🟧    | E2E stack réelle                         | P10 Front               | doc 06 §19.6 (Phase 15)  |   ✅   |
-| AN-05 | Jours « gardés » marqués sans plage réelle (week-end gardé, doc 14)                                                       |   🟧    | E2E stack réelle                         | P8 Web                  | `576286c`                |   ✅   |
-| AN-06 | Latence `/couts/annuel` ~7 s / 502 sous 12 requêtes concurrentes                                                          |   🟥    | Performance (validation sous charge)     | P7 Gateway/Tarification | `9bf00a6` (doc 06 §19.7) |   ✅   |
-| AN-07 | Modale de confirmation ne focalise pas « Annuler » (EC-01)                                                                |   🟨    | a11y (axe-core / runbook)                | P12 a11y                | `fc90085`                |   ✅   |
-| AN-08 | A11y de l'UI d'ajustement de planning insuffisante                                                                        |   🟨    | a11y (axe-core)                          | P10 Front               | `e44a13b`                |   ✅   |
-| AN-09 | Build Docker des services cassé (deps OTel/zod non embarquées)                                                            |   🟥    | Smoke-stack (boot pile)                  | P9 Durcissement         | `3878cf0`                |   ✅   |
-| AN-10 | Foyer périmé mémorisé au chargement (état UI incohérent)                                                                  |   🟨    | E2E / composant                          | P8 Web                  | `33167ac`                |   ✅   |
-| AN-11 | Erreur de modification durable de contrat détruisant l'état UI                                                            |   🟧    | Composant (test de non-régression)       | P10 Front               | `f1c5a20`                |   ✅   |
-| AN-12 | Édition / suppression de contrat absente (seul le planning mensuel éditable)                                              |   🟧    | Validation manuelle (backlog)            | P7 Gateway/UI           | doc 06 §13 (backlog 1)   |   🔄   |
-| AN-13 | Prestations non filtrées par période de validité côté **domaine**                                                         |   🟧    | Validation manuelle (backlog)            | P5 Planification        | doc 06 §13 (backlog 2)   |  🔄¹   |
-| AN-14 | Allowlist mailer compare le `to` **entier** (`includes`), pas par destinataire → bloque tout dès qu'un foyer a ≥2 parents |   🟧    | Revue de code (activation envoi réel)    | Lot 2 Notifications     | PR #128                  |   ✅   |
-| AN-15 | Rate-limit de la gateway compté sur l'IP du reverse-proxy : un seul compteur pour **tous** les foyers                     |   🟧    | Revue de code (audit sécurité)           | P7 Gateway              | doc 34 `AM-27`           |   🔄   |
-| AN-16 | `GET /api/referentiel/health` publique, sans cache ni délai d'expiration, touche la base à chaque appel                   |   🟨    | Revue de code (audit sécurité)           | P7 Gateway              | doc 34 `AM-28`           |   🔄   |
+| ID    | Anomalie                                                                                                                                                                          | Gravité | Niveau de détection                      | Phase d'intro.          | Commit / réf.            | Statut |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-----: | ---------------------------------------- | ----------------------- | ------------------------ | :----: |
+| AN-01 | Barre de navigation non réactive : contrats invisibles après création foyer                                                                                                       |   🟧    | E2E stack réelle (validation navigateur) | P8 Web                  | `10d5f8d`                |   ✅   |
+| AN-02 | `semaineType`/`semaineAbcm` tronqués (pas les 7 jours envoyés)                                                                                                                    |   🟥    | E2E stack réelle                         | P8 Web                  | `79afcc6`                |   ✅   |
+| AN-03 | Heures annuelles fractionnaires rejetées (colonne `integer` → 885,5 → 500)                                                                                                        |   🟥    | E2E stack réelle                         | P5 Planification        | `c7993ba`                |   ✅   |
+| AN-04 | Garde de période absente des calendriers : jours « Cantine » fantômes                                                                                                             |   🟧    | E2E stack réelle                         | P10 Front               | doc 06 §19.6 (Phase 15)  |   ✅   |
+| AN-05 | Jours « gardés » marqués sans plage réelle (week-end gardé, doc 14)                                                                                                               |   🟧    | E2E stack réelle                         | P8 Web                  | `576286c`                |   ✅   |
+| AN-06 | Latence `/couts/annuel` ~7 s / 502 sous 12 requêtes concurrentes                                                                                                                  |   🟥    | Performance (validation sous charge)     | P7 Gateway/Tarification | `9bf00a6` (doc 06 §19.7) |   ✅   |
+| AN-07 | Modale de confirmation ne focalise pas « Annuler » (EC-01)                                                                                                                        |   🟨    | a11y (axe-core / runbook)                | P12 a11y                | `fc90085`                |   ✅   |
+| AN-08 | A11y de l'UI d'ajustement de planning insuffisante                                                                                                                                |   🟨    | a11y (axe-core)                          | P10 Front               | `e44a13b`                |   ✅   |
+| AN-09 | Build Docker des services cassé (deps OTel/zod non embarquées)                                                                                                                    |   🟥    | Smoke-stack (boot pile)                  | P9 Durcissement         | `3878cf0`                |   ✅   |
+| AN-10 | Foyer périmé mémorisé au chargement (état UI incohérent)                                                                                                                          |   🟨    | E2E / composant                          | P8 Web                  | `33167ac`                |   ✅   |
+| AN-11 | Erreur de modification durable de contrat détruisant l'état UI                                                                                                                    |   🟧    | Composant (test de non-régression)       | P10 Front               | `f1c5a20`                |   ✅   |
+| AN-12 | Édition / suppression de contrat absente (seul le planning mensuel éditable)                                                                                                      |   🟧    | Validation manuelle (backlog)            | P7 Gateway/UI           | doc 06 §13 (backlog 1)   |   🔄   |
+| AN-13 | Prestations non filtrées par période de validité côté **domaine**                                                                                                                 |   🟧    | Validation manuelle (backlog)            | P5 Planification        | doc 06 §13 (backlog 2)   |  🔄¹   |
+| AN-14 | Allowlist mailer compare le `to` **entier** (`includes`), pas par destinataire → bloque tout dès qu'un foyer a ≥2 parents                                                         |   🟧    | Revue de code (activation envoi réel)    | Lot 2 Notifications     | PR #128                  |   ✅   |
+| AN-15 | Rate-limit de la gateway compté sur l'IP du reverse-proxy : un seul compteur pour **tous** les foyers                                                                             |   🟧    | Revue de code (audit sécurité)           | P7 Gateway              | `7f9f599`                |   ✅   |
+| AN-16 | `GET /api/referentiel/health` publique, sans cache ni délai d'expiration, touche la base à chaque appel                                                                           |   🟨    | Revue de code (audit sécurité)           | P7 Gateway              | doc 34 `AM-28`           |   🔄   |
+| AN-17 | `GET /api/v1/foyers` renvoie les revenus et RFR de **tous** les foyers : `ADMIN_EMAILS` vide ⇒ tout appelant est traité comme admin                                               |   🟥    | Revue de code (audit sécurité)           | P7 Gateway              | `7f9f599`                |   ✅   |
+| AN-18 | Publication du catalogue tarifaire ouverte à tout appelant : aucun contrôle de rôle sur les trois `POST /api/v1/referentiel/*`, qui pilotent le calcul de coût de tous les foyers |   🟧    | Revue de code (audit sécurité)           | P7 Gateway              | `7f9f599`                |   ✅   |
+| AN-19 | La `Map` du rate-limit n'est jamais purgée alors que son en-tête l'affirme ; inerte tant qu'AN-15 la réduit à une clé, fuite mémoire non bornée dès qu'AN-15 est corrigé seul     |   🟨    | Revue de code (audit sécurité)           | P9 Durcissement         | `7f9f599`                |   ✅   |
+| AN-20 | `GATEWAY_TOKEN=""` est lu comme un jeton **vide valide**, alors que le garde-fou de démarrage le traite comme absent : les deux lectures divergent                                |   🟨    | Revue de code (audit sécurité)           | P9 Durcissement         | `7f9f599`                |   ✅   |
 
 > ¹ AN-13 : **atténué** côté affichage (les calendriers front filtrent par `[valideDu, valideAu]`,
 > cf. AN-04) ; la garde de période est **correcte côté `svc-tarification`** (coût juste). Le
@@ -53,34 +57,38 @@
 
 ## 3. DDP par niveau de détection
 
-Defect Detection Percentage = part des défauts **trouvés** à chaque niveau (sur 12 défauts clos
-AN-01..11 et AN-14 ; les 4 ouverts AN-12/13 (validation manuelle) et AN-15/16 (audit sécurité)
-sont hors calcul DDP).
+Defect Detection Percentage = part des défauts **trouvés** à chaque niveau (sur 17 défauts clos
+AN-01..11, AN-14, AN-15 et AN-17..20 ; les 3 ouverts AN-12/13 (validation manuelle) et AN-16
+(audit sécurité, non traité) sont hors calcul DDP).
 
 | Niveau de détection        | Défauts trouvés           | DDP      |
 | -------------------------- | ------------------------- | -------- |
-| **E2E stack réelle**       | AN-01, 02, 03, 04, 05, 10 | **50 %** |
-| a11y (axe-core)            | AN-07, 08                 | 17 %     |
-| Performance                | AN-06                     | 8 %      |
-| Smoke-stack                | AN-09                     | 8 %      |
-| Composant (non-régression) | AN-11                     | 8 %      |
-| Revue de code (audit)      | AN-14                     | 8 %      |
+| **Revue de code (audit)**  | AN-14, 15, 17, 18, 19, 20 | **35 %** |
+| **E2E stack réelle**       | AN-01, 02, 03, 04, 05, 10 | **35 %** |
+| a11y (axe-core)            | AN-07, 08                 | 12 %     |
+| Performance                | AN-06                     | 6 %      |
+| Smoke-stack                | AN-09                     | 6 %      |
+| Composant (non-régression) | AN-11                     | 6 %      |
 | Unitaire domaine           | 0                         | 0 %      |
 
 ### Lecture
 
-- **L'E2E stack réelle est le filet le plus productif** (50 % des défauts) : tous des défauts
-  **d'intégration** que l'E2E **mocké** ne pouvait pas révéler — confirme empiriquement la règle
-  d'équipe ([doc 03](03-standards-developpement.md) §6) née de la doc 14.
+- **Deux filets à égalité (35 % chacun), et ils ne prennent pas les mêmes défauts.** L'E2E stack
+  réelle prend des défauts **d'intégration** que l'E2E mocké ne pouvait pas révéler (confirme
+  empiriquement la règle d'équipe, [doc 03](03-standards-developpement.md) §6, née de la doc 14).
+  La revue de code, elle, prend ce qu'**aucun test ne peut prendre** : une garde qui fonctionne
+  exactement comme écrit, mais dont le comportement par défaut est faux (AN-17 était même **tenu
+  par un test** qui assertait la permissivité). Un niveau de test valide un attendu ; il ne
+  questionne pas l'attendu.
 - **0 défaut trouvé au niveau unitaire domaine** : cohérent avec la couverture 100 % + MBT (les
   défauts ne sont **pas** dans la logique pure mais aux **frontières** — DTO, persistance, intégration,
   rendu). → Angle d'amélioration : étendre BVA/tables de décision aux DTO d'entrée (suivi P3-5).
-- **Aucune fuite vers la production** : tous les défauts clos ont été pris **avant** mise en usage,
-  par un niveau de test ou la validation — mais la **fuite inter-niveaux** (unit → intégration) est
-  réelle et désormais **mesurée** (et non plus masquée par l'auto-évaluation « 0 bug »). AN-14
-  dormait certes dans du code **déployé** (envoi réel actif), mais la revue de code l'a pris avant
-  tout déclenchement en usage : les chemins d'envoi actuels (récap = 1 mail/parent, mail service =
-  1 adresse) ne passent jamais de `to` multiple.
+- **Aucune fuite constatée en usage réel**, mais six défauts dormaient dans du code **déployé** :
+  AN-14 (envoi réel actif) et AN-15/17..20 (audit sécurité). Aucun n'a été déclenché — AN-17 exige
+  un second foyer, que le déploiement mono-foyer n'a jamais eu — mais la formule « pris avant mise
+  en usage » ne vaut plus : ils ont été pris **après** mise en production, et par une relecture,
+  pas par une porte. La **fuite inter-niveaux** (unit → intégration) reste réelle et mesurée (et
+  non plus masquée par l'auto-évaluation « 0 bug »).
 
 ---
 

@@ -43,6 +43,12 @@ export interface GatewayConfig {
    * **désactivée** (confort de dev local). En production, cette absence doit
    * être un **choix explicite** : `verifierConfigProduction()` refuse le
    * démarrage sans jeton ni échappatoire `GATEWAY_AUTH_DISABLED=1` (AQ-01).
+   *
+   * Une valeur **vide ou blanche** vaut **absente** (`texteNonVide`), exactement
+   * comme la lit `verifierConfigProduction()`. Les deux lectures divergeaient
+   * (AN-20) : `GATEWAY_TOKEN=""` passait le garde-fou de démarrage — qui le
+   * traite comme absent — puis armait le guard sur un jeton vide, si bien que
+   * toute requête sans `Authorization: Bearer ` (avec l'espace) était rejetée.
    */
   readonly authToken: string | undefined;
   /**
@@ -51,6 +57,26 @@ export interface GatewayConfig {
    */
   readonly corsOrigins: readonly string[];
   readonly rateLimit: RateLimitConfig;
+  /**
+   * Nombre de **relais de confiance** entre la gateway et le client, au sens
+   * `trust proxy` d'Express : combien d'adresses ignorer en partant de la droite
+   * de la chaîne `[...X-Forwarded-For, pair TCP]` pour retomber sur le client.
+   *
+   * `0` (défaut) ⇒ aucun relais de confiance : `req.ip` est le **pair TCP**. C'est
+   * le seul défaut sûr — un `X-Forwarded-For` est écrit par le client et n'est
+   * digne de foi que sur les sauts qu'on a soi-même déployés.
+   *
+   * Le réglage se dérive de la topologie **versionnée**, pas au jugé (AN-15) :
+   * - pile locale, `docker-compose.yml` — navigateur → `web` (nginx, qui pose
+   *   `X-Forwarded-For`) → gateway. Chaîne vue : `[client, nginx]` ⇒ **1** ;
+   * - serveur, `docker-compose.server.yml` — client → Caddy (pose
+   *   `X-Forwarded-For`) → `web` (nginx, qui le complète) → gateway. Chaîne vue :
+   *   `[client, caddy, nginx]` ⇒ **2**.
+   *
+   * Sans lui, `req.ip` valait l'adresse de nginx pour **tout** le trafic : le
+   * rate-limit n'était pas par client mais une fenêtre unique partagée (AN-15).
+   */
+  readonly proxyHops: number;
   readonly identite: IdentiteConfig;
   /**
    * Allowlist d'e-mails **administrateurs** (option b-ii, provisioning admin).
@@ -96,6 +122,16 @@ function parseListe(valeur: string | undefined): string[] {
     .split(',')
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+}
+
+/**
+ * Entier `>= 0` lu d'une variable d'env ; toute valeur absente, non numérique,
+ * négative ou fractionnaire retombe sur `0`. Un réglage de confiance illisible
+ * doit valoir « je ne fais confiance à personne », jamais un `NaN` propagé.
+ */
+function entierPositifOuZero(valeur: string | undefined): number {
+  const n = Number(texteNonVide(valeur) ?? '0');
+  return Number.isInteger(n) && n >= 0 ? n : 0;
 }
 
 /** Parse l'allowlist `ADMIN_EMAILS` : minuscules, dédoublonnée, ordre stable. */
@@ -166,12 +202,13 @@ export function loadConfig(): GatewayConfig {
     tarificationUrl: process.env['TARIFICATION_URL'] ?? 'http://localhost:3005',
     notificationsUrl:
       process.env['NOTIFICATIONS_URL'] ?? 'http://localhost:3006',
-    authToken: process.env['GATEWAY_TOKEN'] ?? undefined,
+    authToken: texteNonVide(process.env['GATEWAY_TOKEN']),
     corsOrigins: origins.length > 0 ? origins : ['*'],
     rateLimit: {
       fenetreMs: Number(process.env['RATE_LIMIT_FENETRE_MS'] ?? 60000),
       maxRequetes: Number(process.env['RATE_LIMIT_MAX'] ?? 120),
     },
+    proxyHops: entierPositifOuZero(process.env['RATE_LIMIT_PROXY_HOPS']),
     identite: {
       cfTeamDomain: texteNonVide(process.env['CF_ACCESS_TEAM_DOMAIN']),
       cfAud: texteNonVide(process.env['CF_ACCESS_AUD']),
