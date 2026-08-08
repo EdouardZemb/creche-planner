@@ -159,6 +159,45 @@ const DOCUMENTS_RACINE = [
  */
 const DOCUMENTS_PILE_LOCALE = ['README.md', 'CONTRIBUTING.md'];
 
+/**
+ * Documents ACTIFS qui décrivent la procédure de release : la taille du train y
+ * est une CONSIGNE, pas une anecdote. Le 2026-08-08, les deux annonçaient « les
+ * 6 services / 6 tags / 6 images » alors que `services.json` en liste 7 depuis
+ * l'arrivée de `svc-notifications` : quelqu'un qui suit la procédure coupe un
+ * train incomplet. Les documents-relevés (doc 25, doc 28, plan 05) gardent leur
+ * chiffre d'époque — ils racontent une date, ils n'instruisent rien.
+ */
+const DOCUMENTS_TRAIN = [
+  'docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md',
+  'docs/exploitation/runbook-deploiement.md',
+];
+
+/**
+ * Comparateurs qui changent le sens du nombre : « plus de 3 tags d'un coup »
+ * parle du plafond de déclenchement de GitHub Actions, pas de la taille du
+ * train. Les ignorer est la frontière de ce fait, et elle est écrite ici.
+ */
+const MOTIF_COMPARATEUR =
+  /(?:plus de|au moins|jusqu[’']à|lots? de|[><≤≥]=?)\s*$/i;
+
+/**
+ * Lignes qui relatent une taille de train À UNE DATE, dans un document par
+ * ailleurs actif. L'exception est portée par un EXTRAIT de la ligne, pas par le
+ * document : exempter le fichier entier aurait silencié les douze autres
+ * occurrences — c'est-à-dire exactement le défaut qu'on vient de corriger.
+ *
+ * @type {{ fichier: string, extrait: string, raison: string }[]}
+ */
+const RELEVES_DE_TRAIN = [
+  {
+    fichier: 'docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md',
+    extrait: 'Validé le 2026-06-22',
+    raison:
+      'relevé de la 1re release semver : à cette date le train comptait VRAIMENT 6 projets, ' +
+      '`svc-notifications` n’existait pas encore. Corriger le chiffre réécrirait ce que la ligne atteste.',
+  },
+];
+
 /** @typedef {{ portee: string, message: string, remede?: string }} Constat */
 
 /** @type {Constat[]} */
@@ -529,6 +568,80 @@ function verifierPorts() {
 }
 
 // ---------------------------------------------------------------------------
+// Fait 4 bis — la taille du train de release annoncée est celle de la topologie.
+// ---------------------------------------------------------------------------
+
+function verifierTrainDeRelease() {
+  const services = lireJson('scripts/services.json');
+  const applicatifs = services?.servicesApplicatifs;
+  if (!Array.isArray(applicatifs) || applicatifs.length === 0) {
+    erreur(
+      'scripts/services.json',
+      'source illisible ou sans `servicesApplicatifs` — la taille du train n’est plus dérivable.',
+    );
+    return;
+  }
+  const attendu = applicatifs.length;
+  let citations = 0;
+  const relevesUtilises = new Set();
+
+  for (const document of DOCUMENTS_TRAIN) {
+    const contenu = lireTexte(document);
+    if (contenu === null) {
+      erreur(
+        document,
+        'document illisible — le fait n’est plus gardé nulle part.',
+      );
+      continue;
+    }
+    const lignes = contenu.split('\n');
+    for (let i = 0; i < lignes.length; i += 1) {
+      const ligne = lignes[i] ?? '';
+      const motif = /(\d+)\s+(services|projets|images|tags)\b/g;
+      let trouve;
+      while ((trouve = motif.exec(ligne)) !== null) {
+        const avant = ligne.slice(0, trouve.index);
+        if (MOTIF_COMPARATEUR.test(avant)) continue;
+        const compte = Number(trouve[1]);
+        citations += 1;
+        if (compte === attendu) continue;
+        const releve = RELEVES_DE_TRAIN.find(
+          (r) => r.fichier === document && ligne.includes(r.extrait),
+        );
+        if (releve !== undefined) {
+          relevesUtilises.add(`${releve.fichier}::${releve.extrait}`);
+          continue;
+        }
+        erreur(
+          `${document}:${i + 1}`,
+          `« ${trouve[0]} » — la topologie en compte ${attendu} (\`scripts/services.json\`).`,
+          'un train qui ne couvre pas tous les services applicatifs déploie une pile incomplète.',
+        );
+      }
+    }
+  }
+
+  if (citations === 0) {
+    erreur(
+      'balayage',
+      'aucune taille de train citée dans les documents de déploiement — le fait a disparu, la porte ne garde plus rien.',
+    );
+    return;
+  }
+
+  for (const releve of RELEVES_DE_TRAIN) {
+    if (!relevesUtilises.has(`${releve.fichier}::${releve.extrait}`)) {
+      avertir(
+        'registre',
+        `relevé de train inutilisé : « ${releve.extrait} » dans ${releve.fichier}`,
+        'la ligne a disparu ou a été réécrite — retirer l’entrée.',
+      );
+    }
+  }
+  faitsVerifies.add('train-de-release');
+}
+
+// ---------------------------------------------------------------------------
 // Fait 4 — les versions de la chaîne d'outils citées sont celles installées.
 // ---------------------------------------------------------------------------
 
@@ -698,6 +811,7 @@ function executer() {
     verifierVersionCoupee();
     verifierProjetsNx();
     verifierPorts();
+    verifierTrainDeRelease();
     verifierVersionsTechno(documents);
   }
 
@@ -705,6 +819,7 @@ function executer() {
     'version-coupee',
     'projets-nx',
     'ports-locaux',
+    'train-de-release',
     'versions-techno',
   ];
   for (const fait of ATTENDUS) {
@@ -768,6 +883,12 @@ const SONDES = [
     abimer: (texte) =>
       texte.replace('localhost:3006/api/health', 'localhost:3009/api/health'),
     attendu: /la pile locale ne le publie pas/i,
+  },
+  {
+    nom: 'train de release sous-dimensionné',
+    fichier: 'docs/exploitation/runbook-deploiement.md',
+    abimer: (texte) => texte.replace('7 services', '6 services'),
+    attendu: /« 6 services ».*la topologie en compte/i,
   },
   {
     nom: 'version de techno périmée',
