@@ -154,7 +154,7 @@ export function TarifsPage() {
   useTitrePage('Tarifs');
   const idPrefixe = useId();
   // Publier une grille est une écriture du référentiel **global** : elle pilote le
-  // calcul de coût de tous les foyers, et le BFF la réserve à l'admin (AN-16). On
+  // calcul de coût de tous les foyers, et le BFF la réserve à l'admin (AN-18). On
   // masque donc le formulaire au lieu d'offrir un geste que le serveur refuserait —
   // le catalogue, lui, reste lisible par tout parent. `moi.admin` est permissif tant
   // qu'aucun `ADMIN_EMAILS` n'est posé : l'écran est donc inchangé aujourd'hui.

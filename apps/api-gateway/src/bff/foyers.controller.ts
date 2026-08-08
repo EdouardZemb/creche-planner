@@ -95,7 +95,7 @@ export class FoyersController {
    * - **tout autre client identifié** → uniquement **ses** foyers
    *   (`foyersParEmail`), y compris quand `ADMIN_EMAILS` est **vide**.
    *
-   * Ce dernier point est le correctif d'**AN-15**. La route reprenait l'idiome
+   * Ce dernier point est le correctif d'**AN-17**. La route reprenait l'idiome
    * « allowlist vide ⇒ gating désactivé, tout le monde passe » de l'`AdminGuard`.
    * Cet idiome est juste pour une **affordance** (faut-il afficher l'écran de
    * création ? cf. `MoiVue.admin`) : au pire on montre un bouton que le serveur
@@ -105,7 +105,7 @@ export class FoyersController {
    * défaut d'activation permissif ne se transporte pas d'un affichage vers une
    * lecture de données.
    *
-   * Ni `FOYER_AUTHZ_ENFORCE` ni le scoping aval ne rattrapaient ce trou (LE-25) :
+   * Ni `FOYER_AUTHZ_ENFORCE` ni le scoping aval ne rattrapaient ce trou (LE-26) :
    * la route n'a **pas de `@FoyerScope`** (aucun `foyerId` unique à comparer), donc
    * `AppartenanceGuard` la laisse passer d'emblée, et l'appel aval part sans
    * `?parentEmail=`, donc le `ScopeFoyerGuard` de `svc-foyer` n'a rien à comparer
@@ -120,7 +120,7 @@ export class FoyersController {
     const email = req?.identite?.email;
     const { adminEmails } = loadConfig();
     // Sans identité : mode hérité (aucun critère de filtrage ne serait vérifiable ;
-    // la barrière reste Cloudflare Access au bord, cf. `AM-27`).
+    // la barrière reste Cloudflare Access au bord, cf. `AM-30`).
     if (email === undefined || estAdmin(email, adminEmails)) {
       return relayer(() => this.foyers.lister());
     }

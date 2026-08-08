@@ -29,7 +29,7 @@ vi.mock('../api/client', () => ({
   },
 }));
 
-// AN-16 : la publication est réservée à l'admin côté BFF ; la page ne doit pas
+// AN-18 : la publication est réservée à l'admin côté BFF ; la page ne doit pas
 // proposer un geste que le serveur refuserait. On stube `useMoi` plutôt que de
 // monter `MoiProvider` — c'est le seul droit que cette page consulte.
 vi.mock('../session/MoiContext', () => ({ useMoi: vi.fn() }));
@@ -166,7 +166,7 @@ describe('TarifsPage', () => {
     });
   });
 
-  it('AN-16 : masque le formulaire de publication pour un non-admin', async () => {
+  it('AN-18 : masque le formulaire de publication pour un non-admin', async () => {
     vi.mocked(useMoi).mockReturnValue({
       email: 'parent@example.test',
       admin: false,

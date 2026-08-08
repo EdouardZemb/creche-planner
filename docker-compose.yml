@@ -474,7 +474,7 @@ services:
       # Relais de confiance entre la gateway et le client (`trust proxy`). Pile
       # locale : navigateur → `web` (nginx, qui pose `X-Forwarded-For`) → gateway,
       # soit UN saut. Sans ce réglage, `req.ip` valait l'adresse de nginx pour tout
-      # le trafic et le rate-limit était une fenêtre unique partagée (AN-17).
+      # le trafic et le rate-limit était une fenêtre unique partagée (AN-15).
       RATE_LIMIT_PROXY_HOPS: '1'
       OTEL_SERVICE_NAME: api-gateway
       # Assertion d'identité inter-services (fondations lot 3) : le chemin

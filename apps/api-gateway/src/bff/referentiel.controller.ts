@@ -17,7 +17,7 @@ import { relayer } from './relais.js';
  * de sens). Un chevauchement de période remonté par le service (**409** structuré)
  * est relayé tel quel à l'écran.
  *
- * **Lecture ouverte, écriture réservée à l'admin (AN-16).** Que la donnée soit
+ * **Lecture ouverte, écriture réservée à l'admin (AN-18).** Que la donnée soit
  * globale justifie l'absence de scoping par foyer ; l'inverse en découle pour
  * l'écriture. Une grille ABCM ou un barème PSU pilote le **calcul de coût de tous
  * les foyers** : la publication est donc `@AdminSeulement()`, comme la création de
@@ -27,7 +27,7 @@ import { relayer } from './relais.js';
  * L'`AdminGuard` étant **opt-in** (allowlist `ADMIN_EMAILS` vide ⇒ inactif), ce
  * décorateur n'introduit **aucun 403** dans la prod actuelle : il place la route
  * sous la même bascule que les autres écritures privilégiées. La fermer reste un
- * geste d'exploitation (`AM-27`) — c'est ce que le décorateur rend possible, et
+ * geste d'exploitation (`AM-30`) — c'est ce que le décorateur rend possible, et
  * l'écran Tarifs masque désormais le formulaire quand `MoiVue.admin` est faux,
  * pour ne pas proposer un geste que le serveur refuserait.
  */

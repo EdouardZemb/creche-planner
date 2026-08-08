@@ -21,7 +21,7 @@ export function configurerApp(app: INestApplication): void {
   // `trust proxy` AVANT tout le reste : `req.ip` en dépend, et c'est lui qui sert
   // de clé au `RateLimitGuard`. Laissé à `false` (défaut Express), `req.ip` valait
   // l'adresse du reverse-proxy pour 100 % du trafic — une seule fenêtre de débit
-  // partagée par tous les clients au lieu d'une par client (AN-17). Le compte de
+  // partagée par tous les clients au lieu d'une par client (AN-15). Le compte de
   // sauts est dérivé de la topologie versionnée (cf. `proxyHops`, config.ts) ;
   // `0` (défaut) conserve le comportement d'origine, seul défaut sûr.
   const { corsOrigins, proxyHops } = loadConfig();

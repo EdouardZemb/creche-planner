@@ -80,13 +80,13 @@ describe('ReferentielBffController (BFF, SFD 30 lot 6)', () => {
 });
 
 /**
- * AN-16 — le référentiel est **global**, ce qui justifie l'absence de scoping par
+ * AN-18 — le référentiel est **global**, ce qui justifie l'absence de scoping par
  * foyer et impose l'inverse pour l'écriture : une grille ou un barème pilote le
  * calcul de coût de **tous** les foyers. On vérifie la métadonnée plutôt que le 403,
  * parce que c'est elle le contrat entre la route et l'`AdminGuard` — le guard, lui,
  * a ses propres tests, et il est opt-in (allowlist vide ⇒ inactif).
  */
-describe('ReferentielBffController · écritures réservées à l’admin (AN-16)', () => {
+describe('ReferentielBffController · écritures réservées à l’admin (AN-18)', () => {
   const reflector = new Reflector();
   // Lecture indexée du prototype : référencer `Classe.prototype.methode` en direct
   // déclencherait `unbound-method` (le ratchet ESLint ne se relève pas).

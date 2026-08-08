@@ -63,8 +63,8 @@ describe('RateLimitGuard', () => {
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
-  // AN-18 — l'en-tête du guard annonçait un élagage des buckets vides que le code
-  // ne faisait pas : la Map ne décroissait jamais. Inoffensif tant qu'AN-17 la
+  // AN-19 — l'en-tête du guard annonçait un élagage des buckets vides que le code
+  // ne faisait pas : la Map ne décroissait jamais. Inoffensif tant qu'AN-15 la
   // réduisait à une clé unique ; dès que la clé est l'IP cliente, c'est l'appelant
   // qui choisit combien d'entrées y créer. On lit la taille réelle de la Map, parce
   // que c'est la seule chose que le comportement HTTP ne montre pas.

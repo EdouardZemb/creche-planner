@@ -24,11 +24,11 @@ import { loadConfig } from '../config.js';
  * - La clé est `req.ip`, qui ne désigne le **client** que si `trust proxy` est
  *   réglé sur la topologie réelle — c'est fait dans `app.config.ts` depuis
  *   `RATE_LIMIT_PROXY_HOPS`. Sans lui, toutes les requêtes passant par un
- *   reverse-proxy partageaient une seule fenêtre (AN-17).
+ *   reverse-proxy partageaient une seule fenêtre (AN-15).
  * - Les buckets **vidés** par la purge de fenêtre sont **retirés** de la Map :
  *   sans cela elle croît indéfiniment, une entrée par clé jamais revue. Ce n'est
- *   pas cosmétique — une fois la clé devenue l'IP cliente (AN-17), c'est
- *   l'appelant qui choisit combien d'entrées créer (AN-18).
+ *   pas cosmétique — une fois la clé devenue l'IP cliente (AN-15), c'est
+ *   l'appelant qui choisit combien d'entrées créer (AN-19).
  */
 @Injectable()
 export class RateLimitGuard implements CanActivate {
@@ -79,7 +79,7 @@ export class RateLimitGuard implements CanActivate {
   /**
    * Retire les clés dont **toutes** les entrées sont sorties de la fenêtre. La Map
    * ne décroissait jamais : chaque clé vue une fois y restait pour la durée de vie
-   * du processus (AN-18).
+   * du processus (AN-19).
    *
    * Le balayage est **amorti** — au plus un par fenêtre, pas un par requête : un
    * balayage à chaque appel serait en O(clients actifs) par requête, donc quadratique

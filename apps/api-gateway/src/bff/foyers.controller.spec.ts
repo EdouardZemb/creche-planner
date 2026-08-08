@@ -371,7 +371,7 @@ describe('FoyersController · liste scopée à l’identité (lot 5)', () => {
     expect(vue).toEqual([AUTRE_FOYER]);
   });
 
-  // AN-15 — ce cas assertait l'inverse : « gating admin inactif ⇒ permissif ⇒ liste
+  // AN-17 — ce cas assertait l'inverse : « gating admin inactif ⇒ permissif ⇒ liste
   // complète ». Le défaut n'était donc pas seulement écrit, il était **tenu par un
   // test** : aucune porte ne pouvait le trouver. L'idiome « allowlist vide ⇒ tout le
   // monde passe » vaut pour une affordance d'écran, pas pour une réponse qui porte le

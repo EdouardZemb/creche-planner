@@ -46,7 +46,7 @@ export interface GatewayConfig {
    *
    * Une valeur **vide ou blanche** vaut **absente** (`texteNonVide`), exactement
    * comme la lit `verifierConfigProduction()`. Les deux lectures divergeaient
-   * (AN-19) : `GATEWAY_TOKEN=""` passait le garde-fou de démarrage — qui le
+   * (AN-20) : `GATEWAY_TOKEN=""` passait le garde-fou de démarrage — qui le
    * traite comme absent — puis armait le guard sur un jeton vide, si bien que
    * toute requête sans `Authorization: Bearer ` (avec l'espace) était rejetée.
    */
@@ -66,7 +66,7 @@ export interface GatewayConfig {
    * le seul défaut sûr — un `X-Forwarded-For` est écrit par le client et n'est
    * digne de foi que sur les sauts qu'on a soi-même déployés.
    *
-   * Le réglage se dérive de la topologie **versionnée**, pas au jugé (AN-17) :
+   * Le réglage se dérive de la topologie **versionnée**, pas au jugé (AN-15) :
    * - pile locale, `docker-compose.yml` — navigateur → `web` (nginx, qui pose
    *   `X-Forwarded-For`) → gateway. Chaîne vue : `[client, nginx]` ⇒ **1** ;
    * - serveur, `docker-compose.server.yml` — client → Caddy (pose
@@ -74,7 +74,7 @@ export interface GatewayConfig {
    *   `[client, caddy, nginx]` ⇒ **2**.
    *
    * Sans lui, `req.ip` valait l'adresse de nginx pour **tout** le trafic : le
-   * rate-limit n'était pas par client mais une fenêtre unique partagée (AN-17).
+   * rate-limit n'était pas par client mais une fenêtre unique partagée (AN-15).
    */
   readonly proxyHops: number;
   readonly identite: IdentiteConfig;

@@ -214,7 +214,7 @@ describe('loadConfig — secret d’assertion inter-services (lot 3)', () => {
   });
 });
 
-describe('loadConfig — jeton machine, vide ≡ absent (AN-19)', () => {
+describe('loadConfig — jeton machine, vide ≡ absent (AN-20)', () => {
   let envInitial: NodeJS.ProcessEnv;
 
   beforeEach(() => {
@@ -242,7 +242,7 @@ describe('loadConfig — jeton machine, vide ≡ absent (AN-19)', () => {
   });
 });
 
-describe('loadConfig — relais de confiance (AN-17)', () => {
+describe('loadConfig — relais de confiance (AN-15)', () => {
   let envInitial: NodeJS.ProcessEnv;
 
   beforeEach(() => {

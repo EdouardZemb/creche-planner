@@ -69,7 +69,7 @@ describe('TokenAuthGuard', () => {
     ).toBe(true);
   });
 
-  // AN-19 — `verifierConfigProduction()` traite une valeur vide comme absente ; le
+  // AN-20 — `verifierConfigProduction()` traite une valeur vide comme absente ; le
   // guard la lisait comme un jeton dont la valeur est la chaîne vide, si bien que
   // toute requête sans « Authorization: Bearer » (avec l'espace) était rejetée. Les
   // deux lectures doivent dire la même chose.
