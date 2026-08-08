@@ -100,6 +100,8 @@ renumérotés — trop de liens existants en dépendent.
 | [Sauvegardes PostgreSQL](exploitation/sauvegardes.md)                                           | Sauvegarde/restauration des bases, cron, rétention                 |
 | [28 — Roadmap améliorations CI/CD & obs](exploitation/28-roadmap-ameliorations-cicd.md)         | Phases 5→13 (staging, rollback auto, pollers…) — **close**         |
 | [29 — Chiffrement & rotation des secrets](exploitation/29-rotation-secrets.md)                  | sops + age, runbook de rotation par secret                         |
+| [Autorisation inter-services](exploitation/authz-inter-services.md)                             | Assertion d'identité signée, scoping par foyer, bascule enforce    |
+| [Accès distant au poste et à la prod](exploitation/acces-distant.md)                            | Travailler et déployer hors du réseau local, sans exposer Internet |
 
 ## Audits & plans de remédiation
 

@@ -119,7 +119,7 @@ creche-planner/                       # (nom à faire évoluer vers "budget-foye
 │  ├─ planification/{domain,application,infrastructure}/
 │  └─ tarification/{domain,application,infrastructure}/   # contient les stratégies
 ├─ docs/  (+ docs/adr/)
-├─ docker-compose.yml                 # 4 services + gateway + 4 Postgres + NATS + Prometheus/Grafana
+├─ docker-compose.yml                 # 5 services + gateway + web + 5 Postgres + NATS + observabilité
 └─ k8s/                               # (option)
 ```
 

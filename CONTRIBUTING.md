@@ -24,8 +24,8 @@ corepack pnpm install
 corepack pnpm preflight
 # ⚠️ `pnpm doctor` NE lance PAS ce script : `doctor` est une sous-commande native de pnpm.
 
-# Qualité (lint + type-check + tests + build sur les projets affectés)
-corepack pnpm nx run-many -t lint typecheck test build
+# Qualité (lint + type-check + tests + build sur tout le workspace)
+corepack pnpm check          # = nx run-many -t lint typecheck test build
 
 # Frontières Nx + miroirs de vocabulaire (< 1 s, step bloquant du job `ci`).
 # À lancer après tout ajout de projet, de tag `context:`, ou de recopie d'un
@@ -43,6 +43,7 @@ corepack pnpm liens
 corepack pnpm faits
 corepack pnpm statuts        # statut daté en tête de chaque document de docs/
 corepack pnpm tracabilite    # exigences CT/UT ↔ tests, dans les deux sens
+corepack pnpm registre       # forme, preuves et compteurs du registre (doc 34)
 
 # Un seul projet : `nx test <projet>` déclenche désormais son `typecheck` et le
 # build des libs dont il dépend (`targetDefaults` de nx.json + `dependsOn` des
