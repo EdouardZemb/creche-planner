@@ -19,7 +19,7 @@
 
 ## Références & pièges toujours actifs
 
-- [Faits prod](prod-deployment-facts.md) — `creche.testlens.dev` ▶ `0.15.0` (2026-08-01, 16e train) ; `deploy.mjs` = seule voie ; AUTH isolation foyer active ; pièges ops dans la fiche.
+- [Faits prod](prod-deployment-facts.md) — `creche.testlens.dev` ▶ `0.15.0` (2026-08-01, 16e train) ; `deploy.mjs` = seule voie ; AUTH isolation foyer active ; pièges ops dans la fiche ; **reste : `trusted_proxies` côté Caddy** (rate-limit public encore par tunnel, `AM-32`).
 - [Accès serveur prod](prod-server-access.md) — `ssh edouard@192.168.1.129` ; passer par `ssh.exe` Windows, pas Git Bash.
 - [pnpm via corepack](pnpm-corepack-version.md) — toujours `corepack pnpm@10.34.2`, jamais le pnpm global 8.x.
 - [Clone propre -public](repo-clean-clone-location.md) — bosser dans `-public`, jamais pousser depuis l'original ; main protégée, PR + check `ci`.
