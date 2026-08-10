@@ -78,7 +78,7 @@ export class RateLimitGuard implements CanActivate {
         .getResponse<{
           setHeader?: (nom: string, valeur: string) => void;
         }>()
-        ?.setHeader?.('Retry-After', String(attenteSecondes));
+        .setHeader?.('Retry-After', String(attenteSecondes));
       throw new HttpException('trop de requêtes', HttpStatus.TOO_MANY_REQUESTS);
     }
 
