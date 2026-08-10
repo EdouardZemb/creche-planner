@@ -5,6 +5,7 @@ import {
   appelHttpOuRepli,
   appelHttpResilient,
   ErreurAmont,
+  estErreurHttpRejouable,
   executerAppelHttp,
   type ConfigAppelHttpResilient,
 } from './appel-http.js';
@@ -282,5 +283,48 @@ describe('executerAppelHttp (one-shot, sans retry ni disjoncteur)', () => {
         schema: schemaOk,
       }),
     ).resolves.toEqual({ valeur: 'v' });
+  });
+});
+
+describe('estErreurHttpRejouable (AM-42)', () => {
+  it('rejoue le réseau, les 5xx et les 4xx transitoires (408, 429)', () => {
+    expect(estErreurHttpRejouable(new TypeError('fetch failed'))).toBe(true);
+    expect(estErreurHttpRejouable(new Error('HTTP 503'))).toBe(true);
+    expect(estErreurHttpRejouable(new ErreurAmont(500, {}))).toBe(true);
+    expect(estErreurHttpRejouable(new ErreurAmont(408, {}))).toBe(true);
+    expect(estErreurHttpRejouable(new Error('HTTP 429'))).toBe(true);
+    expect(estErreurHttpRejouable('panne brute')).toBe(true);
+  });
+
+  it('ne rejoue pas un 4xx définitif', () => {
+    expect(estErreurHttpRejouable(new Error('HTTP 400'))).toBe(false);
+    expect(estErreurHttpRejouable(new ErreurAmont(404, {}))).toBe(false);
+    expect(estErreurHttpRejouable(new ErreurAmont(409, {}))).toBe(false);
+  });
+});
+
+describe('appelHttpResilient — discrimination des ré-essais (AM-42)', () => {
+  it('rejoue un 503 (transitoire)', async () => {
+    const stub = vi.fn(() => Promise.resolve({ ok: false, status: 503 }));
+    vi.stubGlobal('fetch', stub);
+
+    await expect(appelHttpResilient(config())).rejects.toThrow('HTTP 503');
+    expect(stub).toHaveBeenCalledTimes(2); // 1 + retries: 1
+  });
+
+  it('ne rejoue pas un 409 (définitif) — une seule requête part', async () => {
+    const stub = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({ code: 'CONFLIT' }),
+      }),
+    );
+    vi.stubGlobal('fetch', stub);
+
+    await expect(
+      appelHttpResilient(config({ capturerCorpsErreur: true })),
+    ).rejects.toThrow('HTTP 409');
+    expect(stub).toHaveBeenCalledOnce();
   });
 });

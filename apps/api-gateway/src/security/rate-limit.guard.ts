@@ -51,7 +51,8 @@ export class RateLimitGuard implements CanActivate {
     const { rateLimit } = loadConfig();
     const { fenetreMs, maxRequetes } = rateLimit;
 
-    const req = ctx.switchToHttp().getRequest<{
+    const http = ctx.switchToHttp();
+    const req = http.getRequest<{
       ip?: string;
       socket?: { remoteAddress?: string };
     }>();
@@ -66,6 +67,18 @@ export class RateLimitGuard implements CanActivate {
     if (recents.length >= maxRequetes) {
       // On replace les entrées purgées pour ne pas fuiter, puis on rejette.
       this.hits.set(cle, recents);
+      // `Retry-After` (RFC 6585 §4) : le client sait quand réessayer au lieu de
+      // marteler — l'instant où le plus ancien hit de la fenêtre en sortira.
+      const plusAncien = recents[0] ?? now;
+      const attenteSecondes = Math.max(
+        1,
+        Math.ceil((plusAncien + fenetreMs - now) / 1000),
+      );
+      http
+        .getResponse<{
+          setHeader?: (nom: string, valeur: string) => void;
+        }>()
+        .setHeader?.('Retry-After', String(attenteSecondes));
       throw new HttpException('trop de requêtes', HttpStatus.TOO_MANY_REQUESTS);
     }
 

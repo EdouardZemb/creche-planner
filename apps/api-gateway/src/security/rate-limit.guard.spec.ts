@@ -2,10 +2,20 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type ExecutionContext, HttpException } from '@nestjs/common';
 import { RateLimitGuard } from './rate-limit.guard.js';
 
-/** Faux ExecutionContext HTTP avec une IP cliente fixe. */
-function fakeContext(ip: string): ExecutionContext {
+/** Faux ExecutionContext HTTP avec une IP cliente fixe ; capture les en-têtes posés. */
+function fakeContext(
+  ip: string,
+  entetes: Record<string, string> = {},
+): ExecutionContext {
   return {
-    switchToHttp: () => ({ getRequest: () => ({ ip }) }),
+    switchToHttp: () => ({
+      getRequest: () => ({ ip }),
+      getResponse: () => ({
+        setHeader: (nom: string, valeur: string) => {
+          entetes[nom] = valeur;
+        },
+      }),
+    }),
   } as unknown as ExecutionContext;
 }
 
@@ -47,6 +57,26 @@ describe('RateLimitGuard', () => {
     } catch (e) {
       expect(e).toBeInstanceOf(HttpException);
       expect((e as HttpException).getStatus()).toBe(429);
+    }
+  });
+
+  it('pose `Retry-After` sur le 429 — l’instant où le plus ancien hit sort de la fenêtre', () => {
+    let horloge = 0;
+    const guard = new RateLimitGuard(() => horloge);
+    const entetes: Record<string, string> = {};
+
+    expect(guard.canActivate(fakeContext('10.0.0.1'))).toBe(true);
+    horloge = 400;
+    expect(guard.canActivate(fakeContext('10.0.0.1'))).toBe(true);
+
+    // Fenêtre 1000 ms, plus ancien hit à t=0 : à t=400 il en sort dans 600 ms,
+    // arrondis à la seconde supérieure.
+    try {
+      guard.canActivate(fakeContext('10.0.0.1', entetes));
+      expect.unreachable('le 3e appel aurait dû lever une exception');
+    } catch (e) {
+      expect(e).toBeInstanceOf(HttpException);
+      expect(entetes['Retry-After']).toBe('1');
     }
   });
 

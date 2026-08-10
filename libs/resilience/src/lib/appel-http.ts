@@ -63,6 +63,34 @@ export class ErreurAmont extends Error {
   }
 }
 
+/**
+ * Un 4xx (hors 408 Request Timeout et 429 Too Many Requests) est une réponse
+ * **déterministe** : la rejouer ne peut que reproduire le même refus, en payant
+ * une pause et un appel amont de plus. Seuls le réseau (pas de statut), les 5xx
+ * et les deux 4xx transitoires méritent un ré-essai. Branchée par défaut sur
+ * `estRejouable` par les enveloppes résilientes ci-dessous (AM-42).
+ */
+export function estErreurHttpRejouable(erreur: unknown): boolean {
+  const statut =
+    erreur instanceof ErreurAmont
+      ? erreur.status
+      : erreur instanceof Error
+        ? Number(/^HTTP (\d{3})$/.exec(erreur.message)?.[1] ?? Number.NaN)
+        : Number.NaN;
+  if (Number.isNaN(statut)) {
+    return true;
+  }
+  return statut >= 500 || statut === 408 || statut === 429;
+}
+
+/**
+ * Options effectives d'une enveloppe résiliente : la discrimination HTTP est le
+ * défaut, un `estRejouable` explicite de l'appelant garde le dernier mot.
+ */
+function optionsHttp(options: OptionsResilience): OptionsResilience {
+  return { estRejouable: estErreurHttpRejouable, ...options };
+}
+
 /** Lit le corps d'une réponse en JSON ; `undefined` si le corps n'est pas parseable. */
 async function lireCorpsJson(reponse: Response): Promise<unknown> {
   try {
@@ -191,7 +219,7 @@ export async function appelHttpResilient<T>(
     config.service,
     operationHttp(config),
     config.breaker,
-    config.options,
+    optionsHttp(config.options),
   );
 }
 
@@ -211,7 +239,7 @@ export async function appelHttpOuRepli<T, R>(
     operationHttp(config),
     repli,
     config.breaker,
-    config.options,
+    optionsHttp(config.options),
     config.logger,
   );
 }

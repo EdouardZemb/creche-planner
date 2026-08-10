@@ -183,3 +183,94 @@ describe('fetchAvecTimeout', () => {
     }
   });
 });
+
+describe('executerResilient — backoff et discrimination (AM-42)', () => {
+  it('ne rejoue pas une erreur déclarée non rejouable', async () => {
+    const cb = new CircuitBreaker(5, 1000);
+    const op = vi.fn().mockRejectedValue(new Error('HTTP 404'));
+    await expect(
+      executerResilient('x', op, cb, {
+        ...OPTIONS,
+        retries: 3,
+        estRejouable: () => false,
+      }),
+    ).rejects.toThrow('HTTP 404');
+    expect(op).toHaveBeenCalledTimes(1);
+  });
+
+  it('espace les essais en backoff exponentiel (base, puis double), jitter neutralisé', async () => {
+    vi.useFakeTimers();
+    try {
+      const cb = new CircuitBreaker(10, 60000);
+      const op = vi.fn().mockRejectedValue(new Error('boom'));
+      const promesse = executerResilient('x', op, cb, {
+        timeoutMs: 50,
+        retries: 2,
+        delaiEntreEssaisMs: 100,
+        aleatoire: () => 1, // jitter plein : délai = base × 2^essai, exactement
+      }).catch((e: unknown) => e);
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(op).toHaveBeenCalledTimes(1);
+
+      // 1er ré-essai : 100 ms — pas avant.
+      await vi.advanceTimersByTimeAsync(99);
+      expect(op).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(op).toHaveBeenCalledTimes(2);
+
+      // 2e ré-essai : 200 ms — le délai a doublé.
+      await vi.advanceTimersByTimeAsync(199);
+      expect(op).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(op).toHaveBeenCalledTimes(3);
+
+      expect(await promesse).toBeInstanceOf(Error);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('plafonne le délai à `delaiMaxMs`', async () => {
+    vi.useFakeTimers();
+    try {
+      const cb = new CircuitBreaker(10, 60000);
+      const op = vi.fn().mockRejectedValue(new Error('boom'));
+      const promesse = executerResilient('x', op, cb, {
+        timeoutMs: 50,
+        retries: 1,
+        delaiEntreEssaisMs: 1000,
+        delaiMaxMs: 300,
+        aleatoire: () => 1,
+      }).catch((e: unknown) => e);
+
+      await vi.advanceTimersByTimeAsync(300);
+      expect(op).toHaveBeenCalledTimes(2);
+      expect(await promesse).toBeInstanceOf(Error);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('borne inférieure du jitter : la moitié du délai de base reste garantie', async () => {
+    vi.useFakeTimers();
+    try {
+      const cb = new CircuitBreaker(10, 60000);
+      const op = vi.fn().mockRejectedValue(new Error('boom'));
+      const promesse = executerResilient('x', op, cb, {
+        timeoutMs: 50,
+        retries: 1,
+        delaiEntreEssaisMs: 100,
+        aleatoire: () => 0, // jitter minimal : délai = base / 2
+      }).catch((e: unknown) => e);
+
+      await vi.advanceTimersByTimeAsync(49);
+      expect(op).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(op).toHaveBeenCalledTimes(2);
+      expect(await promesse).toBeInstanceOf(Error);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

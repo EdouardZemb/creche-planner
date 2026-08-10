@@ -27,8 +27,23 @@ export interface OptionsResilience {
   readonly timeoutMs: number;
   /** Nombre de tentatives supplémentaires après le 1ᵉʳ essai (≥ 0). */
   readonly retries: number;
-  /** Pause entre deux tentatives (ms). */
+  /**
+   * Pause de **base** entre deux tentatives (ms) : doublée à chaque essai
+   * (backoff exponentiel) puis brouillée par le jitter — deux appelants tombés
+   * en panne au même instant ne rejouent pas au même instant (AM-42).
+   */
   readonly delaiEntreEssaisMs: number;
+  /** Plafond du délai entre essais (ms), backoff compris. Défaut : 30 000. */
+  readonly delaiMaxMs?: number;
+  /**
+   * Discrimine les erreurs qui méritent un ré-essai. Absent ⇒ tout est rejoué
+   * (comportement historique). Les clients HTTP passent
+   * `estErreurHttpRejouable` : un 4xx définitif (hors 408/429) est
+   * déterministe, le rejouer ne peut que recommencer la même réponse.
+   */
+  readonly estRejouable?: (erreur: unknown) => boolean;
+  /** Source d'aléa du jitter, injectable en test. Défaut : `Math.random`. */
+  readonly aleatoire?: () => number;
 }
 
 /** État d'un disjoncteur. */
@@ -117,6 +132,24 @@ function pause(ms: number): Promise<void> {
 }
 
 /**
+ * Délai avant le prochain essai : backoff exponentiel (base × 2^essais déjà
+ * joués, plafonné) avec jitter « equal » — moitié fixe, moitié aléatoire. La
+ * moitié fixe garantit un espacement minimal réel ; la moitié aléatoire
+ * désynchronise les appelants qui échouent en même temps (retry storm).
+ */
+function delaiAvantEssai(
+  options: OptionsResilience,
+  essaisEffectues: number,
+): number {
+  const brut = Math.min(
+    options.delaiMaxMs ?? 30000,
+    options.delaiEntreEssaisMs * 2 ** essaisEffectues,
+  );
+  const aleatoire = options.aleatoire ?? Math.random;
+  return brut / 2 + aleatoire() * (brut / 2);
+}
+
+/**
  * Exécute `operation` avec retry borné **et** disjoncteur. Si le circuit est
  * ouvert, échoue immédiatement (`CircuitOuvertError`). Sinon tente jusqu'à
  * `retries + 1` fois ; à la 1ʳᵉ réussite, ferme le circuit ; si toutes échouent,
@@ -139,9 +172,13 @@ export async function executerResilient<T>(
       return resultat;
     } catch (erreur) {
       derniereErreur = erreur;
-      if (essai < options.retries) {
-        await pause(options.delaiEntreEssaisMs);
+      if (essai >= options.retries) {
+        break;
       }
+      if (options.estRejouable !== undefined && !options.estRejouable(erreur)) {
+        break;
+      }
+      await pause(delaiAvantEssai(options, essai));
     }
   }
   breaker.echec();
