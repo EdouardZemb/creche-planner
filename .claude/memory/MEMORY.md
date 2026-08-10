@@ -11,6 +11,8 @@
 
 ## Chantiers actifs
 
+- [Revue standards industriels 2026-08](revue-standards-2026-08.md) — écarts consignés `AM-33`→`AM-51` + `LE-29`, veille = doc 36, plan par lots `.claude/plans/plan-standards-industriels.md` ; lot 0 (quick wins) livré, prochain = lot 1 RGPD documentaire (décisions PO : rétention, RPO/RTO).
+
 - [Travail à distance (vacances 08/2026)](travail-a-distance-vacances-2026-08.md) — runbook Tailscale+RDP, 2 routines cloud actives ; ⚠️ la mémoire du dépôt n'est qu'un **miroir** volontairement incomplet, à ne pas « resynchroniser » depuis une session distante.
 - [Plan consolidation UI + qualité](plan-consolidation-ui-qualite.md) — **journal complet des sessions dans la fiche.** État 2026-08-07 : A ✅ 7/7 ; mergés NON DÉPLOYÉS = B3/B7, C5/C7, D1-D4/D6/D8 → prochain train de release ; restent B4/B5/B8, C6/C8/C9, D5/D7, chantier E ; gestes PO : merge #284 (verte), re-run `main` rouge du 06/08 (incident GitHub, pas une régression), rclone R2(a), bascule INTERSERVICE R3.
 - [SFD 30→33 extension famille](plan-sfd-30-33-extension-famille.md) — SFD 30 exécutée → [[chantier-versionnement-dates-effet]] ; plans 31/32/33 + factures-reelles révisés 2026-07-30/31, ordre consolidation→31→32→33→factures ; reste validation PO (SFD + hypothèses).
