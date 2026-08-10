@@ -10,6 +10,7 @@ export {
   ErreurAmont,
   appelHttpResilient,
   appelHttpOuRepli,
+  estErreurHttpRejouable,
   executerAppelHttp,
 } from './lib/appel-http.js';
 export type {
