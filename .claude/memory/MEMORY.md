@@ -11,6 +11,7 @@
 
 ## Chantiers actifs
 
+- [Vision plateforme du foyer (2026-08)](../plans/vision-plateforme-foyer-2026-08.md) — projection PO 2026-08-11 : vacances/impôts/voiture/courses mappées sur SFD 31-33 + factures-réelles, pistes `AM-52`/`AM-53`, horizon domotique long terme (aucun chantier lancé).
 - [Revue standards industriels 2026-08](revue-standards-2026-08.md) — écarts consignés `AM-33`→`AM-51` + `LE-29`, veille = doc 36, plan par lots `.claude/plans/plan-standards-industriels.md` ; lot 0 (quick wins) livré, prochain = lot 1 RGPD documentaire (décisions PO : rétention, RPO/RTO).
 
 - [Travail à distance (vacances 08/2026)](travail-a-distance-vacances-2026-08.md) — runbook Tailscale+RDP, 2 routines cloud actives ; ⚠️ la mémoire du dépôt n'est qu'un **miroir** volontairement incomplet, à ne pas « resynchroniser » depuis une session distante.
