@@ -112,6 +112,15 @@ piège de la première liste (registre dans `scripts/verifier-pieges-doc.mjs`).
   conclure que la porte est cassée : c'est ainsi qu'on cesse de la lire.
 - **`git fetch` avant de brancher** : le préflight est hors-réseau par
   construction, il ne peut pas voir un `origin/main` périmé.
+- **Le ratchet ESLint (`lint-warnings.mjs`) ne tourne pas sous Windows : c'est une
+  porte de CI seulement.** Il lint le dépôt ENTIER dans un seul processus ; sur ce
+  poste il épuise le tas et meurt en `FATAL ERROR: JavaScript heap out of memory`
+  — mesuré trois fois, jusqu'à **8 Go de tas et 28 min** avant l'abandon, y compris
+  avec `--max-old-space-size`. Le **même step passe en ~3 min sur le runner Linux**.
+  Ne pas chercher à le faire aboutir en local, et surtout ne pas en conclure que la
+  baseline est cassée. Mesure locale utile à la place : `nx run <projet>:lint` sur
+  les projets touchés — s'ils n'introduisent aucun warning, le total ne peut pas
+  monter.
 - **Un `| tail` masque le code de sortie** (c’est celui de `tail`) : une suite
   entière a déjà été lue « verte » alors que 7 cibles échouaient.
 - **UI** : la suite axe ne voit ni le focus, ni les bordures de champ, ni
