@@ -1707,6 +1707,26 @@ button:disabled,
   padding: 0;
 }
 
+/* ---- Pied de page (lien permanent vers /mentions) ------------------------ */
+/* ⚠️ Rendu DANS `<main id="contenu">`, jamais en frère : sous 768 px la barre
+   d'onglets est FIXE en bas d'écran et c'est `main#contenu` qui porte le
+   `padding-bottom` qui la compense (bloc `max-width: 767.98px` plus haut). Le
+   pied hérite donc de cette compensation au lieu de la dupliquer — posé après
+   `</main>`, il passerait sous la barre à 375 px. */
+.pied-page {
+  margin-top: var(--esp-6);
+  padding-top: var(--esp-3);
+  border-top: 1px solid var(--bordure);
+  font-size: 0.85rem;
+}
+
+/* Cible tactile confortable (≥ 44px), comme les liens de navigation. */
+.pied-page a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
 /* ---- Responsive : enrichissement mobile-first ---------------------------- */
 /* Tout ce qui précède cible le mobile. Les requêtes min-width ci-dessous
    ré-aèrent et passent en multi-colonnes à partir de la tablette. */

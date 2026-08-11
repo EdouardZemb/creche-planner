@@ -100,6 +100,16 @@ piège de la première liste (registre dans `scripts/verifier-pieges-doc.mjs`).
 - **`prettier --check` échoue sur _tous_ les fichiers sous Windows**
   (`core.autocrlf` ⇒ CRLF sur disque, `endOfLine: lf` côté prettier). La seule
   mesure probante est `nx format:check --base=origin/main --head=HEAD`.
+- **`pnpm liens` est rouge en permanence sous Windows, et ce rouge-là ne veut
+  rien dire.** Même cause : le script découpe sur `\n` seul, donc il n'extrait
+  aucune ancre d'un fichier à fins de ligne CRLF et déclare mortes toutes celles
+  qui le visent (une vingtaine d'erreurs sur un arbre intact). **Mais la
+  frontière est nette** : le hook de formatage post-édition réécrit en LF tout
+  fichier qu'on touche, donc les fichiers du **diff en cours** sont exactement
+  ceux que la porte sait juger. Lire sa sortie **fichier par fichier** — une
+  erreur sur un fichier du diff est réelle, une erreur sur un fichier non touché
+  est du bruit — et laisser la CI (checkout LF) juger l'ensemble. Ne pas en
+  conclure que la porte est cassée : c'est ainsi qu'on cesse de la lire.
 - **`git fetch` avant de brancher** : le préflight est hors-réseau par
   construction, il ne peut pas voir un `origin/main` périmé.
 - **Un `| tail` masque le code de sortie** (c’est celui de `tail`) : une suite

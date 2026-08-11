@@ -6,6 +6,7 @@ const SEMAINE = '2026-W27';
 // était introuvable côté front). Le foyerId est câblé par le scheduler à l'envoi.
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
 const LIEN = `https://app.example.org/foyers/${FOYER_ID}/planning?semaine=2026-W27`;
+const LIEN_MENTIONS = 'https://app.example.org/mentions';
 
 function enfant(partiel: Partial<RecapMardiEnfant> = {}): RecapMardiEnfant {
   return {
@@ -17,7 +18,12 @@ function enfant(partiel: Partial<RecapMardiEnfant> = {}): RecapMardiEnfant {
 }
 
 function rendre(enfants: RecapMardiEnfant[]) {
-  return recapMardi({ enfants, semaineIso: SEMAINE, lienApp: LIEN });
+  return recapMardi({
+    enfants,
+    semaineIso: SEMAINE,
+    lienApp: LIEN,
+    lienMentions: LIEN_MENTIONS,
+  });
 }
 
 describe('recapMardi', () => {
@@ -147,5 +153,42 @@ describe('recapMardi', () => {
 
     expect(message.text).toContain('1 jour ouvré');
     expect(message.text).not.toContain('1 jours');
+  });
+
+  it('porte le pied d’information (qui édite l’outil) et le lien vers les mentions', () => {
+    const message = rendre([enfant()]);
+
+    expect(message.html).toContain('outil familial, édité par la famille');
+    expect(message.html).toContain(`href="${LIEN_MENTIONS}"`);
+    expect(message.html).toContain('Informations sur vos données');
+    expect(message.text).toContain('outil familial, édité par la famille');
+    expect(message.text).toContain(
+      `Informations sur vos données : ${LIEN_MENTIONS}`,
+    );
+  });
+
+  it('le pied d’information n’évince pas le lien de désabonnement', () => {
+    const desabonnement = 'https://app.example.org/desabonnement?token=abc';
+    const message = recapMardi({
+      enfants: [enfant()],
+      semaineIso: SEMAINE,
+      lienApp: LIEN,
+      lienMentions: LIEN_MENTIONS,
+      lienDesabonnement: desabonnement,
+    });
+
+    // Les deux liens coexistent, et le désabonnement reste le premier des deux :
+    // c'est le geste offert au parent, l'information vient après.
+    expect(message.html).toContain(`href="${desabonnement}"`);
+    expect(message.html).toContain(`href="${LIEN_MENTIONS}"`);
+    expect(message.html.indexOf(desabonnement)).toBeLessThan(
+      message.html.indexOf(LIEN_MENTIONS),
+    );
+    expect(message.text).toContain(
+      `Se désabonner de ces rappels par e-mail : ${desabonnement}`,
+    );
+    expect(message.text).toContain(
+      `Informations sur vos données : ${LIEN_MENTIONS}`,
+    );
   });
 });

@@ -407,6 +407,23 @@ test.describe("Audit d'accessibilité automatisé (axe-core, WCAG 2.1 AA)", () =
     expect(r.violations).toEqual([]);
   });
 
+  test('mentions (/mentions, page publique) — 0 violation AA', async ({
+    page,
+  }) => {
+    // Page publique d'information sur les données (doc 37 § 5) : aucun appel
+    // backend, aucun contexte de foyer requis — un agent d'établissement y
+    // arrive depuis un courriel, sans compte.
+    await page.goto('/mentions');
+    await expect(
+      page.getByRole('heading', {
+        name: 'Informations sur vos données',
+        level: 1,
+      }),
+    ).toBeVisible();
+    const r = await auditer(page, 'mentions');
+    expect(r.violations).toEqual([]);
+  });
+
   test('mon profil (formulaire préférences) — 0 violation AA', async ({
     page,
   }) => {

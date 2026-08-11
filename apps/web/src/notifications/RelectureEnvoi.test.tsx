@@ -323,6 +323,11 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     expect(message.value).toContain('Bonjour,');
     expect(message.value).toContain('lundi 29 juin');
     expect(message.value).toContain('Léa');
+    // Le serveur ajoute un pied de message au texte envoyé : l'écran l'annonce,
+    // sinon il promettrait « votre texte exact » en cachant un paragraphe de plus.
+    expect(
+      screen.getByText(/pied de message est ajouté automatiquement/i),
+    ).toBeInTheDocument();
 
     const envoi = screen.getByRole('button', {
       name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
