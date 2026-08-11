@@ -15,6 +15,7 @@ import {
   notificationHebdo,
 } from '../database/schema.js';
 import { horlogeSysteme, type Clock } from '../scheduler/clock.js';
+import { piedInformationEtablissement } from '../email/templates/brouillonService.js';
 import type { DeltaModifs } from '../validation/validation.diff.js';
 
 /**
@@ -317,10 +318,12 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
   beforeEach(() => {
     delete process.env['NOTIF_EMAIL_DRY_RUN'];
     delete process.env['NOTIF_EMAIL_ALLOWLIST'];
+    delete process.env['NOTIF_APP_URL'];
   });
   afterEach(() => {
     delete process.env['NOTIF_EMAIL_DRY_RUN'];
     delete process.env['NOTIF_EMAIL_ALLOWLIST'];
+    delete process.env['NOTIF_APP_URL'];
   });
 
   it('agrège tous les enfants du foyer concernés (dry-run actif par défaut)', async () => {
@@ -386,6 +389,26 @@ describe('EnvoiService.brouillon (agrégé par établissement)', () => {
 
     expect(brouillon.enfants).toHaveLength(0);
     expect(brouillon.corps).toContain('Aucune modification');
+  });
+
+  it('porte le pied d’information, dont le lien dérive de NOTIF_APP_URL', async () => {
+    process.env['NOTIF_APP_URL'] = 'https://app.test';
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer } = fakeMailer({ messageId: null, dryRun: true });
+    const service = creerService(db, etablissements, mailer);
+
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
+
+    // L'établissement n'ouvre jamais l'app : ce pied est son seul canal d'information.
+    expect(brouillon.corps).toContain(
+      'Vous recevez ce message parce que la famille',
+    );
+    expect(brouillon.corps).toContain('href="https://app.test/mentions"');
+    expect(brouillon.texte).toContain(
+      'Informations sur les données enregistrées : https://app.test/mentions',
+    );
   });
 
   it('dry-run effectif quand le destinataire est hors allowlist', async () => {
@@ -612,12 +635,14 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     // Le destinataire reste résolu serveur (jamais fourni par le client).
     expect(resultat.destinataire).toBe('contact-creche@example.org');
     // Le mailer reçoit l'objet/texte édités et un HTML échappé (pas la régénération).
+    // Le texte du parent part **inchangé et en premier** ; seul le pied d'information
+    // (réapposé serveur, cf. test dédié ci-dessous) le suit.
     expect(mock).toHaveBeenCalledTimes(1);
     expect(mock).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'contact-creche@example.org',
         subject: 'Objet réécrit par le parent',
-        text: 'Bonjour,\nVoici le planning complet.\nMerci !',
+        text: `Bonjour,\nVoici le planning complet.\nMerci !\n\n${piedInformationEtablissement('http://localhost:4200/mentions').text}`,
       }),
     );
     const html = (mock.mock.calls[0]?.[0] as { html: string }).html;
@@ -629,6 +654,39 @@ describe('EnvoiService.envoyer (agrégé par établissement)', () => {
     expect(ligne?.['sujet']).toBe('Objet réécrit par le parent');
     expect(ligne?.['corps']).toBe(html);
     expect(ligne?.['corps']).not.toContain('29/06/2026');
+  });
+
+  it('corps édité : le pied d’information est réapposé (le parent ne peut pas l’effacer)', async () => {
+    process.env['NOTIF_APP_URL'] = 'https://app.test';
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
+    const service = creerService(db, etablissements, mailer);
+
+    // Le front envoie TOUJOURS le texte relu par le parent : c'est le chemin nominal,
+    // pas un cas limite. Un pied qui ne survivrait pas à ce chemin ne partirait jamais.
+    await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID, {
+      sujet: 'Objet',
+      corps: 'Bonjour,\nVoici le planning.\nBien cordialement,',
+    });
+
+    const envoye = mock.mock.calls[0]?.[0] as { html: string; text: string };
+    expect(envoye.html).toContain(
+      'Vous recevez ce message parce que la famille',
+    );
+    expect(envoye.html).toContain('href="https://app.test/mentions"');
+    expect(envoye.text).toContain(
+      'Informations sur les données enregistrées : https://app.test/mentions',
+    );
+    // Le texte du parent reste intact et vient AVANT le pied.
+    expect(envoye.text.indexOf('Bien cordialement,')).toBeLessThan(
+      envoye.text.indexOf('Informations sur les données enregistrées'),
+    );
+    // La ligne d'audit fige ce qui est réellement parti, pied compris.
+    expect((stores.get(envoiEtablissement) ?? [])[0]?.['corps']).toBe(
+      envoye.html,
+    );
   });
 
   it('corps édité : le texte du parent est échappé (aucune balise brute n’atteint le mail)', async () => {

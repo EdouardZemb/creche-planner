@@ -43,6 +43,13 @@ export interface RecapMardiParams {
    * `List-Unsubscribe` est posé séparément par l'appelant quand un jeton existe).
    */
   readonly lienDesabonnement?: string;
+  /**
+   * Lien vers la page publique d'information sur les données
+   * (`construireLienMentions(appUrl)`). **Obligatoire** : le pied de message qui dit
+   * qui édite l'outil et à quel titre le rappel est adressé ne doit pas pouvoir
+   * disparaître d'un mail par simple oubli d'un appelant.
+   */
+  readonly lienMentions: string;
 }
 
 /** Message rendu prêt pour `MailerService.envoyer` (sujet + corps HTML et texte). */
@@ -116,7 +123,8 @@ function enumerer(noms: readonly string[]): string {
  * des enfants/contrats d'un foyer notifiés cette semaine.
  */
 export function recapMardi(params: RecapMardiParams): MessageRendu {
-  const { enfants, semaineIso, lienApp, lienDesabonnement } = params;
+  const { enfants, semaineIso, lienApp, lienDesabonnement, lienMentions } =
+    params;
   // Libellé parent (« semaine du 6 au 12 juillet 2026 ») partout où la semaine est
   // *lue* ; l'identifiant ISO ne subsiste que dans l'URL du lien profond (`lienApp`).
   const libelle = libelleSemaineFr(semaineIso);
@@ -144,6 +152,17 @@ export function recapMardi(params: RecapMardiParams): MessageRendu {
       }
     : null;
 
+  // Pied d'information : qui édite l'outil, à quel titre ce rappel est adressé, et où
+  // trouver le détail. Placé **après** le lien de désabonnement, qui reste le premier
+  // geste offert au parent et n'est ni déplacé ni remplacé (l'en-tête one-click
+  // `List-Unsubscribe` est posé séparément par le scheduler et n'est pas concerné).
+  const phraseMentions =
+    'Crèche Planner est un outil familial, édité par la famille elle-même : vous recevez ce rappel en tant que parent du foyer.';
+  const mentions = {
+    html: `<p style="color:#666;font-size:0.85em">${phraseMentions} <a href="${echapper(lienMentions)}">Informations sur vos données</a>.</p>`,
+    text: `${phraseMentions}\nInformations sur vos données : ${lienMentions}`,
+  };
+
   const html = [
     '<p>Bonjour,</p>',
     `<p>${phraseHtml}</p>`,
@@ -151,6 +170,7 @@ export function recapMardi(params: RecapMardiParams): MessageRendu {
     ...preavis.map((p) => `<p>${echapper(p)}</p>`),
     '<p>— Crèche Planner</p>',
     ...(pieds ? [pieds.html] : []),
+    mentions.html,
   ].join('\n');
 
   const text = [
@@ -163,6 +183,8 @@ export function recapMardi(params: RecapMardiParams): MessageRendu {
     '',
     '— Crèche Planner',
     ...(pieds ? ['', pieds.text] : []),
+    '',
+    mentions.text,
   ].join('\n');
 
   return { subject, html, text };

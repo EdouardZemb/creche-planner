@@ -27,9 +27,11 @@ import { EtablissementProjeteService } from '../etablissement/etablissement-proj
 import { aDesModifs, type DeltaModifs } from '../validation/validation.diff.js';
 import {
   brouillonServiceAgrege,
+  piedInformationEtablissement,
   type EnfantModifie,
 } from '../email/templates/brouillonService.js';
 import { echapperEnHtml } from '../email/echapperEnHtml.js';
+import { construireLienMentions } from '../email/lienMentions.js';
 import { loadConfig } from '../config.js';
 import { CLOCK, type Clock } from '../scheduler/clock.js';
 import type {
@@ -164,19 +166,15 @@ export class EnvoiService {
     }
 
     // Brouillon **effectif** réellement envoyé : soit le texte édité par le parent (échappé
-    // en HTML — jamais de HTML libre du client), soit la régénération serveur depuis le
-    // delta. Le `corps` est le fragment HTML (preuve exacte de ce qui part) ; le `texte`
-    // est la version brute accessible. Le destinataire reste résolu serveur
-    // (`b.destinataire`), jamais fourni par le client. Ce brouillon effectif alimente
-    // l'insert ET la reprise/exécution (`executerEnvoi`) → cohérence de bout en bout entre
-    // ce qui est envoyé et ce qui est journalisé, y compris à la reprise.
+    // en HTML — jamais de HTML libre du client, **pied d'information réapposé**), soit la
+    // régénération serveur depuis le delta (qui le porte déjà). Le `corps` est le fragment
+    // HTML (preuve exacte de ce qui part) ; le `texte` est la version brute accessible. Le
+    // destinataire reste résolu serveur (`b.destinataire`), jamais fourni par le client. Ce
+    // brouillon effectif alimente l'insert ET la reprise/exécution (`executerEnvoi`) →
+    // cohérence de bout en bout entre ce qui est envoyé et ce qui est journalisé, y compris
+    // à la reprise.
     const bEffectif: BrouillonConstruit = corpsEdite
-      ? {
-          ...b,
-          sujet: corpsEdite.sujet,
-          corps: echapperEnHtml(corpsEdite.corps),
-          texte: corpsEdite.corps,
-        }
+      ? this.avecCorpsEdite(b, corpsEdite)
       : b;
 
     const id = randomUUID();
@@ -215,6 +213,34 @@ export class EnvoiService {
 
     // Slot réservé par CET appel : on sollicite le transport et on fige l'issue.
     return this.executerEnvoi(id, bEffectif);
+  }
+
+  /**
+   * Substitue au corps régénéré le texte relu/réécrit par le parent, **en réapposant le
+   * pied d'information**.
+   *
+   * Le corps édité remplace le rendu serveur *en entier* — pied compris. Or le front
+   * envoie **toujours** son texte (`RelectureEnvoi` passe systématiquement
+   * `sujet`/`corps`) : sans ce ré-ajout, le pied ne partirait donc **jamais** dans un
+   * vrai mail, alors qu'il est le seul canal d'information de l'agent d'établissement
+   * (doc 37 § 5). Réapposé **côté serveur**, il ne dépend pas de ce que le parent a
+   * laissé dans la zone de saisie. Le texte du parent reste intact et **premier** : le
+   * pied vient après sa signature.
+   */
+  private avecCorpsEdite(
+    b: BrouillonConstruit,
+    corpsEdite: { sujet: string; corps: string },
+  ): BrouillonConstruit {
+    // Même source que le brouillon régénéré (`NOTIF_APP_URL`) : aucun domaine en dur.
+    const pied = piedInformationEtablissement(
+      construireLienMentions(loadConfig().appUrl),
+    );
+    return {
+      ...b,
+      sujet: corpsEdite.sujet,
+      corps: `${echapperEnHtml(corpsEdite.corps)}\n${pied.html}`,
+      texte: `${corpsEdite.corps}\n\n${pied.text}`,
+    };
   }
 
   /**
@@ -394,6 +420,9 @@ export class EnvoiService {
         enfant: e.enfant,
         deltaModifs: e.deltaModifs,
       })),
+      // Même source que les liens du récap parent (`NOTIF_APP_URL`) : aucun domaine
+      // en dur, et le garde-fou de démarrage `verifierConfigProduction` s'y applique.
+      lienMentions: construireLienMentions(loadConfig().appUrl),
     });
 
     return {

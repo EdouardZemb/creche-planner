@@ -588,6 +588,7 @@ const ROUTES: readonly { nom: string; url: string }[] = [
   { nom: 'tarifs', url: '/tarifs' },
   { nom: 'mes-foyers', url: '/mes-foyers' },
   { nom: 'desabonnement', url: '/desabonnement' },
+  { nom: 'mentions', url: '/mentions' },
   { nom: 'introuvable', url: '/route-qui-nexiste-pas' },
 ];
 

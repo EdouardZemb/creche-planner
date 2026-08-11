@@ -21,13 +21,35 @@ techniques, qui n'attendent rien.
 - `AM-38` `Retry-After` sur le 429 de la gateway.
 - `AM-51` veille standards (doc 36 + rituel doc 34 §6).
 
-## Lot 1 — RGPD documentaire (`AM-33`, `AM-36` volet décisions, `AM-46`)
+## Lot 1 — RGPD documentaire (`AM-33`, `AM-36` volet décisions, `AM-46`) ✅ LIVRÉ
 
-Livrables : registre des traitements (`docs/`), inventaire sous-traitants, page
-mentions d'information dans le web, durées de rétention proposées, RPO/RTO proposés.
-**Décisions PO à trancher au passage** : durées par catégorie de données, valeurs
-RPO/RTO. Critère de sortie : documents versionnés + mentions accessibles depuis
-l'interface + décisions datées (même « à confirmer »).
+**Fait le 2026-08-11 — PR #312**, branche `feat/rgpd-lot1-registre-et-mentions`.
+
+**Décision PO d'entrée, qui recadre tout le reste : l'exemption domestique de
+l'art. 2(2)(c) est ASSUMÉE** ([ADR-0007](../../docs/adr/0007-exemption-domestique-et-demarche-volontaire.md)).
+Les livrables sont tenus en **démarche volontaire** ; le dépôt ne revendique aucune
+conformité. Cela clôt la contradiction que ce plan avait avec
+`amelioration-2026-07-pistes.md`. L'ADR énonce les 4 seuils qui rouvriraient la
+question (plus d'un foyer, accès direct d'un établissement, cadre associatif, donnée
+de santé réelle).
+
+Livré : [doc 37](../../docs/37-registre-des-traitements.md) (8 traitements, 8 tiers
+classés par exposition réelle, durées par catégorie), RPO 24 h / RTO 24 h + écarts
+dans `sauvegardes.md` §10, page publique `/mentions` + pied de page permanent, et
+**pied d'information sur les deux courriels sortants**.
+
+**Trois écarts à l'énoncé, constatés contre le code :**
+
+1. L'énoncé disait « art. 13 » ; c'est **aussi l'art. 14** — l'agent d'établissement
+   et les enfants n'ouvrent jamais l'application, la collecte les concernant est
+   indirecte. La page web seule ne les informe jamais → pied de courriel ajouté.
+2. L'inventaire des tiers de l'`AM-33` était **incomplet (4 manquants) et mal
+   hiérarchisé** : Cloudflare voit tout en clair, Google Drive ne voit que du chiffré.
+3. `AM-36` disait « un foyer parti reste en base » ; en fait **un foyer ne peut pas
+   partir** — les durées s'ancrent donc sur un fait observable aujourd'hui.
+
+Reste ouvert : `AM-36` (volet outillage → lot 2) et `AM-52` (surveillance des
+sauvegardes, préalable à tout resserrement du RPO).
 
 ## Lot 2 — droit à l'effacement et purge (`AM-34`, `AM-36` volet outillage)
 

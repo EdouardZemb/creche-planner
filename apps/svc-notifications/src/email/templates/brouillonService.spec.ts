@@ -22,9 +22,12 @@ function jour(partiel: JourPartiel): SaisieJour {
   };
 }
 
+const LIEN_MENTIONS = 'https://app.example.org/mentions';
+
 const BASE = {
   semaineIso: '2026-W27',
   etablissementLibelle: 'Crèche Les Hirondelles',
+  lienMentions: LIEN_MENTIONS,
 } as const;
 
 describe('brouillonServiceAgrege', () => {
@@ -165,10 +168,29 @@ describe('brouillonServiceAgrege', () => {
       semaineIso: '2026-W27',
       etablissementLibelle: 'École & Cie <i>',
       enfants: [{ enfant: '<b>x</b>', deltaModifs: { jours: [] } }],
+      lienMentions: LIEN_MENTIONS,
     });
 
     expect(message.html).toContain('&lt;b&gt;x&lt;/b&gt;');
     expect(message.html).not.toContain('<b>x</b>');
     expect(message.html).toContain('École &amp; Cie &lt;i&gt;');
+  });
+
+  it('porte le pied d’information (pourquoi ce message) et le lien vers les mentions', () => {
+    const message = brouillonServiceAgrege({ ...BASE, enfants: [] });
+
+    // L'agent de l'établissement n'a pas de compte : ce pied est le seul endroit où il
+    // apprend pourquoi il reçoit ce message et où trouver le détail.
+    expect(message.html).toContain(
+      'Vous recevez ce message parce que la famille',
+    );
+    expect(message.html).toContain('saisie par elle, et non par vous');
+    expect(message.html).toContain(`href="${LIEN_MENTIONS}"`);
+    expect(message.text).toContain(
+      'Vous recevez ce message parce que la famille',
+    );
+    expect(message.text).toContain(
+      `Informations sur les données enregistrées : ${LIEN_MENTIONS}`,
+    );
   });
 });

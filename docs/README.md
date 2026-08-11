@@ -50,13 +50,14 @@ renumérotés — trop de liens existants en dépendent.
 
 ## Architecture & conception
 
-| Doc                                                                                    | Contenu                                                                                                                 |
-| -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| [04 — Architecture & technologies](04-architecture-et-technos.md)                      | Comparatif techno, choix justifiés, découpage en microservices                                                          |
-| [09 — Spec : découplage & maturité microservices](09-spec-decouplage-microservices.md) | Décisions DEC-xx (contrats, projections, résilience)                                                                    |
-| [10 — Plan d'implémentation du découplage](10-plan-implementation-decouplage.md)       | Sessions d'exécution de la doc 09                                                                                       |
-| [14 — Peuplement BDD & API contrats](14-peuplement-bdd-et-api-contrats.md)             | Jeu de données de référence, consommation de l'API par le front                                                         |
-| [ADR 0001 → 0006](adr/)                                                                | Microservices, grain des services, toolchain, contrats décentralisés, registre de contrats, préférences de notification |
+| Doc                                                                                    | Contenu                                                                                                                                       |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| [04 — Architecture & technologies](04-architecture-et-technos.md)                      | Comparatif techno, choix justifiés, découpage en microservices                                                                                |
+| [09 — Spec : découplage & maturité microservices](09-spec-decouplage-microservices.md) | Décisions DEC-xx (contrats, projections, résilience)                                                                                          |
+| [10 — Plan d'implémentation du découplage](10-plan-implementation-decouplage.md)       | Sessions d'exécution de la doc 09                                                                                                             |
+| [14 — Peuplement BDD & API contrats](14-peuplement-bdd-et-api-contrats.md)             | Jeu de données de référence, consommation de l'API par le front                                                                               |
+| [37 — Registre des traitements, tiers et durées](37-registre-des-traitements.md)       | Quelles données personnelles vivent où, chez quels tiers, et combien de temps on les garde                                                    |
+| [ADR 0001 → 0007](adr/)                                                                | Microservices, grain des services, toolchain, contrats décentralisés, registre de contrats, préférences de notification, exemption domestique |
 
 ## Développement (standards & avancement)
 
@@ -112,6 +113,7 @@ Registres d'actions à **ID stables**, statut re-vérifié dans le code :
 | [26 — Instrumentation DORA (AUD-08)](26-instrumentation-dora-aud-08.md)               | Design du wrapper de déploiement + métriques DORA                                    |
 | [27 — Audit global & remédiation](27-audit-global-remediation.md)                     | Actions AQ-01→18 (statut détaillé au §1)                                             |
 | [34 — Registre d'améliorations, leçons et portes](34-registre-ameliorations.md)       | Registre **vivant** : pistes AM-xx, leçons LE-xx, motifs MO-x, inventaire des portes |
+| [36 — Veille sur les standards du produit](36-veille-standards.md)                    | Veille cadencée sur les référentiels applicables (RGPD, RFC, WCAG, OWASP)            |
 
 > La doc 34 est la seule de cette section qui ne se **clôt** pas : les docs 18/25/27 sont des
 > instantanés d'audit, elle est le flux qui les remplace (gardée par `pnpm registre`).

@@ -11,6 +11,7 @@ export function titreDepuisPathname(pathname: string): string {
   if (pathname === '/mes-foyers') return 'Mes familles';
   if (pathname === '/mon-profil') return 'Mon profil';
   if (pathname === '/desabonnement') return 'Désabonnement';
+  if (pathname === '/mentions') return 'Informations sur vos données';
   const foyer =
     /^\/foyers\/[^/]+\/(dashboard|contrats|planning|couts|etablissements|modifier)$/.exec(
       pathname,
