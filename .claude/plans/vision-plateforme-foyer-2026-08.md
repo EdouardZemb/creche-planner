@@ -7,7 +7,7 @@
 > ([doc 31](../../docs/31-sfd-calendriers-vacances-scolaires.md),
 > [doc 32](../../docs/32-sfd-travail-conges-revenus.md),
 > [doc 33](../../docs/33-sfd-planning-famille.md)) et plan
-> [`factures-reelles.md`](factures-reelles.md). Pistes consignées : `AM-52`, `AM-53`
+> [`factures-reelles.md`](factures-reelles.md). Pistes consignées : `AM-52`, `AM-53`, `AM-54`
 > ([doc 34](../../docs/34-registre-ameliorations.md)).
 
 ## 1. L'élargissement de la vision
@@ -18,14 +18,15 @@ de **budget** du foyer ». La projection PO du 2026-08-11 l'élargit : l'app vis
 **logement lui-même** (§4). C'est un élargissement cohérent avec la trajectoire déjà tracée
 (30 → 33 + factures-réelles), pas un pivot : le `foyer` reste le pivot de tout.
 
-## 2. Les quatre besoins exprimés, confrontés à l'existant
+## 2. Les cinq besoins exprimés, confrontés à l'existant
 
-| Besoin exprimé (2026-08-11)                             | Recouvrement avec l'existant                                                                                                                                                               | Reste réellement nouveau                                                                      |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| **Planification des vacances**                          | ~80 % couvert par la séquence existante : vacances scolaires importées (SFD 31), congés parents (SFD 32), détection « vacances sans plan de garde » = règle de conflit citée par la SFD 33 | Checklist de préparation de départ → événements libres du planning famille, mineur            |
-| **Préparation de la déclaration de revenus**            | Crédit d'impôt frais de garde déjà spécifié (plan factures-réelles) ; estimation après impôt à taux moyen déjà dans la SFD 32                                                              | Un **récap fiscal annuel** de synthèse + échéances déclaratives en rappel (petit lot)         |
-| **Entretien du véhicule** (révisions, CT, pneus saison) | Rien — mais les briques d'accueil existent : matrice de notifications, événements libres (SFD 33), `svc-famille` topologisé (port 3007, stream `FAMILLE`)                                  | Un **échéancier du foyer** générique + le véhicule comme premier cas d'usage → `AM-52`        |
-| **Stocks, courses, recettes de la semaine**             | Rien — seul point de contact : la vue semaine du planning famille (SFD 33) est l'écran naturel des menus                                                                                   | Chantier entier (menus + liste de courses générée) → `AM-53` ; stock quantifié **exclu** (§4) |
+| Besoin exprimé (2026-08-11)                                                            | Recouvrement avec l'existant                                                                                                                                                                       | Reste réellement nouveau                                                                                                                         |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Planification des vacances**                                                         | ~80 % couvert par la séquence existante : vacances scolaires importées (SFD 31), congés parents (SFD 32), détection « vacances sans plan de garde » = règle de conflit citée par la SFD 33         | Checklist de préparation de départ → événements libres du planning famille, mineur                                                               |
+| **Préparation de la déclaration de revenus**                                           | Crédit d'impôt frais de garde déjà spécifié (plan factures-réelles) ; estimation après impôt à taux moyen déjà dans la SFD 32                                                                      | Un **récap fiscal annuel** de synthèse + échéances déclaratives en rappel (petit lot)                                                            |
+| **Entretien du véhicule** (révisions, CT, pneus saison)                                | Rien — mais les briques d'accueil existent : matrice de notifications, événements libres (SFD 33), `svc-famille` topologisé (port 3007, stream `FAMILLE`)                                          | Un **échéancier du foyer** générique + le véhicule comme premier cas d'usage → `AM-52`                                                           |
+| **Stocks, courses, recettes de la semaine**                                            | Rien — seul point de contact : la vue semaine du planning famille (SFD 33) est l'écran naturel des menus                                                                                           | Chantier entier (menus + liste de courses générée) → `AM-53` ; stock quantifié **exclu** (§4)                                                    |
+| **Documents administratifs** (dépose, classement auto, recherche — exprimé 2026-08-11) | Couvert **hors app** : une GED auto-hébergée (Paperless) tourne déjà sur le serveur du foyer (docs 06/26) — la dépose, l'OCR, le classement automatique et la recherche sont exactement son métier | Le **rattachement aux objets métier** : facture de crèche ↔ mois facturé, bulletin de paie ↔ revenus (SFD 32), avis d'imposition ↔ RFR → `AM-54` |
 
 Décisions de cadrage portées par cette note :
 
@@ -38,6 +39,15 @@ Décisions de cadrage portées par cette note :
 - **L'échéancier du foyer est générique** : véhicule, échéances déclaratives, et plus tard
   assurances, visites médicales… sont des instances de paramétrage, pas des branches de code
   (principe doc 30 §4).
+- **Pas de GED dans l'app.** Reconstruire dépose/OCR/classement/recherche serait refaire, en
+  moins bien, l'outil dédié déjà en service sur le serveur. La valeur côté app est le **lien**
+  entre un document et l'objet métier qu'il justifie (le jour de factures-réelles : la facture
+  consultable depuis le mois facturé) — probablement via l'API de la GED, décision à instruire
+  le moment venu. Deux vigilances : la GED reste **LAN-only** alors que l'app est exposée (ne
+  pas ouvrir l'une en voulant intégrer l'autre), et les documents administratifs sont les
+  données les plus sensibles du foyer — le passif RGPD déjà consigné (`AM-33`/`AM-34`/`AM-36` :
+  registre des traitements, effacement, rétention) devrait être soldé **avant** que l'app ne
+  référence des documents.
 
 ## 3. Ordre recommandé
 
@@ -52,6 +62,11 @@ Décisions de cadrage portées par cette note :
    après le lot 1 de la SFD 32 (ne pas créer un service pour lui seul).
 5. **Menus + liste de courses** (`AM-53`) — chantier séparé, cadré par sa propre SFD, lancé
    seul (deux chantiers parallèles sur `gateway.openapi.ts`/`bff.dto.ts` = conflits garantis).
+
+Le rattachement documentaire (`AM-54`) n'est **pas** une étape autonome : il s'emboîte dans
+factures-réelles (justificatifs de facture) et dans la SFD 32 (bulletins de paie, dont
+l'« import automatique » est déjà au backlog v1) — au plus tôt à l'étape 3, et après le solde
+du passif RGPD.
 
 Vigilance : la séquence 30 → 33 représente déjà plusieurs mois de lots. Les ajouts ne doivent
 pas la faire dérailler — ils s'y **emboîtent** (c'est leur principal mérite).
