@@ -597,9 +597,14 @@ const SONDES = [
   {
     nom: 'motif au-delà du seuil sans porte',
     code: 'motif-sans-porte',
+    // Cible **dérivée** : le premier motif ayant atteint le seuil de trois, quel
+    // que soit son identifiant et son compteur. La sonde visait `MO-3 (×3)` en
+    // dur — elle a cessé de mordre le jour où ce motif a gagné une occurrence,
+    // et seule la garde « la mutation n'a rien changé » l'a signalé. C'est
+    // exactement `MO-3` : un attendu recopié à la main plutôt que dérivé.
     abimer: (texte) =>
       texte.replace(
-        /(\|\s*`MO-3`\s*\|[^\n]*\(×3\)[^|\n]*\|)[^|\n]*\|/,
+        /(\|\s*`MO-\d+`\s*\|[^\n]*\(×(?:[3-9]|\d{2,})\)[^|\n]*\|)[^|\n]*\|/,
         '$1 — |',
       ),
   },
