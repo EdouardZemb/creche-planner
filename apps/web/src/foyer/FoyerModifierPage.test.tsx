@@ -26,6 +26,7 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api, ApiError } from '../api/client';
+import { problemeValidation } from '../utils/probleme.fixture';
 
 const mockedApi = api as unknown as {
   lireFoyer: ReturnType<typeof vi.fn>;
@@ -145,7 +146,10 @@ describe('FoyerModifierPage', () => {
 
   it('affiche les erreurs champ par champ en cas d’ApiError 400', async () => {
     mockedApi.modifierFoyer.mockRejectedValueOnce(
-      new ApiError(400, [{ champ: 'rfr', message: 'RFR invalide' }]),
+      new ApiError(
+        400,
+        problemeValidation([{ champ: 'rfr', message: 'RFR invalide' }]),
+      ),
     );
     rendu();
 

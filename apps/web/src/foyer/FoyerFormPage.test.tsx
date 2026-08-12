@@ -28,6 +28,7 @@ vi.mock('../utils/store', () => ({
 }));
 
 import { api, ApiError } from '../api/client';
+import { problemeValidation } from '../utils/probleme.fixture';
 import { setFoyerId } from '../utils/store';
 import { MoiProvider } from '../session/MoiContext';
 
@@ -112,7 +113,9 @@ describe('FoyerFormPage', () => {
 
   it("affiche les erreurs champ par champ en cas d'ApiError 400", async () => {
     const erreurs = [{ champ: 'rfr', message: 'RFR invalide' }];
-    mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(400, erreurs));
+    mockedApi.creerFoyer.mockRejectedValueOnce(
+      new ApiError(400, problemeValidation(erreurs)),
+    );
     rendu();
 
     fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
@@ -124,7 +127,9 @@ describe('FoyerFormPage', () => {
 
   it('lie le champ en erreur via aria-invalid + aria-describedby (EX-11)', async () => {
     const erreurs = [{ champ: 'rfr', message: 'RFR invalide' }];
-    mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(400, erreurs));
+    mockedApi.creerFoyer.mockRejectedValueOnce(
+      new ApiError(400, problemeValidation(erreurs)),
+    );
     rendu();
 
     fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
@@ -175,7 +180,9 @@ describe('FoyerFormPage', () => {
   // UT-05 : liaison erreur ↔ champ pour nbEnfantsACharge.
   it("lie l'erreur de nbEnfantsACharge via aria-describedby → id du message", async () => {
     const erreurs = [{ champ: 'nbEnfantsACharge', message: 'Nombre invalide' }];
-    mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(400, erreurs));
+    mockedApi.creerFoyer.mockRejectedValueOnce(
+      new ApiError(400, problemeValidation(erreurs)),
+    );
     rendu();
 
     fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));
@@ -335,7 +342,9 @@ describe('FoyerFormPage', () => {
     const erreurs = [
       { champ: 'parents.0.email', message: 'adresse e-mail invalide' },
     ];
-    mockedApi.creerFoyer.mockRejectedValueOnce(new ApiError(400, erreurs));
+    mockedApi.creerFoyer.mockRejectedValueOnce(
+      new ApiError(400, problemeValidation(erreurs)),
+    );
     rendu();
 
     fireEvent.click(screen.getByRole('button', { name: /Créer ma famille/i }));

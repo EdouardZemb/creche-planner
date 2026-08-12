@@ -3,7 +3,7 @@ import { api, ApiError } from '../api/client';
 import type { GrilleAbcmVue, PublierGrille } from '../types/bff';
 import { centimesEnEuros } from '../utils/money';
 import { formaterDateFr } from '../utils/dates';
-import { messageErreur } from '../utils/erreurs';
+import { codeProbleme, messageErreur } from '../utils/erreurs';
 import { useAsync } from '../hooks/useAsync';
 import { useTitrePage } from '../hooks/useTitrePage';
 import { useMoi } from '../session/MoiContext';
@@ -84,9 +84,7 @@ function messagePublication(err: unknown): string {
   if (
     err instanceof ApiError &&
     err.status === 409 &&
-    typeof err.corps === 'object' &&
-    err.corps !== null &&
-    (err.corps as Record<string, unknown>)['code'] === 'PERIODE_CHEVAUCHANTE'
+    codeProbleme(err.corps) === 'PERIODE_CHEVAUCHANTE'
   ) {
     return 'Cette période chevauche une grille déjà enregistrée. Choisissez une date de début après la grille en cours, ou une période sans recoupement.';
   }

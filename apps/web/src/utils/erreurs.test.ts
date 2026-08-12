@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { extraireErreurs, focaliserSection, messageErreur } from './erreurs';
+import {
+  codeProbleme,
+  extraireErreurs,
+  focaliserSection,
+  messageErreur,
+} from './erreurs';
 import { ApiError } from '../api/client';
 
 describe('messageErreur', () => {
@@ -53,18 +58,35 @@ describe('messageErreur', () => {
   });
 });
 
-// AQ-12 : implémentation unique, partagée par FoyerFormPage et ContratForm.
+/**
+ * AQ-12 : implémentation unique, partagée par FoyerFormPage et ContratForm.
+ *
+ * Les corps ci-dessous sont ceux que la passerelle émet **réellement** depuis le
+ * lot 4 des standards (RFC 9457) — un problème dont le membre `erreurs` porte le
+ * détail par champ. La version précédente de ces tests attendait un tableau à la
+ * racine, forme que le fil n'a jamais eue : c'est `AN-27`.
+ */
 describe('extraireErreurs', () => {
-  it('extrait les erreurs par champ d’un tableau conforme', () => {
-    const corps = [
+  /** Enveloppe minimale d'un problème 400 portant `erreurs`. */
+  function probleme(erreurs: unknown): unknown {
+    return {
+      type: 'about:blank',
+      title: 'Requête invalide',
+      status: 400,
+      erreurs,
+    };
+  }
+
+  it('extrait les erreurs par champ du membre `erreurs`', () => {
+    const erreurs = [
       { champ: 'rfr', message: 'RFR invalide' },
       { champ: 'nbParts', message: 'Nombre de parts requis' },
     ];
-    expect(extraireErreurs(corps)).toEqual(corps);
+    expect(extraireErreurs(probleme(erreurs))).toEqual(erreurs);
   });
 
   it('filtre les entrées partielles ou mal typées', () => {
-    const corps = [
+    const erreurs = [
       { champ: 'rfr', message: 'RFR invalide' },
       { champ: 'sansMessage' },
       { message: 'sans champ' },
@@ -72,16 +94,45 @@ describe('extraireErreurs', () => {
       'texte brut',
       null,
     ];
-    expect(extraireErreurs(corps)).toEqual([
+    expect(extraireErreurs(probleme(erreurs))).toEqual([
       { champ: 'rfr', message: 'RFR invalide' },
     ]);
   });
 
-  it('renvoie [] pour tout corps non-tableau (objet, string, undefined)', () => {
-    expect(extraireErreurs({ champ: 'rfr', message: 'x' })).toEqual([]);
+  it('renvoie [] pour un problème sans membre `erreurs`', () => {
+    expect(
+      extraireErreurs({ type: 'about:blank', title: 'Conflit', status: 409 }),
+    ).toEqual([]);
+    expect(extraireErreurs(probleme('pas un tableau'))).toEqual([]);
+  });
+
+  it('renvoie [] pour tout corps qui n’est pas un problème', () => {
+    // Notamment le tableau nu que ces tests attendaient avant `AN-27` : la
+    // passerelle ne l'a jamais émis, il ne doit plus rien produire ici.
+    expect(extraireErreurs([{ champ: 'rfr', message: 'x' }])).toEqual([]);
     expect(extraireErreurs('erreur')).toEqual([]);
     expect(extraireErreurs(undefined)).toEqual([]);
     expect(extraireErreurs(null)).toEqual([]);
+  });
+});
+
+describe('codeProbleme', () => {
+  it('lit le code métier d’un problème', () => {
+    expect(
+      codeProbleme({
+        type: 'urn:probleme:creche-planner:email-deja-utilise',
+        title: 'adresse e-mail déjà utilisée dans ce foyer',
+        status: 409,
+        code: 'EMAIL_DEJA_UTILISE',
+      }),
+    ).toBe('EMAIL_DEJA_UTILISE');
+  });
+
+  it('renvoie undefined quand le problème n’en porte pas', () => {
+    expect(codeProbleme({ type: 'about:blank', status: 409 })).toBeUndefined();
+    expect(codeProbleme({ code: 42 })).toBeUndefined();
+    expect(codeProbleme(undefined)).toBeUndefined();
+    expect(codeProbleme([{ code: 'DANS_UN_TABLEAU' }])).toBeUndefined();
   });
 });
 

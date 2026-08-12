@@ -22,6 +22,7 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api, ApiError } from '../api/client';
+import { problemeValidation } from '../utils/probleme.fixture';
 
 const mockedApi = api as unknown as {
   monProfil: ReturnType<typeof vi.fn>;
@@ -189,9 +190,12 @@ describe('MonProfilPage', () => {
   it('relie l’erreur de champ e-mail (400) via aria-describedby', async () => {
     mockedApi.monProfil.mockResolvedValue(profil());
     mockedApi.modifierParent.mockRejectedValue(
-      new ApiError(400, [
-        { champ: 'email', message: 'adresse e-mail invalide' },
-      ]),
+      new ApiError(
+        400,
+        problemeValidation([
+          { champ: 'email', message: 'adresse e-mail invalide' },
+        ]),
+      ),
     );
     render(<MonProfilPage />);
 

@@ -26,6 +26,7 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api, ApiError } from '../api/client';
+import { problemeValidation } from '../utils/probleme.fixture';
 
 const mockedApi = api as unknown as {
   creerContrat: ReturnType<typeof vi.fn>;
@@ -471,7 +472,10 @@ describe('ContratForm', () => {
 
   it("affiche une erreur en cas d'ApiError", async () => {
     mockedApi.creerContrat.mockRejectedValueOnce(
-      new ApiError(400, [{ champ: 'valideDu', message: 'Date invalide' }]),
+      new ApiError(
+        400,
+        problemeValidation([{ champ: 'valideDu', message: 'Date invalide' }]),
+      ),
     );
     rendu();
 
@@ -488,7 +492,10 @@ describe('ContratForm', () => {
 
   it('lie le champ en erreur via aria-invalid + aria-describedby (EX-11)', async () => {
     mockedApi.creerContrat.mockRejectedValueOnce(
-      new ApiError(400, [{ champ: 'valideDu', message: 'Date invalide' }]),
+      new ApiError(
+        400,
+        problemeValidation([{ champ: 'valideDu', message: 'Date invalide' }]),
+      ),
     );
     rendu();
 

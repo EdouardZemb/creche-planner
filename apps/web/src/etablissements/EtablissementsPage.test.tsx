@@ -24,6 +24,7 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api, ApiError } from '../api/client';
+import { problemeValidation } from '../utils/probleme.fixture';
 
 const FOYER = 'f1';
 
@@ -196,10 +197,16 @@ describe('EtablissementsPage (per-foyer)', () => {
   it('affiche les erreurs de validation par champ à la création (422)', async () => {
     vi.mocked(api.listerEtablissements).mockResolvedValue([]);
     vi.mocked(api.creerEtablissement).mockRejectedValue(
-      new ApiError(422, [
-        { champ: 'nom', message: 'Ce nom est déjà utilisé.' },
-        { champ: 'emailService', message: 'Adresse e-mail invalide.' },
-      ]),
+      new ApiError(
+        422,
+        problemeValidation(
+          [
+            { champ: 'nom', message: 'Ce nom est déjà utilisé.' },
+            { champ: 'emailService', message: 'Adresse e-mail invalide.' },
+          ],
+          422,
+        ),
+      ),
     );
     rendre();
 
