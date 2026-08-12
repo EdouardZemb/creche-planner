@@ -42,6 +42,14 @@ corepack pnpm pieges
 # À lancer après tout ajout de table.
 corepack pnpm portabilite
 
+# Configuration d'environnement (< 1 s, step bloquant du job `ci`, cf. AM-44) :
+# chaque app déclare dans son `config.ts` un `CHAMPS_ENV` qui EST l'inventaire des
+# variables qu'elle lit. La porte refuse une lecture de `process.env` faite hors de
+# ce fichier, un réglage de compose que personne ne lit, et une variable déclarée
+# sans ligne de compose ni motif écrit. À lancer après tout ajout de variable
+# d'environnement, des deux côtés (schéma ou compose).
+corepack pnpm environnement
+
 # Empêchements d'outillage (< 1 s, step bloquant du job `ci`, cf. doc 34 §6) :
 # chaque piège « encore réel » de la section ci-dessous doit porter sa ligne
 # `EM-xx` au registre — avec son remède, ou un renoncement daté.
