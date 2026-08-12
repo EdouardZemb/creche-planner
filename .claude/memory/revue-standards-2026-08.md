@@ -69,6 +69,56 @@
   3 sondes `--autotest`, plus une vraie sonde jouée à la main (ajout d'un `pgTable` réel dans
   un schéma ⇒ refus). Doc 37 passe en v1.2.
 
+- **2026-08-12 — lot 4 livré (erreurs RFC 9457, `AM-37` ✅). MERGÉ (PR #318,
+  `1923d67`), non déployé.** `ProblemeFilter` global à la passerelle : toute erreur part
+  en `application/problem+json`, contrat et registre des 4 codes métier en
+  `contracts-kernel/dto/probleme.ts`, 50 réponses d'erreur de l'OpenAPI qui décrivent
+  enfin un corps. Porte `pnpm problemes`.
+  **Ce que le lot a vraiment trouvé : le défaut n'était pas le nombre de formats, mais
+  qu'aucun ne soit celui que le front lisait.** `extraireErreurs` attendait un tableau
+  **à la racine** du corps ; `BadRequestException([{champ,message}])` l'enveloppe.
+  **Aucune erreur par champ n'a jamais atteint un écran**, sur les 8 formulaires
+  concernés — et **sept tests verts** l'affirmaient, chacun fabriquant son corps à la
+  main (`AN-21`, `LE-39`).
+  **Décision de conception : traduire au bord, ne pas traverser** (`LE-40`). La forme
+  `{statusCode, code, message}` n'était contractuelle **que parce que** `relayer`
+  republiait le corps amont tel quel ⇒ le filtre traduit, **aucun pact n'est touché**, et
+  la migration « contrat par contrat » que l'énoncé imposait est devenue sans objet. Prix
+  assumé : les services gardent leurs 4 formes entre eux (`AM-70`).
+
+- **2026-08-12 — lot 5 livré (validation d'environnement, `AM-44` ✅), PR #319.**
+  Trousse partagée `libs/nest-commons/src/lib/config/env.ts` (`champEnv`, `lireEnv`,
+  `RegleProduction`) ; un `CHAMPS_ENV` par app, qui **est** l'inventaire de ce qu'elle
+  lit ; `loadConfig(env?)` valide et refuse. Convention écrite en CONVENTIONS.md §6.
+  **Écart d'énoncé principal : « un schéma zod par app » aurait été six miroirs de la
+  même règle de lecture** (`LE-40` appliquée) — ce qui se partage n'est pas le nom, mais
+  ce qui compte comme un entier, comme absent, et ce qu'on ose citer dans un refus.
+  **Au-delà du `NaN` sur `PORT` annoncé** : `RATE_LIMIT_MAX=cent` ⇒ `NaN` ⇒
+  `recents.length >= NaN` **toujours faux**, donc rate-limit **désactivé en silence** ;
+  **trois specs affirmaient ce `NaN`**, motivé en commentaire — le défaut avait rang de
+  contrat (`LE-41`) ; il y avait **trois** `verifierConfigProduction()` homonymes, pas
+  deux, et trois services sans aucun garde-fou ; et `INTERSERVICE_AUTHZ_ENFORCE` était
+  posée sur `api-gateway`, qui **signe** les assertions et ne les vérifie jamais (ligne
+  inerte, retirée).
+  Porte **`pnpm environnement`** (9 sondes) : aucune lecture de `process.env` hors
+  `config.ts`, aucun réglage de compose inerte, aucune variable déclarée sans ligne de
+  compose de production ni motif écrit. Refus **prouvé sur le bundle réel**
+  (`refus-config.e2e.spec.ts`, code de sortie non nul + `stderr` qui nomme le champ).
+  `AM-30` est rendue **visible**, pas fermée. Consigné : `AM-71`/`AM-72`,
+  `LE-41`/`LE-42`/`LE-43`, `EM-12`.
+
+- **Une sonde `--autotest` qui ne mute rien accuse la porte** (lot 5) : une mutation
+  écrite sur un `\n` littéral ne remplace RIEN dans un fichier CRLF (tout l'arbre de
+  travail sous Windows), la porte lit le fichier intact et le verdict affiché dit « la
+  porte ne mord plus ». Toute mutation passe par une garde qui **lève si le texte est
+  inchangé**.
+- **Une spec en `NODE_ENV=production` doit poser un environnement de production
+  complet** (lot 5) : `loadConfig()` refuse en production une URL amont restée à son
+  repli `localhost`, et les guards relisent la config **à chaque requête**.
+- **Un secret entouré d'espaces refuse le démarrage** (lot 5) : le rogner changerait la
+  clé HMAC en silence. Si un secret de `.env.server.enc` en porte, le prochain
+  déploiement refuse de démarrer **en nommant la variable**.
+
 ## Ce que la revue a établi (résumé)
 
 - **Angle mort n° 1 : RGPD** — aucune des obligations (art. 13/17/20/30) n'était
@@ -97,8 +147,11 @@
 - **Drizzle lie une borne `Date` en chaîne ISO**, pas en `Date` : les assertions de
   paramètre d'une purge se sondent (`.toISOString()`), elles ne se supposent pas.
 
-- RFC 9457 (lot 4) : la forme d'erreur `{ statusCode, code, message }` est **figée
-  dans les pacts** et lue par le front — migration contrat par contrat.
+- ~~RFC 9457 (lot 4) : migration contrat par contrat~~ — **réfuté par le lot 4**
+  (`LE-40`). La forme `{ statusCode, code, message }` n'était figée dans les pacts que
+  parce que `relayer` republiait le corps amont tel quel. Traduire **au bord** a coupé
+  ce lien : aucun pact touché, aucune traversée. Avant d'accepter le découpage prudent
+  d'un énoncé, chercher **ce qui crée le couplage** qu'il contourne.
 - Effacement (lot 2) : les read models aval portent des copies des données foyer —
   l'effacement doit voyager en événement d'intégration, pas en `DELETE` local.
   🔑 **Le mécanisme existe DÉJÀ et n'est pas à inventer** : `retirerEnfant`
