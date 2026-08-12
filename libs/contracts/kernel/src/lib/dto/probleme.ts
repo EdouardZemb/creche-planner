@@ -11,7 +11,7 @@ import { z } from 'zod';
  * (`{ statut, message, detail }`) et le 400 du `DomainExceptionFilter` des
  * services (`{ statusCode, error, message }`). Un consommateur ne pouvait donc
  * pas écrire **une** lecture d'erreur : il en écrivait une par route, ou il
- * n'en écrivait aucune — c'est ce dernier cas qui s'est produit (`AN-27`).
+ * n'en écrivait aucune — c'est ce dernier cas qui s'est produit (`AN-21`).
  *
  * Ce module porte la **cible** : les membres normalisés de la RFC, les deux
  * membres d'extension que le produit utilise réellement (`code`, `erreurs`) et

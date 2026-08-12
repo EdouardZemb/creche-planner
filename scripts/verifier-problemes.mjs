@@ -39,13 +39,13 @@
  *    de `probleme.filter.spec.ts` (corps observés) et du test E2E API, qui seul
  *    vérifie l'en-tête `Content-Type` sur le fil.
  *  - Elle ne vérifie pas qu'un code métier atteint la passerelle : la capture du
- *    corps d'erreur amont reste **opt-in** par client (`AM-66`), et trois des
+ *    corps d'erreur amont reste **opt-in** par client (`AM-69`), et trois des
  *    cinq clients ne la posent pas.
  *  - Elle n'a pas d'avis sur les libellés (`title`, `detail`) : ils sont écrits
  *    pour être lus, pas pour être comparés.
  *  - Elle ne juge pas l'appariement route par route entre les exemptions du
  *    document et `@FormatErreurNatif()` — c'est
- *    `apps/api-gateway/src/openapi/probleme.couverture.spec.ts`, qui lit la
+ *    `apps/api-gateway/src/openapi/openapi.couverture.spec.ts`, qui lit la
  *    métadonnée Nest réelle.
  *
  * ## Usage

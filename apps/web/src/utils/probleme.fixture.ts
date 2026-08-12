@@ -4,7 +4,7 @@ import type { ErreurChamp } from './erreurs';
  * Corps d'erreur **tel que la passerelle l'émet** (`application/problem+json`,
  * RFC 9457), pour les tests de composants.
  *
- * Ce fichier existe à cause d'`AN-27` : six tests d'écrans fabriquaient chacun
+ * Ce fichier existe à cause d'`AN-21` : six tests d'écrans fabriquaient chacun
  * leur corps d'erreur, tous sur la même forme supposée — un tableau nu
  * `[{ champ, message }]` — que la passerelle n'a jamais émise. Les six passaient,
  * et pas un parent n'a jamais vu une erreur par champ. Un constructeur unique ne

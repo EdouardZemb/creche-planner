@@ -3084,7 +3084,7 @@ const documentEcrit = {
  * qui ne résoudrait pas un import de `.ts`). L'accord avec
  * `MEDIA_TYPE_PROBLEME` est vérifié par la porte `pnpm problemes`.
  */
-function avecProblemes<T>(document: T): T {
+export function avecProblemes<T>(document: T): T {
   const copie = structuredClone(document) as {
     paths: Record<
       string,

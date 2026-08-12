@@ -351,7 +351,7 @@ describe('E2E API · parcours « créer foyer + contrats → lire le coût »', 
     // en-tête compris. Les specs unitaires du filtre ne peuvent pas prouver que
     // le `Content-Type` survit à `res.json()` d'Express (qui pose
     // `application/json` s'il n'en trouve pas déjà un), ni que les erreurs par
-    // champ atteignent le fil — deux choses qui ont été fausses (`AN-27`).
+    // champ atteignent le fil — deux choses qui ont été fausses (`AN-21`).
     expect(reponse.headers.get('content-type')).toContain(
       'application/problem+json',
     );

@@ -16,7 +16,7 @@ import { ProblemeFilter } from './probleme.filter.js';
  * Le filtre est la **seule** chose qui parle sur le fil quand une route échoue :
  * ces cas sont écrits à partir des corps réellement observés en amont
  * (`node -e` sur `HttpException.createBody`), pas d'une forme supposée. C'est
- * précisément la confusion qui a laissé `AN-27` vivre : six tests du front
+ * précisément la confusion qui a laissé `AN-21` vivre : six tests du front
  * fabriquaient un corps que la passerelle n'a jamais émis.
  */
 
@@ -24,6 +24,7 @@ interface Capture {
   statut: number;
   corps: unknown;
   entetes: Record<string, string>;
+  termine: boolean;
 }
 
 /** Faux `ArgumentsHost` HTTP, avec la route (classe/handler) qu'on veut viser. */
@@ -31,10 +32,15 @@ function hote(
   capture: Capture,
   route: { classe?: unknown; handler?: unknown } = {},
   url = '/api/v1/foyers/f-1/parents',
+  headersSent = false,
 ): ArgumentsHost {
   const reponse = {
+    headersSent,
     setHeader: (nom: string, valeur: string): void => {
       capture.entetes[nom] = valeur;
+    },
+    end: (): void => {
+      capture.termine = true;
     },
     status: (code: number) => ({
       json: (corps: unknown): void => {
@@ -55,7 +61,18 @@ function hote(
 }
 
 function capturer(): Capture {
-  return { statut: 0, corps: undefined, entetes: {} };
+  return { statut: 0, corps: undefined, entetes: {}, termine: false };
+}
+
+/** Espionne le journal privé du filtre (seul moyen d'observer ce geste). */
+function espionnerJournal(filtre: ProblemeFilter) {
+  return vi
+    .spyOn(
+      (filtre as unknown as { logger: { error: (...a: unknown[]) => void } })
+        .logger,
+      'error',
+    )
+    .mockImplementation(() => undefined);
 }
 
 describe('ProblemeFilter', () => {
@@ -178,20 +195,55 @@ describe('ProblemeFilter', () => {
     expect(JSON.stringify(c.corps)).not.toContain('ECONNREFUSED');
   });
 
-  it('journalise les 5xx — le gestionnaire par défaut de Nest le faisait', () => {
+  it('journalise une exception non HTTP — le gestionnaire par défaut le faisait', () => {
     const c = capturer();
-    const journal = vi
-      .spyOn(
-        (filtre as unknown as { logger: { error: (...a: unknown[]) => void } })
-          .logger,
-        'error',
-      )
-      .mockImplementation(() => undefined);
+    const journal = espionnerJournal(filtre);
 
     filtre.catch(new Error('boum'), hote(c));
 
     expect(journal).toHaveBeenCalledOnce();
     journal.mockRestore();
+  });
+
+  // `BaseExceptionFilter` ne journalise QUE les exceptions inconnues. Journaliser
+  // tous les 5xx ferait cracher une pile à chaque sonde de readiness pendant
+  // qu'un amont est tombé — un déluge pendant l'incident qu'il éclairerait.
+  it('ne journalise pas une HttpException, même en 5xx', () => {
+    const c = capturer();
+    const journal = espionnerJournal(filtre);
+
+    filtre.catch(
+      new HttpException('erreur du service amont', HttpStatus.BAD_GATEWAY),
+      hote(c),
+    );
+
+    expect(journal).not.toHaveBeenCalled();
+    journal.mockRestore();
+  });
+
+  // `instance` désigne l'occurrence, pas la requête entière : recopier la query
+  // réfléchirait le jeton de désabonnement — actionnable sans authentification —
+  // dans un corps d'erreur que le navigateur affiche.
+  it('n’expose jamais la chaîne de requête dans `instance`', () => {
+    const c = capturer();
+    filtre.catch(
+      new BadRequestException('lien de désabonnement invalide ou expiré'),
+      hote(c, {}, '/api/v1/desabonnement?token=eyJhbGciOi.secret.signature'),
+    );
+
+    expect(c.corps).toMatchObject({ instance: '/api/v1/desabonnement' });
+    expect(JSON.stringify(c.corps)).not.toContain('secret');
+  });
+
+  // Écrire après coup lèverait `ERR_HTTP_HEADERS_SENT` DEPUIS le filtre
+  // d'exceptions, d'où plus rien ne peut la rattraper.
+  it('n’écrit rien si la réponse est déjà partie', () => {
+    const c = capturer();
+    filtre.catch(new Error('trop tard'), hote(c, {}, '/api/v1/foyers', true));
+
+    expect(c.termine).toBe(true);
+    expect(c.statut).toBe(0);
+    expect(c.entetes['Content-Type']).toBeUndefined();
   });
 
   describe('exemption @FormatErreurNatif()', () => {

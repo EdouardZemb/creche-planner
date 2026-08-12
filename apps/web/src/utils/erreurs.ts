@@ -73,7 +73,7 @@ function estObjet(valeur: unknown): valeur is Record<string, unknown> {
  * ⚠️ Cette fonction lisait auparavant un **tableau à la racine** du corps. Ce
  * n'était pas la forme du fil : `BadRequestException([{ champ, message }])`
  * ENVELOPPE le tableau (`{ message: [...], error, statusCode }`), si bien
- * qu'aucune erreur par champ n'a jamais atteint un écran (`AN-27`). Les six
+ * qu'aucune erreur par champ n'a jamais atteint un écran (`AN-21`). Les six
  * tests qui « couvraient » ce chemin fabriquaient le corps à la main. Depuis le
  * lot 4 des standards, le tableau a un nom dans le contrat : `erreurs`.
  */

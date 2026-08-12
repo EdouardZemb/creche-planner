@@ -21,7 +21,9 @@ import { FORMAT_ERREUR_NATIF_KEY } from './format-erreur-natif.decorator.js';
 
 /** Sous-ensemble de la réponse Express utilisé ici (évite @types/express). */
 interface ReponseHttp {
+  readonly headersSent: boolean;
   setHeader(nom: string, valeur: string): void;
+  end(): void;
   status(code: number): { json(corps: unknown): void };
 }
 
@@ -50,13 +52,6 @@ const PHRASES_STATUT: Readonly<Record<number, string>> = {
   504: 'Délai dépassé en amont',
 };
 
-/**
- * Seuil des erreurs serveur. Littéral plutôt que `HttpStatus.INTERNAL_SERVER_ERROR` :
- * le statut comparé vient d'une `HttpException` et n'est qu'un `number` — comparer
- * un nombre à un membre d'énumération est refusé par `no-unsafe-enum-comparison`.
- */
-const SEUIL_ERREUR_SERVEUR = 500;
-
 /** Message rendu au client quand l'erreur n'a **pas** été formulée pour lui. */
 const DETAIL_GENERIQUE = 'le service a rencontré une erreur inattendue';
 
@@ -78,6 +73,21 @@ function estObjet(valeur: unknown): valeur is Record<string, unknown> {
   return (
     typeof valeur === 'object' && valeur !== null && !Array.isArray(valeur)
   );
+}
+
+/**
+ * Chemin **sans** la chaîne de requête. `instance` désigne l'occurrence du
+ * problème, pas la requête entière : recopier la query y ferait entrer des
+ * secrets. Le cas n'est pas théorique — `POST /api/v1/desabonnement?token=<jeton
+ * signé>` réfléchirait un jeton **actionnable sans authentification** dans un
+ * corps d'erreur que le navigateur affiche et que les journaux gardent. Le dépôt
+ * s'impose déjà la règle en sens inverse (`signalerErreur.ts` n'envoie que le
+ * `pathname`).
+ */
+function cheminSeul(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  const separateur = url.indexOf('?');
+  return separateur === -1 ? url : url.slice(0, separateur);
 }
 
 /** Première chaîne non vide parmi les valeurs proposées. */
@@ -123,13 +133,26 @@ export class ProblemeFilter implements ExceptionFilter {
     const reponse = contexte.getResponse<ReponseHttp>();
     const statut = statutDe(exception);
 
-    if (statut >= SEUIL_ERREUR_SERVEUR) {
-      // Le gestionnaire par défaut de Nest journalisait les 5xx ; le remplacer
-      // sans reprendre ce geste aurait rendu les pannes muettes.
+    // **Seules** les exceptions qui ne sont pas des `HttpException` sont
+    // journalisées, exactement comme le `BaseExceptionFilter` de Nest que ce
+    // filtre remplace : une `HttpException` a été construite par du code de ce
+    // dépôt, sa cause est déjà connue. Journaliser tous les 5xx ferait cracher
+    // une pile à chaque sonde de readiness pendant qu'un amont est tombé, et à
+    // chaque 502 de `relayer` — un déluge de bruit pendant précisément
+    // l'incident qu'il prétendrait éclairer.
+    if (!(exception instanceof HttpException)) {
       this.logger.error(
         exception instanceof Error ? exception.message : String(exception),
         exception instanceof Error ? exception.stack : undefined,
       );
+    }
+
+    // Rien à écrire si la réponse est partie : `setHeader` lèverait
+    // `ERR_HTTP_HEADERS_SENT` **depuis le filtre d'exceptions**, d'où rien ne
+    // peut plus la rattraper. `BaseExceptionFilter` fait la même garde.
+    if (reponse.headersSent) {
+      reponse.end();
+      return;
     }
 
     if (this.formatNatif(host)) {
@@ -141,7 +164,7 @@ export class ProblemeFilter implements ExceptionFilter {
     const probleme = versProbleme(
       exception,
       statut,
-      requete.originalUrl ?? requete.url,
+      cheminSeul(requete.originalUrl ?? requete.url),
     );
     // Posé AVANT `json()` : Express ne fixe `application/json` que si aucun
     // type de contenu n'est déjà défini.

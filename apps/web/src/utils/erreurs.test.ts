@@ -64,7 +64,7 @@ describe('messageErreur', () => {
  * Les corps ci-dessous sont ceux que la passerelle émet **réellement** depuis le
  * lot 4 des standards (RFC 9457) — un problème dont le membre `erreurs` porte le
  * détail par champ. La version précédente de ces tests attendait un tableau à la
- * racine, forme que le fil n'a jamais eue : c'est `AN-27`.
+ * racine, forme que le fil n'a jamais eue : c'est `AN-21`.
  */
 describe('extraireErreurs', () => {
   /** Enveloppe minimale d'un problème 400 portant `erreurs`. */
@@ -107,7 +107,7 @@ describe('extraireErreurs', () => {
   });
 
   it('renvoie [] pour tout corps qui n’est pas un problème', () => {
-    // Notamment le tableau nu que ces tests attendaient avant `AN-27` : la
+    // Notamment le tableau nu que ces tests attendaient avant `AN-21` : la
     // passerelle ne l'a jamais émis, il ne doit plus rien produire ici.
     expect(extraireErreurs([{ champ: 'rfr', message: 'x' }])).toEqual([]);
     expect(extraireErreurs('erreur')).toEqual([]);

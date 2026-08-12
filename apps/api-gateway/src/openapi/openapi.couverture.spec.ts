@@ -99,8 +99,16 @@ function urlServie(
   ].join('/')}`;
 }
 
-/** Opérations servies par un contrôleur, d'après ses métadonnées de décorateurs. */
-function operationsDuControleur(controleur: ClasseControleur): Operation[] {
+/**
+ * Opérations servies par un contrôleur, d'après ses métadonnées de décorateurs.
+ * `retenirRoute` filtre **par route** (classe + handler), ce dont a besoin toute
+ * garde portant sur un décorateur posable aux deux niveaux.
+ */
+function operationsDuControleur(
+  controleur: ClasseControleur,
+  retenirRoute: (classe: ClasseControleur, handler: unknown) => boolean = () =>
+    true,
+): Operation[] {
   const cheminControleur: unknown = Reflect.getMetadata(
     PATH_METADATA,
     controleur,
@@ -120,6 +128,7 @@ function operationsDuControleur(controleur: ClasseControleur): Operation[] {
       if (typeof methode !== 'number') return [];
       const verbe = VERBES.get(methode);
       if (verbe === undefined) return [];
+      if (!retenirRoute(controleur, handler)) return [];
       const url = urlServie(
         versionControleur,
         Reflect.getMetadata(VERSION_METADATA, handler),
@@ -138,7 +147,8 @@ function operationsDuControleur(controleur: ClasseControleur): Operation[] {
  */
 function operationsServies(
   racine: ClasseControleur,
-  retenir: (controleur: ClasseControleur) => boolean = () => true,
+  retenirRoute: (classe: ClasseControleur, handler: unknown) => boolean = () =>
+    true,
 ): Set<Operation> {
   const vus = new Set<unknown>();
   const trouvees = new Set<Operation>();
@@ -169,9 +179,9 @@ function operationsServies(
     const controleurs = lire(MODULE_METADATA.CONTROLLERS);
     if (estTableau(controleurs)) {
       for (const controleur of controleurs) {
-        if (!retenir(controleur as ClasseControleur)) continue;
         for (const operation of operationsDuControleur(
           controleur as ClasseControleur,
+          retenirRoute,
         )) {
           trouvees.add(operation);
         }
@@ -229,6 +239,21 @@ describe('OpenAPI · couverture des routes réellement servies (D6)', () => {
 });
 
 /**
+ * Vrai si **cette route** est exemptée du format `application/problem+json` —
+ * par sa classe ou par son handler. `ProblemeFilter` lit les deux
+ * (`getAllAndOverride([handler, classe])`) : ne regarder que la classe
+ * laisserait une exemption posée sur une seule méthode diverger du contrat en
+ * silence, soit exactement l'écart que cette garde existe pour voir.
+ */
+function estExemptee(classe: ClasseControleur, handler: unknown): boolean {
+  return (
+    Reflect.getMetadata(FORMAT_ERREUR_NATIF_KEY, classe) === true ||
+    (typeof handler === 'function' &&
+      Reflect.getMetadata(FORMAT_ERREUR_NATIF_KEY, handler) === true)
+  );
+}
+
+/**
  * Opérations dont le corps d'erreur documenté **n'est pas** le problème commun :
  * au moins une réponse 4xx/5xx y déclare un contenu qui n'est pas
  * `application/problem+json`. C'est le pendant contractuel de
@@ -276,11 +301,7 @@ function operationsParTypeDErreur(): {
 }
 
 describe('OpenAPI · format d’erreur unique (RFC 9457, AM-37)', () => {
-  const exemptees = operationsServies(
-    AppModule,
-    (controleur) =>
-      Reflect.getMetadata(FORMAT_ERREUR_NATIF_KEY, controleur) === true,
-  );
+  const exemptees = operationsServies(AppModule, estExemptee);
   const corpsPropre = operationsAuCorpsDErreurPropre();
   const corpsProbleme = operationsParTypeDErreur().problemes;
 
