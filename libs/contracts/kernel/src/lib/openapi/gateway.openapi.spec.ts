@@ -169,6 +169,18 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     ]);
   });
 
+  it('expose l’effacement d’un foyer (DELETE /foyers/{id})', () => {
+    const operation =
+      gatewayOpenApiDocument.paths['/api/v1/foyers/{id}'].delete;
+    expect(operation).toBeDefined();
+    expect(operation.responses['204']).toBeDefined();
+    expect(operation.responses['404']).toBeDefined();
+    // Le geste n'est pas rejouable et la propagation aval est asynchrone : le
+    // document doit le dire, c'est ce que lit l'intégrateur avant d'appeler.
+    expect(operation.description).toContain('foyer.FoyerSupprime.v1');
+    expect(operation.description).toContain('asynchrone');
+  });
+
   it('expose la validation hebdomadaire (/notifications/*)', () => {
     const aValider =
       gatewayOpenApiDocument.paths['/api/v1/notifications/a-valider'].get;

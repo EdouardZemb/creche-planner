@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
@@ -85,5 +86,62 @@ describe('ModaleConfirmation', () => {
     expect(
       screen.getByRole('button', { name: 'Supprimer le contrat' }),
     ).toHaveClass('danger');
+  });
+
+  it('l’action primaire reste active par défaut (aucune régression des usages existants)', () => {
+    rendre();
+    expect(
+      screen.getByRole('button', { name: 'Supprimer le contrat' }),
+    ).toBeEnabled();
+  });
+
+  it('une saisie dans children survit à la frappe, même si onClose change d’identité', async () => {
+    // Régression : le focus initial et l'écoute clavier vivaient dans le MÊME
+    // effet, keyé sur `onClose`. Un parent qui recrée sa fonction à chaque
+    // rendu — le cas ordinaire — faisait reposer le focus sur « Annuler » à
+    // chaque caractère, et la saisie ne gardait que le premier.
+    const user = userEvent.setup();
+    function Parent() {
+      const [valeur, setValeur] = useState('');
+      return (
+        <ModaleConfirmation
+          ouvert
+          titre="Confirmer"
+          message="Recopiez le mot."
+          libelleConfirmer="Confirmer"
+          onConfirmer={() => undefined}
+          // Identité recréée à chaque rendu, délibérément.
+          onAnnuler={() => undefined}
+        >
+          <label htmlFor="mot">Mot</label>
+          <input
+            id="mot"
+            value={valeur}
+            onChange={(e) => {
+              setValeur(e.target.value);
+            }}
+          />
+        </ModaleConfirmation>
+      );
+    }
+    render(<Parent />);
+
+    await user.type(screen.getByLabelText('Mot'), 'SUPPRIMER');
+
+    expect(screen.getByLabelText('Mot')).toHaveValue('SUPPRIMER');
+  });
+
+  it('confirmerDesactive verrouille l’action primaire — et elle seule', async () => {
+    const user = userEvent.setup();
+    const { onConfirmer, onAnnuler } = rendre({ confirmerDesactive: true });
+    const confirmer = screen.getByRole('button', {
+      name: 'Supprimer le contrat',
+    });
+    expect(confirmer).toBeDisabled();
+    await user.click(confirmer);
+    expect(onConfirmer).not.toHaveBeenCalled();
+    // « Annuler » doit rester la porte de sortie, quelle que soit la friction.
+    await user.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(onAnnuler).toHaveBeenCalledTimes(1);
   });
 });

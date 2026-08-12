@@ -356,6 +356,22 @@ export const api = {
     }).then((r) => lire<FoyerVue>(r));
   },
 
+  /**
+   * **Efface le foyer entier** — `DELETE /v1/foyers/:id` (204). `requete` et non
+   * `requeteIdempotente` : le geste n'est pas rejouable (un second appel répond
+   * 404), et un rejeu automatique sur 502/503 transformerait une suppression
+   * réussie en « famille introuvable » à l'écran.
+   */
+  supprimerFoyer(id: string, opts: RequeteOptions = {}): Promise<void> {
+    return requete(`${BASE}/v1/foyers/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: entetes(false),
+      ...(opts.signal ? { signal: opts.signal } : {}),
+      // `lire<undefined>` plutôt que `lire<void>` : même comportement sur un 204,
+      // sans ajouter une occurrence à la baseline `no-invalid-void-type`.
+    }).then((r) => lire<undefined>(r));
+  },
+
   /** Historique des versions de ressources d'un foyer — `GET /v1/foyers/:id/versions`. */
   versionsFoyer(
     id: string,

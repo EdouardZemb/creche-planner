@@ -21,6 +21,15 @@
   d'information sur les 2 courriels sortants. `AM-46` clos, `AM-36` recadré sur son
   volet outillage, `AM-52` et `LE-30` ouverts.
 
+- **2026-08-12 — lot 2a livré (branche `feat/rgpd-lot2-effacement-foyer`).** Effacement
+  du foyer de bout en bout : `DELETE /api/v1/foyers/:id` → cascade SQL → événement
+  `foyer.FoyerSupprime.v1` → effacement des copies dans les 3 read-models. **Le lot 2 a
+  été scindé** (2a effacement / 2b bornes temporelles) : deux risques sans dépendance
+  mutuelle. Trouvaille structurante : **`dead_letter` archive des données personnelles en
+  clair** parce que les abonnements n'ont pas de `filter_subject` — consigné `AM-53`, avec
+  `AM-54` (index), `LE-31` (`Modale` cassait toute saisie) et `LE-32` (drizzle ne lie pas
+  l'opérande d'un `like`).
+
 ## Ce que la revue a établi (résumé)
 
 - **Angle mort n° 1 : RGPD** — aucune des obligations (art. 13/17/20/30) n'était

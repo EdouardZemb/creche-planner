@@ -23,6 +23,7 @@ import {
   ENFANT_MODIFIE_TYPE,
   ENFANT_RETIRE_TYPE,
   FOYER_MIS_A_JOUR_V3_TYPE,
+  FOYER_SUPPRIME_TYPE,
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
@@ -35,6 +36,7 @@ import {
   type EnfantRetirePayload,
   type FoyerId,
   type FoyerMisAJourPayloadV3,
+  type FoyerSupprimePayload,
   type ParentAjoutePayload,
   type ParentRetirePayload,
 } from '@creche-planner/contracts-foyer';
@@ -406,6 +408,55 @@ export class FoyerService {
       return this.rafraichirEtEmettre(tx, id, baremes);
     });
     return this.versVue(id, ligne, tranche);
+  }
+
+  /**
+   * **Efface le foyer entier** (droit à l'effacement, lot 2 ; `AM-34`) : un
+   * `DELETE` réel sur `foyer`, dont les tables filles partent par
+   * `ON DELETE CASCADE` (`foyer_version`, `correction_journal`, `enfant`,
+   * `parent`, et par `parent` : `preference_notification`,
+   * `desabonnement_token`). Généralise le patron de `retirerEnfant` — supprimer
+   * puis **propager par événement** — au foyer complet.
+   *
+   * Deux points qui ne s'improvisent pas :
+   *
+   * 1. Les `parentIds` sont collectés **avant** le `DELETE`, actifs **et**
+   *    retirés : la boîte de réception in-app de `svc-notifications` est clé par
+   *    `parent_id` sans `foyer_id`, et les parents en soft-delete sont
+   *    précisément ceux dont l'effacement était impossible jusqu'ici.
+   * 2. On n'emprunte **pas** `retirerParent()` : sa garde
+   *    `gardeDernierParentActif` interdit la transition 1→0 et bloquerait la
+   *    cascade. Effacer le foyer, c'est justement passer par cet état.
+   *
+   * L'événement est inséré dans la **même transaction** que la suppression
+   * (patron outbox) : si sa frappe échoue, la suppression est annulée — on ne
+   * peut pas effacer localement sans que l'aval l'apprenne.
+   */
+  async supprimerFoyer(foyerId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      // Collecte AVANT suppression : après le DELETE en cascade, la table est vide.
+      const parents = await tx
+        .select({ id: parent.id })
+        .from(parent)
+        .where(eq(parent.foyerId, foyerId));
+      const supprime = await tx
+        .delete(foyer)
+        .where(eq(foyer.id, foyerId))
+        .returning();
+      if (!supprime[0]) {
+        throw new NotFoundException(`foyer introuvable : ${foyerId}`);
+      }
+      const payload: FoyerSupprimePayload = {
+        foyerId: foyerIdSchema.parse(foyerId),
+        parentIds: parents.map((p) => parentIdSchema.parse(p.id)),
+      };
+      await tx.insert(outbox).values({
+        id: randomUUID(),
+        type: FOYER_SUPPRIME_TYPE,
+        payload,
+        traceId: traceIdCourant(),
+      });
+    });
   }
 
   /** Liste les foyers existants, du plus ancien au plus récent. */

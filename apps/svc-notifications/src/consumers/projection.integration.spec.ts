@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { Column, getTableColumns, Param, type Table } from 'drizzle-orm';
+import {
+  Column,
+  getTableColumns,
+  getTableName,
+  Param,
+  type Table,
+} from 'drizzle-orm';
 import {
   CONTRAT_CREE_TYPE,
   CONTRAT_MODIFIE_TYPE,
@@ -9,6 +15,7 @@ import {
   ETABLISSEMENT_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-planification';
 import {
+  FOYER_SUPPRIME_TYPE,
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
@@ -18,8 +25,14 @@ import { ProjectionService } from './projection.service.js';
 import type { Database } from '../database/database.types.js';
 import {
   contrat,
+  deadLetter,
+  envoiEtablissement,
+  envoiRecapHebdo,
+  envoiRecapParent,
   etablissement,
   foyerParent,
+  notification,
+  notificationHebdo,
   preferenceNotification,
   processedEvent,
 } from '../database/schema.js';
@@ -64,12 +77,29 @@ function fakeBaseEnMemoire(): {
     }
     return entree[0];
   };
-  /** Évalue un `eq(colonne, valeur)` (seul prédicat utilisé par la projection). */
+  /**
+   * Évalue le prédicat d'un `where` : `eq(colonne, valeur)` (cas général) ou
+   * `like(colonne, '%valeur%')` (purge de `dead_letter` à l'effacement d'un foyer).
+   * Drizzle **ne lie pas** l'opérande d'un `like` dans un `Param` — il la pousse telle
+   * quelle dans les `queryChunks` — d'où la distinction sur le type du chunk. Seuls
+   * ces deux prédicats sont supportés.
+   */
   const filtreEq = (table: Table, condition: unknown) => {
     const chunks = (condition as { queryChunks: unknown[] }).queryChunks;
     const colonne = chunks.find((c) => c instanceof Column) as Column;
-    const param = chunks.find((c) => c instanceof Param) as Param;
     const cle = cleDe(table, colonne);
+    const motif = chunks.find((c) => typeof c === 'string');
+    if (typeof motif === 'string') {
+      // Seule forme émise par la projection : `%<uuid>%` ⇒ sous-chaîne. La
+      // colonne visée est textuelle (`dead_letter.payload`) : toute autre valeur
+      // ne peut pas matcher, plutôt que d'être stringifiée en `[object Object]`.
+      const aiguille = motif.replaceAll('%', '');
+      return (ligne: Ligne) => {
+        const valeur = ligne[cle];
+        return typeof valeur === 'string' && valeur.includes(aiguille);
+      };
+    }
+    const param = chunks.find((c) => c instanceof Param) as Param;
     return (ligne: Ligne) => ligne[cle] === param.value;
   };
   const clefConflit = (table: Table, cibles: Column[], ligne: Ligne): string =>
@@ -1072,5 +1102,250 @@ describe('Garde de monotonie occurred_at (désordre / rattrapage)', () => {
 
     expect(lignesDe(preferenceNotification)).toHaveLength(1);
     expect(lignesDe(preferenceNotification)[0]).toMatchObject({ actif: false });
+  });
+});
+
+/**
+ * Effacement d'un foyer (`foyer.FoyerSupprime.v1`, RGPD doc 37 §3) — **oracle de
+ * résidu** du lot : on peuple chaque table que le service alimente, on livre
+ * l'enveloppe, et on exige **zéro ligne** dans chacune. La sonde négative est aussi
+ * importante que l'assertion principale : une purge trop gourmande (un `foyer_id`
+ * oublié dans un `where`, un `like` trop large) viderait aussi le foyer voisin et
+ * passerait pour un succès sans elle.
+ */
+
+const AUTRE_FOYER_ID = '77777777-7777-4777-8777-777777777777';
+const AUTRE_PARENT_ID = '66666666-6666-4666-8666-666666666666';
+
+/** Tables que l'effacement doit vider (ordre du handler). */
+const TABLES_EFFACEES: readonly Table[] = [
+  notification,
+  preferenceNotification,
+  envoiRecapParent,
+  envoiRecapHebdo,
+  envoiEtablissement,
+  notificationHebdo,
+  contrat,
+  etablissement,
+  foyerParent,
+  deadLetter,
+];
+
+/**
+ * Pose **une** ligne par table effaçable pour un couple (foyer, parent). `marque`
+ * distingue les jeux (`cible` vs `autre`) dans les clés techniques et les PII.
+ */
+function peupler(
+  lignesDe: (t: Table) => Ligne[],
+  foyerId: string,
+  parentId: string,
+  marque: string,
+): void {
+  lignesDe(notification).push({
+    id: `n-${marque}`,
+    parentId,
+    type: 'VALIDATION_HEBDO',
+    sujet: 'Votre semaine est à valider',
+    corps: `Le planning de Mia (${marque})`,
+    lien: null,
+    cleIdempotence: `VALIDATION_HEBDO:2026-W27`,
+    luLe: null,
+  });
+  lignesDe(preferenceNotification).push({
+    parentId,
+    typeNotification: 'VALIDATION_HEBDO',
+    canal: 'EMAIL',
+    actif: false,
+  });
+  lignesDe(envoiRecapParent).push({
+    foyerId,
+    semaineIso: '2026-W27',
+    parentId,
+    statut: 'ENVOYE',
+    email: `${marque}@test.fr`,
+    essais: 0,
+  });
+  lignesDe(envoiRecapHebdo).push({
+    foyerId,
+    semaineIso: '2026-W27',
+    statut: 'ENVOYE',
+    destinataires: [`${marque}@test.fr`],
+  });
+  lignesDe(envoiEtablissement).push({
+    id: `e-${marque}`,
+    foyerId,
+    semaineIso: '2026-W27',
+    etablissementId: ETAB_ID,
+    destinataire: 'creche@test.fr',
+    sujet: 'Récapitulatif de la semaine',
+    corps: `Mia absente jeudi (${marque})`,
+    statut: 'ENVOYE',
+  });
+  lignesDe(notificationHebdo).push({
+    id: `h-${marque}`,
+    contratId: CONTRAT_ID,
+    foyerId,
+    semaineIso: '2026-W27',
+    type: 'VALIDATION_HEBDO',
+    statut: 'A_VALIDER',
+    snapshot: {},
+  });
+  lignesDe(contrat).push({
+    id: `c-${marque}`,
+    foyerId,
+    enfant: 'Mia',
+    mode: 'CRECHE_PSU',
+    valideDu: '2026-01-01',
+    valideAu: null,
+  });
+  lignesDe(etablissement).push({
+    id: `t-${marque}`,
+    foyerId,
+    nom: 'Crèche du centre',
+    emailService: 'creche@test.fr',
+    actif: true,
+  });
+  lignesDe(foyerParent).push({
+    parentId,
+    foyerId,
+    email: `${marque}@test.fr`,
+    principal: true,
+    actif: true,
+  });
+  // Payload **en clair** d'un event du stream FOYER non géré ici : c'est la raison
+  // pour laquelle `dead_letter` entre dans le périmètre d'effacement.
+  lignesDe(deadLetter).push({
+    id: `d-${marque}`,
+    envelopeId: null,
+    stream: 'FOYER',
+    sujet: 'foyer.EnfantAjoute.v1',
+    raison: 'IGNORE_TYPE_INCONNU',
+    payload: `{"payload":{"foyerId":"${foyerId}","prenom":"Mia"}}`,
+    erreur: null,
+    livraisons: 1,
+  });
+}
+
+function evenementFoyerSupprime(
+  id: string,
+  parentIds: readonly string[],
+): unknown {
+  return {
+    id,
+    type: FOYER_SUPPRIME_TYPE,
+    source: 'svc-foyer',
+    version: 1,
+    occurredAt: '2026-10-20T00:00:00.000Z',
+    traceId: 'trace-fs',
+    payload: { foyerId: FOYER_ID, parentIds },
+  };
+}
+
+describe('Effacement FoyerSupprime (résidu zéro + sonde négative)', () => {
+  const ID_EVT = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+  it('ne laisse AUCUNE ligne du foyer dans les tables du service', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    peupler(lignesDe, FOYER_ID, PARENT_ID, 'cible');
+    for (const table of TABLES_EFFACEES) {
+      expect(lignesDe(table)).toHaveLength(1); // le jeu est bien en place
+    }
+
+    await expect(
+      projection.traiter('FOYER', evenementFoyerSupprime(ID_EVT, [PARENT_ID])),
+    ).resolves.toBe('TRAITE');
+
+    for (const table of TABLES_EFFACEES) {
+      expect(
+        lignesDe(table),
+        `résidu dans ${getTableName(table)}`,
+      ).toHaveLength(0);
+    }
+  });
+
+  it('sonde négative : les lignes d’un AUTRE foyer survivent intactes', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    peupler(lignesDe, FOYER_ID, PARENT_ID, 'cible');
+    peupler(lignesDe, AUTRE_FOYER_ID, AUTRE_PARENT_ID, 'autre');
+
+    await projection.traiter(
+      'FOYER',
+      evenementFoyerSupprime(ID_EVT, [PARENT_ID]),
+    );
+
+    for (const table of TABLES_EFFACEES) {
+      expect(
+        lignesDe(table),
+        `purge trop gourmande sur ${getTableName(table)}`,
+      ).toHaveLength(1);
+    }
+    expect(lignesDe(notification)[0]).toMatchObject({
+      parentId: AUTRE_PARENT_ID,
+    });
+    expect(lignesDe(deadLetter)[0]).toMatchObject({ id: 'd-autre' });
+  });
+
+  it('union payload ∪ foyer_parent : un parent projeté hors payload est effacé', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    peupler(lignesDe, FOYER_ID, PARENT_ID, 'cible');
+    // Co-parent connu du read model local mais **absent** du payload (écart normal
+    // entre deux read models distribués) : sans l'union, sa boîte resterait orpheline.
+    lignesDe(foyerParent).push({
+      parentId: AUTRE_PARENT_ID,
+      foyerId: FOYER_ID,
+      email: 'coparent@test.fr',
+      principal: false,
+      actif: false, // parent RETIRÉ : c'est le cas que le payload seul rate
+    });
+    lignesDe(notification).push({
+      id: 'n-coparent',
+      parentId: AUTRE_PARENT_ID,
+      type: 'VALIDATION_HEBDO',
+      sujet: 'Votre semaine est à valider',
+      corps: 'Le planning de Mia',
+      luLe: null,
+    });
+
+    await projection.traiter(
+      'FOYER',
+      evenementFoyerSupprime(ID_EVT, [PARENT_ID]),
+    );
+
+    expect(lignesDe(notification)).toHaveLength(0);
+    expect(lignesDe(foyerParent)).toHaveLength(0);
+  });
+
+  it('rejeu de la MÊME enveloppe : no-op (aucune nouvelle suppression)', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db);
+    peupler(lignesDe, FOYER_ID, PARENT_ID, 'cible');
+    await projection.traiter(
+      'FOYER',
+      evenementFoyerSupprime(ID_EVT, [PARENT_ID]),
+    );
+    expect(lignesDe(notification)).toHaveLength(0);
+
+    // Ligne écrite APRÈS l'effacement : un rejeu de la même enveloppe (marqueur déjà
+    // posé) ne doit rien re-supprimer — c'est la preuve que le handler est un no-op.
+    lignesDe(notification).push({
+      id: 'n-apres',
+      parentId: PARENT_ID,
+      type: 'VALIDATION_HEBDO',
+      sujet: 'Écrite après l’effacement',
+      corps: '…',
+      luLe: null,
+    });
+
+    await expect(
+      projection.traiter('FOYER', evenementFoyerSupprime(ID_EVT, [PARENT_ID])),
+    ).resolves.toBe('TRAITE');
+
+    expect(lignesDe(notification)).toHaveLength(1);
+    expect(
+      lignesDe(processedEvent).filter((l) => l['id'] === ID_EVT),
+    ).toHaveLength(1);
   });
 });

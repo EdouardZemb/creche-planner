@@ -3,8 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { Column, getTableColumns, Param, type Table } from 'drizzle-orm';
 import { getTableConfig, type PgTable } from 'drizzle-orm/pg-core';
 import {
+  ENFANT_AJOUTE_TYPE,
   FOYER_MIS_A_JOUR_TYPE,
   FOYER_MIS_A_JOUR_V2_TYPE,
+  FOYER_MIS_A_JOUR_V3_TYPE,
+  FOYER_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-foyer';
 import {
   BAREME_PSU_PUBLIE_TYPE,
@@ -22,8 +25,12 @@ import type { PlanificationClient } from '../fallback/planification.client.js';
 import {
   baremePsu,
   contrat,
+  deadLetter,
+  enfant,
   foyer,
+  foyerVersion,
   grilleTarifaire,
+  outbox,
   prestationMois,
   processedEvent,
 } from '../database/schema.js';
@@ -74,12 +81,27 @@ function fakeBaseEnMemoire(): {
     }
     return entree[0];
   };
-  /** Évalue un `eq(colonne, valeur)` (seul prédicat utilisé par la projection). */
+  /**
+   * Évalue un `eq(colonne, valeur)` **ou** un `like(colonne, '%valeur%')` — les deux
+   * seuls prédicats émis par la projection. La distinction se lit dans les chunks :
+   * drizzle **lie** la valeur d'un `eq` (`Param`), mais laisse le motif d'un `like`
+   * en chaîne nue (`sql\`${column} like ${value}\``, sans `bindIfParam`). Le `like`
+   * ne sert qu'à l'effacement du foyer dans `dead_letter`, qui ne porte pas de
+   * colonne `foyer_id` : seule la forme « sous-chaîne » est supportée.
+   */
   const filtreEq = (table: Table, condition: unknown) => {
     const chunks = (condition as { queryChunks: unknown[] }).queryChunks;
     const colonne = chunks.find((c) => c instanceof Column) as Column;
-    const param = chunks.find((c) => c instanceof Param) as Param;
     const cle = cleDe(table, colonne);
+    const motif = chunks.find((c) => typeof c === 'string');
+    if (typeof motif === 'string') {
+      if (!motif.startsWith('%') || !motif.endsWith('%')) {
+        throw new Error(`motif like non supporté : ${motif}`);
+      }
+      const noyau = motif.slice(1, -1);
+      return (ligne: Ligne) => String(ligne[cle]).includes(noyau);
+    }
+    const param = chunks.find((c) => c instanceof Param) as Param;
     return (ligne: Ligne) => ligne[cle] === param.value;
   };
   /** Clé TS d'une colonne à partir de son nom SQL (ex. `grille_id` → `grilleId`). */
@@ -337,7 +359,10 @@ function evenementContratModifie(
   };
 }
 
-function evenementPlanning(id: string): unknown {
+function evenementPlanning(
+  id: string,
+  surcharge: Record<string, unknown> = {},
+): unknown {
   return {
     id,
     type: PLANNING_MODIFIE_TYPE,
@@ -345,7 +370,77 @@ function evenementPlanning(id: string): unknown {
     version: 1,
     occurredAt: '2026-10-01T00:00:00.000Z',
     traceId: 'trace-3',
-    payload: { contratId: CONTRAT_ID, mois: MOIS, simule: false },
+    payload: { contratId: CONTRAT_ID, mois: MOIS, simule: false, ...surcharge },
+  };
+}
+
+function evenementEnfant(
+  id: string,
+  surcharge: Record<string, unknown> = {},
+): unknown {
+  return {
+    id,
+    type: ENFANT_AJOUTE_TYPE,
+    source: 'svc-foyer',
+    version: 1,
+    occurredAt: '2026-09-05T00:00:00.000Z',
+    traceId: 'trace-enfant',
+    payload: {
+      foyerId: FOYER_ID,
+      enfantId: '99999999-0000-4000-8000-000000000000',
+      prenom: 'Mia',
+      dateNaissance: '2023-04-12',
+      ...surcharge,
+    },
+  };
+}
+
+function evenementFoyerV3(
+  id: string,
+  surcharge: Record<string, unknown> = {},
+): unknown {
+  return {
+    id,
+    type: FOYER_MIS_A_JOUR_V3_TYPE,
+    source: 'svc-foyer',
+    version: 3,
+    occurredAt: '2027-01-01T00:00:00.000Z',
+    traceId: 'trace-v3',
+    payload: {
+      foyerId: FOYER_ID,
+      versionId: '99999999-1111-4111-8111-111111111111',
+      dateEffet: '2027-01-01',
+      ressourcesMensuellesCentimes: 200000,
+      rfrCentimes: 1500000,
+      nbEnfantsACharge: 2,
+      nbParts: 3,
+      tranche: 1,
+      ...surcharge,
+    },
+  };
+}
+
+function evenementFoyerSupprime(
+  id: string,
+  surcharge: Record<string, unknown> = {},
+): unknown {
+  return {
+    id,
+    type: FOYER_SUPPRIME_TYPE,
+    source: 'svc-foyer',
+    version: 1,
+    occurredAt: '2027-02-01T00:00:00.000Z',
+    traceId: 'trace-suppr',
+    payload: {
+      foyerId: FOYER_ID,
+      // Portés pour svc-notifications (boîte in-app clée par parent) ; sans usage
+      // ici : aucune table de ce read model n'est clée par parent.
+      parentIds: [
+        '77777777-0000-4000-8000-000000000001',
+        '77777777-0000-4000-8000-000000000002',
+      ],
+      ...surcharge,
+    },
   };
 }
 
@@ -1153,5 +1248,190 @@ describe('Garde de monotonie occurred_at (désordre / rattrapage)', () => {
 
     expect(lignesDe(prestationMois)).toHaveLength(1);
     expect(lignesDe(prestationMois)[0]).toMatchObject({ eventId: ID_X });
+  });
+});
+
+/**
+ * **Droit à l'effacement** (`FoyerSupprime`, doc 37 §3). Tarification n'a aucune
+ * contrainte FK — ses tables sont alimentées par trois streams indépendants — donc la
+ * cascade est écrite à la main, table par table. L'oracle utile n'est pas « le handler
+ * a tourné » mais « il ne reste **rien** » : on peuple chaque table concernée, on livre
+ * l'enveloppe, on compte les résidus. Une table oubliée dans la cascade est un résidu
+ * de donnée personnelle, invisible à tout autre test.
+ *
+ * La **sonde négative** est indissociable de cet oracle : sans un second foyer laissé
+ * intact, une purge trop gourmande (un `delete` sans `where`, un filtre `like` trop
+ * large) passerait pour un succès.
+ */
+describe('Effacement du foyer (FoyerSupprime — résidu et sonde négative)', () => {
+  const ID_SUPPR = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const AUTRE_FOYER_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const AUTRE_CONTRAT_ID = 'ffffffff-0000-4000-8000-000000000000';
+
+  /** Tables que la cascade doit vider, dans l'ordre du handler. */
+  const tablesEffacees: [string, Table][] = [
+    ['prestation_mois', prestationMois],
+    ['contrat', contrat],
+    ['enfant', enfant],
+    ['foyer_version', foyerVersion],
+    ['foyer', foyer],
+    ['dead_letter', deadLetter],
+  ];
+
+  const reponsePrestations = {
+    contratId: CONTRAT_ID,
+    mois: MOIS,
+    simule: false,
+    prestations: [{ mode: 'CRECHE_PSU' as const, heuresFacturees: 9000 }],
+  };
+
+  const clientPrestations = () =>
+    ({
+      prestations: vi.fn(() => Promise.resolve(reponsePrestations)),
+    }) as unknown as PlanificationClient;
+
+  /**
+   * Peuple les 6 tables concernées pour un foyer, **par les vrais événements** : le
+   * read model n'est jamais écrit autrement, un peuplement direct masquerait un écart
+   * de colonne. Exception assumée pour `dead_letter`, alimentée non par la projection
+   * mais par le harnais de consommation (`nest-commons`) — on y dépose la ligne telle
+   * qu'elle existe en prod : le **payload en clair** d'un événement du stream FOYER
+   * d'un type que Tarification ne consomme pas (`IGNORE_TYPE_INCONNU`).
+   */
+  async function peupler(
+    projection: ProjectionService,
+    lignesDe: (t: Table) => Ligne[],
+    foyerId: string,
+    contratId: string,
+  ): Promise<void> {
+    await projection.traiter(
+      'FOYER',
+      evenementFoyer(randomUUID(), { foyerId }),
+    );
+    await projection.traiter(
+      'FOYER',
+      evenementFoyerV3(randomUUID(), { foyerId, versionId: randomUUID() }),
+    );
+    await projection.traiter(
+      'FOYER',
+      evenementEnfant(randomUUID(), { foyerId, enfantId: randomUUID() }),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      evenementContratCree(randomUUID(), { foyerId, contratId }),
+    );
+    await projection.traiter(
+      'PLANIFICATION',
+      evenementPlanning(randomUUID(), { contratId }),
+    );
+    lignesDe(deadLetter).push({
+      id: randomUUID(),
+      envelopeId: randomUUID(),
+      stream: 'FOYER',
+      sujet: 'foyer.ParentAjoute.v1',
+      raison: 'TYPE_INCONNU',
+      payload: JSON.stringify({
+        type: 'foyer.ParentAjoute.v1',
+        payload: { foyerId, prenom: 'Camille' },
+      }),
+      erreur: null,
+      livraisons: 1,
+      createdAt: new Date(),
+    });
+  }
+
+  it('oracle de résidu : après FoyerSupprime, AUCUNE ligne du foyer ne subsiste', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientPrestations());
+    await peupler(projection, lignesDe, FOYER_ID, CONTRAT_ID);
+
+    // Garde-fou du test lui-même : un peuplement raté rendrait l'oracle vide, donc
+    // vert quoi que fasse le handler.
+    for (const [nom, table] of tablesEffacees) {
+      expect(lignesDe(table), `peuplement de ${nom}`).toHaveLength(1);
+    }
+
+    await expect(
+      projection.traiter('FOYER', evenementFoyerSupprime(ID_SUPPR)),
+    ).resolves.toBe('TRAITE');
+
+    expect(lignesDe(prestationMois)).toHaveLength(0);
+    expect(lignesDe(contrat)).toHaveLength(0);
+    expect(lignesDe(enfant)).toHaveLength(0);
+    expect(lignesDe(foyerVersion)).toHaveLength(0);
+    expect(lignesDe(foyer)).toHaveLength(0);
+    expect(lignesDe(deadLetter)).toHaveLength(0);
+  });
+
+  it('sonde négative : le foyer voisin survit intégralement à l’effacement', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientPrestations());
+    await peupler(projection, lignesDe, FOYER_ID, CONTRAT_ID);
+    await peupler(projection, lignesDe, AUTRE_FOYER_ID, AUTRE_CONTRAT_ID);
+
+    await projection.traiter('FOYER', evenementFoyerSupprime(ID_SUPPR));
+
+    // Exactement une ligne par table, et c'est toujours celle de l'autre foyer.
+    for (const [nom, table] of tablesEffacees) {
+      expect(lignesDe(table), `résidu attendu dans ${nom}`).toHaveLength(1);
+    }
+    expect(lignesDe(foyer)[0]).toMatchObject({ id: AUTRE_FOYER_ID });
+    expect(lignesDe(foyerVersion)[0]).toMatchObject({
+      foyerId: AUTRE_FOYER_ID,
+    });
+    expect(lignesDe(enfant)[0]).toMatchObject({ foyerId: AUTRE_FOYER_ID });
+    expect(lignesDe(contrat)[0]).toMatchObject({ foyerId: AUTRE_FOYER_ID });
+    expect(lignesDe(prestationMois)[0]).toMatchObject({
+      foyerId: AUTRE_FOYER_ID,
+    });
+    // Le filtre `like` sur le texte du payload ne doit pas déborder sur le voisin.
+    expect(String(lignesDe(deadLetter)[0]?.['payload'])).toContain(
+      AUTRE_FOYER_ID,
+    );
+  });
+
+  it('processed_event et outbox ne sont PAS purgés par l’effacement', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientPrestations());
+    await peupler(projection, lignesDe, FOYER_ID, CONTRAT_ID);
+    // File de publication **vivante** : Tarification n'y écrit rien aujourd'hui
+    // (pur consommateur), mais une ligne non publiée est un événement en vol —
+    // la supprimer l'annulerait. Sa borne est temporelle, pas par foyer (doc 37 T7).
+    lignesDe(outbox).push({
+      id: randomUUID(),
+      type: 'tarification.CoutRecalcule.v1',
+      payload: { foyerId: FOYER_ID },
+      occurredAt: new Date(),
+      traceId: 'trace-outbox',
+      publishedAt: null,
+    });
+    const marqueursAvant = lignesDe(processedEvent).length;
+
+    await projection.traiter('FOYER', evenementFoyerSupprime(ID_SUPPR));
+
+    // +1 : l'effacement lui-même est marqué traité. Effacer ces marqueurs rouvrirait
+    // la porte à une re-projection du foyer à la prochaine re-livraison JetStream.
+    expect(lignesDe(processedEvent)).toHaveLength(marqueursAvant + 1);
+    expect(lignesDe(outbox)).toHaveLength(1);
+  });
+
+  it('idempotence rejouée : l’enveloppe d’effacement ré-livrée ne re-supprime rien', async () => {
+    const { db, lignesDe } = fakeBaseEnMemoire();
+    const projection = new ProjectionService(db, clientPrestations());
+    await peupler(projection, lignesDe, FOYER_ID, CONTRAT_ID);
+    await projection.traiter('FOYER', evenementFoyerSupprime(ID_SUPPR));
+    expect(lignesDe(foyer)).toHaveLength(0);
+
+    // Cas réel : un FoyerMisAJour encore en vol au moment de l'effacement re-crée
+    // une ligne (l'ordre inter-livraisons n'est pas garanti)…
+    await projection.traiter('FOYER', evenementFoyer(randomUUID()));
+    expect(lignesDe(foyer)).toHaveLength(1);
+
+    // …puis JetStream re-livre l'enveloppe d'effacement (at-least-once) : elle est
+    // acquittée en no-op, elle ne re-purge pas.
+    await expect(
+      projection.traiter('FOYER', evenementFoyerSupprime(ID_SUPPR)),
+    ).resolves.toBe('TRAITE');
+    expect(lignesDe(foyer)).toHaveLength(1);
   });
 });

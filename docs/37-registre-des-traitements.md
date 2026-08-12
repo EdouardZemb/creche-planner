@@ -182,8 +182,14 @@ Deux conséquences valent d'être tirées :
 
 ## 3. Durées de conservation proposées
 
-**Décision du propriétaire du produit, 2026-08-11.** Aucune n'est appliquée par du code à
-cette date : ce sont les cibles que le lot 2 devra outiller.
+**Décision du propriétaire du produit, 2026-08-11.** Aucune de ces durées n'est **encore**
+appliquée par du code : rien n'expire à l'échéance, et c'est le lot 2b du plan standards qui
+outillera la borne temporelle.
+
+À ne pas confondre avec l'**effacement à la demande**, livré lui au 2026-08-12 (lot 2a) :
+supprimer un foyer efface immédiatement toutes les données de ce foyer, dans les cinq bases,
+sans attendre aucune échéance. Ce sont deux mécanismes distincts — l'un est un droit exercé,
+l'autre une hygiène de rétention.
 
 | Réf.  | Données                                                                              | Durée proposée                                                        | Point de départ                    | Pourquoi                                                                                                                                                                                                                              |
 | ----- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -208,15 +214,25 @@ suppression locale — c'est la contrainte structurante du lot 2.
 Écrit ici pour que l'absence soit visible plutôt que découverte plus tard :
 
 - **Aucune purge liée au temps n'existe.** Aucune durée du §3 n'est appliquée par du code :
-  rien n'expire, jamais.
-- **La suppression à l'unité, elle, existe et efface vraiment** — nuance qui compte, et qui
-  contredit une lecture trop rapide de l'inventaire. `retirerEnfant` est un `DELETE` réel
-  suivi d'un événement `EnfantRetire`, et il en va de même du retrait d'un contrat ou d'un
-  établissement. **Le mécanisme que le lot 2 doit généraliser est donc déjà là** : effacer
-  puis propager par événement, plutôt que supprimer localement.
-- **Ce qui manque est le geste d'ensemble** : aucune opération ne supprime un foyer entier,
-  et le retrait d'un parent est un retrait **logique** qui conserve son nom et son e-mail.
-  C'est le lot 2.
+  rien n'expire, jamais. C'est le lot 2b.
+- **L'effacement à la demande, lui, est livré** (lot 2a, 2026-08-12). `DELETE /api/v1/foyers/:id`
+  supprime la ligne `foyer` — la cascade SQL emporte versions de ressources, journal de
+  corrections, enfants, parents, préférences et jetons — puis l'événement
+  `foyer.FoyerSupprime.v1` fait effacer leurs copies à `svc-tarification`,
+  `svc-notifications` et `svc-planification`. Cela **inclut les parents retirés**
+  (soft-delete `actif = false`), dont le nom et l'e-mail survivaient jusqu'ici à leur départ.
+- **Deux tables techniques survivent délibérément à cet effacement**, et il faut le savoir :
+  - `outbox` — file de publication **vivante**. Y supprimer une ligne non publiée annulerait
+    un événement en vol (l'événement d'effacement lui-même y transite). Sa borne est
+    temporelle : 30 j après publication, lot 2b.
+  - `processed_event` — garde-fou anti-rejeu. L'effacer rouvrirait la re-projection du foyer
+    à la prochaine re-livraison JetStream, soit exactement le résidu qu'on prétend supprimer.
+    Sa borne dépend d'une rétention JetStream qui n'est pas encore posée (cf. §3).
+
+  `dead_letter`, en revanche, **est** purgée pour le foyer effacé : c'est un magasin terminal
+  que plus rien ne relit, et il stockait jusqu'ici des payloads en clair — tout événement du
+  stream `FOYER` non consommé par un service y atterrit avec son contenu.
+
 - **Aucun export** des données personnelles n'est proposé à un parent. C'est le lot 3.
 - **Aucune rédaction des données personnelles dans les journaux** : les adresses e-mail
   partent en clair dans les journaux des gardes d'autorisation.

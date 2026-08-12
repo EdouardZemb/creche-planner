@@ -10,6 +10,7 @@ import {
   ENFANT_MODIFIE_TYPE,
   ENFANT_RETIRE_TYPE,
   FOYER_MIS_A_JOUR_V3_TYPE,
+  FOYER_SUPPRIME_TYPE,
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
@@ -821,6 +822,144 @@ describe('FoyerService.retirerEnfant (hard delete + événement)', () => {
       service.retirerEnfant(FOYER_ID, ENFANT_ID),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(insertValues).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Faux `db` transactionnel pour `supprimerFoyer` : `select().from().where()`
+ * renvoie les parents du foyer (espionné via `selectFrom` — c'est la collecte
+ * qui DOIT précéder le `DELETE`), `delete().where().returning()` renvoie
+ * `lignes` (vide ⇒ foyer introuvable), `insertValues` espionne l'outbox.
+ * `ordre` enregistre la séquence réelle des appels : la collecte des parents
+ * après la cascade renverrait une liste vide sans que rien n'échoue.
+ */
+function fakeDbSuppressionTx(
+  options: {
+    lignes?: Record<string, unknown>[];
+    parents?: { id: string }[];
+  } = {},
+): {
+  db: Database;
+  transaction: ReturnType<typeof vi.fn>;
+  insertValues: ReturnType<typeof vi.fn>;
+  deleteWhere: ReturnType<typeof vi.fn>;
+  ordre: string[];
+} {
+  const lignes = options.lignes ?? [];
+  const parents = options.parents ?? [];
+  const ordre: string[] = [];
+  const insertValues = vi.fn(() => {
+    ordre.push('insert');
+    return Promise.resolve();
+  });
+  const deleteWhere = vi.fn(() => {
+    ordre.push('delete');
+    return { returning: () => Promise.resolve(lignes) };
+  });
+  const tx = {
+    select: () => ({
+      from: () => ({
+        where: () => {
+          ordre.push('select');
+          return Promise.resolve(parents);
+        },
+      }),
+    }),
+    insert: () => ({ values: insertValues }),
+    delete: () => ({ where: deleteWhere }),
+  };
+  const transaction = vi.fn(async (cb: (t: unknown) => Promise<unknown>) =>
+    cb(tx),
+  );
+  const db = { transaction } as unknown as Database;
+  return { db, transaction, insertValues, deleteWhere, ordre };
+}
+
+describe('FoyerService.supprimerFoyer (cascade + événement d’intégration)', () => {
+  const PARENT_ACTIF = '55555555-5555-4555-8555-555555555555';
+  const PARENT_RETIRE = '66666666-6666-4666-8666-666666666666';
+
+  it('supprime le foyer + émet FoyerSupprime portant TOUS ses parents', async () => {
+    const { db, transaction, deleteWhere, insertValues } = fakeDbSuppressionTx({
+      lignes: [{ id: FOYER_ID }],
+      parents: [{ id: PARENT_ACTIF }, { id: PARENT_RETIRE }],
+    });
+    const service = new FoyerService(db);
+
+    await service.supprimerFoyer(FOYER_ID);
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: FOYER_SUPPRIME_TYPE,
+        payload: {
+          foyerId: FOYER_ID,
+          parentIds: [PARENT_ACTIF, PARENT_RETIRE],
+        },
+      }),
+    );
+  });
+
+  it('collecte les parents AVANT la cascade (sinon la liste serait vide)', async () => {
+    const { db, ordre } = fakeDbSuppressionTx({
+      lignes: [{ id: FOYER_ID }],
+      parents: [{ id: PARENT_ACTIF }],
+    });
+
+    await new FoyerService(db).supprimerFoyer(FOYER_ID);
+
+    expect(ordre).toEqual(['select', 'delete', 'insert']);
+  });
+
+  it('accepte un foyer sans parent (provisionné par un admin)', async () => {
+    const { db, insertValues } = fakeDbSuppressionTx({
+      lignes: [{ id: FOYER_ID }],
+      parents: [],
+    });
+
+    await new FoyerService(db).supprimerFoyer(FOYER_ID);
+
+    expect(insertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: { foyerId: FOYER_ID, parentIds: [] },
+      }),
+    );
+  });
+
+  it('lève NotFoundException si le foyer est introuvable — aucun événement émis', async () => {
+    const { db, insertValues } = fakeDbSuppressionTx({ lignes: [] });
+
+    await expect(
+      new FoyerService(db).supprimerFoyer(FOYER_ID),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(insertValues).not.toHaveBeenCalled();
+  });
+
+  it('un échec d’écriture de l’événement fait échouer la suppression (patron outbox)', async () => {
+    // L'erreur remonte hors de la transaction : sur une vraie base le DELETE est
+    // annulé — on ne peut pas effacer localement sans que l'aval l'apprenne.
+    const db = {
+      transaction: vi.fn(async (cb: (t: unknown) => Promise<unknown>) =>
+        cb({
+          select: () => ({
+            from: () => ({ where: () => Promise.resolve([]) }),
+          }),
+          delete: () => ({
+            where: () => ({
+              returning: () => Promise.resolve([{ id: FOYER_ID }]),
+            }),
+          }),
+          insert: () => ({
+            values: () => Promise.reject(new Error('outbox indisponible')),
+          }),
+        }),
+      ),
+    } as unknown as Database;
+
+    await expect(new FoyerService(db).supprimerFoyer(FOYER_ID)).rejects.toThrow(
+      'outbox indisponible',
+    );
   });
 });
 

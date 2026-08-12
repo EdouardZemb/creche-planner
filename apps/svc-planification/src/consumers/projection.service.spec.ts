@@ -1,13 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Table } from 'drizzle-orm';
 import {
   ENFANT_AJOUTE_TYPE,
   ENFANT_MODIFIE_TYPE,
+  FOYER_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-foyer';
 import { CONTRAT_MODIFIE_TYPE } from '@creche-planner/contracts-planification';
 import { ProjectionService } from './projection.service.js';
 import type { Database } from '../database/database.types.js';
 import type { ContratRow } from '../database/schema.js';
-import { outbox, processedEvent } from '../database/schema.js';
+import {
+  contrat,
+  deadLetter,
+  etablissement,
+  outbox,
+  processedEvent,
+} from '../database/schema.js';
 
 /**
  * Tests d'**aiguillage, d'idempotence et de ré-émission** du projecteur `FOYER`
@@ -16,6 +24,11 @@ import { outbox, processedEvent } from '../database/schema.js';
  * `traiter` : enveloppes inconnues acquittées sans toucher la base, échec de
  * parsing → re-livraison (NAK), idempotence pilotée par `processed_event`, et
  * ré-émission d'un `ContratModifie` **par contrat rafraîchi**.
+ *
+ * Pour l'effacement (`FoyerSupprime`), ce niveau capture la **séquence** des
+ * `delete` : c'est ici que se joue la contrainte d'ordre imposée par la FK
+ * `contrat.etablissement_id`. L'oracle de **résidu** (« il ne reste rien ») vit
+ * dans `projection.integration.spec.ts`, sur une base factice à état.
  */
 
 const ENFANT_ID = '77777777-7777-4777-8777-777777777777';
@@ -48,8 +61,10 @@ function ligneRafraichie(
 
 /**
  * Base factice discriminée **par table** : l'insert `processed_event` pilote
- * l'idempotence (`marqueurInsere`), l'insert `outbox` est capturé, et
- * `update().set().where().returning()` renvoie les contrats « rafraîchis ».
+ * l'idempotence (`marqueurInsere`), l'insert `outbox` est capturé,
+ * `update().set().where().returning()` renvoie les contrats « rafraîchis », et
+ * `tablesSupprimees` retient les tables ciblées par un `delete` **dans l'ordre
+ * d'appel** (la seule chose que ce niveau sache observer de l'effacement).
  */
 function fakeDb(options: {
   marqueurInsere: boolean;
@@ -58,10 +73,19 @@ function fakeDb(options: {
   db: Database;
   updateSet: ReturnType<typeof vi.fn>;
   outboxInserts: Record<string, unknown>[];
+  tablesSupprimees: Table[];
+  transaction: ReturnType<typeof vi.fn>;
 } {
   const updateSet = vi.fn();
   const outboxInserts: Record<string, unknown>[] = [];
+  const tablesSupprimees: Table[] = [];
   const tx = {
+    delete: (table: Table) => ({
+      where: () => {
+        tablesSupprimees.push(table);
+        return Promise.resolve();
+      },
+    }),
     insert: (table: unknown) => ({
       values: (v: Record<string, unknown>) => {
         if (table === processedEvent) {
@@ -89,12 +113,13 @@ function fakeDb(options: {
       },
     }),
   };
+  const transaction = vi.fn(async (cb: (t: unknown) => Promise<void>) => {
+    await cb(tx);
+  });
   const db = {
-    transaction: vi.fn(async (cb: (t: unknown) => Promise<void>) => {
-      await cb(tx);
-    }),
+    transaction,
   } as unknown as Database;
-  return { db, updateSet, outboxInserts };
+  return { db, updateSet, outboxInserts, tablesSupprimees, transaction };
 }
 
 function evenementEnfantModifie(id: string, prenom = 'Léa'): unknown {
@@ -236,5 +261,107 @@ describe('ProjectionService.traiter (svc-planification, stream FOYER)', () => {
     ).resolves.toBe('TRAITE');
     expect(updateSet).not.toHaveBeenCalled();
     expect(outboxInserts).toHaveLength(0);
+  });
+});
+
+/**
+ * **Droit à l'effacement** (`FoyerSupprime`, doc 37 §3) — niveau aiguillage.
+ *
+ * L'assertion centrale ici est l'**ordre** des `delete`. `contrat.etablissement_id`
+ * référence `etablissement.id` en `ON DELETE no action` (migration 0003) : vider
+ * `etablissement` avant `contrat` violerait la contrainte, ferait échouer toute la
+ * transaction et enverrait l'effacement en boucle de re-livraison. Aucun test de
+ * contenu ne rattraperait cette inversion — seul un test d'ordre le fait.
+ *
+ * Symétriquement, les trois tables filles de `contrat` (`contrat_version`,
+ * `correction_journal`, `planning_mois`) ne doivent **pas** apparaître dans la
+ * séquence : elles sont emportées par la cascade SQL, pas par ce code.
+ */
+describe('ProjectionService.traiter — FoyerSupprime (effacement)', () => {
+  const ID_SUPPR = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+  function evenementFoyerSupprime(id: string): unknown {
+    return {
+      id,
+      type: FOYER_SUPPRIME_TYPE,
+      source: 'svc-foyer',
+      version: 1,
+      occurredAt: '2027-02-01T00:00:00.000Z',
+      traceId: 'trace-suppr',
+      payload: {
+        foyerId: FOYER_ID,
+        // Portés pour svc-notifications (boîte in-app clée par parent) ; sans
+        // usage ici : aucune table de Planification n'est clée par parent.
+        parentIds: [
+          '77777777-0000-4000-8000-000000000001',
+          '77777777-0000-4000-8000-000000000002',
+        ],
+      },
+    };
+  }
+
+  it('aiguille le type vers l’effacement et acquitte (TRAITE)', async () => {
+    const { db, transaction } = fakeDb({ marqueurInsere: true });
+    const projection = new ProjectionService(db);
+
+    await expect(
+      projection.traiter('FOYER', evenementFoyerSupprime(ID_SUPPR)),
+    ).resolves.toBe('TRAITE');
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('cas nominal : un delete par table portant la donnée, dans l’ordre imposé par la FK', async () => {
+    const { db, tablesSupprimees } = fakeDb({ marqueurInsere: true });
+    const projection = new ProjectionService(db);
+
+    await projection.traiter('FOYER', evenementFoyerSupprime(ID_SUPPR));
+
+    // `contrat` AVANT `etablissement` : l'inverse violerait
+    // `contrat_etablissement_id_etablissement_id_fk` (no action).
+    expect(tablesSupprimees).toEqual([contrat, etablissement, deadLetter]);
+  });
+
+  it('les tables filles en cascade SQL ne sont PAS supprimées par le code', async () => {
+    const { db, tablesSupprimees } = fakeDb({ marqueurInsere: true });
+    const projection = new ProjectionService(db);
+
+    await projection.traiter('FOYER', evenementFoyerSupprime(ID_SUPPR));
+
+    // 3 tables ciblées, pas 6 : `contrat_version`, `correction_journal` et
+    // `planning_mois` pendent de `contrat` en `ON DELETE cascade`.
+    expect(tablesSupprimees).toHaveLength(3);
+  });
+
+  it('ni outbox ni processed_event ne sont purgées (file vivante / garde-fou anti-rejeu)', async () => {
+    const { db, tablesSupprimees } = fakeDb({ marqueurInsere: true });
+    const projection = new ProjectionService(db);
+
+    await projection.traiter('FOYER', evenementFoyerSupprime(ID_SUPPR));
+
+    expect(tablesSupprimees).not.toContain(outbox);
+    expect(tablesSupprimees).not.toContain(processedEvent);
+  });
+
+  it('idempotent : un rejeu (marqueur déjà présent) ne déclenche AUCUN delete, mais acquitte', async () => {
+    const { db, tablesSupprimees } = fakeDb({ marqueurInsere: false });
+    const projection = new ProjectionService(db);
+
+    await expect(
+      projection.traiter('FOYER', evenementFoyerSupprime(ID_SUPPR)),
+    ).resolves.toBe('TRAITE');
+    expect(tablesSupprimees).toHaveLength(0);
+  });
+
+  it('NAK (re-livraison) si le payload d’effacement est invalide', async () => {
+    const { db, tablesSupprimees } = fakeDb({ marqueurInsere: true });
+    const projection = new ProjectionService(db);
+
+    await expect(
+      projection.traiter('FOYER', {
+        ...(evenementFoyerSupprime(ID_SUPPR) as Record<string, unknown>),
+        payload: { foyerId: 'pas-un-uuid', parentIds: [] },
+      }),
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
+    expect(tablesSupprimees).toHaveLength(0);
   });
 });

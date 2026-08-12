@@ -40,10 +40,12 @@ describe('MentionsPage', () => {
     expect(screen.getByText('trois ans')).toBeInTheDocument();
     expect(screen.getByText('treize mois')).toBeInTheDocument();
     expect(screen.getByText('douze mois')).toBeInTheDocument();
-    // Doc 37 § 3 : ce sont des objectifs de gestion, aucune purge n'est outillée.
-    // Écrire « vos données sont supprimées au bout de… » serait un mensonge.
+    // Doc 37 § 3 : ce sont des objectifs de gestion, aucune purge liée au temps
+    // n'est outillée — le lot 2 a livré l'effacement À LA DEMANDE, pas
+    // l'expiration. Écrire « vos données sont supprimées au bout de… » resterait
+    // un mensonge tant que la borne temporelle n'existe pas.
     expect(
-      screen.getByText(/aucune suppression automatique n’est en place/i),
+      screen.getByText(/rien ne s’efface tout seul à l’échéance/i),
     ).toBeInTheDocument();
   });
 
@@ -67,26 +69,22 @@ describe('MentionsPage', () => {
     );
   });
 
-  it('dit ce qui manque SANS nier les suppressions qui existent déjà', () => {
+  it('annonce l’effacement livré, en nommant l’écran qui le porte', () => {
     afficher();
-    // Ce qui manque vraiment (doc 37 § 4) : le geste d'ensemble et l'export.
+    // Le lot 2 a livré le geste d'ensemble : la page doit le dire, et dire OÙ.
+    // Une page qui décrirait un droit sans son chemin d'accès ne sert personne.
+    expect(screen.getByText(/Effacer cette famille/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ma famille/i)).toBeInTheDocument();
+    // Le point qui change vraiment pour une personne concernée : un parent
+    // retiré laissait jusqu'ici son nom et son e-mail en base (`actif = false`).
     expect(
-      screen.getByText(/ni suppression de la famille entière, ni export/i),
+      screen.getByText(/parents précédemment retirés/i),
     ).toBeInTheDocument();
-    // …mais l'application SAIT supprimer à l'unité, et ce sont de vraies
-    // suppressions : `FoyerService.retirerEnfant` est un hard delete en cascade,
-    // `supprimerContrat` et `supprimerEtablissement` aussi, tous trois câblés à
-    // un écran. Écrire « rien ne permet d'effacer vos données » serait faux, et
-    // contredirait la phrase adressée à l'établissement juste en dessous (elle
-    // lui propose précisément de demander le retrait de ses coordonnées).
-    expect(
-      screen.getByText(/Supprimer un enfant, un contrat ou une crèche/i),
-    ).toBeInTheDocument();
-    // Le retrait d'un parent, lui, est logique : nom et e-mail sont conservés
-    // (doc 37 § 4, `parent.actif = false`). La nuance doit rester écrite.
-    expect(
-      screen.getByText(/conserve son nom et son adresse e-mail/i),
-    ).toBeInTheDocument();
+  });
+
+  it('n’annonce PAS l’export, qui n’existe toujours pas (doc 37 § 4)', () => {
+    afficher();
+    expect(screen.getByText(/toujours pas d’export/i)).toBeInTheDocument();
   });
 
   it('adresse une phrase à l’agent d’établissement venu d’un courriel', () => {

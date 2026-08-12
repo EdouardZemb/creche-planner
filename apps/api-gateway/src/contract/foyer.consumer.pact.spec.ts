@@ -35,6 +35,14 @@ const EMAIL_PARENT_LEST = 'dominique.bernard@example.test';
 const ETAT_FOYER_AVEC_DEUX_PARENTS =
   'un foyer de référence T3 avec deux parents';
 
+// Effacement du foyer (lot 2, `AM-34`) : foyer **jetable**, d'id distinct du foyer
+// de référence. La suppression est destructive et non rejouable — la faire porter
+// sur `FOYER_REFERENCE_ID` ferait dépendre les autres interactions de l'ordre de
+// vérification. Le state provider le seede avec un parent, pour que la collecte des
+// `parentIds` (qui doit précéder la cascade) soit exercée sur une base réelle.
+const FOYER_JETABLE_ID = '55555555-5555-4555-8555-555555555555';
+const ETAT_FOYER_JETABLE = 'un foyer jetable, cible de l’effacement';
+
 // Enfant (P4) : un foyer « avec un enfant » d'id connu, cible de l'édition et du
 // retrait (le foyer est seedé puis l'enfant inséré par le stateHandler provider).
 const ENFANT_REFERENCE_ID = '22222222-2222-4222-8222-222222222222';
@@ -476,6 +484,25 @@ describe('Pact consumer · api-gateway → svc-foyer', { retry: 1 }, () => {
     await provider.executeTest(async (mockServer) => {
       const reponse = await fetch(
         `${mockServer.url}/api/foyers/${FOYER_REFERENCE_ID}/enfants/${ENFANT_REFERENCE_ID}`,
+        { method: 'DELETE' },
+      );
+      expect(reponse.status).toBe(204);
+    });
+  });
+
+  it('efface un foyer entier (204)', async () => {
+    provider
+      .given(ETAT_FOYER_JETABLE, { foyerId: FOYER_JETABLE_ID })
+      .uponReceiving('un effacement de foyer entier')
+      .withRequest({
+        method: 'DELETE',
+        path: `/api/foyers/${FOYER_JETABLE_ID}`,
+      })
+      .willRespondWith({ status: 204 });
+
+    await provider.executeTest(async (mockServer) => {
+      const reponse = await fetch(
+        `${mockServer.url}/api/foyers/${FOYER_JETABLE_ID}`,
         { method: 'DELETE' },
       );
       expect(reponse.status).toBe(204);

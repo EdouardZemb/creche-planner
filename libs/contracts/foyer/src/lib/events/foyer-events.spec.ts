@@ -6,6 +6,7 @@ import {
   FOYER_EVENT_SOURCE,
   FOYER_MIS_A_JOUR_TYPE,
   FOYER_MIS_A_JOUR_V2_TYPE,
+  FOYER_SUPPRIME_TYPE,
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
@@ -16,6 +17,7 @@ import {
   enfantRetireEventSchema,
   foyerMisAJourEventSchema,
   foyerMisAJourEventV2Schema,
+  foyerSupprimeEventSchema,
   parentAjouteEventSchema,
   parentRetireEventSchema,
   preferenceNotificationIdSchema,
@@ -233,6 +235,76 @@ describe('contracts-foyer (événements foyer.*)', () => {
       },
     };
     expect(enfantRetireEventSchema.safeParse(event).success).toBe(true);
+  });
+
+  // --- foyer.FoyerSupprime.v1 ----------------------------------------------
+
+  it('expose le type versionné de l’effacement du foyer', () => {
+    expect(FOYER_SUPPRIME_TYPE).toBe('foyer.FoyerSupprime.v1');
+  });
+
+  it('FoyerSupprime.v1 transporte le foyer et TOUS ses parents (actifs et retirés)', () => {
+    const event = {
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: FOYER_SUPPRIME_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        parentIds: [
+          '33333333-0000-4000-8000-000000000000',
+          '44444444-0000-4000-8000-000000000000',
+        ],
+      },
+    };
+    expect(foyerSupprimeEventSchema.safeParse(event).success).toBe(true);
+  });
+
+  it('accepte un foyer sans aucun parent (créé par un admin pour autrui)', () => {
+    const result = foyerSupprimeEventSchema.safeParse({
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: FOYER_SUPPRIME_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        parentIds: [],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejette un parentId qui n’est pas un UUID (la liste est validée élément par élément)', () => {
+    const result = foyerSupprimeEventSchema.safeParse({
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: FOYER_SUPPRIME_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: {
+        foyerId: '11111111-0000-4000-8000-000000000000',
+        parentIds: ['pas-un-uuid'],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejette un FoyerSupprime sans parentIds (l’absence de liste n’est pas une liste vide)', () => {
+    const result = foyerSupprimeEventSchema.safeParse({
+      id: '3f6b2c10-0000-4000-8000-000000000000',
+      type: FOYER_SUPPRIME_TYPE,
+      source: FOYER_EVENT_SOURCE,
+      version: 1,
+      occurredAt: '2026-06-02T00:00:00.000Z',
+      traceId: 'x',
+      payload: { foyerId: '11111111-0000-4000-8000-000000000000' },
+    });
+    expect(result.success).toBe(false);
   });
 
   // --- foyer.Parent{Ajoute,Modifie,Retire}.v1 ------------------------------

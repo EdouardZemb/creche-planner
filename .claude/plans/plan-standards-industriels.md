@@ -53,11 +53,49 @@ sauvegardes, préalable à tout resserrement du RPO).
 
 ## Lot 2 — droit à l'effacement et purge (`AM-34`, `AM-36` volet outillage)
 
-Suppression de foyer (cascade réelle), purge différée des parents soft-delete, borne
-temporelle sur `correction_journal`/outbox/projections. Attention : les événements
-`.v1` et les read models aval (`svc-tarification`, `svc-notifications`) portent des
-copies — l'effacement est un **événement d'intégration**, pas un `DELETE` local.
-Critère : parcours E2E stack réelle de bout en bout, résidus vérifiés en base.
+**Écart assumé au découpage initial : le lot 2 est scindé en 2a et 2b.** Les deux moitiés
+n'ont aucune dépendance l'une envers l'autre et ne portent pas le même risque — l'une
+touche cinq services et un écran, l'autre pose une tâche périodique dans une lib partagée.
+Les relire ensemble aurait noyé la seconde.
+
+### Lot 2a — effacement à la demande ✅ LIVRÉ
+
+**Fait le 2026-08-12**, branche `feat/rgpd-lot2-effacement-foyer`.
+
+`DELETE /api/v1/foyers/:id` (garde `@FoyerScope`) → cascade SQL côté `svc-foyer` →
+événement `foyer.FoyerSupprime.v1` → effacement des copies dans `svc-tarification`,
+`svc-notifications` et `svc-planification`. Zone de danger dans « Ma famille », avec mot
+de confirmation à recopier. Page `/mentions` remise en accord avec ce qui est outillé.
+
+**Quatre écarts à l'énoncé, constatés contre le code :**
+
+1. L'énoncé disait « les événements `.v1` et les read models aval portent des copies ».
+   C'est vrai, mais il manquait le principal : **`dead_letter` aussi**, et en clair.
+   Les abonnements sont posés sur `foyer.>` sans `filter_subject`, donc tout événement
+   qu'un service ne consomme pas y atterrit avec son payload — `svc-planification` ne
+   traite qu'`EnfantModifie`, il archive donc tous les revenus et tous les e-mails depuis
+   la mise en production. L'effacement purge cette table ; la cause racine est `AM-53`.
+2. `outbox` n'est **pas** purgée, délibérément : c'est une file de publication vivante,
+   pas un magasin — l'événement d'effacement lui-même y transite. Sa borne est
+   temporelle (lot 2b). Idem `processed_event`, que doc 37 §3 exclut nommément.
+3. La « purge différée des parents soft-delete » de l'énoncé se révèle **déjà couverte
+   pour le cas qui compte** : effacer un foyer emporte ses parents retirés. Ce qui reste
+   est le retrait d'un parent **seul**, qui conserve nom et e-mail — hors périmètre ici,
+   parce que sa réactivation par e-mail en dépend (`ajouterParent` ressuscite la ligne
+   inactive) : le supprimer changerait un comportement métier, ce n'est pas de l'hygiène.
+4. Le composant partagé `Modale` s'est révélé cassé pour tout champ de saisie (`LE-31`) :
+   corrigé ici, parce que la confirmation du lot ne pouvait pas fonctionner autrement.
+
+### Lot 2b — bornes temporelles (`AM-36` volet outillage, `AM-01`, `AM-03`)
+
+Purge périodique par âge, sur le patron maison `setInterval` + garde de réentrance
+(`OutboxRelay`/`SchedulerHebdo` — pas de `@nestjs/schedule`, refus documenté), horloge
+injectée pour tester sans attendre. Durées : celles de doc 37 §3. Deux préalables écrits :
+`processed_event` ne se borne qu'**après** avoir posé un `max_age` sur les streams
+JetStream (sinon on rouvre le rejeu), et l'index sur les colonnes de date se pose **dans
+la même migration** que la purge (première purge = balayage séquentiel sur des tables
+jamais nettoyées). Critère : une ligne juste **sous** la borne survit — la sonde négative
+est là, pas sur la ligne supprimée.
 
 ## Lot 3 — portabilité (`AM-35`)
 

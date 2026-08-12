@@ -132,10 +132,13 @@ export type EnfantAjouteEvent = z.infer<typeof enfantAjouteEventSchema>;
  * `Modifie` transporte l'**état complet** (le consommateur projette sans relire
  * la source, comme `EnfantAjoute`) ; `Retire` ne porte que les identités (la
  * suppression est un **hard delete** côté svc-foyer — pas de colonne `actif` sur
- * `enfant`, cohérent avec le `ON DELETE CASCADE`). Le couplage contrat→enfant de
- * `svc-planification` se fait par **prénom libre** (pas par `enfantId`) : ces
- * événements ne cascadent donc pas vers les plannings (désynchro cosmétique
- * seulement, cf. plan §2.5).
+ * `enfant`, cohérent avec le `ON DELETE CASCADE`).
+ *
+ * Le couplage contrat→enfant de `svc-planification` se fait par `enfant_id`
+ * (colonne encore nullable le temps du back-fill) : `EnfantModifie` y rafraîchit
+ * la dénormalisation `contrat.enfant`, mais `EnfantRetire` n'y déclenche **rien**
+ * — un contrat survit à l'enfant qu'il désigne. C'est l'effacement du foyer
+ * entier (`FoyerSupprime`) qui emporte les contrats, pas le retrait unitaire.
  */
 export const ENFANT_MODIFIE_TYPE = 'foyer.EnfantModifie.v1';
 export const ENFANT_RETIRE_TYPE = 'foyer.EnfantRetire.v1';
@@ -223,6 +226,40 @@ export const parentRetireEventSchema = integrationEventSchema(
   parentRetirePayloadSchema,
 );
 export type ParentRetireEvent = z.infer<typeof parentRetireEventSchema>;
+
+// --- foyer.FoyerSupprime.v1 -------------------------------------------------
+
+/**
+ * **Effacement d'un foyer entier** (droit à l'effacement, lot 2 du plan
+ * standards ; `AM-34`). Côté `svc-foyer` c'est un `DELETE` réel sur `foyer` :
+ * les tables filles partent par `ON DELETE CASCADE` (versions de ressources,
+ * journal de corrections, enfants, parents, et par les parents les préférences
+ * et les jetons de désabonnement). Les read-models aval en détiennent des
+ * **copies** — l'effacement doit donc **voyager en événement**, jamais en
+ * suppression locale (doc 37 § 3, effet de bord).
+ *
+ * Le payload transporte les `parentIds` **parce que la boîte de réception
+ * in-app de `svc-notifications` (table `notification`) est clé par `parent_id`
+ * et ne porte aucun `foyer_id`** : sans cette liste, ces lignes — qui
+ * contiennent des prénoms d'enfants — resteraient orphelines et invisibles.
+ * Les parents **retirés** (soft-delete `actif = false`) y figurent aussi : ce
+ * sont eux, précisément, dont l'effacement était impossible jusqu'ici.
+ *
+ * Identités seules, comme `EnfantRetire` : l'état supprimé n'est pas reporté.
+ */
+export const FOYER_SUPPRIME_TYPE = 'foyer.FoyerSupprime.v1';
+
+export const foyerSupprimePayloadSchema = z.object({
+  foyerId: foyerIdSchema,
+  /** Tous les parents du foyer au moment de l'effacement, actifs **et** retirés. */
+  parentIds: z.array(parentIdSchema),
+});
+export type FoyerSupprimePayload = z.infer<typeof foyerSupprimePayloadSchema>;
+
+export const foyerSupprimeEventSchema = integrationEventSchema(
+  foyerSupprimePayloadSchema,
+);
+export type FoyerSupprimeEvent = z.infer<typeof foyerSupprimeEventSchema>;
 
 // --- Préférences de notification (profil parent, PR1) ----------------------
 

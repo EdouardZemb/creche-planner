@@ -41,6 +41,18 @@ export function Modale({
   const idTitre = labelId ?? idGenere;
   const refModale = useRef<HTMLDivElement>(null);
 
+  /**
+   * Focus initial à l'ouverture, restauration sur le déclencheur à la fermeture.
+   *
+   * Effet **distinct** de l'écoute clavier, et volontairement indépendant de
+   * `onClose` : `refFocusInitial` est un `useRef` (identité stable), tandis que
+   * `onClose` est très souvent une fonction recréée à chaque rendu du parent.
+   * Tant que les deux vivaient dans le même effet, **toute** frappe dans un
+   * champ porté par `children` re-déclenchait l'effet et **reposait le focus sur
+   * « Annuler »** : une saisie perdait tout après son premier caractère. Le bug
+   * ne se voyait pas tant qu'aucune modale ne contenait de champ dont l'état
+   * vivait chez le parent.
+   */
   useEffect(() => {
     const declencheur = document.activeElement as HTMLElement | null;
     const modale = refModale.current;
@@ -55,6 +67,15 @@ export function Modale({
     } else {
       modale?.focus();
     }
+    return () => {
+      declencheur?.focus();
+    };
+  }, [refFocusInitial]);
+
+  // Écoute clavier (Échap + piège à Tab) : réattachée si `onClose` change
+  // d'identité, ce qui est sans effet visible pour l'utilisateur.
+  useEffect(() => {
+    const modale = refModale.current;
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
@@ -91,10 +112,8 @@ export function Modale({
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('keydown', onKeyDown);
-      // Restaure le focus sur le déclencheur à la fermeture.
-      declencheur?.focus();
     };
-  }, [onClose, refFocusInitial]);
+  }, [onClose]);
 
   function onClickOverlay(e: React.MouseEvent<HTMLDivElement>) {
     if (e.target === e.currentTarget) onClose();
