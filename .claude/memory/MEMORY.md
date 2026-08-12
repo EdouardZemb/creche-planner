@@ -12,7 +12,8 @@
 
 ## Chantiers actifs
 
-- [Revue standards industriels 2026-08](revue-standards-2026-08.md) — plan `.claude/plans/plan-standards-industriels.md` ; lots 0, 1, **2a et 2b** livrés (doc 37, effacement du foyer, bornes temporelles + porte `pnpm retentions`) ; prochain = **lot 3 portabilité**.
+- [Vision plateforme du foyer (2026-08)](../plans/vision-plateforme-foyer-2026-08.md) — projection PO 2026-08-11 : vacances/impôts/voiture/courses/documents mappés sur SFD 31-33 + factures-réelles, pistes `AM-63`→`AM-65`, horizon domotique long terme (aucun chantier lancé).
+- [Revue standards industriels 2026-08](revue-standards-2026-08.md) — plan `.claude/plans/plan-standards-industriels.md` ; lots 0, 1, 2a, 2b et **3** livrés (doc 37, effacement, bornes temporelles, **export de portabilité** + portes `pnpm retentions` / `pnpm portabilite`) ; prochain = **lot 4 RFC 9457**.
 
 - [Travail à distance (vacances 08/2026)](travail-a-distance-vacances-2026-08.md) — runbook Tailscale+RDP, 2 routines cloud actives ; ⚠️ la mémoire du dépôt n'est qu'un **miroir** volontairement incomplet, à ne pas « resynchroniser » depuis une session distante.
 - [Plan consolidation UI + qualité](plan-consolidation-ui-qualite.md) — **journal complet des sessions dans la fiche.** État 2026-08-07 : A ✅ 7/7 ; mergés NON DÉPLOYÉS = B3/B7, C5/C7, D1-D4/D6/D8 → prochain train de release ; restent B4/B5/B8, C6/C8/C9, D5/D7, chantier E ; gestes PO : merge #284 (verte), re-run `main` rouge du 06/08 (incident GitHub, pas une régression), rclone R2(a), bascule INTERSERVICE R3.

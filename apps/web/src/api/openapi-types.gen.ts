@@ -384,6 +384,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/foyers/{id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Exporter les données personnelles du foyer
+         * @description Rassemble en un document JSON unique tout ce que les trois services **sources** détiennent sur le foyer : situation et ressources, garde et plannings, communications. Droit à la portabilité, tenu en démarche volontaire (ADR-0007). Le périmètre exporté est celui de la cascade d’effacement — ce qu’un effacement emporte, un export le rend — aux exclusions déclarées près : les copies projetées de svc-tarification (déjà présentes ici sous leur forme source), les files techniques, et le `jti` d’un jeton de désabonnement, qui est une capacité et non une donnée. Inventaire table par table dans docs/37-registre-des-traitements.md §6. Les colonnes de chaque ligne ne sont pas contractées : l’export suit les tables des services, et les décrire ici en figerait une troisième copie.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Document d’export des données personnelles du foyer. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ExportPortabiliteVue"];
+                    };
+                };
+                /** @description Foyer hors du périmètre de l’appelant. */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Foyer inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/foyers/{id}/versions": {
         parameters: {
             query?: never;
@@ -2436,6 +2491,42 @@ export interface components {
             /** Format: date-time */
             saisiLe: string;
             motif: string | null;
+        };
+        /** @description Une ligne d’export : un enregistrement tel qu’il vit dans la table du service qui le détient. Les colonnes ne sont volontairement pas décrites ici — les figer ferait une troisième copie du schéma, après la table et l’interface du service, sans que rien ne garde les trois alignées. La garantie contractuelle porte sur la présence des sections, pas sur la forme des lignes. */
+        LigneExport: {
+            [key: string]: unknown;
+        };
+        /** @description Document d’export des données personnelles d’un foyer. Les sections portent le nom de ce qu’elles contiennent pour la personne, pas celui du service qui les détient. */
+        ExportPortabiliteVue: {
+            /** @description Version du format du document (pas de l’application). N’augmente que si une section est renommée ou retirée. */
+            versionFormat: number;
+            /** Format: date-time */
+            genereLe: string;
+            /** Format: uuid */
+            foyerId: string;
+            /** @description Situation et ressources du foyer, enfants, parents (retirés compris), préférences de notification effectives et traces de désabonnement. */
+            situationFoyer: {
+                situationCourante: components["schemas"]["LigneExport"];
+                versionsRessources: components["schemas"]["LigneExport"][];
+                correctionsRessources: components["schemas"]["LigneExport"][];
+                enfants: components["schemas"]["LigneExport"][];
+                parents: components["schemas"]["LigneExport"][];
+                preferencesNotification: components["schemas"]["LigneExport"][];
+                jetonsDesabonnement: components["schemas"]["LigneExport"][];
+            };
+            /** @description Contrats d’accueil et tout ce qui leur est rattaché (avenants, corrections, plannings mensuels), et établissements déclarés. */
+            gardeEtPlanning: {
+                contrats: components["schemas"]["LigneExport"][];
+                etablissements: components["schemas"]["LigneExport"][];
+            };
+            /** @description Semaines soumises à validation, preuves de ce qui a réellement été envoyé (au foyer, à chaque parent, à l’établissement) et boîte de réception in-app. */
+            communications: {
+                validationsHebdo: components["schemas"]["LigneExport"][];
+                envoisRecapFoyer: components["schemas"]["LigneExport"][];
+                envoisRecapParent: components["schemas"]["LigneExport"][];
+                envoisEtablissement: components["schemas"]["LigneExport"][];
+                messagesInApp: components["schemas"]["LigneExport"][];
+            };
         };
         /** @description Vue projetée d’un enfant rattaché à un foyer. */
         EnfantVue: {

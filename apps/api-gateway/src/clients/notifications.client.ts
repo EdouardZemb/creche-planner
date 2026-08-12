@@ -175,10 +175,35 @@ const moisCommuniquesSchema = z
   .object({ mois: z.array(z.string()) })
   .transform((reponse) => reponse.mois);
 
+/**
+ * Une ligne d'export de portabilité : objet libre. Cf. la note du même schéma
+ * dans `foyer.client.ts` — la passerelle contracte la **présence des sections**,
+ * pas les colonnes.
+ */
+const ligneExportSchema = z.record(z.string(), z.unknown());
+
+const exportNotificationsSchema = z.object({
+  validationsHebdo: z.array(ligneExportSchema),
+  envoisRecapFoyer: z.array(ligneExportSchema),
+  envoisRecapParent: z.array(ligneExportSchema),
+  envoisEtablissement: z.array(ligneExportSchema),
+  messagesInApp: z.array(ligneExportSchema),
+});
+
+/** Part `svc-notifications` de l'export de portabilité (lot 3, `AM-35`). */
+export type ExportNotificationsVue = z.infer<typeof exportNotificationsSchema>;
+
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
   retries: 1,
   delaiEntreEssaisMs: 200,
+};
+
+/** Budget élargi de l'export (corps de messages figés) — cf. `foyer.client.ts`. */
+const OPTIONS_EXPORT: OptionsResilience = {
+  timeoutMs: 8000,
+  retries: 0,
+  delaiEntreEssaisMs: 0,
 };
 
 /**
@@ -198,16 +223,30 @@ export class NotificationsClient {
     chemin: string;
     corps?: unknown;
     schema: ZodType<T>;
+    options?: OptionsResilience;
   }): Promise<T> {
     return appelResilient({
       service: 'svc-notifications',
       logger: this.logger,
       breaker: this.breaker,
-      options: OPTIONS,
+      options: config.options ?? OPTIONS,
       methode: config.methode,
       url: `${loadConfig().notificationsUrl}${config.chemin}`,
       corps: config.corps,
       schema: config.schema,
+    });
+  }
+
+  /**
+   * GET `/api/foyers/:foyerId/export` — part `svc-notifications` de l'export de
+   * portabilité (validations hebdo, preuves d'envoi, boîte de réception).
+   */
+  async exporter(foyerId: string): Promise<ExportNotificationsVue> {
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/foyers/${encodeURIComponent(foyerId)}/export`,
+      schema: exportNotificationsSchema,
+      options: OPTIONS_EXPORT,
     });
   }
 

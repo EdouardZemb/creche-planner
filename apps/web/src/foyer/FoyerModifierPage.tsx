@@ -23,6 +23,7 @@ import {
 import { ParentsSection } from './ParentsSection';
 import { EnfantsSection } from './EnfantsSection';
 import { HistoriqueRessources } from './HistoriqueRessources';
+import { ExportDonneesFoyer } from './ExportDonneesFoyer';
 import { ZoneDangerFoyer } from './ZoneDangerFoyer';
 import { useContrats } from './useContrats';
 import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
@@ -264,6 +265,10 @@ function FormulaireEdition({
       </form>
 
       <HistoriqueRessources key={rechargesHisto} foyerId={foyerId} />
+
+      {/* Récupérer ses données avant de pouvoir tout effacer : les deux gestes
+          se lisent ensemble, et celui qui ne casse rien vient en premier. */}
+      <ExportDonneesFoyer foyerId={foyerId} />
 
       {/* En dernier, délibérément : le geste irréversible ne doit pas se
           trouver sur le chemin d'une édition ordinaire. */}

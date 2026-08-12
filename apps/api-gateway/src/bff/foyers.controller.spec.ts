@@ -5,6 +5,8 @@ import type {
   FoyerVue,
   ParentVue,
 } from '../clients/foyer.client.js';
+import type { NotificationsClient } from '../clients/notifications.client.js';
+import type { PlanificationClient } from '../clients/planification.client.js';
 import { FoyersController } from './foyers.controller.js';
 
 const FOYER: FoyerVue = {
@@ -29,6 +31,23 @@ const parent = (p: Partial<ParentVue> & Pick<ParentVue, 'id'>): ParentVue => ({
   ...p,
 });
 
+/**
+ * Construit le contrôleur avec des clients doublés. `PlanificationClient` et
+ * `NotificationsClient` ne servent qu'à l'export de portabilité (lot 3) : les
+ * tests qui ne le visent pas les laissent vides.
+ */
+function controleur(
+  foyers: Partial<FoyerClient>,
+  planification: Partial<PlanificationClient> = {},
+  notifications: Partial<NotificationsClient> = {},
+): FoyersController {
+  return new FoyersController(
+    foyers as FoyerClient,
+    planification as PlanificationClient,
+    notifications as NotificationsClient,
+  );
+}
+
 describe('FoyersController · création atomique', () => {
   it('crée le dossier via un seul appel svc-foyer (foyer + enfants + parents)', async () => {
     const dossier = {
@@ -46,9 +65,9 @@ describe('FoyersController · création atomique', () => {
       ],
     };
     const creerFoyer = vi.fn().mockResolvedValue(dossier);
-    const controller = new FoyersController({
+    const controller = controleur({
       creerFoyer,
-    } as unknown as FoyerClient);
+    });
 
     const vue = await controller.creer({
       ressourcesMensuelles: 6716.92,
@@ -77,9 +96,9 @@ describe('FoyersController · création atomique', () => {
     const creerFoyer = vi
       .fn()
       .mockResolvedValue({ foyer: FOYER, enfants: [], parents: [] });
-    const controller = new FoyersController({
+    const controller = controleur({
       creerFoyer,
-    } as unknown as FoyerClient);
+    });
 
     const vue = await controller.creer({
       ressourcesMensuelles: 6716.92,
@@ -101,9 +120,9 @@ describe('FoyersController · création atomique', () => {
 
   it('refuse un parent à l’e-mail invalide (400, sans appel amont)', () => {
     const creerFoyer = vi.fn();
-    const controller = new FoyersController({
+    const controller = controleur({
       creerFoyer,
-    } as unknown as FoyerClient);
+    });
 
     expect(() =>
       controller.creer({
@@ -124,9 +143,9 @@ describe('FoyersController · création atomique', () => {
     const creerFoyer = vi
       .fn()
       .mockResolvedValue({ foyer: FOYER, enfants: [], parents: [] });
-    const controller = new FoyersController({
+    const controller = controleur({
       creerFoyer,
-    } as unknown as FoyerClient);
+    });
 
     await controller.creer({
       ressourcesMensuelles: 6716.92,
@@ -143,9 +162,9 @@ describe('FoyersController · création atomique', () => {
     const creerFoyer = vi
       .fn()
       .mockResolvedValue({ foyer: FOYER, enfants: [], parents: [] });
-    const controller = new FoyersController({
+    const controller = controleur({
       creerFoyer,
-    } as unknown as FoyerClient);
+    });
 
     await controller.creer(
       {
@@ -169,9 +188,9 @@ describe('FoyersController · création atomique', () => {
       const creerFoyer = vi
         .fn()
         .mockResolvedValue({ foyer: FOYER, enfants: [], parents: [] });
-      const controller = new FoyersController({
+      const controller = controleur({
         creerFoyer,
-      } as unknown as FoyerClient);
+      });
 
       await controller.creer(
         {
@@ -192,9 +211,9 @@ describe('FoyersController · création atomique', () => {
 
   it('propage un 409 amont en HttpException (relais, dossier annulé côté svc-foyer)', async () => {
     const creerFoyer = vi.fn().mockRejectedValue(new Error('HTTP 409'));
-    const controller = new FoyersController({
+    const controller = controleur({
       creerFoyer,
-    } as unknown as FoyerClient);
+    });
 
     await expect(
       controller.creer({
@@ -210,9 +229,9 @@ describe('FoyersController · création atomique', () => {
 describe('FoyersController · édition des scalaires', () => {
   it('valide puis relaie l’édition des scalaires', async () => {
     const mettreAJour = vi.fn().mockResolvedValue(FOYER);
-    const controller = new FoyersController({
+    const controller = controleur({
       mettreAJour,
-    } as unknown as FoyerClient);
+    });
 
     const vue = await controller.mettreAJour('foyer-1', {
       ressourcesMensuelles: 6716.92,
@@ -232,9 +251,9 @@ describe('FoyersController · édition des scalaires', () => {
 
   it('refuse un corps invalide (400, sans appel amont)', () => {
     const mettreAJour = vi.fn();
-    const controller = new FoyersController({
+    const controller = controleur({
       mettreAJour,
-    } as unknown as FoyerClient);
+    });
 
     expect(() =>
       controller.mettreAJour('foyer-1', { ressourcesMensuelles: -1 }),
@@ -244,9 +263,9 @@ describe('FoyersController · édition des scalaires', () => {
 
   it('propage une erreur amont en HttpException (relais)', async () => {
     const mettreAJour = vi.fn().mockRejectedValue(new Error('HTTP 404'));
-    const controller = new FoyersController({
+    const controller = controleur({
       mettreAJour,
-    } as unknown as FoyerClient);
+    });
 
     await expect(
       controller.mettreAJour('foyer-1', {
@@ -264,9 +283,9 @@ describe('FoyersController · ajout d’enfant', () => {
     const ajouterEnfant = vi
       .fn()
       .mockResolvedValue({ id: 'e1', foyerId: 'foyer-1' });
-    const controller = new FoyersController({
+    const controller = controleur({
       ajouterEnfant,
-    } as unknown as FoyerClient);
+    });
 
     await controller.ajouterEnfant('foyer-1', {
       prenom: 'Mia',
@@ -281,9 +300,9 @@ describe('FoyersController · ajout d’enfant', () => {
 
   it('refuse un enfant sans prénom (400, sans appel amont)', () => {
     const ajouterEnfant = vi.fn();
-    const controller = new FoyersController({
+    const controller = controleur({
       ajouterEnfant,
-    } as unknown as FoyerClient);
+    });
 
     expect(() =>
       controller.ajouterEnfant('foyer-1', { dateNaissance: '2024-12-08' }),
@@ -294,11 +313,11 @@ describe('FoyersController · ajout d’enfant', () => {
 
 describe('FoyersController · lecture agrégée', () => {
   it('agrège foyer, enfants et parents', async () => {
-    const controller = new FoyersController({
+    const controller = controleur({
       foyer: vi.fn().mockResolvedValue(FOYER),
       enfants: vi.fn().mockResolvedValue([{ id: 'e1' }]),
       parents: vi.fn().mockResolvedValue([parent({ id: 'p1' })]),
-    } as unknown as FoyerClient);
+    });
 
     const vue = await controller.lire('foyer-1');
 
@@ -323,10 +342,10 @@ describe('FoyersController · liste scopée à l’identité (lot 5)', () => {
   it('mode hérité (sans identité) : renvoie la liste complète', async () => {
     const lister = vi.fn().mockResolvedValue([FOYER, AUTRE_FOYER]);
     const foyersParEmail = vi.fn();
-    const controller = new FoyersController({
+    const controller = controleur({
       lister,
       foyersParEmail,
-    } as unknown as FoyerClient);
+    });
 
     const vue = await controller.lister();
 
@@ -338,10 +357,10 @@ describe('FoyersController · liste scopée à l’identité (lot 5)', () => {
     process.env['ADMIN_EMAILS'] = 'admin@example.test';
     const lister = vi.fn().mockResolvedValue([FOYER, AUTRE_FOYER]);
     const foyersParEmail = vi.fn();
-    const controller = new FoyersController({
+    const controller = controleur({
       lister,
       foyersParEmail,
-    } as unknown as FoyerClient);
+    });
 
     const vue = await controller.lister({
       headers: {},
@@ -357,10 +376,10 @@ describe('FoyersController · liste scopée à l’identité (lot 5)', () => {
     process.env['ADMIN_EMAILS'] = 'admin@example.test';
     const lister = vi.fn().mockResolvedValue([FOYER, AUTRE_FOYER]);
     const foyersParEmail = vi.fn().mockResolvedValue(['foyer-2']);
-    const controller = new FoyersController({
+    const controller = controleur({
       lister,
       foyersParEmail,
-    } as unknown as FoyerClient);
+    });
 
     const vue = await controller.lister({
       headers: {},
@@ -379,10 +398,10 @@ describe('FoyersController · liste scopée à l’identité (lot 5)', () => {
   it('ADMIN_EMAILS vide : un client identifié ne voit QUE ses foyers', async () => {
     const lister = vi.fn().mockResolvedValue([FOYER, AUTRE_FOYER]);
     const foyersParEmail = vi.fn().mockResolvedValue(['foyer-2']);
-    const controller = new FoyersController({
+    const controller = controleur({
       lister,
       foyersParEmail,
-    } as unknown as FoyerClient);
+    });
 
     const vue = await controller.lister({
       headers: {},
@@ -396,10 +415,10 @@ describe('FoyersController · liste scopée à l’identité (lot 5)', () => {
   it('ADMIN_EMAILS vide : aucun foyer rattaché ⇒ liste vide, pas la liste globale', async () => {
     const lister = vi.fn().mockResolvedValue([FOYER, AUTRE_FOYER]);
     const foyersParEmail = vi.fn().mockResolvedValue([]);
-    const controller = new FoyersController({
+    const controller = controleur({
       lister,
       foyersParEmail,
-    } as unknown as FoyerClient);
+    });
 
     const vue = await controller.lister({
       headers: {},
@@ -413,9 +432,9 @@ describe('FoyersController · liste scopée à l’identité (lot 5)', () => {
 describe('FoyersController · effacement du foyer', () => {
   it('relaie la suppression au service foyer', async () => {
     const supprimerFoyer = vi.fn().mockResolvedValue(undefined);
-    const controller = new FoyersController({
+    const controller = controleur({
       supprimerFoyer,
-    } as unknown as FoyerClient);
+    });
 
     await controller.supprimer('foyer-1');
 
@@ -424,9 +443,9 @@ describe('FoyersController · effacement du foyer', () => {
 
   it('propage un 404 amont plutôt que de le taire (geste non rejouable)', async () => {
     const supprimerFoyer = vi.fn().mockRejectedValue(new Error('HTTP 404'));
-    const controller = new FoyersController({
+    const controller = controleur({
       supprimerFoyer,
-    } as unknown as FoyerClient);
+    });
 
     await expect(controller.supprimer('foyer-1')).rejects.toBeInstanceOf(
       HttpException,
@@ -437,9 +456,9 @@ describe('FoyersController · effacement du foyer', () => {
 describe('FoyersController · CRUD parents', () => {
   it('liste les parents', async () => {
     const parents = vi.fn().mockResolvedValue([parent({ id: 'p1' })]);
-    const controller = new FoyersController({
+    const controller = controleur({
       parents,
-    } as unknown as FoyerClient);
+    });
 
     const vue = await controller.listerParents('foyer-1');
 
@@ -449,9 +468,9 @@ describe('FoyersController · CRUD parents', () => {
 
   it('rattache un parent (valide puis relaie)', async () => {
     const ajouterParent = vi.fn().mockResolvedValue(parent({ id: 'p1' }));
-    const controller = new FoyersController({
+    const controller = controleur({
       ajouterParent,
-    } as unknown as FoyerClient);
+    });
 
     await controller.ajouterParent('foyer-1', { email: 'alex@example.test' });
 
@@ -462,9 +481,9 @@ describe('FoyersController · CRUD parents', () => {
 
   it('refuse l’ajout d’un e-mail invalide (400, sans appel amont)', () => {
     const ajouterParent = vi.fn();
-    const controller = new FoyersController({
+    const controller = controleur({
       ajouterParent,
-    } as unknown as FoyerClient);
+    });
 
     expect(() =>
       controller.ajouterParent('foyer-1', { email: 'nope' }),
@@ -476,9 +495,9 @@ describe('FoyersController · CRUD parents', () => {
     const modifierParent = vi
       .fn()
       .mockResolvedValue(parent({ id: 'p1', principal: true }));
-    const controller = new FoyersController({
+    const controller = controleur({
       modifierParent,
-    } as unknown as FoyerClient);
+    });
 
     await controller.modifierParent('foyer-1', 'p1', { principal: true });
 
@@ -489,9 +508,9 @@ describe('FoyersController · CRUD parents', () => {
 
   it('retire un parent', async () => {
     const retirerParent = vi.fn().mockResolvedValue(undefined);
-    const controller = new FoyersController({
+    const controller = controleur({
       retirerParent,
-    } as unknown as FoyerClient);
+    });
 
     await controller.retirerParent('foyer-1', 'p1');
 
@@ -500,12 +519,98 @@ describe('FoyersController · CRUD parents', () => {
 
   it('propage une erreur amont en HttpException (relais)', async () => {
     const ajouterParent = vi.fn().mockRejectedValue(new Error('HTTP 409'));
-    const controller = new FoyersController({
+    const controller = controleur({
       ajouterParent,
-    } as unknown as FoyerClient);
+    });
 
     await expect(
       controller.ajouterParent('foyer-1', { email: 'alex@example.test' }),
     ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe('FoyersController · export de portabilité', () => {
+  const PART_FOYER = {
+    situationCourante: { id: 'foyer-1' },
+    versionsRessources: [],
+    correctionsRessources: [],
+    enfants: [{ prenom: 'Mia' }],
+    parents: [{ email: 'alex@example.test' }],
+    preferencesNotification: [],
+    jetonsDesabonnement: [],
+  };
+  const PART_PLANIF = { contrats: [{ id: 'c1' }], etablissements: [] };
+  const PART_NOTIF = {
+    validationsHebdo: [],
+    envoisRecapFoyer: [],
+    envoisRecapParent: [],
+    envoisEtablissement: [],
+    messagesInApp: [],
+  };
+
+  it('agrège les trois services sources en un seul document', async () => {
+    const exporterFoyer = vi.fn().mockResolvedValue(PART_FOYER);
+    const exporterPlanif = vi.fn().mockResolvedValue(PART_PLANIF);
+    const exporterNotif = vi.fn().mockResolvedValue(PART_NOTIF);
+    const controller = controleur(
+      { exporter: exporterFoyer },
+      { exporter: exporterPlanif },
+      { exporter: exporterNotif },
+    );
+
+    const vue = await controller.exporter('foyer-1');
+
+    expect(exporterFoyer).toHaveBeenCalledWith('foyer-1');
+    expect(exporterPlanif).toHaveBeenCalledWith('foyer-1');
+    expect(exporterNotif).toHaveBeenCalledWith('foyer-1');
+    expect(vue.foyerId).toBe('foyer-1');
+    expect(vue.situationFoyer.enfants).toEqual([{ prenom: 'Mia' }]);
+    expect(vue.gardeEtPlanning.contrats).toEqual([{ id: 'c1' }]);
+    expect(vue.communications.messagesInApp).toEqual([]);
+    expect(vue.genereLe).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  // Le point de conception du lot : ailleurs (aperçu d'impact, préférences de
+  // /moi), un amont muet fait perdre un enrichissement. Ici il ferait livrer un
+  // export AMPUTÉ SANS LE DIRE — un document qui affirme être complet et ne l'est
+  // pas. Un seul service en panne doit donc faire échouer l'export entier.
+  it.each([
+    ['svc-planification', 1],
+    ['svc-notifications', 2],
+  ])(
+    'échoue si %s ne répond pas, plutôt que de livrer un export amputé',
+    async (_service, rang) => {
+      const doubles = [
+        vi.fn().mockResolvedValue(PART_FOYER),
+        vi.fn().mockResolvedValue(PART_PLANIF),
+        vi.fn().mockResolvedValue(PART_NOTIF),
+      ];
+      doubles[rang] = vi
+        .fn()
+        .mockRejectedValue(new Error('service injoignable'));
+      const controller = controleur(
+        { exporter: doubles[0] } as unknown as FoyerClient,
+        { exporter: doubles[1] } as unknown as PlanificationClient,
+        { exporter: doubles[2] } as unknown as NotificationsClient,
+      );
+
+      await expect(controller.exporter('foyer-1')).rejects.toMatchObject({
+        status: 502,
+      });
+    },
+  );
+
+  it('relaie le 404 d’un foyer inconnu tel quel', async () => {
+    const controller = controleur(
+      {
+        exporter: vi.fn().mockRejectedValue(new Error('HTTP 404')),
+      },
+      { exporter: vi.fn().mockResolvedValue(PART_PLANIF) },
+      { exporter: vi.fn().mockResolvedValue(PART_NOTIF) },
+    );
+
+    await expect(controller.exporter('inconnu')).rejects.toMatchObject({
+      status: 404,
+    });
   });
 });

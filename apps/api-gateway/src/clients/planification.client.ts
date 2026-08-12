@@ -168,10 +168,32 @@ const lirePlanningReponseSchema = z.object({
 
 export type LirePlanningReponse = z.infer<typeof lirePlanningReponseSchema>;
 
+/**
+ * Une ligne d'export de portabilité : objet libre. Cf. la note du même schéma
+ * dans `foyer.client.ts` — la passerelle contracte la **présence des sections**,
+ * pas les colonnes.
+ */
+const ligneExportSchema = z.record(z.string(), z.unknown());
+
+const exportPlanificationSchema = z.object({
+  contrats: z.array(ligneExportSchema),
+  etablissements: z.array(ligneExportSchema),
+});
+
+/** Part `svc-planification` de l'export de portabilité (lot 3, `AM-35`). */
+export type ExportPlanificationVue = z.infer<typeof exportPlanificationSchema>;
+
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
   retries: 1,
   delaiEntreEssaisMs: 200,
+};
+
+/** Budget élargi de l'export (contrats × avenants × plannings) — cf. `foyer.client.ts`. */
+const OPTIONS_EXPORT: OptionsResilience = {
+  timeoutMs: 8000,
+  retries: 0,
+  delaiEntreEssaisMs: 0,
 };
 
 /**
@@ -193,6 +215,7 @@ export class PlanificationClient {
     chemin: string;
     corps?: unknown;
     schema: ZodType<T>;
+    options?: OptionsResilience;
   }): Promise<T>;
   private appel(config: {
     methode: MethodeHttp;
@@ -204,12 +227,13 @@ export class PlanificationClient {
     chemin: string;
     corps?: unknown;
     schema?: ZodType<T> | undefined;
+    options?: OptionsResilience;
   }): Promise<T | void> {
     const commun = {
       service: 'svc-planification',
       logger: this.logger,
       breaker: this.breaker,
-      options: OPTIONS,
+      options: config.options ?? OPTIONS,
       methode: config.methode,
       url: `${loadConfig().planificationUrl}${config.chemin}`,
       corps: config.corps,
@@ -217,6 +241,19 @@ export class PlanificationClient {
     return config.schema === undefined
       ? appelResilient(commun)
       : appelResilient({ ...commun, schema: config.schema });
+  }
+
+  /**
+   * GET `/api/foyers/:foyerId/export` — part `svc-planification` de l'export de
+   * portabilité (contrats, avenants, corrections, plannings, établissements).
+   */
+  async exporter(foyerId: string): Promise<ExportPlanificationVue> {
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/foyers/${encodeURIComponent(foyerId)}/export`,
+      schema: exportPlanificationSchema,
+      options: OPTIONS_EXPORT,
+    });
   }
 
   /** POST `/api/contrats` — crée un contrat. */

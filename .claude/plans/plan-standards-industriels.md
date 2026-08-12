@@ -124,10 +124,48 @@ lib** : leur prédicat n'existe qu'à un seul endroit, et un nouveau service en 
 
 Le préalable `processed_event` reste entier : toujours aucun `max_age` JetStream.
 
-## Lot 3 — portabilité (`AM-35`)
+## Lot 3 — portabilité (`AM-35`) ✅ LIVRÉ
 
-Export JSON des données personnelles du foyer, téléchargeable par un parent authentifié.
-Petit lot, dépend du lot 2 pour la liste exhaustive des données par foyer.
+**Fait le 2026-08-12**, branche `feat/rgpd-lot3-portabilite-export`.
+
+`GET /api/v1/foyers/:id/export` (garde `@FoyerScope`) agrège **trois** services sources —
+un module `portabilite` par service, même découpage que la cascade d'effacement du lot 2a —
+en un document JSON à trois sections nommées pour la personne, pas pour l'architecture
+(`situationFoyer`, `gardeEtPlanning`, `communications`). Téléchargement depuis « Ma
+famille », au-dessus de la zone de danger. Porte `pnpm portabilite` + inventaire des
+**46 tables** en [doc 37 §6](../../docs/37-registre-des-traitements.md).
+
+L'énoncé annonçait un « petit lot ». Il l'était pour la route ; il ne l'était pas pour la
+question à laquelle la route oblige à répondre : _laquelle des 46 tables sort, laquelle
+n'a pas à sortir, et qui le garantit demain ?_
+
+**Six écarts à l'énoncé, constatés contre le code :**
+
+1. **Les préférences de notification sont exportées EFFECTIVES, pas telles qu'en base.**
+   Dans `preference_notification`, l'absence de ligne **vaut consentement** (défaut
+   applicatif). Exporter les seules lignes stockées aurait livré les **écarts au défaut**
+   en les présentant comme l'état complet — une donnée fausse, produite par un export
+   littéralement correct. On réutilise `fusionnerDefauts`, la primitive de « Mon profil ».
+2. **Le `jti` d'un jeton de désabonnement n'est pas exporté.** Ce jeton est une
+   **capacité** : il désabonne sans authentification. Recopié dans un fichier qui circule,
+   il resterait actionnable par quiconque le lit. La trace part (type, canal, dates), le
+   secret reste. Sondé : le `jti` n'apparaît nulle part dans le document.
+3. **Aucune dégradation gracieuse**, contrairement au reste de la passerelle. Ailleurs un
+   amont muet fait perdre un enrichissement ; ici il ferait livrer un export **amputé sans
+   le dire**. Les trois appels sont dans un seul `relayer` : soit les trois répondent, soit
+   l'export échoue.
+4. **`svc-tarification` n'est pas interrogé** : ses 5 tables sont des copies projetées.
+   La règle ne vaut que dans un sens — là où la copie porte **moins** que sa source
+   (`etablissement` et ses coordonnées, qui ne voyagent dans aucun événement), c'est la
+   **source** qui est lue.
+5. **Les colonnes ne sont pas contractées, les sections le sont.** Décrire les ~60 colonnes
+   dans l'OpenAPI en aurait fait une troisième copie (table, interface de service,
+   contrat) que rien n'aurait gardée alignée. Ce que la passerelle contracte, c'est la
+   **présence de chaque section** : un service qui cesserait d'en rendre une fait échouer
+   l'export au lieu d'en livrer un tronqué.
+6. **La primitive de téléchargement a été remontée** de `couts/export.ts` vers
+   `utils/telechargement.ts` : l'export de portabilité était le second usage, et recopier
+   la danse `Blob` → ancre → `revokeObjectURL` aurait été un miroir.
 
 ## Lot 4 — erreurs RFC 9457 (`AM-37`)
 

@@ -82,9 +82,20 @@ describe('MentionsPage', () => {
     ).toBeInTheDocument();
   });
 
-  it('n’annonce PAS l’export, qui n’existe toujours pas (doc 37 § 4)', () => {
+  // Le lot 3 a rendu vraie une phrase qui disait le contraire. La page annonce
+  // désormais l'export — et, symétriquement, ce qu'il ne rend PAS : une page qui
+  // promettrait « toutes vos données » en taisant ses exclusions serait fausse
+  // d'une façon plus coûteuse que l'ancienne, qui ne promettait rien.
+  it('annonce l’export ET ses deux exclusions', () => {
     afficher();
-    expect(screen.getByText(/toujours pas d’export/i)).toBeInTheDocument();
+    expect(screen.getByText(/Télécharger\s+mes données/i)).toBeInTheDocument();
+    expect(screen.getByText('copies')).toBeInTheDocument();
+    expect(screen.getByText(/jetons\s+secrets/i)).toBeInTheDocument();
+  });
+
+  it('n’annonce plus l’absence d’export', () => {
+    afficher();
+    expect(screen.queryByText(/toujours pas d’export/i)).toBeNull();
   });
 
   it('adresse une phrase à l’agent d’établissement venu d’un courriel', () => {
