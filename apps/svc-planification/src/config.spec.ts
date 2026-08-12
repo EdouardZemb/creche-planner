@@ -1,44 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { loadConfig } from './config.js';
 
 /**
- * `loadConfig()` lit l'environnement du conteneur (`PORT` / `DATABASE_URL` /
- * `NATS_URL` / `REFERENTIEL_URL`) et retombe sur les défauts de dev local.
- * Chaque test isole ces variables (snapshot + restauration en `afterEach`)
- * pour ne fuir aucun état. Modèle : `apps/svc-referentiel/src/config.spec.ts`
- * (lui-même calqué sur `apps/svc-foyer/src/config.spec.ts`).
+ * Déclaration d'environnement de `svc-planification` (`AM-44`, lot 5 standards).
+ * `loadConfig(env)` valide ce qu'il lit et prend son environnement en paramètre :
+ * le snapshot/restauration de `process.env` qu'exigeait cette spec a disparu.
  */
 describe('loadConfig (svc-planification)', () => {
-  const CLES = [
-    'PORT',
-    'DATABASE_URL',
-    'NATS_URL',
-    'REFERENTIEL_URL',
-    'ASSERTION_IDENTITE_SECRET',
-    'INTERSERVICE_AUTHZ_ENFORCE',
-  ] as const;
-  const initial: Record<string, string | undefined> = {};
-
-  beforeEach(() => {
-    for (const cle of CLES) {
-      initial[cle] = process.env[cle];
-      Reflect.deleteProperty(process.env, cle);
-    }
-  });
-
-  afterEach(() => {
-    for (const cle of CLES) {
-      const valeur = initial[cle];
-      if (valeur === undefined) {
-        Reflect.deleteProperty(process.env, cle);
-      } else {
-        process.env[cle] = valeur;
-      }
-    }
-  });
-
   it("applique les défauts de dev local quand aucune variable n'est posée", () => {
-    expect(loadConfig()).toEqual({
+    expect(loadConfig({})).toEqual({
       port: 3004,
       databaseUrl:
         'postgres://planification:planification@localhost:5435/planification',
@@ -49,12 +19,14 @@ describe('loadConfig (svc-planification)', () => {
   });
 
   it("lit PORT / DATABASE_URL / NATS_URL / REFERENTIEL_URL depuis l'environnement", () => {
-    process.env['PORT'] = '4004';
-    process.env['DATABASE_URL'] = 'postgres://u:p@db:5432/planif';
-    process.env['NATS_URL'] = 'nats://broker:4222';
-    process.env['REFERENTIEL_URL'] = 'http://svc-referentiel:3001';
-
-    expect(loadConfig()).toEqual({
+    expect(
+      loadConfig({
+        PORT: '4004',
+        DATABASE_URL: 'postgres://u:p@db:5432/planif',
+        NATS_URL: 'nats://broker:4222',
+        REFERENTIEL_URL: 'http://svc-referentiel:3001',
+      }),
+    ).toEqual({
       port: 4004,
       databaseUrl: 'postgres://u:p@db:5432/planif',
       natsUrl: 'nats://broker:4222',
@@ -63,24 +35,32 @@ describe('loadConfig (svc-planification)', () => {
     });
   });
 
-  it('coerce PORT en nombre (Number(port))', () => {
-    process.env['PORT'] = '8080';
-    const config = loadConfig();
-    expect(config.port).toBe(8080);
-    expect(typeof config.port).toBe('number');
-  });
+  // ÉCART ASSUMÉ AU LOT 5 — cf. `svc-referentiel` : cette spec affirmait le NaN.
+  it.each(['pas-un-nombre', '0', '65536'])(
+    'refuse le démarrage sur un PORT inexploitable (%s)',
+    (valeur) => {
+      expect(() => loadConfig({ PORT: valeur })).toThrow(/PORT/u);
+    },
+  );
 
-  it('PORT non numérique → NaN (coercition Number brute, pas de garde)', () => {
-    process.env['PORT'] = 'pas-un-nombre';
-    expect(Number.isNaN(loadConfig().port)).toBe(true);
+  it('refuse le démarrage en production sur les replis localhost (AM-44)', () => {
+    let message = '';
+    try {
+      loadConfig({ NODE_ENV: 'production' });
+    } catch (erreur) {
+      message = (erreur as Error).message;
+    }
+    for (const nom of ['DATABASE_URL', 'NATS_URL', 'REFERENTIEL_URL']) {
+      expect(message).toContain(nom);
+    }
   });
 
   it("lit l'assertion d'identité inter-services (fondations lot 3)", () => {
-    process.env['ASSERTION_IDENTITE_SECRET'] = 'secret-test';
-    process.env['INTERSERVICE_AUTHZ_ENFORCE'] = '1';
-    expect(loadConfig().assertion).toEqual({
-      secret: 'secret-test',
-      enforce: true,
-    });
+    expect(
+      loadConfig({
+        ASSERTION_IDENTITE_SECRET: 'secret-test',
+        INTERSERVICE_AUTHZ_ENFORCE: '1',
+      }).assertion,
+    ).toEqual({ secret: 'secret-test', enforce: true });
   });
 });
