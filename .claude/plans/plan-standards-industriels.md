@@ -167,11 +167,46 @@ n'a pas à sortir, et qui le garantit demain ?_
    `utils/telechargement.ts` : l'export de portabilité était le second usage, et recopier
    la danse `Blob` → ancre → `revokeObjectURL` aurait été un miroir.
 
-## Lot 4 — erreurs RFC 9457 (`AM-37`)
+## Lot 4 — erreurs RFC 9457 (`AM-37`) ✅ LIVRÉ
 
-Filter global gateway + format `application/problem+json` unifié. **Danger connu** :
-la forme `{ statusCode, code, message }` est figée dans les pacts et lue par le front
-(`code` métier) — migrer contrat par contrat (Pact + OpenAPI + web), pas en big-bang.
+**Fait le 2026-08-12**, branche `feat/standards-lot4-problem-json`.
+
+`ProblemeFilter` global à la passerelle : toute erreur part désormais en
+`application/problem+json`, membres RFC 9457 plus deux extensions que le produit utilise
+réellement (`code` métier, `erreurs` par champ). Le contrat et le registre des quatre codes
+vivent dans [`contracts-kernel/dto/probleme.ts`](../../libs/contracts/kernel/src/lib/dto/probleme.ts) ;
+les **50** réponses d'erreur du document OpenAPI décrivent enfin un corps. Porte
+`pnpm problemes` (4 sondes) + appariement des exemptions dans `openapi.couverture.spec.ts`.
+
+L'énoncé promettait une traversée « contrat par contrat » pour ne casser ni les pacts ni
+l'UI. **Aucun pact n'a été touché, et la traversée n'a pas eu lieu** — non parce que le
+danger était imaginaire, mais parce que la conception l'a dissous (écart 1).
+
+**Cinq écarts à l'énoncé, constatés contre le code :**
+
+1. **Traduire au bord supprime le couplage que la traversée devait contourner** (`LE-40`).
+   La forme `{statusCode, code, message}` n'était contractuelle **que parce que** `relayer`
+   republiait le corps amont **tel quel** : le contrat interne était devenu le contrat
+   public. Le filtre traduit — les pacts continuent de décrire le 409 interne, inchangés,
+   pendant que le navigateur reçoit un problème. Corollaire : les services gardent leurs
+   quatre formes entre eux (`AM-70`), et le critère d'`AM-37` disait bien « à la gateway ».
+2. **Le vrai défaut n'était pas le nombre de formats, mais qu'aucune ne soit celle attendue**
+   (`AN-21`). Le front lisait un **tableau à la racine** que la passerelle n'a jamais émis :
+   `BadRequestException([{champ,message}])` l'enveloppe. **Aucune erreur par champ n'a jamais
+   atteint un écran**, sur les huit formulaires qui en dépendent — et sept tests verts
+   l'affirmaient, chacun fabriquant son corps à la main (`LE-39`).
+3. **Le document OpenAPI ne décrivait aucun corps d'erreur** — 50 réponses, 50 fois rien.
+   Le schéma est attaché par **dérivation** (`avecProblemes`) et non recopié 50 fois ; la
+   règle « une réponse qui porte déjà de la donnée garde la sienne » exempte le 503 de
+   `/api/health` **sans avoir à le nommer**, et se voit dans `openapi-types.gen.ts`.
+4. **Le format unifié ne suffit pas à unifier le contenu** (`AM-69`). `capturerCorpsErreur`
+   est opt-in et seuls `foyer` et `referentiel` le posent : sur les routes servies par les
+   trois autres clients, le `code` et les erreurs par champ des services n'atteignent même
+   pas la passerelle. Hors périmètre ici — c'est un changement de comportement sur ~20
+   routes, pas de la mise en forme.
+5. **Le seul endroit qui prouve le format est le test E2E API.** Aucune spec unitaire ne
+   peut montrer que le `Content-Type` survit à `res.json()` d'Express (qui pose
+   `application/json` si personne ne l'a devancé) : l'assertion vit sur le bundle réel.
 
 ## Lot 5 — validation d'environnement (`AM-44`)
 
