@@ -9,6 +9,7 @@ import {
   HealthModule,
   NatsModule,
   OutboxModule,
+  PurgeModule,
 } from '@creche-planner/nest-commons';
 import { PLANIFICATION_EVENT_SOURCE } from '@creche-planner/contracts-planification';
 import { loadConfig } from './config.js';
@@ -41,6 +42,12 @@ import { ResolveurFoyerPlanification } from './security/resolveur-foyer.js';
     OutboxModule.forRoot({
       source: PLANIFICATION_EVENT_SOURCE,
       table: schema.outbox,
+    }),
+    // Bornes temporelles de rétention (lot 2b). `correction_journal` en est absente :
+    // cf. l'écart assumé en `docs/37-registre-des-traitements.md` §4.
+    PurgeModule.forRoot({
+      outbox: schema.outbox,
+      deadLetter: schema.deadLetter,
     }),
     // Guard aval d'assertion inter-services (observe-only) — fondations lot 3, +
     // scoping par ressource (lot 4). Les routes `/contrats/:id…` et

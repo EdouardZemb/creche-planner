@@ -4,6 +4,7 @@ import {
   boolean,
   date,
   doublePrecision,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -225,33 +226,53 @@ export const preferenceNotification = pgTable(
  * borne la validité. Créé ici (PR1) pour que le modèle soit complet et la
  * migration additive ; l'endpoint public qui l'exploite arrive en PR5.
  */
-export const desabonnementToken = pgTable('desabonnement_token', {
-  jti: uuid('jti').primaryKey(),
-  parentId: uuid('parent_id')
-    .notNull()
-    .references(() => parent.id, { onDelete: 'cascade' }),
-  typeNotification: varchar('type_notification', { length: 64 }).notNull(),
-  canal: varchar('canal', { length: 32 }).notNull(),
-  emisLe: timestamp('emis_le', { withTimezone: true }).notNull().defaultNow(),
-  utiliseLe: timestamp('utilise_le', { withTimezone: true }),
-  expireLe: timestamp('expire_le', { withTimezone: true }).notNull(),
-});
+export const desabonnementToken = pgTable(
+  'desabonnement_token',
+  {
+    jti: uuid('jti').primaryKey(),
+    parentId: uuid('parent_id')
+      .notNull()
+      .references(() => parent.id, { onDelete: 'cascade' }),
+    typeNotification: varchar('type_notification', { length: 64 }).notNull(),
+    canal: varchar('canal', { length: 32 }).notNull(),
+    emisLe: timestamp('emis_le', { withTimezone: true }).notNull().defaultNow(),
+    utiliseLe: timestamp('utilise_le', { withTimezone: true }),
+    expireLe: timestamp('expire_le', { withTimezone: true }).notNull(),
+  },
+  // Borne de rétention (lot 2b) : 3 ans depuis la dernière modification. L'index porte
+  // `emis_le`, qui couvre la branche « jeton jamais consommé » — la quasi-totalité du
+  // volume. Les jetons consommés sont trop rares pour justifier un second index.
+  (table) => [index('desabonnement_token_emis_le_idx').on(table.emisLe)],
+);
 
 /**
  * Outbox transactionnelle (doc 06 §8.4). L'événement est inséré **dans la même
  * transaction** que le changement d'état ; un relais le publie ensuite sur NATS
  * et renseigne `published_at`. `id` = identifiant d'enveloppe = **clé d'idempotence**.
  */
-export const outbox = pgTable('outbox', {
-  id: uuid('id').primaryKey(),
-  type: varchar('type', { length: 200 }).notNull(),
-  payload: jsonb('payload').notNull(),
-  occurredAt: timestamp('occurred_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  traceId: varchar('trace_id', { length: 64 }).notNull(),
-  publishedAt: timestamp('published_at', { withTimezone: true }),
-});
+export const outbox = pgTable(
+  'outbox',
+  {
+    id: uuid('id').primaryKey(),
+    type: varchar('type', { length: 200 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    traceId: varchar('trace_id', { length: 64 }).notNull(),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+  },
+  (table) => [
+    // Borne de rétention (lot 2b) : 30 j après publication effective.
+    index('outbox_published_at_idx').on(table.publishedAt),
+    // Backlog du relais, balayé **toutes les 2 s** : `published_at IS NULL` trié par
+    // `occurred_at`. Index partiel, donc de la taille de la file, pas de la table
+    // (volet index d'`AM-01`).
+    index('outbox_backlog_idx')
+      .on(table.occurredAt)
+      .where(sql`${table.publishedAt} is null`),
+  ],
+);
 
 /**
  * Journal des événements déjà consommés (clé = `id` d'enveloppe) — idempotence de
@@ -272,19 +293,26 @@ export const processedEvent = pgTable('processed_event', {
  * **structurelle** de `libs/nest-commons/.../dead-letter.options.ts` (le typecheck de
  * `ConsumerModule.forRoot({ tableDeadLetter })` échoue si le service dérive).
  */
-export const deadLetter = pgTable('dead_letter', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  envelopeId: uuid('envelope_id'),
-  stream: varchar('stream', { length: 32 }).notNull(),
-  sujet: varchar('sujet', { length: 200 }).notNull(),
-  raison: varchar('raison', { length: 32 }).notNull(),
-  payload: text('payload').notNull(),
-  erreur: text('erreur'),
-  livraisons: integer('livraisons').notNull().default(1),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const deadLetter = pgTable(
+  'dead_letter',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    envelopeId: uuid('envelope_id'),
+    stream: varchar('stream', { length: 32 }).notNull(),
+    sujet: varchar('sujet', { length: 200 }).notNull(),
+    raison: varchar('raison', { length: 32 }).notNull(),
+    payload: text('payload').notNull(),
+    erreur: text('erreur'),
+    livraisons: integer('livraisons').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  // Borne de rétention (lot 2b) : 90 j. L'index arrive avec la purge, dans la même
+  // migration — une première purge sur une table jamais nettoyée est sinon un
+  // balayage séquentiel intégral.
+  (table) => [index('dead_letter_created_at_idx').on(table.createdAt)],
+);
 
 export type FoyerRow = typeof foyer.$inferSelect;
 export type FoyerVersionRow = typeof foyerVersion.$inferSelect;

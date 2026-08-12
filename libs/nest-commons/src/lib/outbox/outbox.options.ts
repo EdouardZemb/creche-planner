@@ -6,7 +6,7 @@ import { jsonb, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
  * dans son propre schéma Drizzle (et ses migrations), strictement identique à ce
  * modèle — le typecheck échoue si un service dérive.
  */
-const modeleTableOutbox = pgTable('outbox', {
+const _modeleTableOutbox = pgTable('outbox', {
   id: uuid('id').primaryKey(),
   type: varchar('type', { length: 200 }).notNull(),
   payload: jsonb('payload').notNull(),
@@ -17,7 +17,7 @@ const modeleTableOutbox = pgTable('outbox', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
 });
 
-export type TableOutbox = typeof modeleTableOutbox;
+export type TableOutbox = typeof _modeleTableOutbox;
 
 /**
  * Contrainte **structurelle** sur la table fournie par le service : présence des

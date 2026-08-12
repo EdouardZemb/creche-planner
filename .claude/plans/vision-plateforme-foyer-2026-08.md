@@ -7,7 +7,7 @@
 > ([doc 31](../../docs/31-sfd-calendriers-vacances-scolaires.md),
 > [doc 32](../../docs/32-sfd-travail-conges-revenus.md),
 > [doc 33](../../docs/33-sfd-planning-famille.md)) et plan
-> [`factures-reelles.md`](factures-reelles.md). Pistes consignées : `AM-55`, `AM-56`, `AM-57`
+> [`factures-reelles.md`](factures-reelles.md). Pistes consignées : `AM-62`, `AM-63`, `AM-64`
 > ([doc 34](../../docs/34-registre-ameliorations.md)).
 
 ## 1. L'élargissement de la vision
@@ -24,9 +24,9 @@ de **budget** du foyer ». La projection PO du 2026-08-11 l'élargit : l'app vis
 | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Planification des vacances**                                                         | ~80 % couvert par la séquence existante : vacances scolaires importées (SFD 31), congés parents (SFD 32), détection « vacances sans plan de garde » = règle de conflit citée par la SFD 33         | Checklist de préparation de départ → événements libres du planning famille, mineur                                                               |
 | **Préparation de la déclaration de revenus**                                           | Crédit d'impôt frais de garde déjà spécifié (plan factures-réelles) ; estimation après impôt à taux moyen déjà dans la SFD 32                                                                      | Un **récap fiscal annuel** de synthèse + échéances déclaratives en rappel (petit lot)                                                            |
-| **Entretien du véhicule** (révisions, CT, pneus saison)                                | Rien — mais les briques d'accueil existent : matrice de notifications, événements libres (SFD 33), `svc-famille` topologisé (port 3007, stream `FAMILLE`)                                          | Un **échéancier du foyer** générique + le véhicule comme premier cas d'usage → `AM-55`                                                           |
-| **Stocks, courses, recettes de la semaine**                                            | Rien — seul point de contact : la vue semaine du planning famille (SFD 33) est l'écran naturel des menus                                                                                           | Chantier entier (menus + liste de courses générée) → `AM-56` ; stock quantifié **exclu** (§4)                                                    |
-| **Documents administratifs** (dépose, classement auto, recherche — exprimé 2026-08-11) | Couvert **hors app** : une GED auto-hébergée (Paperless) tourne déjà sur le serveur du foyer (docs 06/26) — la dépose, l'OCR, le classement automatique et la recherche sont exactement son métier | Le **rattachement aux objets métier** : facture de crèche ↔ mois facturé, bulletin de paie ↔ revenus (SFD 32), avis d'imposition ↔ RFR → `AM-57` |
+| **Entretien du véhicule** (révisions, CT, pneus saison)                                | Rien — mais les briques d'accueil existent : matrice de notifications, événements libres (SFD 33), `svc-famille` topologisé (port 3007, stream `FAMILLE`)                                          | Un **échéancier du foyer** générique + le véhicule comme premier cas d'usage → `AM-62`                                                           |
+| **Stocks, courses, recettes de la semaine**                                            | Rien — seul point de contact : la vue semaine du planning famille (SFD 33) est l'écran naturel des menus                                                                                           | Chantier entier (menus + liste de courses générée) → `AM-63` ; stock quantifié **exclu** (§4)                                                    |
+| **Documents administratifs** (dépose, classement auto, recherche — exprimé 2026-08-11) | Couvert **hors app** : une GED auto-hébergée (Paperless) tourne déjà sur le serveur du foyer (docs 06/26) — la dépose, l'OCR, le classement automatique et la recherche sont exactement son métier | Le **rattachement aux objets métier** : facture de crèche ↔ mois facturé, bulletin de paie ↔ revenus (SFD 32), avis d'imposition ↔ RFR → `AM-64` |
 
 Décisions de cadrage portées par cette note :
 
@@ -58,12 +58,12 @@ Décisions de cadrage portées par cette note :
 3. **Factures-réelles + récap fiscal annuel** — la fonctionnalité « impôts », calée sur
    l'échéance déclarative du printemps 2027 ; le plan prévoit déjà l'intercalage possible dès
    la fin du lot 1 de la SFD 32.
-4. **Échéancier du foyer + entretien véhicule** (`AM-55`) — petit lot adossé à `svc-famille`,
+4. **Échéancier du foyer + entretien véhicule** (`AM-62`) — petit lot adossé à `svc-famille`,
    après le lot 1 de la SFD 32 (ne pas créer un service pour lui seul).
-5. **Menus + liste de courses** (`AM-56`) — chantier séparé, cadré par sa propre SFD, lancé
+5. **Menus + liste de courses** (`AM-63`) — chantier séparé, cadré par sa propre SFD, lancé
    seul (deux chantiers parallèles sur `gateway.openapi.ts`/`bff.dto.ts` = conflits garantis).
 
-Le rattachement documentaire (`AM-57`) n'est **pas** une étape autonome : il s'emboîte dans
+Le rattachement documentaire (`AM-64`) n'est **pas** une étape autonome : il s'emboîte dans
 factures-réelles (justificatifs de facture) et dans la SFD 32 (bulletins de paie, dont
 l'« import automatique » est déjà au backlog v1) — au plus tôt à l'étape 3, et après le solde
 du passif RGPD.
@@ -80,7 +80,7 @@ rien construire aujourd'hui :
 - **C'est l'argument qui repêchera peut-être la gestion de stock.** Un inventaire tenu à la
   main meurt en trois semaines (coût de saisie) ; il devient viable le jour où la saisie est
   **automatisée** par du matériel (balance connectée, scan code-barres, capteurs). D'ici là,
-  `AM-56` exclut le stock quantifié — la porte de sortie est écrite ici.
+  `AM-63` exclut le stock quantifié — la porte de sortie est écrite ici.
 - **Ne pas réinventer le hub domotique.** Le jour venu, la surface d'intégration raisonnable
   est un écosystème existant (type Home Assistant / MQTT, déjà auto-hébergeable sur le
   serveur du foyer) : l'app consommerait des **événements** du logement comme elle consomme

@@ -1,0 +1,1 @@
+CREATE INDEX "dead_letter_created_at_idx" ON "dead_letter" USING btree ("created_at");

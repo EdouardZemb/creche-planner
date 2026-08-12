@@ -1,6 +1,6 @@
 # 37 — Registre des traitements, des tiers et des durées de conservation
 
-> Statut : **Établi** · Version 1.0 · 2026-08-11
+> Statut : **Établi** · Version 1.1 · 2026-08-12
 > Inventaire **volontaire** : quelles données personnelles vivent où, pour quoi faire,
 > combien de temps, et chez quels tiers elles transitent. Établi au titre de la démarche
 > décidée en [ADR-0007](adr/0007-exemption-domestique-et-demarche-volontaire.md), qui assume
@@ -24,10 +24,11 @@ avant la revue d'août 2026 (`AM-33`, `AM-36`, [doc 34](34-registre-amelioration
 2. chez quels tiers elles transitent, et lesquels voient du clair ;
 3. combien de temps on entend les garder.
 
-**Ce document n'outille rien.** Les durées du §3 sont des **objectifs de gestion**
-proposés, pas des purges en vigueur : aucune n'est appliquée par du code au 2026-08-11. Leur
-mise en œuvre est le lot 2 du plan `.claude/plans/plan-standards-industriels.md` (droit à
-l'effacement et purge). Le §4 dit ce qui manque.
+**Depuis le 2026-08-12, ce document outille une partie de ce qu'il énonce.** Les durées du
+§3 marquées ✅ sont appliquées par du code (lot 2b) et nomment la colonne qui les porte ;
+celles marquées ⛔ ne le sont pas, et le §4 dit pourquoi — deux d'entre elles ont dû être
+**corrigées** plutôt qu'outillées. Ce qui reste hors de portée est écrit au §4 : l'absence y
+est visible plutôt que découverte plus tard.
 
 **Périmètre mesuré** : 46 tables réparties sur les 5 services persistants ; l'`api-gateway`
 n'a aucune base. Les traitements ci-dessous couvrent les tables porteuses de données
@@ -180,41 +181,78 @@ Deux conséquences valent d'être tirées :
   qu'il ne peut pas lire ; Cloudflare lit tout. Un inventaire qui les mettrait sur le même
   plan se tromperait de risque.
 
-## 3. Durées de conservation proposées
+## 3. Durées de conservation
 
-**Décision du propriétaire du produit, 2026-08-11.** Aucune de ces durées n'est **encore**
-appliquée par du code : rien n'expire à l'échéance, et c'est le lot 2b du plan standards qui
-outillera la borne temporelle.
+**Décision du propriétaire du produit, 2026-08-11**, révisée le **2026-08-12** à l'exécution
+du lot 2b. Cette révision n'est pas cosmétique : confrontées au code, **deux des huit lignes
+d'origine se sont révélées inapplicables** — non par difficulté, mais parce qu'elles
+désignaient un point de départ que la base ne porte pas. Les transcrire littéralement en SQL
+aurait produit deux régressions silencieuses, l'une financière, l'autre réglementaire. Elles
+sont corrigées ici plutôt qu'outillées ; le détail est au §4.
 
-À ne pas confondre avec l'**effacement à la demande**, livré lui au 2026-08-12 (lot 2a) :
+À ne pas confondre avec l'**effacement à la demande**, livré au 2026-08-12 (lot 2a) :
 supprimer un foyer efface immédiatement toutes les données de ce foyer, dans les cinq bases,
 sans attendre aucune échéance. Ce sont deux mécanismes distincts — l'un est un droit exercé,
 l'autre une hygiène de rétention.
 
-| Réf.  | Données                                                                              | Durée proposée                                                        | Point de départ                    | Pourquoi                                                                                                                                                                                                                              |
-| ----- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| T1    | Ressources, RFR, historique versionné du foyer, journal de corrections               | **3 ans**                                                             | Date d'effet de la version         | La seule finalité écrite de cet historique est le **recalcul rétroactif** ; au-delà de deux exercices tarifaires plus une année de réclamation, aucune ligne de code ne relit ces versions.                                           |
-| T2    | Enfants, contrats, plannings, prestations                                            | **3 ans**                                                             | Fin du dernier contrat de l'enfant | **Même horizon que T1, délibérément** : un planning conservé plus longtemps que les revenus qui l'ont tarifé est inexploitable — aucun recalcul n'est possible. Deux durées différentes créeraient une incohérence garantie.          |
-| T3    | Corps de messages rendus et listes de destinataires figées (parent et établissement) | **13 mois**                                                           | Date d'envoi                       | La finalité inscrite dans le code est de **prouver ce qui a réellement été adressé**. Une preuve d'envoi ne sert que tant que l'envoi peut être contesté : une année scolaire pleine, plus la rentrée suivante.                       |
-| T3bis | Préférences de notification et jetons de désabonnement                               | **3 ans**                                                             | Dernière modification              | Ce ne sont pas des preuves de contenu mais des preuves de l'**exercice d'un droit** ([ADR-0006](adr/0006-preferences-notification-et-desabonnement.md)) : elles doivent survivre plus longtemps que les messages qu'elles gouvernent. |
-| T4    | Boîte de réception applicative (`notification`, `notification_hebdo`)                | **12 mois**                                                           | Date de création                   | Le code la qualifie lui-même de journal en ajout seul, et ses liens profonds deviennent caducs dès la saison suivante.                                                                                                                |
-| T7    | `outbox`                                                                             | **30 jours**                                                          | Après publication effective        | La ligne n'a plus d'usage une fois publiée ; seule l'analyse d'incident la relit.                                                                                                                                                     |
-| T7    | `dead_letter`                                                                        | **90 jours**                                                          | Date de rebut                      | Un rebut non traité en trois mois ne le sera pas.                                                                                                                                                                                     |
-| T7    | `processed_event`                                                                    | **Non chiffrée dans ce lot**                                          | —                                  | C'est le garde-fou anti-rejeu. Sa borne dépend de la rétention JetStream, qui n'est pas documentée (dette déjà consignée). La chiffrer à l'aveugle ouvrirait une régression d'idempotence au lot 2.                                   |
-| T5    | Journaux, traces, métriques                                                          | Voir [`exploitation/observabilite.md`](exploitation/observabilite.md) | —                                  | Politique déjà en vigueur, non redéfinie ici.                                                                                                                                                                                         |
-| T6    | Sauvegardes                                                                          | 30 j local, 90 j hors-site                                            | Date du jeu                        | Déjà en vigueur.                                                                                                                                                                                                                      |
+**Chaque ligne outillée nomme son ancre** : la table et la colonne qui portent réellement la
+borne, dans tous les services qui déclarent cette table. La porte `pnpm retentions` refuse
+une ancre absente des `schema.ts` — c'est elle qui aurait attrapé les deux lignes fausses
+avant qu'on tente de les écrire. Une durée qui ne nomme pas sa colonne est une intention, pas
+une politique.
 
-**Effet de bord à connaître** : une purge de T1 ou T2 ne suffit pas. Les mêmes données
-existent en **copies aval** dans `svc-tarification` et `svc-notifications`, et dans les
-payloads d'`outbox`. L'effacement devra voyager en **événement d'intégration**, jamais en
-suppression locale — c'est la contrainte structurante du lot 2.
+| Réf.  | Données                                                            | Durée                                                                 | Ancre outillée                                                   | État | Pourquoi                                                                                                                                                                                                                                                                         |
+| ----- | ------------------------------------------------------------------ | --------------------------------------------------------------------- | ---------------------------------------------------------------- | :--: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T1    | Ressources, RFR, historique versionné du foyer                     | **3 ans**                                                             | —                                                                |  ⛔  | Écartée §4 : la **fin** d'une version n'existe pas en base, elle est dérivée à la lecture et la dernière reste ouverte. Une borne sur la date d'effet emporterait la version **en vigueur** d'un foyer inactif, et l'aval facturerait faux **sans lever d'erreur** (`AM-55`).    |
+| T1bis | Journal de corrections (`correction_journal`)                      | **3 ans**                                                             | —                                                                |  ⛔  | Écartée §4 : la table ne porte **aucune** date d'effet, seulement sa date de correction. La borner dessus appliquerait une règle que le PO n'a pas validée. Table sans lecteur, donc sans risque : c'est le point de départ qui manque, pas la sûreté (`AM-60`).                 |
+| T2    | Enfants, contrats, plannings, prestations                          | **3 ans**                                                             | —                                                                |  ⛔  | Écartée §4 : « fin du dernier contrat » n'est calculable dans aucune base — `valide_au` nul **vaut période ouverte**, `enfant_id` est nullable, et la copie aval n'a pas la colonne. Le critère est inexprimable, pas seulement coûteux (`AM-56`).                               |
+| T3    | Journal d'envoi du récapitulatif au foyer, par foyer et par parent | **13 mois**                                                           | `envoi_recap_hebdo.cree_le` + `envoi_recap_parent.cree_le`       |  ✅  | Prouver ce qui a été adressé ne sert que tant que l'envoi peut être contesté : une année scolaire pleine, plus la rentrée suivante. Ancré sur la **création**, pas sur l'envoi — sinon les lignes jamais abouties, les plus riches en adresses figées, resteraient indéfiniment. |
+| T3bis | Récapitulatif adressé à un établissement (`envoi_etablissement`)   | **13 mois**                                                           | `envoi_etablissement.created_at`                                 |  ✅  | **Anonymisée en place, pas supprimée** : la ligne est le seul verrou anti-double-envoi vers une vraie crèche, et l'endpoint d'envoi n'est borné par aucune date (`AM-58`). Le contenu personnel part, la ligne-témoin reste.                                                     |
+| T3ter | Préférences de notification (`preference_notification`)            | **Aucune borne**                                                      | —                                                                |  ⛔  | Écartée §4, et c'est une **correction de fond** : l'absence d'une ligne **vaut consentement**. Purger une ligne « désabonné » réabonnerait le parent, soit exactement la population que la durée visait (`AM-57`).                                                               |
+| T3qua | Jetons de désabonnement (`desabonnement_token`)                    | **3 ans**                                                             | `desabonnement_token.utilise_le` + `desabonnement_token.emis_le` |  ✅  | Preuve de l'**exercice d'un droit** ([ADR-0006](adr/0006-preferences-notification-et-desabonnement.md)), et la seule qui survive : `desabonne_at` est remise à nul dès que le parent se réabonne. Ancrée sur la dernière des deux dates.                                         |
+| T4    | Boîte de réception in-app (`notification`)                         | **12 mois**                                                           | `notification.cree_le`                                           |  ✅  | Journal en ajout seul : ses lecteurs ne portent aucune action, et ses liens profonds deviennent caducs dès la saison suivante.                                                                                                                                                   |
+| T4bis | État de validation hebdomadaire (`notification_hebdo`)             | **Aucune borne**                                                      | —                                                                |  ⛔  | Écartée §4 : rangée à tort avec `notification` en v1.0. Ce n'est pas un journal mais la **machine à états** de la validation — l'absence d'une ligne y vaut « semaine jamais notifiée », et la purger effacerait une action en attente sans laisser de trace (`AM-59`).          |
+| T7    | `outbox`                                                           | **30 jours**                                                          | `outbox.published_at`                                            |  ✅  | La ligne n'a plus d'usage une fois publiée. Ancrée sur la publication et **jamais** sur l'occurrence : une ligne non publiée est un événement **en vol**, quel que soit son âge.                                                                                                 |
+| T7    | `dead_letter`                                                      | **90 jours**                                                          | `dead_letter.created_at`                                         |  ✅  | Un rebut non traité en trois mois ne le sera pas. Meilleur rendement du lot : le payload y est conservé en clair (`AM-53`).                                                                                                                                                      |
+| T7    | `processed_event`                                                  | **Non chiffrée**                                                      | —                                                                |  ⛔  | Écartée §4 : garde-fou anti-rejeu. Sa borne dépend d'une rétention JetStream qui n'est toujours pas posée ; la chiffrer à l'aveugle rouvrirait le rejeu intégral.                                                                                                                |
+| T5    | Journaux, traces, métriques                                        | Voir [`exploitation/observabilite.md`](exploitation/observabilite.md) | —                                                                |  ✅  | Politique déjà en vigueur, non redéfinie ici.                                                                                                                                                                                                                                    |
+| T6    | Sauvegardes                                                        | 30 j local, 90 j hors-site                                            | —                                                                |  ✅  | Déjà en vigueur, portée par les scripts d'exploitation.                                                                                                                                                                                                                          |
+
+**Effet de bord à connaître** : une purge de T1 ou T2, le jour où elle deviendra possible, ne
+suffira pas. Les mêmes données existent en **copies aval** dans `svc-tarification` et
+`svc-notifications`. L'effacement devra voyager en **événement d'intégration**, jamais en
+suppression locale — c'est déjà ce que fait l'effacement à la demande du lot 2a.
 
 ## 4. Ce que ce registre ne couvre pas
 
 Écrit ici pour que l'absence soit visible plutôt que découverte plus tard :
 
-- **Aucune purge liée au temps n'existe.** Aucune durée du §3 n'est appliquée par du code :
-  rien n'expire, jamais. C'est le lot 2b.
+- **Les purges liées au temps existent depuis le lot 2b** (2026-08-12) pour les lignes ✅ du
+  §3 : un balayage horaire, horloge injectée, dans les cinq services. Mais **quatre durées du
+  §3 restent volontairement non outillées**, et deux d'entre elles ont été **corrigées** parce
+  que le code les rend fausses :
+  - **T1 — historique versionné (`foyer_version`)**. La fin d'une version n'est pas stockée :
+    elle est dérivée à la lecture, et la dernière reste ouverte. La version **en vigueur**
+    d'un foyer inactif depuis trois ans porte donc une date d'effet vieille de trois ans, et
+    tombe sous la borne. Le plus grave n'est pas la perte : c'est que rien ne le signale — le
+    calcul de coût se rabat silencieusement sur les ressources d'aujourd'hui pour tous les
+    mois passés, et affiche un montant faux et plausible. Réouverture conditionnée à une fin
+    de version matérialisée, ou à un prédicat dérivé de la version suivante (`AM-55`).
+  - **T2 — enfants, contrats, plannings**. « Fin du dernier contrat de l'enfant » n'est
+    calculable dans aucune base : `valide_au` nul **signifie période ouverte** (donc un
+    `COALESCE` naïf purgerait un contrat actif), `enfant_id` est encore nullable sur les
+    contrats historiques — précisément les plus anciens, ceux que la durée visait — et la
+    copie de `svc-tarification` n'a pas de colonne `valide_au` du tout (`AM-56`).
+  - **T3ter — préférences de notification**. Correction de fond : **l'absence d'une ligne vaut
+    consentement**. Purger une préférence `actif = false` réabonne le parent, c'est-à-dire
+    exactement celui qui s'était désabonné et n'a plus rien touché depuis. Une purge présentée
+    comme de l'hygiène produirait un envoi non consenti (`AM-57`).
+  - **T4bis — `notification_hebdo`**. La v1.0 la rangeait avec la boîte de réception, au motif
+    que « le code la qualifie de journal en ajout seul ». Le code ne dit cela que de
+    `notification` : `notification_hebdo` est la machine à états de la validation. Une semaine
+    `A_VALIDER` n'est fermée par aucun balayage, et l'écran les liste sans borne de date : la
+    purger ferait disparaître une action en attente, indiscernable d'une semaine validée
+    (`AM-59`).
 - **L'effacement à la demande, lui, est livré** (lot 2a, 2026-08-12). `DELETE /api/v1/foyers/:id`
   supprime la ligne `foyer` — la cascade SQL emporte versions de ressources, journal de
   corrections, enfants, parents, préférences et jetons — puis l'événement
@@ -227,7 +265,11 @@ suppression locale — c'est la contrainte structurante du lot 2.
     temporelle : 30 j après publication, lot 2b.
   - `processed_event` — garde-fou anti-rejeu. L'effacer rouvrirait la re-projection du foyer
     à la prochaine re-livraison JetStream, soit exactement le résidu qu'on prétend supprimer.
-    Sa borne dépend d'une rétention JetStream qui n'est pas encore posée (cf. §3).
+    Sa borne dépend d'une rétention JetStream qui n'est toujours pas posée (cf. §3).
+
+  `outbox`, elle, est désormais **bornée dans le temps** (30 j) — mais uniquement sur
+  `published_at` non nul. Une ligne non publiée survit quel que soit son âge : c'est un
+  événement en vol, et le premier d'entre eux serait l'effacement lui-même.
 
   `dead_letter`, en revanche, **est** purgée pour le foyer effacé : c'est un magasin terminal
   que plus rien ne relit, et il stockait jusqu'ici des payloads en clair — tout événement du

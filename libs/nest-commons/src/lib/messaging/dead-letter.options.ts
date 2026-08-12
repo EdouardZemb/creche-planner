@@ -20,7 +20,7 @@ import type { Abonnement } from './consumer.types.js';
  * (`ENVELOPPE_INVALIDE`), type non géré (`TYPE_INCONNU`) ou livraisons épuisées
  * (`MAX_LIVRAISONS`). Pas d'index sur `created_at` (volumes faibles).
  */
-const modeleTableDeadLetter = pgTable('dead_letter', {
+const _modeleTableDeadLetter = pgTable('dead_letter', {
   id: uuid('id').primaryKey().defaultRandom(),
   /** `id` d'enveloppe s'il a pu être lu (null si le JSON est illisible). */
   envelopeId: uuid('envelope_id'),
@@ -41,7 +41,7 @@ const modeleTableDeadLetter = pgTable('dead_letter', {
     .defaultNow(),
 });
 
-export type TableDeadLetter = typeof modeleTableDeadLetter;
+export type TableDeadLetter = typeof _modeleTableDeadLetter;
 
 /**
  * Contrainte **structurelle** sur la table fournie par le service : présence des
