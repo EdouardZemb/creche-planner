@@ -25,16 +25,23 @@
  *
  * ## Ce que la porte garantit
  *
- * 1. Aucune lecture de `process.env` dans le code applicatif (`apps/<app>/src/**`)
- *    en dehors du `config.ts` de l'app — sauf exemption **déclarée avec son
- *    motif** ci-dessous.
+ * 1. Aucune **mention** de `process.env` dans le code applicatif
+ *    (`apps/<app>/src/**` de **toutes** les apps, `web` inclus) en dehors du
+ *    `config.ts` de l'app — sauf exemption **déclarée avec son motif** ci-dessous.
+ *    Y compris les mentions qui ne nomment aucune clé (`const env = process.env`),
+ *    qu'aucune exemption ne couvre.
  * 2. Toute variable posée par un `docker-compose*.yml` sur un service
  *    applicatif est **déclarée** dans le `CHAMPS_ENV` de ce service (attendu
  *    dérivé des composes ET des `config.ts`, jamais recopié), exception faite
  *    des variables consommées par une **bibliothèque** (OTel, pino).
- * 3. Toute variable déclarée qu'**aucun** compose ne pose figure au registre des
- *    « défauts de code assumés », avec son motif — et une entrée de ce registre
- *    devenue fausse (la variable est désormais posée) est signalée à son tour.
+ * 3. Toute variable déclarée que les composes de **production** ne posent pas
+ *    **sur ce service** figure au registre des « défauts de code assumés », avec
+ *    son motif. Le décompte est **par service** : une union globale ne verrait pas
+ *    le cas qui coûte — un service qui perd `ASSERTION_IDENTITE_SECRET` retombe en
+ *    mode legacy, vérification d'identité inactive, et son absence est une valeur
+ *    licite que rien d'autre ne signale. Une entrée du registre devenue fausse —
+ *    variable disparue du schéma, **ou** désormais posée en production — est
+ *    signalée à son tour.
  *
  * ## Ce que la porte NE garantit pas
  *
@@ -43,12 +50,18 @@
  *  - Elle ne prouve pas qu'un environnement invalide **refuse** le démarrage :
  *    seuls les tests E2E `refus-config.e2e.spec.ts` le montrent, sur le bundle
  *    réel (`LE-39`).
+ *  - Elle lit le **texte** des composes, pas la spécification **fusionnée** que
+ *    rend `docker compose config` : ni la substitution `${VAR:?}`, ni un
+ *    `env_file:`, ni l'ordre des surcharges, ni aucune **valeur** (`EM-12`).
  *  - Elle ne dit rien des fichiers d'outillage hors `src/` (`drizzle.config.ts`
- *    lit `DATABASE_URL` pour générer des migrations) ni des scripts de `scripts/`.
+ *    lit `DATABASE_URL` pour générer des migrations), des scripts de `scripts/`,
+ *    ni des **bibliothèques** (`libs/**`), qui lisent leur propre environnement
+ *    (`LOG_LEVEL`, `OTEL_*` — `AM-72`).
  *  - Elle ne juge pas si une bascule **devrait** être fermée : `AM-30` reste
  *    ouverte, et fermer une bascule est un geste d'exploitation, pas de code.
  *  - Elle ignore `.env.server.example` : ce fichier documente les valeurs à
- *    poser, il ne décrit pas ce que le code lit.
+ *    poser, il ne décrit pas ce que le code lit — et personne ne le garde
+ *    (`AM-71`).
  *
  * ## Usage
  *   pnpm environnement              # vérifie (exit 1 si un constat)
