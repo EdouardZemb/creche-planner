@@ -346,6 +346,27 @@ describe('E2E API · parcours « créer foyer + contrats → lire le coût »', 
       body: JSON.stringify({ ressourcesMensuelles: -1, rfr: 72705 }),
     });
     expect(reponse.status).toBe(400);
+
+    // Le SEUL endroit où l'on voit le format d'erreur tel qu'il part vraiment :
+    // en-tête compris. Les specs unitaires du filtre ne peuvent pas prouver que
+    // le `Content-Type` survit à `res.json()` d'Express (qui pose
+    // `application/json` s'il n'en trouve pas déjà un), ni que les erreurs par
+    // champ atteignent le fil — deux choses qui ont été fausses (`AN-27`).
+    expect(reponse.headers.get('content-type')).toContain(
+      'application/problem+json',
+    );
+    const probleme = (await reponse.json()) as {
+      type: string;
+      title: string;
+      status: number;
+      instance?: string;
+      erreurs?: { champ: string; message: string }[];
+    };
+    expect(probleme).toMatchObject({ type: 'about:blank', status: 400 });
+    expect(probleme.instance).toBe('/api/v1/foyers');
+    expect(probleme.erreurs?.map((e) => e.champ)).toContain(
+      'ressourcesMensuelles',
+    );
   });
 
   it('publie la spécification OpenAPI sans jeton (route publique)', async (ctx) => {

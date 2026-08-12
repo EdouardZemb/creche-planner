@@ -7,7 +7,7 @@
 // référencés via $ref. Le schéma de sécurité « tokenApi » (bearer) est
 // appliqué globalement, sauf sur les routes publiques (security: []).
 
-export const gatewayOpenApiDocument = {
+const documentEcrit = {
   openapi: '3.1.0',
   info: {
     title: 'Crèche Planner — API Gateway (BFF)',
@@ -700,6 +700,63 @@ export const gatewayOpenApiDocument = {
           details: { type: 'object', additionalProperties: true },
         },
         required: ['status', 'details'],
+      },
+      Probleme: {
+        type: 'object',
+        description:
+          'Corps d’erreur unique de la passerelle — RFC 9457 « Problem Details ' +
+          'for HTTP APIs », servi en `application/problem+json`. `type`, ' +
+          '`title`, `status`, `detail` et `instance` sont les membres ' +
+          'normalisés ; `code` et `erreurs` sont deux membres d’EXTENSION ' +
+          '(§3.2) que le produit utilise réellement. `title` résume le TYPE de ' +
+          'problème et reste stable ; `detail` décrit CETTE occurrence. Seuls ' +
+          '`type`/`code`/`status` sont faits pour être testés — les deux autres ' +
+          'sont écrits pour être lus. Source de vérité du registre de codes : ' +
+          '`contracts-kernel/dto/probleme.ts`.',
+        properties: {
+          type: {
+            type: 'string',
+            description:
+              'URI du type de problème. `about:blank` quand le statut HTTP ' +
+              'suffit à le décrire ; sinon une URN dérivée du code métier ' +
+              '(`urn:probleme:creche-planner:<code-en-minuscules-tiretés>`).',
+          },
+          title: { type: 'string' },
+          status: { type: 'integer' },
+          detail: { type: 'string' },
+          instance: {
+            type: 'string',
+            description: 'URI de la requête qui a produit ce problème.',
+          },
+          code: {
+            type: 'string',
+            description:
+              'Code métier distinguant la CAUSE d’un statut qui, seul, n’en ' +
+              'dit rien — trois 409 différents ne se traitent pas de la même ' +
+              'façon à l’écran. Absent quand le statut se suffit.',
+            enum: [
+              'EMAIL_DEJA_UTILISE',
+              'PARENT_PRINCIPAL_EXISTANT',
+              'DERNIER_PARENT_ACTIF',
+              'PERIODE_CHEVAUCHANTE',
+            ],
+          },
+          erreurs: {
+            type: 'array',
+            description:
+              'Détail par champ d’une erreur de validation. Absent hors ' +
+              'validation.',
+            items: {
+              type: 'object',
+              properties: {
+                champ: { type: 'string' },
+                message: { type: 'string' },
+              },
+              required: ['champ', 'message'],
+            },
+          },
+        },
+        required: ['type', 'title', 'status'],
       },
       ErreurClient: {
         type: 'object',
@@ -3002,5 +3059,61 @@ export const gatewayOpenApiDocument = {
     },
   },
 } as const;
+
+/**
+ * Attache `application/problem+json` à **toute réponse 4xx/5xx qui ne déclare
+ * pas déjà son propre corps** (lot 4 des standards, `AM-37`).
+ *
+ * Dérivation plutôt que recopie : les cinquante réponses d'erreur du document
+ * porteraient sinon cinquante fois le même bloc `content`, que rien ne
+ * garderait aligné — le motif de miroir que CONVENTIONS §4 interdit. La règle
+ * tient en une phrase et n'a besoin d'aucune liste d'exceptions à tenir : une
+ * réponse qui **porte déjà de la donnée** garde la sienne. C'est le cas du 503
+ * de `/api/health`, dont le corps EST le rapport de santé nommant l'amont
+ * tombé — le pendant contractuel exact de `@FormatErreurNatif()` côté
+ * passerelle.
+ *
+ * Le type de retour reste celui du document écrit : aucun consommateur ne type
+ * un corps d'erreur, et les rares accès statiques visent `components.schemas`.
+ * Les types du front, eux, sont générés depuis la valeur **exécutée** — le
+ * `content` ajouté ici apparaît donc dans `openapi-types.gen.ts`, et le job
+ * `openapi-types-drift` échouerait si cette dérivation cessait de tourner.
+ *
+ * ⚠️ Le type de média est écrit en clair : ce fichier ne peut rien importer (il
+ * est lu par `scripts/generate-openapi-types.mjs` via le type-stripping de Node,
+ * qui ne résoudrait pas un import de `.ts`). L'accord avec
+ * `MEDIA_TYPE_PROBLEME` est vérifié par la porte `pnpm problemes`.
+ */
+function avecProblemes<T>(document: T): T {
+  const copie = structuredClone(document) as {
+    paths: Record<
+      string,
+      Record<string, { responses?: Record<string, unknown> }>
+    >;
+  };
+  for (const item of Object.values(copie.paths)) {
+    for (const operation of Object.values(item)) {
+      for (const [statut, reponse] of Object.entries(
+        operation.responses ?? {},
+      )) {
+        if (!/^[45]\d\d$/.test(statut)) continue;
+        const corps = reponse as { content?: unknown };
+        if (corps.content !== undefined) continue;
+        corps.content = {
+          'application/problem+json': {
+            schema: { $ref: '#/components/schemas/Probleme' },
+          },
+        };
+      }
+    }
+  }
+  return copie as T;
+}
+
+/**
+ * Document servi par `GET /api/openapi.json` : le document écrit à la main,
+ * augmenté du corps d'erreur commun (cf. `avecProblemes`).
+ */
+export const gatewayOpenApiDocument = avecProblemes(documentEcrit);
 
 export type GatewayOpenApiDocument = typeof gatewayOpenApiDocument;

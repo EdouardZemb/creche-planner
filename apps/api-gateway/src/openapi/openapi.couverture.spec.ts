@@ -8,6 +8,7 @@ import { Controller, Delete, Get, Post, RequestMethod } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { gatewayOpenApiDocument } from '@creche-planner/contracts-kernel';
 import { AppModule } from '../app.module.js';
+import { FORMAT_ERREUR_NATIF_KEY } from '../erreurs/format-erreur-natif.decorator.js';
 
 /**
  * **Garde de couverture OpenAPI (lot D6).**
@@ -135,7 +136,10 @@ function operationsDuControleur(controleur: ClasseControleur): Operation[] {
  * objets `{ module, imports, controllers }` et non des classes : les ignorer
  * rendrait la garde aveugle au jour où un module tiers exposerait une route.
  */
-function operationsServies(racine: ClasseControleur): Set<Operation> {
+function operationsServies(
+  racine: ClasseControleur,
+  retenir: (controleur: ClasseControleur) => boolean = () => true,
+): Set<Operation> {
   const vus = new Set<unknown>();
   const trouvees = new Set<Operation>();
   const aVisiter: EntreeImport[] = [racine];
@@ -165,6 +169,7 @@ function operationsServies(racine: ClasseControleur): Set<Operation> {
     const controleurs = lire(MODULE_METADATA.CONTROLLERS);
     if (estTableau(controleurs)) {
       for (const controleur of controleurs) {
+        if (!retenir(controleur as ClasseControleur)) continue;
         for (const operation of operationsDuControleur(
           controleur as ClasseControleur,
         )) {
@@ -220,6 +225,104 @@ describe('OpenAPI · couverture des routes réellement servies (D6)', () => {
   it('ne documente aucune opération qui ne serait pas servie', () => {
     const fantomes = trier(documentees).filter((o) => !servies.has(o));
     expect(fantomes).toEqual([]);
+  });
+});
+
+/**
+ * Opérations dont le corps d'erreur documenté **n'est pas** le problème commun :
+ * au moins une réponse 4xx/5xx y déclare un contenu qui n'est pas
+ * `application/problem+json`. C'est le pendant contractuel de
+ * `@FormatErreurNatif()`, et rien n'oblige les deux à rester d'accord — sinon
+ * cette garde.
+ */
+function operationsAuCorpsDErreurPropre(): Set<Operation> {
+  return operationsParTypeDErreur().propres;
+}
+
+/**
+ * Classe les opérations documentées selon le corps de leurs réponses d'erreur.
+ * Une opération **sans aucune** réponse 4xx/5xx documentée n'entre dans aucun
+ * des deux ensembles : c'est le cas de `GET /api/health/live`, exemptée côté
+ * code et pourtant absente du contrat côté erreurs — la comparer aveuglément
+ * ferait échouer la garde sur une opération dont il n'y a rien à dire.
+ */
+function operationsParTypeDErreur(): {
+  propres: Set<Operation>;
+  problemes: Set<Operation>;
+} {
+  const propres = new Set<Operation>();
+  const problemes = new Set<Operation>();
+  for (const [chemin, item] of Object.entries(gatewayOpenApiDocument.paths)) {
+    for (const [verbe, operation] of Object.entries(item)) {
+      if (!VERBES.has(RequestMethod[verbe.toUpperCase() as 'GET'])) continue;
+      const reponses = (operation as { responses?: Record<string, unknown> })
+        .responses;
+      for (const [statut, reponse] of Object.entries(reponses ?? {})) {
+        if (!/^[45]\d\d$/.test(statut)) continue;
+        const contenu = (reponse as { content?: Record<string, unknown> })
+          .content;
+        const types = Object.keys(contenu ?? {});
+        if (types.length === 0) continue;
+        const operationId = `${verbe.toUpperCase()} ${chemin}`;
+        if (types.includes('application/problem+json')) {
+          problemes.add(operationId);
+        } else {
+          propres.add(operationId);
+        }
+      }
+    }
+  }
+  return { propres, problemes };
+}
+
+describe('OpenAPI · format d’erreur unique (RFC 9457, AM-37)', () => {
+  const exemptees = operationsServies(
+    AppModule,
+    (controleur) =>
+      Reflect.getMetadata(FORMAT_ERREUR_NATIF_KEY, controleur) === true,
+  );
+  const corpsPropre = operationsAuCorpsDErreurPropre();
+  const corpsProbleme = operationsParTypeDErreur().problemes;
+
+  // Anti-balayage-à-vide : sans exemption trouvée des DEUX côtés, les égalités
+  // ci-dessous seraient `∅ === ∅` — vraies et vides de sens.
+  it('voit l’exemption des deux côtés (métadonnée Nest et document)', () => {
+    expect(trier(exemptees)).toContain('GET /api/health');
+    expect(trier(corpsPropre)).not.toEqual([]);
+    expect(corpsProbleme.size).toBeGreaterThanOrEqual(30);
+  });
+
+  it('n’a aucune opération au corps d’erreur propre qui ne soit exemptée en code', () => {
+    const sansExemption = trier(corpsPropre).filter((o) => !exemptees.has(o));
+    expect(sansExemption).toEqual([]);
+  });
+
+  it('ne documente jamais un problème sur une opération exemptée en code', () => {
+    const contradictoires = trier(corpsProbleme).filter((o) =>
+      exemptees.has(o),
+    );
+    expect(contradictoires).toEqual([]);
+  });
+
+  // La règle utile n'est pas « toutes en problem+json » mais « aucune muette » :
+  // avant le lot 4, les 50 réponses d'erreur du document ne décrivaient AUCUN
+  // corps, et le front en a lu un inexistant pendant toute la vie du produit.
+  it('ne laisse aucune réponse d’erreur sans corps documenté', () => {
+    const muettes: string[] = [];
+    for (const [chemin, item] of Object.entries(gatewayOpenApiDocument.paths)) {
+      for (const [verbe, operation] of Object.entries(item)) {
+        const reponses = (operation as { responses?: Record<string, unknown> })
+          .responses;
+        for (const [statut, reponse] of Object.entries(reponses ?? {})) {
+          if (!/^[45]\d\d$/.test(statut)) continue;
+          const contenu = (reponse as { content?: unknown }).content;
+          if (contenu === undefined) {
+            muettes.push(`${verbe.toUpperCase()} ${chemin} ${statut}`);
+          }
+        }
+      }
+    }
+    expect(muettes).toEqual([]);
   });
 });
 
