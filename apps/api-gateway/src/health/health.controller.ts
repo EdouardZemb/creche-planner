@@ -4,10 +4,15 @@ import {
   HealthCheckService,
   type HealthCheckResult,
 } from '@nestjs/terminus';
+import { FormatErreurNatif } from '../erreurs/format-erreur-natif.decorator.js';
 import { Public } from '../security/public.decorator.js';
 import { AmontsHealthIndicator } from './amonts.health.js';
 
 @Public()
+// Le 503 de readiness **est** le rapport de santé : il nomme l'amont tombé, et
+// c'est ce que lisent la Porte 3 du déploiement et le heartbeat. Seule famille de
+// routes exemptée du format `application/problem+json` (cf. le décorateur).
+@FormatErreurNatif()
 @Controller('health')
 export class HealthController {
   constructor(
