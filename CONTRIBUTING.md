@@ -36,6 +36,11 @@ corepack pnpm frontieres
 # Cf. la section « Pièges » ci-dessous.
 corepack pnpm pieges
 
+# Empêchements d'outillage (< 1 s, step bloquant du job `ci`, cf. doc 34 §6) :
+# chaque piège « encore réel » de la section ci-dessous doit porter sa ligne
+# `EM-xx` au registre — avec son remède, ou un renoncement daté.
+corepack pnpm empechements
+
 # Documentation (< 1 s, steps bloquants du job `ci`, cf. doc 35) :
 # `liens` = liens internes et ancres morts ; `faits` = valeurs citées qui
 # contredisent leur source (version coupée, projets Nx, ports, chaîne d'outils).
@@ -87,33 +92,39 @@ piège de la première liste (registre dans `scripts/verifier-pieges-doc.mjs`).
 
 **Encore réels — à connaître, aucun outil ne les couvre :**
 
+Chaque entrée porte son identifiant `EM-xx` au registre
+([doc 34 §6](docs/34-registre-ameliorations.md#6-empêchements-doutillage--em-xx)) : cette liste
+**ne peut plus s'allonger sans mettre le remède en file**, ou sans écrire pourquoi il n'y en aura
+pas. La porte `pnpm empechements` dérive la liste attendue de ce fichier et refuse une entrée
+orpheline — c'est ce qui empêche « à connaître » de redevenir « pour toujours ».
+
 - **`nx run-many -t test --all --parallel` : les 5 tests provider Pact ouvrent un
-  port fixe.** Le préflight écarte le port squatté, mais **le même message**
+  port fixe.** (`EM-04`) Le préflight écarte le port squatté, mais **le même message**
   (« provider non prêt après 40000 ms ») recouvre un second mode d’échec que
   rien ne peut détecter d’avance : la **saturation machine** (231 s rien qu’en
   imports sous `--parallel=3`). En local, `--parallel=1` pour un verdict fiable.
-- **Ne jamais retirer `/pacts` de `.prettierignore`** — lint-staged casserait
-  `pact-drift`.
-- **Migrations drizzle : `drop` vs `rename` se décide dans un prompt TTY** qu’un
-  agent ne voit pas ⇒ procédure en 2 passes, cf.
+- **Ne jamais retirer `/pacts` de `.prettierignore`** (`EM-05`) — lint-staged
+  casserait `pact-drift`.
+- **Migrations drizzle : `drop` vs `rename` se décide dans un prompt TTY**
+  (`EM-06`) qu’un agent ne voit pas ⇒ procédure en 2 passes, cf.
   [doc 09](docs/09-spec-decouplage-microservices.md).
-- **`prettier --check` échoue sur _tous_ les fichiers sous Windows**
+- **`prettier --check` échoue sur _tous_ les fichiers sous Windows** (`EM-07`)
   (`core.autocrlf` ⇒ CRLF sur disque, `endOfLine: lf` côté prettier). La seule
   mesure probante est `nx format:check --base=origin/main --head=HEAD`.
 - **`pnpm liens` est rouge en permanence sous Windows, et ce rouge-là ne veut
-  rien dire.** Même cause : le script découpe sur `\n` seul, donc il n'extrait
+  rien dire.** (`EM-03`) Même cause : le script découpe sur `\n` seul, donc il n'extrait
   aucune ancre d'un fichier à fins de ligne CRLF et déclare mortes toutes celles
-  qui le visent (une vingtaine d'erreurs sur un arbre intact). **Mais la
+  qui le visent (31 erreurs mesurées le 2026-08-12 sur un arbre intact). **Mais la
   frontière est nette** : le hook de formatage post-édition réécrit en LF tout
   fichier qu'on touche, donc les fichiers du **diff en cours** sont exactement
   ceux que la porte sait juger. Lire sa sortie **fichier par fichier** — une
   erreur sur un fichier du diff est réelle, une erreur sur un fichier non touché
   est du bruit — et laisser la CI (checkout LF) juger l'ensemble. Ne pas en
   conclure que la porte est cassée : c'est ainsi qu'on cesse de la lire.
-- **`git fetch` avant de brancher** : le préflight est hors-réseau par
+- **`git fetch` avant de brancher** (`EM-08`) : le préflight est hors-réseau par
   construction, il ne peut pas voir un `origin/main` périmé.
 - **Le ratchet ESLint (`lint-warnings.mjs`) ne tourne pas sous Windows : c'est une
-  porte de CI seulement.** Il lint le dépôt ENTIER dans un seul processus ; sur ce
+  porte de CI seulement.** (`EM-02`) Il lint le dépôt ENTIER dans un seul processus ; sur ce
   poste il épuise le tas et meurt en `FATAL ERROR: JavaScript heap out of memory`
   — mesuré trois fois, jusqu'à **8 Go de tas et 28 min** avant l'abandon, y compris
   avec `--max-old-space-size`. Le **même step passe en ~3 min sur le runner Linux**.
@@ -121,9 +132,9 @@ piège de la première liste (registre dans `scripts/verifier-pieges-doc.mjs`).
   baseline est cassée. Mesure locale utile à la place : `nx run <projet>:lint` sur
   les projets touchés — s'ils n'introduisent aucun warning, le total ne peut pas
   monter.
-- **Un `| tail` masque le code de sortie** (c’est celui de `tail`) : une suite
+- **Un `| tail` masque le code de sortie** (`EM-09`, c’est celui de `tail`) : une suite
   entière a déjà été lue « verte » alors que 7 cibles échouaient.
-- **UI** : la suite axe ne voit ni le focus, ni les bordures de champ, ni
+- **UI** (`EM-10`) : la suite axe ne voit ni le focus, ni les bordures de champ, ni
   `:disabled`, ni l’`opacity` d’un ancêtre. Pour toute refonte de style,
   `nx run web:e2e-visuel` puis `node scripts/comparer-empreinte.mjs` — empreinte
   des styles **calculés**, hors CI (outil de revue, pas une porte). Deux limites :

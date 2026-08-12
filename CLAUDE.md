@@ -85,14 +85,18 @@ vérifications live attendent un accès au poste principal.
 
 # Boucle d'amélioration — où atterrit ce qu'on apprend
 
-Un lot produit toujours deux choses en plus de son code : des **pistes** qu'on ne traite pas
-maintenant, et des **leçons** sur ce qui nous a trompés. Elles ont longtemps été écrites en prose
-dans `MEMORY.md` : lisibles, mais impossibles à trier, à compter et à clore — au point qu'un même
-motif y a été relevé huit fois sans jamais devenir une garde.
+Un lot produit toujours trois choses en plus de son code : des **pistes** qu'on ne traite pas
+maintenant, des **leçons** sur ce qui nous a trompés, et des **empêchements** — ce que l'atelier
+nous a interdit de faire aussi bien que le lot le demandait. Elles ont longtemps été écrites en
+prose dans `MEMORY.md`, ou dans la prose d'une PR : lisibles, mais impossibles à trier, à compter
+et à clore — au point qu'un même motif y a été relevé huit fois sans jamais devenir une garde.
 
 Elles vont désormais dans **[`docs/34-registre-ameliorations.md`](docs/34-registre-ameliorations.md)** :
 
 - une **piste** (`AM-xx`) — quelque chose à faire, avec son **critère de sortie** ;
+- un **empêchement** (`EM-xx`) — une friction d'**atelier** qui a changé le livrable, avec son
+  remède ou son renoncement daté. `EM` ou `AM` se tranche sur le remède : s'il change le produit,
+  c'est `AM` ; s'il change l'atelier, c'est `EM` (filtre complet en doc 34 §1.5) ;
 - une **leçon** (`LE-xx`) — pourquoi on s'est trompé, avec sa **prévention** ;
 - un **motif** (`MO-x`) — l'agrégat des leçons qui se répètent. **À la troisième récurrence, on
   n'écrit plus une leçon : on écrit une porte** ;
@@ -105,9 +109,16 @@ Trois gestes, dans cet ordre :
 2. **Avant d'exécuter un lot** — commencer par un **constat négatif** : vérifier l'énoncé contre le
    code réel, et regarder la **sortie** de l'outil censé garder le sujet, pas seulement son code.
    C'est ce geste, et lui seul, qui a trouvé les défauts les plus coûteux de ce dépôt.
-3. **À l'ouverture de la PR** — déclarer les identifiants consignés (case du gabarit), puis
-   `pnpm registre` (la porte tourne sans `node_modules`).
+3. **À l'ouverture de la PR** — déclarer les identifiants consignés (cases du gabarit), puis
+   `pnpm registre` et `pnpm empechements` (les portes tournent sans `node_modules`). C'est le
+   dernier moment où un **empêchement** peut encore être écrit : la session qui l'a subi ne
+   survit pas au merge de sa propre PR.
 
 Le §5 du registre est la carte des **portes** du dépôt, avec deux colonnes qu'aucune autre doc ne
 porte : **ce que la porte ne couvre pas**, et **sa sonde négative**. Toute porte ajoutée au dépôt
 s'y inscrit, avec sa sonde — le nombre de portes sans sonde ne peut que baisser.
+
+Le §6 en est le négatif : la file des **empêchements**. La liste « Encore réels » de
+`CONTRIBUTING.md` y est adossée piège par piège (porte `pnpm empechements`, attendu dérivé du
+fichier) : elle ne peut plus s'allonger sans qu'un remède entre en file, ou sans qu'un
+renoncement soit daté et signé.

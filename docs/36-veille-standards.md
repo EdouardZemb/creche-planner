@@ -42,7 +42,7 @@ juridique — la veille signale qu'un texte s'applique, elle ne vaut pas avis d'
 ## 4. Rituel
 
 - **Cadence** : trimestrielle, inscrite au rituel du registre
-  ([doc 34 §6](34-registre-ameliorations.md#6-rituel)). Un cycle = une session qui
+  ([doc 34 §7](34-registre-ameliorations.md#7-rituel)). Un cycle = une session qui
   reparcourt le §3, vérifie ce qui a bougé, et confronte les nouveautés au code réel
   (constat négatif d'abord : lire la **sortie** des outils, pas leur intention).
 - **Sortie** : des **lignes du registre** (doc 34, `/consigner`) — jamais un document

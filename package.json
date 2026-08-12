@@ -14,6 +14,7 @@
     "pieges": "node scripts/verifier-pieges-doc.mjs",
     "registre": "node scripts/verifier-registre.mjs",
     "retentions": "node scripts/verifier-retentions.mjs",
+    "empechements": "node scripts/verifier-empechements.mjs",
     "liens": "node scripts/verifier-liens-doc.mjs",
     "faits": "node scripts/verifier-faits-doc.mjs",
     "statuts": "node scripts/verifier-statut-doc.mjs",

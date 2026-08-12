@@ -13,6 +13,11 @@ travail de mise en forme, de numérotation et de rattachement.
 ## 1. Choisir la famille — une seule question
 
 - Le constat décrit **quelque chose à faire** qu'on ne fait pas maintenant → **piste `AM-xx`** (§2).
+- Le constat décrit **une limitation de l'atelier qui a fait livrer moins bien** que le lot ne le
+  demandait → **empêchement `EM-xx`** (§6), si les **trois** conditions du §1.5 sont réunies : le
+  livrable a changé, ça se reproduira, un remède est concevable. `EM` ou `AM` se tranche sur le
+  **remède** : s'il change le produit ou son déploiement, c'est `AM` ; s'il change l'atelier
+  (harnais de test, portes, boucle de dev), c'est `EM`.
 - Le constat décrit **pourquoi on s'est trompé** (méthode, outil, lecture) → **leçon `LE-xx`** (§3).
 - Le constat décrit un **défaut produit** (montant faux, parcours cassé, donnée abîmée) → ce n'est
   pas ce registre : c'est `AN-xx` dans [doc 22](../../docs/22-registre-anomalies.md). Le dire, et
@@ -20,7 +25,8 @@ travail de mise en forme, de numérotation et de rattachement.
 - Le constat décrit un **risque produit** → [doc 19](../../docs/19-registre-risque-produit.md).
 
 En cas d'hésitation entre piste et leçon : si la phrase commence par « il faudrait », c'est une
-piste ; si elle commence par « on a cru que », c'est une leçon.
+piste ; si elle commence par « on a cru que », c'est une leçon ; si elle commence par « on n'a
+pas pu », c'est un empêchement.
 
 ## 2. Écrire la ligne
 
@@ -55,6 +61,10 @@ pnpm registre
 
 La porte recalcule les compteurs dans les deux sens, vérifie les preuves et refuse un chemin ou
 une fiche de mémoire qui n'existe plus. Elle tourne sans `node_modules`.
+
+Pour un `EM-xx` qui répond à un piège de la liste « Encore réels » de `CONTRIBUTING.md`, citer
+son identifiant dans l'entrée correspondante et lancer aussi `pnpm empechements` : la porte
+confronte les deux fichiers et refuse une entrée orpheline.
 
 ## 5. Rendre compte
 
