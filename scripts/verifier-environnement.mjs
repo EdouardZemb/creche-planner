@@ -502,6 +502,31 @@ function autotest(composes, configs, lectures) {
     return 1;
   }
 
+  /**
+   * Mutation d'un fichier réel, avec **garde** : une mutation qui ne change rien
+   * fait échouer la sonde ici, au lieu de laisser la porte « ne pas mordre » sur
+   * un fichier intact et d'accuser la porte.
+   *
+   * Ce n'est pas une précaution théorique : la sonde (b) ci-dessous a d'abord
+   * cherché une fin de ligne en `\n` littéral dans un compose que l'arbre de
+   * travail tient en **CRLF** (`core.autocrlf` sous Windows). Elle ne remplaçait
+   * rien, la porte voyait le fichier d'origine, et le verdict affiché accusait la
+   * porte de ne plus mordre.
+   *
+   * @param {string} source
+   * @param {(texte: string) => string} transformation
+   * @param {string} etiquette
+   */
+  function muter(source, transformation, etiquette) {
+    const mute = transformation(source);
+    if (mute === source) {
+      throw new Error(
+        `sonde « ${etiquette} » : la mutation n'a RIEN changé — la sonde est périmée (motif introuvable dans le fichier réel), pas la porte.`,
+      );
+    }
+    return mute;
+  }
+
   /** @type {{ nom: string, constats: string[], attendu: string }[]} */
   const sondes = [];
 
@@ -515,20 +540,21 @@ function autotest(composes, configs, lectures) {
     attendu: 'échappe au schéma',
   });
 
-  // (b) un compose pose une variable que l'app ne déclare pas.
-  //
-  // La mutation cherche la fin de ligne en `\r?\n` : sous Windows le fichier est
-  // en CRLF dans l'arbre de travail (`core.autocrlf`), et une sonde écrite sur un
-  // `\n` littéral ne remplace RIEN — elle passe alors au vert sans avoir muté
-  // quoi que ce soit. C'est le piège CRLF du dépôt, appliqué aux sondes.
+  // (b) un compose pose une variable que l'app ne déclare pas. La fin de ligne se
+  // cherche en `\r?\n` : l'arbre de travail est en CRLF sous Windows.
   sondes.push({
     nom: 'variable de compose non déclarée',
     constats: verifier(
       {
         ...composes,
-        'docker-compose.yml': composes['docker-compose.yml'].replace(
-          new RegExp(`^ {2}${appTemoin}:[ \\t]*\r?\n`, 'm'),
-          `  ${appTemoin}:\n    environment:\n      VARIABLE_INERTE: 'x'\n`,
+        'docker-compose.yml': muter(
+          composes['docker-compose.yml'],
+          (texte) =>
+            texte.replace(
+              new RegExp(`^ {2}${appTemoin}:[ \\t]*\r?\n`, 'm'),
+              `  ${appTemoin}:\n    environment:\n      VARIABLE_INERTE: 'x'\n`,
+            ),
+          'variable de compose non déclarée',
         ),
       },
       configs,
@@ -550,9 +576,11 @@ function autotest(composes, configs, lectures) {
             composes,
             {
               ...configs,
-              [appTemoin]: configs[appTemoin].replace(
-                new RegExp(`^ {2}${posee}:.*$`, 'm'),
-                '',
+              [appTemoin]: muter(
+                configs[appTemoin],
+                (texte) =>
+                  texte.replace(new RegExp(`^ {2}${posee}:.*$`, 'm'), ''),
+                'variable retirée du schéma',
               ),
             },
             lectures,
@@ -567,9 +595,14 @@ function autotest(composes, configs, lectures) {
       composes,
       {
         ...configs,
-        [appTemoin]: configs[appTemoin].replace(
-          'export const CHAMPS_ENV = {',
-          "export const CHAMPS_ENV = {\n  VARIABLE_ORPHELINE: champEnv.texte(''),",
+        [appTemoin]: muter(
+          configs[appTemoin],
+          (texte) =>
+            texte.replace(
+              'export const CHAMPS_ENV = {',
+              "export const CHAMPS_ENV = {\n  VARIABLE_ORPHELINE: champEnv.texte(''),",
+            ),
+          'variable déclarée sans ligne de compose',
         ),
       },
       lectures,
@@ -584,9 +617,11 @@ function autotest(composes, configs, lectures) {
       composes,
       {
         ...configs,
-        [appTemoin]: configs[appTemoin].replaceAll(
-          'export const CHAMPS_ENV',
-          'const CHAMPS_LOCAUX',
+        [appTemoin]: muter(
+          configs[appTemoin],
+          (texte) =>
+            texte.replaceAll('export const CHAMPS_ENV', 'const CHAMPS_LOCAUX'),
+          'inventaire disparu',
         ),
       },
       lectures,
@@ -601,9 +636,14 @@ function autotest(composes, configs, lectures) {
       composes,
       {
         ...configs,
-        [appTemoin]: configs[appTemoin].replace(
-          'export const CHAMPS_ENV = {',
-          'export const CHAMPS_ENV = {\n  ...CHAMPS_INCONNUS,',
+        [appTemoin]: muter(
+          configs[appTemoin],
+          (texte) =>
+            texte.replace(
+              'export const CHAMPS_ENV = {',
+              'export const CHAMPS_ENV = {\n  ...CHAMPS_INCONNUS,',
+            ),
+          'fragment partagé inconnu',
         ),
       },
       lectures,
