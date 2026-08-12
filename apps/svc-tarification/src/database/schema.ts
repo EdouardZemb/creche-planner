@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   integer,
   jsonb,
   numeric,
@@ -331,19 +332,26 @@ export const outbox = pgTable('outbox', {
  * de `ConsumerModule.forRoot({ tableDeadLetter })` échoue si le service dérive).
  * Pas d'index sur `created_at` (volumes faibles).
  */
-export const deadLetter = pgTable('dead_letter', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  envelopeId: uuid('envelope_id'),
-  stream: varchar('stream', { length: 32 }).notNull(),
-  sujet: varchar('sujet', { length: 200 }).notNull(),
-  raison: varchar('raison', { length: 32 }).notNull(),
-  payload: text('payload').notNull(),
-  erreur: text('erreur'),
-  livraisons: integer('livraisons').notNull().default(1),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const deadLetter = pgTable(
+  'dead_letter',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    envelopeId: uuid('envelope_id'),
+    stream: varchar('stream', { length: 32 }).notNull(),
+    sujet: varchar('sujet', { length: 200 }).notNull(),
+    raison: varchar('raison', { length: 32 }).notNull(),
+    payload: text('payload').notNull(),
+    erreur: text('erreur'),
+    livraisons: integer('livraisons').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  // Borne de rétention (lot 2b) : 90 j. L'index arrive avec la purge, dans la même
+  // migration — une première purge sur une table jamais nettoyée est sinon un
+  // balayage séquentiel intégral.
+  (table) => [index('dead_letter_created_at_idx').on(table.createdAt)],
+);
 
 export type FoyerRow = typeof foyer.$inferSelect;
 export type FoyerVersionRow = typeof foyerVersion.$inferSelect;

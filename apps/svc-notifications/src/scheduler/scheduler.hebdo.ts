@@ -7,7 +7,12 @@ import {
 } from '@nestjs/common';
 import { metrics } from '@opentelemetry/api';
 import { and, gte, isNull, lte, or } from 'drizzle-orm';
-import { DRIZZLE, MailerService } from '@creche-planner/nest-commons';
+import {
+  CLOCK,
+  type Clock,
+  DRIZZLE,
+  MailerService,
+} from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   contrat,
@@ -36,7 +41,6 @@ import { DesabonnementClient } from '../desabonnement/desabonnement.client.js';
 import { InboxService } from '../inbox/inbox.service.js';
 import { messageValidationHebdo } from '../inbox/inbox.message.js';
 import type { EnvoiRecapHebdoRow } from '../database/schema.js';
-import { CLOCK, type Clock } from './clock.js';
 import {
   EnvoiRecapService,
   type IssueEnvoiRecap,

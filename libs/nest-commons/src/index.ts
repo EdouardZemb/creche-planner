@@ -1,3 +1,4 @@
+export * from './lib/common/clock.js';
 export * from './lib/common/domain-exception.filter.js';
 export * from './lib/common/trace.js';
 export * from './lib/database/database.module.js';
@@ -19,6 +20,10 @@ export * from './lib/messaging/jetstream-consumer.js';
 export * from './lib/outbox/outbox.module.js';
 export * from './lib/outbox/outbox.options.js';
 export * from './lib/outbox/outbox.relay.js';
+export * from './lib/purge/purge.module.js';
+export * from './lib/purge/purge.options.js';
+export * from './lib/purge/purge.service.js';
+export * from './lib/purge/purge.taches.js';
 export * from './lib/security/assertion-identite.js';
 export * from './lib/security/assertion-identite.options.js';
 export * from './lib/security/assertion-identite.guard.js';

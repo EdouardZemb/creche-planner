@@ -86,16 +86,43 @@ de confirmation à recopier. Page `/mentions` remise en accord avec ce qui est o
 4. Le composant partagé `Modale` s'est révélé cassé pour tout champ de saisie (`LE-31`) :
    corrigé ici, parce que la confirmation du lot ne pouvait pas fonctionner autrement.
 
-### Lot 2b — bornes temporelles (`AM-36` volet outillage, `AM-01`, `AM-03`)
+### Lot 2b — bornes temporelles (`AM-36` volet outillage, `AM-01`, `AM-03`) ✅ LIVRÉ
 
-Purge périodique par âge, sur le patron maison `setInterval` + garde de réentrance
-(`OutboxRelay`/`SchedulerHebdo` — pas de `@nestjs/schedule`, refus documenté), horloge
-injectée pour tester sans attendre. Durées : celles de doc 37 §3. Deux préalables écrits :
-`processed_event` ne se borne qu'**après** avoir posé un `max_age` sur les streams
-JetStream (sinon on rouvre le rejeu), et l'index sur les colonnes de date se pose **dans
-la même migration** que la purge (première purge = balayage séquentiel sur des tables
-jamais nettoyées). Critère : une ligne juste **sous** la borne survit — la sonde négative
-est là, pas sur la ligne supprimée.
+**Fait le 2026-08-12**, branche `feat/rgpd-lot2b-bornes-temporelles`.
+
+`PurgeModule` dans `libs/nest-commons` : patron maison `setInterval` + garde de réentrance,
+horloge **remontée dans la lib** (`CLOCK`, jusque-là locale à `svc-notifications` — le patron
+partagé était justement celui qui appelait `new Date()` en dur), compteurs OTel, une tâche
+isolée par `try`. Neuf bornes dans les cinq services, chacune avec son index posé **dans la
+même migration**. Les deux tables techniques (`outbox`, `dead_letter`) sont bornées **dans la
+lib** : leur prédicat n'existe qu'à un seul endroit, et un nouveau service en hérite.
+
+**Cinq écarts à l'énoncé, constatés contre le code :**
+
+1. **Deux des huit durées de doc 37 §3 étaient fausses, pas difficiles.** T1 ancrait la
+   rétention sur la « date d'effet de la version » : or la **fin** d'une version n'existe pas
+   en base, elle est dérivée à la lecture et la dernière reste ouverte — la version **en
+   vigueur** d'un foyer inactif tombe sous la borne, et l'aval ne plante pas, il **facture
+   faux en silence**. T3bis demandait de purger la preuve d'un désabonnement dont la
+   disparition **vaut réabonnement**. Elles sont **corrigées** en doc 37 v1.1 (`AM-55`,
+   `AM-57`), et la porte `pnpm retentions` refuse désormais une durée dont la colonne
+   n'existe pas — motif `MO-2` à sa troisième occurrence, donc une porte et non une leçon.
+2. **`envoi_etablissement` est anonymisée en place, pas purgée.** Cette ligne est le seul
+   verrou anti-double-envoi vers une vraie crèche, et l'endpoint d'envoi n'est borné par
+   aucune date (`AM-58`) : la supprimer rouvrait un second courriel réel. Le contenu part,
+   la ligne-témoin reste.
+3. **`notification_hebdo` écartée** : doc 37 la rangeait avec la boîte de réception au motif
+   qu'elle serait « un journal en ajout seul ». Le code ne dit cela que de `notification` —
+   c'est la machine à états de la validation, et rien ne ferme une semaine `A_VALIDER`
+   (`AM-59`).
+4. **`correction_journal` écartée** : la table ne porte aucune date d'effet, et sa colonne
+   d'ancrage n'a même pas le même nom dans les deux services (`AM-60`). `AM-03` n'est donc
+   soldée que pour `dead_letter`.
+5. **`desabonnement_token` ajoutée**, absente de l'énoncé : c'est la seule trace survivante de
+   l'exercice du droit d'opposition, et la borne dérive son écart au TTL depuis la
+   configuration au lieu de le recopier.
+
+Le préalable `processed_event` reste entier : toujours aucun `max_age` JetStream.
 
 ## Lot 3 — portabilité (`AM-35`)
 

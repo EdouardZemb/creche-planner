@@ -8,6 +8,7 @@ import {
   DatabaseModule,
   HealthModule,
   NatsModule,
+  PurgeModule,
 } from '@creche-planner/nest-commons';
 import { loadConfig } from './config.js';
 import * as schema from './database/schema.js';
@@ -35,6 +36,10 @@ import { TarificationModule } from './tarification/tarification.module.js';
     FallbackModule,
     ConsumersModule,
     TarificationModule,
+    // Bornes temporelles de rétention (lot 2b). `outbox: null` **délibérément** : la
+    // table existe dans le schéma (infra latente) mais aucun `OutboxModule` n'est
+    // enregistré ici et rien n'y insère — y borner ferait tourner un DELETE stérile.
+    PurgeModule.forRoot({ outbox: null, deadLetter: schema.deadLetter }),
     // Guard aval d'assertion inter-services (observe-only) — fondations lot 3, +
     // scoping par ressource (lot 4). svc-tarification scope en **direct** (les deux
     // routes coûts portent `?foyer=`) → aucun résolveur en base (`scoping: {}`).

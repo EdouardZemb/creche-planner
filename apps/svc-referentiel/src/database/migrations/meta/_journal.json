@@ -29,6 +29,13 @@
       "when": 1785177980065,
       "tag": "0003_bareme_tranches",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1786518205805,
+      "tag": "0004_purge_bornes_temporelles",
+      "breakpoints": true
     }
   ]
 }

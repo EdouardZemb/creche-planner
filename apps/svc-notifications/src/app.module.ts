@@ -10,6 +10,7 @@ import {
   HealthModule,
   NatsModule,
   OutboxModule,
+  PurgeModule,
   type OptionsMailer,
 } from '@creche-planner/nest-commons';
 import { NOTIFICATIONS_EVENT_SOURCE } from '@creche-planner/contracts-notifications';
@@ -22,6 +23,7 @@ import { EnvoiModule } from './envoi/envoi.module.js';
 import { InboxModule } from './inbox/inbox.module.js';
 import { SchedulerModule } from './scheduler/scheduler.module.js';
 import { ResolveurFoyerNotifications } from './security/resolveur-foyer.js';
+import { tachesPurgeNotifications } from './purge/taches-purge.js';
 
 /**
  * Options du mailer dérivées de la config. Le mot de passe est résolu
@@ -63,6 +65,14 @@ function optionsMailer(): OptionsMailer {
     OutboxModule.forRoot({
       source: NOTIFICATIONS_EVENT_SOURCE,
       table: schema.outbox,
+    }),
+    // Bornes temporelles de rétention (lot 2b). `notification_hebdo` en est absente :
+    // c'est la machine à états de la validation, pas un journal — cf. l'écart assumé en
+    // `docs/37-registre-des-traitements.md` §4.
+    PurgeModule.forRoot({
+      outbox: schema.outbox,
+      deadLetter: schema.deadLetter,
+      taches: tachesPurgeNotifications,
     }),
     EmailModule.forRoot(optionsMailer()),
     HealthModule,

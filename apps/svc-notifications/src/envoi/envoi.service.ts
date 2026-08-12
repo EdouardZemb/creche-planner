@@ -8,6 +8,8 @@ import {
 } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import {
+  CLOCK,
+  type Clock,
   DRIZZLE,
   MailerService,
   partitionnerParAllowlist,
@@ -33,7 +35,6 @@ import {
 import { echapperEnHtml } from '../email/echapperEnHtml.js';
 import { construireLienMentions } from '../email/lienMentions.js';
 import { loadConfig } from '../config.js';
-import { CLOCK, type Clock } from '../scheduler/clock.js';
 import type {
   BrouillonEtablissementVue,
   EnfantBrouillon,

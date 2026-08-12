@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { EtablissementModule } from '../etablissement/etablissement.module.js';
-import { CLOCK, horlogeSysteme } from '../scheduler/clock.js';
+import { CLOCK, horlogeSysteme } from '@creche-planner/nest-commons';
 import { EnvoiController } from './envoi.controller.js';
 import { EnvoiService } from './envoi.service.js';
 import { SuiviEnvoisService } from './suivi-envois.service.js';

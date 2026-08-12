@@ -36,6 +36,13 @@
       "when": 1785178964544,
       "tag": "0004_foyer_versionne",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786518168818,
+      "tag": "0005_purge_bornes_temporelles",
+      "breakpoints": true
     }
   ]
 }

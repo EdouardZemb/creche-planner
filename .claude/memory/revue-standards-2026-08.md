@@ -30,6 +30,24 @@
   `AM-54` (index), `LE-31` (`Modale` cassait toute saisie) et `LE-32` (drizzle ne lie pas
   l'opérande d'un `like`).
 
+- **2026-08-12 — lot 2b livré (bornes temporelles).** `PurgeModule` dans
+  `libs/nest-commons` : `setInterval` + garde de réentrance, **horloge remontée dans la
+  lib** (`CLOCK` vivait dans `svc-notifications` ; le patron partagé était justement celui
+  qui appelait `new Date()` en dur), compteurs OTel, une tâche isolée par `try`. Neuf
+  bornes dans les 5 services, chaque index posé dans la même migration ; `outbox` et
+  `dead_letter` bornées **dans la lib** (prédicat unique, hérité). `AM-01` soldée (index de
+  purge + index partiel du backlog).
+  **Ce que le lot a vraiment trouvé : deux des huit durées de doc 37 §3 étaient FAUSSES,
+  pas difficiles.** T1 ancrait la rétention sur la « date d'effet de la version » — or la
+  fin d'une version n'existe pas en base, la dernière reste ouverte, donc la version **en
+  vigueur** d'un foyer inactif tombe sous la borne, et l'aval **facture faux sans lever
+  d'erreur**. T3bis demandait de purger la preuve d'un désabonnement dont la disparition
+  **vaut réabonnement**. Corrigées en doc 37 v1.1, pas outillées.
+  Porte née de là : **`pnpm retentions`** — une durée déclarée outillée doit nommer sa
+  colonne, et celle-ci doit exister dans tous les schémas déclarant la table. Elle ferme
+  `MO-2` à sa 3ᵉ occurrence. Vérifiée en rejouant l'énoncé v1.0 : refusé dans les 2 services.
+  Consigné : `AM-55`→`AM-61`, `LE-34`, `LE-35` ; `AM-01` ✅, `AM-03`/`AM-36` avancées.
+
 ## Ce que la revue a établi (résumé)
 
 - **Angle mort n° 1 : RGPD** — aucune des obligations (art. 13/17/20/30) n'était
@@ -41,6 +59,22 @@
 - Détail des faits par domaine : voir les critères des lignes `AM-33`…`AM-51`.
 
 ## Pièges pour les lots suivants
+
+- **L'absence d'une ligne porte du sens ici — une purge est alors un changement de
+  comportement, pas de l'hygiène (`LE-35`).** Quatre tables l'encodent : `processed_event`
+  (absente ⇒ rejeu), `preference_notification` (absente ⇒ consentement, donc
+  réabonnement), `notification_hebdo` (absente ⇒ action en attente effacée) et
+  `envoi_etablissement` **côté sortant** (absente ⇒ second courriel réel vers une crèche —
+  l'endpoint d'envoi n'est borné par aucune date et le front réarme son bouton à chaque
+  montage). D'où l'**anonymisation en place** plutôt que la suppression sur cette dernière.
+  Avant de borner une table : chercher qui interprète son **absence**, pas qui la lit.
+- **Les sondes du registre écrites sur un littéral se périment en silence.** Trois ont
+  cessé de mordre pendant ce lot, en touchant `MO-2` et en closant `AM-01` ; seule la garde
+  « la mutation n'a rien changé » de `--autotest` l'a dit. Les 4 sondes qui visaient une
+  propriété **mutable** sont désormais dérivées. **Rejouer `--autotest`, pas seulement la
+  porte**, dès qu'on touche au registre.
+- **Drizzle lie une borne `Date` en chaîne ISO**, pas en `Date` : les assertions de
+  paramètre d'une purge se sondent (`.toISOString()`), elles ne se supposent pas.
 
 - RFC 9457 (lot 4) : la forme d'erreur `{ statusCode, code, message }` est **figée
   dans les pacts** et lue par le front — migration contrat par contrat.
