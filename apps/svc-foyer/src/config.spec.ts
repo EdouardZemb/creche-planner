@@ -129,9 +129,17 @@ describe('loadConfig — assertion inter-services', () => {
   it('lit le secret et la bascule d’enforce', () => {
     expect(
       loadConfig({
-        ASSERTION_IDENTITE_SECRET: ' s3cr3t ',
+        ASSERTION_IDENTITE_SECRET: 's3cr3t',
         INTERSERVICE_AUTHZ_ENFORCE: '1',
       }).assertion,
     ).toEqual({ secret: 's3cr3t', enforce: true });
+  });
+
+  // Clé HMAC partagée avec la passerelle : la rogner d'un côté seulement ferait
+  // échouer toutes les vérifications d'assertion. Refus au démarrage.
+  it('refuse un secret d’assertion entouré d’espaces', () => {
+    expect(() => loadConfig({ ASSERTION_IDENTITE_SECRET: ' s3cr3t ' })).toThrow(
+      /ASSERTION_IDENTITE_SECRET.*espaces/su,
+    );
   });
 });

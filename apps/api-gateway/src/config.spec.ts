@@ -204,19 +204,37 @@ describe('loadConfig — secret d’assertion inter-services (lot 3)', () => {
     expect(loadConfig({}).assertionSecret).toBeUndefined();
   });
 
-  it('lu quand posé, trimé, vide/blanc → undefined', () => {
+  it('lu quand posé, vide/blanc → undefined', () => {
     expect(
-      loadConfig({ ASSERTION_IDENTITE_SECRET: '  s3cr3t  ' }).assertionSecret,
+      loadConfig({ ASSERTION_IDENTITE_SECRET: 's3cr3t' }).assertionSecret,
     ).toBe('s3cr3t');
     expect(
       loadConfig({ ASSERTION_IDENTITE_SECRET: '   ' }).assertionSecret,
     ).toBeUndefined();
   });
+
+  // Ce secret est la clé HMAC des assertions d'identité, partagée avec les cinq
+  // services : rognée d'un côté seulement, elle ferait échouer toutes les
+  // vérifications. Une valeur entourée d'espaces refuse donc le démarrage.
+  it('refuse un secret entouré d’espaces', () => {
+    expect(() =>
+      loadConfig({ ASSERTION_IDENTITE_SECRET: '  s3cr3t  ' }),
+    ).toThrow(/ASSERTION_IDENTITE_SECRET.*espaces/su);
+  });
 });
 
 describe('loadConfig — jeton machine, vide ≡ absent (AN-20)', () => {
-  it('lit le jeton posé, trimé', () => {
-    expect(loadConfig({ GATEWAY_TOKEN: '  jeton  ' }).authToken).toBe('jeton');
+  it('lit le jeton posé', () => {
+    expect(loadConfig({ GATEWAY_TOKEN: 'jeton' }).authToken).toBe('jeton');
+  });
+
+  // Un jeton entouré d'espaces n'est PAS rogné en silence : sur un secret, les
+  // espaces changent la valeur comparée, et rogner ferait dépendre le
+  // comportement de la lecture. Le démarrage est refusé, la variable nommée.
+  it('refuse un jeton entouré d’espaces (valeur ambiguë)', () => {
+    expect(() => loadConfig({ GATEWAY_TOKEN: '  jeton  ' })).toThrow(
+      /GATEWAY_TOKEN.*espaces/su,
+    );
   });
 
   // Depuis le lot 5, il n'y a plus qu'UNE lecture : celle de la trousse. AN-20

@@ -65,6 +65,20 @@ export interface ChampEnv<T> {
    * tout texte libre : secret, e-mail, URL de base de données (mot de passe).
    */
   readonly valeurCitable: boolean;
+  /**
+   * Les espaces de début et de fin **changent le sens** de cette valeur : c'est le
+   * cas d'un secret, qui sert de clé. La normalisation `trim` de la trousse serait
+   * alors un **changement de clé silencieux** — un `DESABONNEMENT_TOKEN_SECRET`
+   * stocké avec une espace finale signerait, après ce lot, avec une autre clé
+   * qu'avant : tous les liens de désabonnement déjà partis (TTL 30 j)
+   * cesseraient de vérifier, sans une ligne de log qui pointe la cause.
+   *
+   * Pour ces champs, une valeur **non blanche mais entourée d'espaces** est donc
+   * refusée au démarrage — bruyamment, en nommant la variable. Une valeur
+   * entièrement blanche reste « absente » (invariant n° 1, `AN-20`) : là, il n'y a
+   * aucune ambiguïté sur l'intention.
+   */
+  readonly espacesSignificatifs?: boolean;
 }
 
 /** Valeurs rendues par `lireEnv` : une entrée par champ déclaré. */
@@ -118,8 +132,9 @@ function champ<T>(
   schema: z.ZodType<T>,
   defaut: unknown,
   valeurCitable: boolean,
+  espacesSignificatifs = false,
 ): ChampEnv<T> {
-  return { schema, defaut, valeurCitable };
+  return { schema, defaut, valeurCitable, espacesSignificatifs };
 }
 
 /** Entier décimal (pas d'hexadécimal, pas de flottant, pas de signe). */
@@ -301,17 +316,20 @@ export const champEnv = {
 
   /**
    * Secret **optionnel** : absent ou blanc ⇒ `undefined`, ce que le code lit
-   * comme « non fourni » (mode legacy, auth désactivée…). **Non citable.**
+   * comme « non fourni » (mode legacy, auth désactivée…). **Non citable**, et ses
+   * **espaces sont significatifs** (cf. `espacesSignificatifs`) : un secret
+   * entouré d'espaces est refusé au lieu d'être rogné en silence.
    */
   secret: (): ChampEnv<string | undefined> =>
-    champ(z.string().optional(), undefined, false),
+    champ(z.string().optional(), undefined, false, true),
 
   /**
    * Secret avec un repli de **développement** assumé (le défaut n'est pas un
-   * secret de prod : une règle de production doit le refuser). **Non citable.**
+   * secret de prod : une règle de production doit le refuser). **Non citable**,
+   * espaces significatifs.
    */
   secretAvecRepli: (defaut: string): ChampEnv<string> =>
-    champ(z.string().default(defaut), defaut, false),
+    champ(z.string().default(defaut), defaut, false, true),
 } as const;
 
 /** `NODE_ENV` : toujours lu, jamais déclaré par une app (cf. `environnement`). */
@@ -369,6 +387,19 @@ export function lireEnv<C extends Record<string, ChampEnv<unknown>>>(
 
   for (const [nom, definition] of Object.entries(declares)) {
     const brut = normaliser(env[nom]);
+    // Un secret entouré d'espaces est AMBIGU : la normalisation en changerait la
+    // valeur, donc la clé. On refuse au lieu de rogner (cf.
+    // `espacesSignificatifs`). Une valeur entièrement blanche reste « absente ».
+    if (
+      definition.espacesSignificatifs === true &&
+      brut !== undefined &&
+      env[nom] !== brut
+    ) {
+      constats.push(
+        `${nom} : espaces en début ou en fin de valeur, alors qu'ils comptent ici (secret servant de clé) — les rogner en silence changerait la clé sans que rien ne le dise. Corriger la valeur dans .env.server.enc ou le compose.`,
+      );
+      continue;
+    }
     const lu = definition.schema.safeParse(brut);
     if (lu.success) {
       valeurs[nom] = lu.data;

@@ -75,6 +75,18 @@ const COMPOSES = [
 ];
 
 /**
+ * Ceux que la **production** charge (`deploy.mjs` : `-f docker-compose.yml -f
+ * docker-compose.server.yml`). L'override de développement est chargé
+ * automatiquement en local et en CI, **jamais** en production : une variable qu'il
+ * est seul à poser n'a donc pas de valeur en prod, et c'est le défaut du code qui
+ * fait foi là-bas (vérification n° 3).
+ */
+const COMPOSES_DE_PRODUCTION = [
+  'docker-compose.yml',
+  'docker-compose.server.yml',
+];
+
+/**
  * Fragments de déclaration partagés, repris par `...NOM` dans un `CHAMPS_ENV`.
  * Le fichier est lu, pas recopié : la porte suit un renommage de variable.
  */
@@ -100,6 +112,32 @@ const VARIABLES_DE_BIBLIOTHEQUE = [
   // les six apps sans qu'aucune ait à l'écrire.
   'NODE_ENV',
 ];
+
+/**
+ * Retire la ligne `VARIABLE:` du bloc `environment:` d'un service donné. Sert aux
+ * sondes : c'est la mutation qui reproduit « un service perd une variable que ses
+ * voisins gardent ».
+ *
+ * @param {string} contenu
+ * @param {string} service
+ * @param {string} variable
+ */
+function retirerDuBloc(contenu, service, variable) {
+  /** @type {string[]} */
+  const sortie = [];
+  let courant = null;
+  for (const ligne of contenu.split('\n')) {
+    const debut = /^ {2}([a-zA-Z0-9_.-]+):[ \t]*\r?$/.exec(ligne);
+    if (debut !== null) {
+      courant = debut[1];
+    }
+    if (courant === service && new RegExp(`^ {6}${variable}:`).test(ligne)) {
+      continue;
+    }
+    sortie.push(ligne);
+  }
+  return sortie.join('\n');
+}
 
 /**
  * Lectures de `process.env` **hors** `config.ts` tolérées, avec leur motif. Une
@@ -140,13 +178,6 @@ const DEFAUTS_DE_CODE_ASSUMES = [
       '(RATE_LIMIT_MAX) diffère entre la pile locale et le serveur.',
   },
   {
-    variable: 'CORS_ORIGINS',
-    app: 'api-gateway',
-    motif:
-      "posée par docker-compose.server.yml (origine publique) ; en local l'absence " +
-      "vaut « reflète toutes les origines », ce qui est l'intention en dev.",
-  },
-  {
     variable: 'SMTP_HOST',
     app: 'svc-notifications',
     motif:
@@ -171,13 +202,6 @@ const DEFAUTS_DE_CODE_ASSUMES = [
     motif:
       "affordance de TEST (posée par docker-compose.override.yml pour l'e2e) : " +
       'elle ne doit exister nulle part ailleurs.',
-  },
-  {
-    variable: 'DESABONNEMENT_TOKEN_TTL_JOURS',
-    app: 'svc-foyer',
-    motif:
-      'posée par docker-compose.server.yml avec le même 30 j que le code ; ' +
-      "l'entrée reste pour mémoire du couple TTL/purge (doc 37 §3).",
   },
 ];
 
@@ -338,16 +362,37 @@ function variablesDesComposes(contenus) {
 }
 
 /**
- * Lectures directes de `process.env` dans le code applicatif.
+ * Toute mention de `process.env` dans le code applicatif, **y compris** celles
+ * qui ne nomment pas de variable en clair.
+ *
+ * Un détecteur limité aux clés littérales laisserait passer
+ * `const env = process.env; … env['GATEWAY_TOKEN']` — soit exactement la seconde
+ * lecture d'`AN-20`, gate au vert. Une mention sans clé littérale est donc
+ * rapportée avec la variable `(accès indirect)`, qu'aucune exemption ne couvre :
+ * une app qui a besoin de l'objet entier passe par sa déclaration.
+ *
+ * Le balayage porte sur `apps/<app>/src` de **toutes** les applications, y compris
+ * celles qui n'ont pas de `config.ts` (le front `web`) : là, toute mention est un
+ * constat.
  *
  * @returns {{ fichier: string, variable: string }[]}
  */
 function lecturesDirectes() {
   /** @type {{ fichier: string, variable: string }[]} */
   const lectures = [];
-  for (const app of applications()) {
+  /** @type {import('node:fs').Dirent[]} */
+  let entrees;
+  try {
+    entrees = fs.readdirSync(path.join(RACINE, 'apps'), {
+      withFileTypes: true,
+    });
+  } catch {
+    return lectures;
+  }
+  for (const entree of entrees) {
+    if (!entree.isDirectory()) continue;
     for (const fichier of sourcesApplicatives(
-      path.join(RACINE, 'apps', app, 'src'),
+      path.join(RACINE, 'apps', entree.name, 'src'),
     )) {
       let source;
       try {
@@ -357,9 +402,12 @@ function lecturesDirectes() {
       }
       const relatif = path.relative(RACINE, fichier).replaceAll('\\', '/');
       for (const trouve of source.matchAll(
-        /process\.env\[?'([A-Z][A-Z0-9_]*)'\]?|process\.env\.([A-Z][A-Z0-9_]*)/g,
+        /process\.env(?:\[\s*'([A-Z][A-Z0-9_]*)'\s*\]|\.([A-Z][A-Z0-9_]*))?/g,
       )) {
-        lectures.push({ fichier: relatif, variable: trouve[1] ?? trouve[2] });
+        lectures.push({
+          fichier: relatif,
+          variable: trouve[1] ?? trouve[2] ?? '(accès indirect)',
+        });
       }
     }
   }
@@ -445,28 +493,45 @@ function verifier(composes, configs, lectures) {
     );
   }
 
-  // 3. Une variable déclarée que nul compose ne pose est une décision écrite.
-  const toutesPosees = new Set(
-    [...posees.entries()]
-      .filter(([service]) => declarees.has(service))
-      .flatMap(([, variables]) => [...variables]),
+  // 3. Une variable déclarée que le déploiement de PRODUCTION ne pose pas sur CE
+  // service est une décision écrite.
+  //
+  // Deux précisions qui font toute la valeur de cette vérification :
+  //  - le décompte est **par service**. Une union globale rendrait la porte
+  //    aveugle au cas qui compte : retirer `ASSERTION_IDENTITE_SECRET` du bloc
+  //    d'un seul service le fait retomber en mode legacy (vérification d'identité
+  //    inactive) sans qu'aucune autre garde ne le voie, puisque son absence est
+  //    une valeur licite ;
+  //  - seuls les composes de **production** comptent. Une variable que seul
+  //    l'override de développement pose (`NOTIF_SCHEDULER_FORCER`) n'a aucune
+  //    valeur en prod : c'est bien le défaut du code qui y fait foi.
+  const poseesEnProduction = variablesDesComposes(
+    Object.fromEntries(
+      Object.entries(composes).filter(([fichier]) =>
+        COMPOSES_DE_PRODUCTION.includes(fichier),
+      ),
+    ),
   );
   for (const [app, cles] of declarees) {
+    const posesDuService = poseesEnProduction.get(app) ?? new Set();
     for (const variable of cles) {
       if (VARIABLES_DE_BIBLIOTHEQUE.includes(variable)) continue;
-      if (toutesPosees.has(variable)) continue;
+      if (posesDuService.has(variable)) continue;
       const assumee = DEFAUTS_DE_CODE_ASSUMES.some(
         (d) => d.variable === variable && d.app === app,
       );
       if (!assumee) {
         constats.push(
-          `\`${variable}\` est déclarée par \`${app}\` mais posée par AUCUN compose : sa valeur de production est le défaut écrit dans le code. Si c'est voulu, l'inscrire avec son motif dans \`DEFAUTS_DE_CODE_ASSUMES\` ; sinon, la poser`,
+          `\`${variable}\` est déclarée par \`${app}\` mais posée par AUCUN compose de production sur ce service : sa valeur de production est le défaut écrit dans le code. Si c'est voulu, l'inscrire avec son motif dans \`DEFAUTS_DE_CODE_ASSUMES\` ; sinon, la poser`,
         );
       }
     }
   }
 
-  // 3 bis. Le registre lui-même ne se périme pas en silence.
+  // 3 bis. Le registre lui-même ne se périme pas en silence — dans les DEUX sens :
+  // une entrée qui cite une variable disparue du schéma, et une entrée devenue
+  // fausse parce qu'un compose de production pose désormais la variable (son motif
+  // parlerait alors d'un défaut qui ne s'applique plus).
   for (const { variable, app } of DEFAUTS_DE_CODE_ASSUMES) {
     const cles = declarees.get(app);
     if (cles === undefined) {
@@ -478,6 +543,12 @@ function verifier(composes, configs, lectures) {
     if (!cles.includes(variable)) {
       constats.push(
         `\`DEFAUTS_DE_CODE_ASSUMES\` cite \`${variable}\` pour \`${app}\`, qui ne la déclare plus : entrée périmée, la retirer`,
+      );
+      continue;
+    }
+    if ((poseesEnProduction.get(app) ?? new Set()).has(variable)) {
+      constats.push(
+        `\`DEFAUTS_DE_CODE_ASSUMES\` dit que \`${variable}\` n'est posée par aucun compose de production, mais \`${app}\` la reçoit : entrée devenue fausse, la retirer (son motif décrit un défaut qui ne s'applique plus)`,
       );
     }
   }
@@ -564,8 +635,9 @@ function autotest(composes, configs, lectures) {
   });
 
   // (c) une variable posée disparaît de la déclaration de l'app.
-  const posee = [...(variablesDesComposes(composes).get(appTemoin) ?? [])].find(
-    (v) => clesTemoin.includes(v),
+  const sondePosees = variablesDesComposes(composes);
+  const posee = [...(sondePosees.get(appTemoin) ?? [])].find((v) =>
+    clesTemoin.includes(v),
   );
   sondes.push({
     nom: 'variable retirée du schéma alors qu’un compose la pose',
@@ -627,6 +699,67 @@ function autotest(composes, configs, lectures) {
       lectures,
     ),
     attendu: 'introuvable ou vide',
+  });
+
+  // (g) un accès INDIRECT à process.env hors config.ts (`const env = process.env`),
+  // qui est la forme sous laquelle AN-20 pourrait renaître sans nommer de clé.
+  sondes.push({
+    nom: 'alias de process.env hors config.ts',
+    constats: verifier(composes, configs, [
+      ...lectures,
+      { fichier: 'apps/sonde/src/service.ts', variable: '(accès indirect)' },
+    ]),
+    attendu: '(accès indirect)',
+  });
+
+  // (h) une variable partagée disparaît du bloc d'UN SEUL service. Le décompte
+  // global ne le verrait pas — or c'est le cas qui coûte : un service qui perd
+  // `ASSERTION_IDENTITE_SECRET` retombe en mode legacy, et son absence est licite.
+  const partagee = [...(sondePosees.get(appTemoin) ?? [])].find(
+    (v) =>
+      clesTemoin.includes(v) &&
+      [...sondePosees.values()].filter((s) => s.has(v)).length > 1,
+  );
+  sondes.push({
+    nom: 'variable partagée retirée du bloc d’un seul service',
+    constats:
+      partagee === undefined
+        ? []
+        : verifier(
+            Object.fromEntries(
+              Object.entries(composes).map(([fichier, contenu]) => [
+                fichier,
+                retirerDuBloc(contenu, appTemoin, partagee),
+              ]),
+            ),
+            configs,
+            lectures,
+          ),
+    attendu: partagee === undefined ? 'sonde impossible' : partagee,
+  });
+
+  // (i) le registre des défauts assumés devient faux : la variable est désormais
+  // posée en production.
+  const assumee = DEFAUTS_DE_CODE_ASSUMES[0];
+  sondes.push({
+    nom: 'registre des défauts assumés devenu faux',
+    constats: verifier(
+      {
+        ...composes,
+        'docker-compose.server.yml': muter(
+          composes['docker-compose.server.yml'],
+          (texte) =>
+            texte.replace(
+              new RegExp(`^ {2}${assumee.app}:[ \\t]*\r?\n`, 'm'),
+              `  ${assumee.app}:\n    environment:\n      ${assumee.variable}: 'x'\n`,
+            ),
+          'registre devenu faux',
+        ),
+      },
+      configs,
+      lectures,
+    ),
+    attendu: 'entrée devenue fausse',
   });
 
   // (f) un fragment partagé est renommé sans être déclaré au registre.

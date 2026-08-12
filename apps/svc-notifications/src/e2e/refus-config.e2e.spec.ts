@@ -96,17 +96,33 @@ describe('E2E · refus de démarrage sur configuration invalide (AM-44)', () => 
     expect(stderr).toContain('svc-notifications');
   }, 40000);
 
-  it('ne cite pas le mot de passe SMTP dans le refus', async (ctx) => {
+  it('ne cite pas, sur le fil, le secret que porte la variable fautive', async (ctx) => {
+    if (!bundlePresent) {
+      return ctx.skip();
+    }
+    // `DATABASE_URL` est le champ qui **peut** échouer et dont la valeur porte un
+    // mot de passe : c'est lui qui exerce vraiment la non-citation. (Une
+    // assertion sur `SMTP_PASSWORD`, champ sans contrainte, serait vide de sens.)
+    const { code, stderr } = await demarrer({
+      DATABASE_URL: 'mysql://u:mot-de-passe-secret@db:3306/notifications',
+    });
+
+    expect(code).not.toBe(0);
+    expect(stderr).toContain('DATABASE_URL');
+    expect(stderr).not.toContain('mot-de-passe-secret');
+  }, 40000);
+
+  it('refuse un secret entouré d’espaces plutôt que de le rogner', async (ctx) => {
     if (!bundlePresent) {
       return ctx.skip();
     }
     const { code, stderr } = await demarrer({
-      SMTP_PASSWORD: 'mot-de-passe-applicatif',
-      SMTP_PORT: 'cinq-cent-quatre-vingt-sept',
+      ASSERTION_IDENTITE_SECRET: ' cle-hmac-partagee ',
     });
 
     expect(code).not.toBe(0);
-    expect(stderr).toContain('SMTP_PORT');
-    expect(stderr).not.toContain('mot-de-passe-applicatif');
+    expect(stderr).toContain('ASSERTION_IDENTITE_SECRET');
+    expect(stderr).toContain('espaces');
+    expect(stderr).not.toContain('cle-hmac-partagee');
   }, 40000);
 });

@@ -219,6 +219,42 @@ describe('lireEnv — formes de variables', () => {
     ).toBe('postgresql://a:b@hote:5432/a');
   });
 
+  it('refuse un secret entouré d’espaces au lieu de le rogner en silence', () => {
+    // Rogner changerait la CLÉ : un `DESABONNEMENT_TOKEN_SECRET` stocké avec une
+    // espace finale signerait autrement qu'avant, et tous les liens de
+    // désabonnement déjà partis (TTL 30 j) cesseraient de vérifier sans une ligne
+    // de log qui pointe la cause.
+    const champs = {
+      SIGNATURE: champEnv.secretAvecRepli('dev'),
+      JETON: champEnv.secret(),
+    } as const;
+
+    let message = '';
+    try {
+      lireEnv('sonde', champs, { env: { SIGNATURE: ' vrai-secret ' } });
+    } catch (leve) {
+      message = (leve as Error).message;
+    }
+    expect(message).toContain('SIGNATURE');
+    expect(message).toContain('espaces');
+    // Le secret lui-même n'apparaît pas dans le refus.
+    expect(message).not.toContain('vrai-secret');
+
+    expect(() =>
+      lireEnv('sonde', champs, { env: { JETON: 'jeton\t' } }),
+    ).toThrow(/JETON/u);
+
+    // Une valeur ENTIÈREMENT blanche reste « absente » : aucune ambiguïté sur
+    // l'intention, c'est l'invariant AN-20.
+    expect(
+      lireEnv('sonde', champs, { env: { JETON: '   ' } }).JETON,
+    ).toBeUndefined();
+    // Et une valeur propre passe, évidemment.
+    expect(lireEnv('sonde', champs, { env: { JETON: 'jeton' } }).JETON).toBe(
+      'jeton',
+    );
+  });
+
   it('texte, secret et secretAvecRepli : repli et absence', () => {
     const champs = {
       SMTP_HOST: champEnv.texte('smtp.example.org'),

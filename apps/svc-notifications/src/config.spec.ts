@@ -113,18 +113,28 @@ describe('loadConfig (svc-notifications)', () => {
     expect(loadConfig({ NOTIF_SCHEDULER_HEURE: '0' }).schedulerHeure).toBe(0);
   });
 
-  it('ne cite jamais le mot de passe SMTP dans un refus', () => {
+  it('nomme la variable fautive sans citer le secret qu’elle porte', () => {
+    // Le champ éprouvé ici est `DATABASE_URL` : il **peut** échouer (schéma d'URL
+    // borné) ET sa valeur porte un mot de passe. Une assertion sur `SMTP_PASSWORD`
+    // serait vide de sens — ce champ n'a aucune contrainte, il ne peut jamais
+    // produire de constat, donc jamais rien fuiter.
     let message = '';
     try {
-      loadConfig({
-        SMTP_PASSWORD: 'mot-de-passe-applicatif',
-        SMTP_PORT: 'abc',
-      });
+      loadConfig({ DATABASE_URL: 'mysql://u:mot-de-passe-secret@db:3306/n' });
     } catch (erreur) {
       message = (erreur as Error).message;
     }
-    expect(message).toContain('SMTP_PORT');
-    expect(message).not.toContain('mot-de-passe-applicatif');
+    expect(message).toContain('DATABASE_URL');
+    expect(message).not.toContain('mot-de-passe-secret');
+    expect(message).toMatch(/caractère\(s\)/u);
+  });
+
+  it('refuse un mot de passe SMTP entouré d’espaces', () => {
+    // Rogné en silence, il ferait échouer l'authentification SMTP au premier
+    // envoi réel — loin du démarrage, et sans rapport apparent avec la config.
+    expect(() =>
+      loadConfig({ SMTP_PASSWORD: 'mot-de-passe-applicatif ' }),
+    ).toThrow(/SMTP_PASSWORD.*espaces/su);
   });
 });
 
