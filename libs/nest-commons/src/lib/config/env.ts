@@ -18,7 +18,7 @@ import { z } from 'zod';
  * Ce qui reste local à chaque app, c'est la **déclaration** : quelles variables
  * elle lit, avec quel défaut, et quelles règles de production elle impose.
  *
- * ## Les trois invariants que la trousse impose
+ * ## Les quatre invariants que la trousse impose
  *
  * 1. **Une valeur blanche vaut « absente ».** `GATEWAY_TOKEN=""` doit se lire
  *    comme un jeton non fourni, pas comme le jeton vide. C'est `AN-20` : le
@@ -35,13 +35,24 @@ import { z } from 'zod';
  *    secret ou une donnée personnelle — le lot 4 a déjà payé ce prix en publiant
  *    une query signée dans un corps d'erreur. Le nom suffit à corriger ; la
  *    valeur, non citable, est décrite par sa longueur.
+ * 4. **Un secret entouré d'espaces est refusé, pas rogné.** Sur une valeur qui
+ *    sert de **clé** (`ASSERTION_IDENTITE_SECRET`, `DESABONNEMENT_TOKEN_SECRET`),
+ *    la normalisation de l'invariant n° 1 serait un changement de clé silencieux :
+ *    les liens de désabonnement déjà partis (TTL 30 j) cesseraient de vérifier
+ *    sans qu'aucun log ne pointe la cause. Cf. `espacesSignificatifs`.
  *
  * ## Où le refus se produit
  *
- * `lireEnv` est appelée par le `loadConfig()` de chaque app, et `loadConfig()`
- * est la **première instruction** de son `main.ts` : un environnement invalide
- * arrête le processus avant que quoi que ce soit ne soit monté. Il n'y a donc
- * aucun garde-fou à penser à appeler — c'est la lecture elle-même qui garde.
+ * `lireEnv` est appelée par le `loadConfig()` de chaque app, et `loadConfig()` est
+ * la **première instruction** de son `main.ts` : un environnement invalide arrête
+ * le processus avant que quoi que ce soit ne soit monté. Il n'y a donc aucun
+ * garde-fou à penser à appeler — c'est la lecture elle-même qui garde.
+ *
+ * (Pour `svc-notifications`, le refus arrive même un peu plus tôt : son
+ * `app.module` lit la config dès son évaluation, pour les options du mailer.
+ * L'ordre exact n'est pas supposé, il est **observé** — les specs E2E
+ * `refus-config.e2e.spec.ts` lancent le bundle réel et vérifient l'arrêt, le code
+ * de sortie non nul et le `stderr` qui nomme le champ.)
  *
  * `loadConfig()` est aussi appelée **par requête** dans les guards et les clients
  * (la bascule d'enforce est relue sans redémarrage) : la validation y repasse, sur
