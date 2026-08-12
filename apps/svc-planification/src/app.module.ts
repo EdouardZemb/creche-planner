@@ -17,6 +17,7 @@ import * as schema from './database/schema.js';
 import { ConsumersModule } from './consumers/consumers.module.js';
 import { PlanificationModule } from './planification/planification.module.js';
 import { EtablissementModule } from './etablissement/etablissement.module.js';
+import { PortabiliteModule } from './portabilite/portabilite.module.js';
 import { ResolveurFoyerPlanification } from './security/resolveur-foyer.js';
 
 @Module({
@@ -39,6 +40,9 @@ import { ResolveurFoyerPlanification } from './security/resolveur-foyer.js';
     ConsumersModule,
     PlanificationModule,
     EtablissementModule,
+    // Export de portabilité (lot 3) : contrats, avenants, corrections, plannings
+    // et établissements du foyer.
+    PortabiliteModule,
     OutboxModule.forRoot({
       source: PLANIFICATION_EVENT_SOURCE,
       table: schema.outbox,

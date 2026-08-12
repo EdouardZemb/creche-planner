@@ -23,6 +23,7 @@ import {
 import { ValidationController } from '../validation/validation.controller.js';
 import { EnvoiController } from '../envoi/envoi.controller.js';
 import { InboxController } from '../inbox/inbox.controller.js';
+import { PortabiliteController } from '../portabilite/portabilite.controller.js';
 
 /**
  * Intégration du **scoping enforce** de svc-notifications (fondations lot 4). Couvre la
@@ -101,6 +102,7 @@ function requete(p: Record<string, unknown> = {}): Record<string, unknown> {
 const VC = ValidationController.prototype;
 const NC = EnvoiController.prototype;
 const IC = InboxController.prototype;
+const XC = PortabiliteController.prototype;
 
 describe('svc-notifications · scoping enforce', () => {
   describe('POST /validations/:contratId/:semaineIso (résolution contrat → foyer)', () => {
@@ -182,6 +184,40 @@ describe('svc-notifications · scoping enforce', () => {
       await expect(
         chaine(ctx(ValidationController, VC.aValider, req)),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('GET /foyers/:foyerId/export (foyer direct — portabilité, lot 3)', () => {
+    it('export de son propre foyer → passe', async () => {
+      const req = requete({
+        originalUrl: `/api/foyers/${FOYER}/export`,
+        params: { foyerId: FOYER },
+        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+      });
+      await expect(
+        chaine(ctx(PortabiliteController, XC.exporter, req)),
+      ).resolves.toBe(true);
+    });
+
+    it('export du foyer d’autrui → 403 (la portabilité ne perce pas l’isolation)', async () => {
+      const req = requete({
+        originalUrl: `/api/foyers/${FOYER}/export`,
+        params: { foyerId: FOYER },
+        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+      });
+      await expect(
+        chaine(ctx(PortabiliteController, XC.exporter, req)),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('sans en-tête → 401 (guard identité amont)', async () => {
+      const req = requete({
+        originalUrl: `/api/foyers/${FOYER}/export`,
+        params: { foyerId: FOYER },
+      });
+      await expect(
+        chaine(ctx(PortabiliteController, XC.exporter, req)),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
 

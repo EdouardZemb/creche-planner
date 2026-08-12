@@ -22,6 +22,7 @@ import {
 } from '@creche-planner/nest-commons';
 import { PlanificationController } from '../planification/planification.controller.js';
 import { EtablissementController } from '../etablissement/etablissement.controller.js';
+import { PortabiliteController } from '../portabilite/portabilite.controller.js';
 
 /**
  * Intégration du **scoping enforce** de svc-planification (fondations lot 4). Les routes
@@ -102,6 +103,7 @@ const RESOLVEUR = fakeResolveur({
 
 const PC = PlanificationController.prototype;
 const EC = EtablissementController.prototype;
+const XC = PortabiliteController.prototype;
 
 describe('svc-planification · scoping enforce', () => {
   describe('GET /contrats/:id (résolution contrat → foyer)', () => {
@@ -209,6 +211,40 @@ describe('svc-planification · scoping enforce', () => {
       await expect(
         chaine(ctx(PlanificationController, PC.creerContrat, req), RESOLVEUR),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('GET /foyers/:foyerId/export (foyer direct — portabilité, lot 3)', () => {
+    it('export de son propre foyer → passe', async () => {
+      const req = requete({
+        originalUrl: `/api/foyers/${FOYER}/export`,
+        params: { foyerId: FOYER },
+        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+      });
+      await expect(
+        chaine(ctx(PortabiliteController, XC.exporter, req), RESOLVEUR),
+      ).resolves.toBe(true);
+    });
+
+    it('export du foyer d’autrui → 403 (la portabilité ne perce pas l’isolation)', async () => {
+      const req = requete({
+        originalUrl: `/api/foyers/${FOYER}/export`,
+        params: { foyerId: FOYER },
+        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+      });
+      await expect(
+        chaine(ctx(PortabiliteController, XC.exporter, req), RESOLVEUR),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('sans en-tête → 401 (guard identité amont)', async () => {
+      const req = requete({
+        originalUrl: `/api/foyers/${FOYER}/export`,
+        params: { foyerId: FOYER },
+      });
+      await expect(
+        chaine(ctx(PortabiliteController, XC.exporter, req), RESOLVEUR),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
 

@@ -1,6 +1,6 @@
 # 37 — Registre des traitements, des tiers et des durées de conservation
 
-> Statut : **Établi** · Version 1.1 · 2026-08-12
+> Statut : **Établi** · Version 1.2 · 2026-08-12
 > Inventaire **volontaire** : quelles données personnelles vivent où, pour quoi faire,
 > combien de temps, et chez quels tiers elles transitent. Établi au titre de la démarche
 > décidée en [ADR-0007](adr/0007-exemption-domestique-et-demarche-volontaire.md), qui assume
@@ -29,6 +29,12 @@ avant la revue d'août 2026 (`AM-33`, `AM-36`, [doc 34](34-registre-amelioration
 celles marquées ⛔ ne le sont pas, et le §4 dit pourquoi — deux d'entre elles ont dû être
 **corrigées** plutôt qu'outillées. Ce qui reste hors de portée est écrit au §4 : l'absence y
 est visible plutôt que découverte plus tard.
+
+Une quatrième question s'y est ajoutée le même jour, avec l'export de portabilité
+(lot 3) : **laquelle de ces tables sort quand la personne demande ses données** — et
+laquelle n'a pas à en sortir, avec la raison. C'est le §6, et il est tenu par la porte
+`pnpm portabilite`, qui dérive son attendu des `schema.ts` : une table nouvelle ne peut
+plus y manquer sans que la CI le dise.
 
 **Périmètre mesuré** : 46 tables réparties sur les 5 services persistants ; l'`api-gateway`
 n'a aucune base. Les traitements ci-dessous couvrent les tables porteuses de données
@@ -275,7 +281,9 @@ suppression locale — c'est déjà ce que fait l'effacement à la demande du lo
   que plus rien ne relit, et il stockait jusqu'ici des payloads en clair — tout événement du
   stream `FOYER` non consommé par un service y atterrit avec son contenu.
 
-- **Aucun export** des données personnelles n'est proposé à un parent. C'est le lot 3.
+- ~~Aucun export des données personnelles~~ — **livré le 2026-08-12 (lot 3)** : voir le §6,
+  qui dit table par table ce qui sort et ce qui reste. Ce qui demeure hors de portée est
+  ce qui vit hors base (journaux, sauvegardes, Cloudflare).
 - **Aucune rédaction des données personnelles dans les journaux** : les adresses e-mail
   partent en clair dans les journaux des gardes d'autorisation.
 - **Le contenu de T8 n'est pas vérifiable** depuis le dépôt.
@@ -293,3 +301,104 @@ Deux canaux, parce qu'un seul ne suffisait pas :
 Le texte de la page reste volontairement court et renvoie ici. Si l'un des deux change, il
 faut changer l'autre : **aucune porte de la CI ne garantit cette cohérence** — c'est une
 limite connue, pas un oubli.
+
+## 6. Ce que l'export de portabilité rend, table par table
+
+**Livré le 2026-08-12 (lot 3, `AM-35`).** `GET /api/v1/foyers/{id}/export` rassemble en un
+document JSON tout ce que les trois services **sources** détiennent sur un foyer, et le
+parent le télécharge depuis « Ma famille ».
+
+Le principe qui découpe ce tableau tient en une phrase : **ce qu'un effacement emporte, un
+export doit le rendre.** Le périmètre est donc celui de la cascade du lot 2a, à trois
+exclusions près, toutes visibles ci-dessous plutôt que découvertes plus tard.
+
+Le classement n'est pas déclaratif : la porte `pnpm portabilite` **dérive la liste attendue
+des `schema.ts`** des cinq services. Une table nouvelle sans ligne ici fait échouer la CI ;
+une table dite `exportée` que le code d'export ne lit pas aussi ; une `copie` dont la source
+n'est exportée par personne aussi. Ce que la porte ne sait pas juger — le classement
+lui-même, et les colonnes retenues — est écrit en toutes lettres dans la colonne « Pourquoi ».
+
+Les quatre classes :
+
+- **`exportée`** — les lignes de cette table, pour ce foyer, sortent dans le document ;
+- **`copie`** — read-model projeté d'une autre table, elle-même exportée ; l'exporter
+  livrerait deux fois la même donnée, et la copie est souvent **appauvrie** (la projection
+  ne transporte pas toutes les colonnes) ;
+- **`technique`** — file ou garde-fou d'infrastructure ; ces tables portent parfois des
+  données personnelles en clair (`outbox`, `dead_letter`), et c'est précisément pourquoi
+  elles sont **bornées au temps** (§3, T7) plutôt qu'exportées : ce sont des artefacts de
+  livraison, pas le dossier de la personne ;
+- **`hors périmètre`** — barèmes, grilles et calendriers, sans aucune donnée personnelle.
+
+| Service             | Table                     | Classe         | Pourquoi                                                                                                                             |
+| ------------------- | ------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `svc-foyer`         | `foyer`                   | exportée       | Situation financière courante.                                                                                                       |
+| `svc-foyer`         | `foyer_version`           | exportée       | Historique daté des ressources — la version en vigueur comme les précédentes.                                                        |
+| `svc-foyer`         | `correction_journal`      | exportée       | Instantanés avant/après des corrections rétroactives de ressources.                                                                  |
+| `svc-foyer`         | `bareme_tranches`         | hors périmètre | Read-model de barème projeté du référentiel ; aucune donnée personnelle.                                                             |
+| `svc-foyer`         | `enfant`                  | exportée       | Prénom et date de naissance.                                                                                                         |
+| `svc-foyer`         | `parent`                  | exportée       | Nom, prénom, e-mail, rôle — **parents retirés compris** : leur identité survit au retrait, l'effacement l'emporte, l'export la rend. |
+| `svc-foyer`         | `preference_notification` | exportée       | Exportée **effective** (défaut applicatif fusionné) : ici l'absence de ligne vaut consentement, les lignes brutes mentiraient.       |
+| `svc-foyer`         | `desabonnement_token`     | exportée       | Trace de l'exercice du droit d'opposition — **sans le `jti`**, qui est une capacité agissant sans authentification, pas une donnée.  |
+| `svc-foyer`         | `outbox`                  | technique      | File de publication vivante ; bornée au temps (§3, T7).                                                                              |
+| `svc-foyer`         | `processed_event`         | technique      | Garde-fou anti-rejeu ; ne porte aucune donnée personnelle.                                                                           |
+| `svc-foyer`         | `dead_letter`             | technique      | Magasin terminal de rebuts ; borné au temps (§3, T7).                                                                                |
+| `svc-notifications` | `contrat`                 | copie          | Projection de `svc-planification.contrat`.                                                                                           |
+| `svc-notifications` | `etablissement`           | copie          | Projection **appauvrie** de `svc-planification.etablissement` (ni adresse, ni téléphone, ni contact).                                |
+| `svc-notifications` | `foyer_parent`            | copie          | Projection **appauvrie** de `svc-foyer.parent` (ni prénom ni nom) ; sert ici à résoudre les parents du foyer.                        |
+| `svc-notifications` | `preference_notification` | copie          | Projection **appauvrie** de `svc-foyer.preference_notification` (sans les horodatages de consentement).                              |
+| `svc-notifications` | `notification_hebdo`      | exportée       | Machine à états de la validation : semaine soumise, instantané figé, écarts saisis. Aucune re-projection ne la recréerait.           |
+| `svc-notifications` | `envoi_etablissement`     | exportée       | Preuve de ce qui est réellement parti vers l'établissement, corps HTML figé compris.                                                 |
+| `svc-notifications` | `envoi_recap_hebdo`       | exportée       | Preuve d'envoi du récapitulatif au foyer, avec la liste figée des destinataires.                                                     |
+| `svc-notifications` | `envoi_recap_parent`      | exportée       | Remise à chaque parent, avec l'adresse figée au moment de l'envoi.                                                                   |
+| `svc-notifications` | `notification`            | exportée       | Boîte de réception in-app : sujets et corps rendus, tels que le parent les a lus.                                                    |
+| `svc-notifications` | `processed_event`         | technique      | Garde-fou anti-rejeu.                                                                                                                |
+| `svc-notifications` | `outbox`                  | technique      | File de publication ; bornée au temps (§3, T7).                                                                                      |
+| `svc-notifications` | `dead_letter`             | technique      | Magasin terminal de rebuts ; borné au temps (§3, T7).                                                                                |
+| `svc-planification` | `contrat`                 | exportée       | Contrat d'accueil : mode, établissement, période, semaine type.                                                                      |
+| `svc-planification` | `contrat_version`         | exportée       | Avenants datés du contrat.                                                                                                           |
+| `svc-planification` | `correction_journal`      | exportée       | Instantanés avant/après des corrections d'avenant.                                                                                   |
+| `svc-planification` | `planning_mois`           | exportée       | Saisie mensuelle des présences et absences, **simulations comprises** — ce sont des saisies du parent, pas des dérivées du système.  |
+| `svc-planification` | `etablissement`           | exportée       | Seul endroit où vivent l'adresse, le téléphone et la personne contact : ils ne voyagent dans aucun événement.                        |
+| `svc-planification` | `processed_event`         | technique      | Garde-fou anti-rejeu.                                                                                                                |
+| `svc-planification` | `outbox`                  | technique      | File de publication ; bornée au temps (§3, T7).                                                                                      |
+| `svc-planification` | `dead_letter`             | technique      | Magasin terminal de rebuts ; borné au temps (§3, T7).                                                                                |
+| `svc-referentiel`   | `grille_abcm`             | hors périmètre | Barème public ; aucune donnée personnelle.                                                                                           |
+| `svc-referentiel`   | `bareme_psu`              | hors périmètre | Barème public ; aucune donnée personnelle.                                                                                           |
+| `svc-referentiel`   | `bareme_tranches`         | hors périmètre | Seuils de tranche ; aucune donnée personnelle.                                                                                       |
+| `svc-referentiel`   | `jour_non_facturable`     | hors périmètre | Calendrier de fermeture ; aucune donnée personnelle.                                                                                 |
+| `svc-referentiel`   | `outbox`                  | technique      | File de publication.                                                                                                                 |
+| `svc-tarification`  | `foyer`                   | copie          | Projection de `svc-foyer.foyer`, enrichie de la tranche dérivée à l'écriture.                                                        |
+| `svc-tarification`  | `foyer_version`           | copie          | Projection de `svc-foyer.foyer_version` (sans `saisi_le` ni motif).                                                                  |
+| `svc-tarification`  | `enfant`                  | copie          | Projection de `svc-foyer.enfant`, écrite mais jamais relue par le calcul.                                                            |
+| `svc-tarification`  | `grille_tarifaire`        | hors périmètre | Barème ; aucune donnée personnelle.                                                                                                  |
+| `svc-tarification`  | `bareme_psu`              | hors périmètre | Barème ; aucune donnée personnelle.                                                                                                  |
+| `svc-tarification`  | `prestation_mois`         | copie          | Quantités **dérivées** de `svc-planification.planning_mois` : un calcul, pas une saisie.                                             |
+| `svc-tarification`  | `contrat`                 | copie          | Projection **appauvrie** de `svc-planification.contrat`.                                                                             |
+| `svc-tarification`  | `processed_event`         | technique      | Garde-fou anti-rejeu.                                                                                                                |
+| `svc-tarification`  | `outbox`                  | technique      | File de publication ; bornée au temps (§3, T7).                                                                                      |
+| `svc-tarification`  | `dead_letter`             | technique      | Magasin terminal de rebuts ; borné au temps (§3, T7).                                                                                |
+
+### Les trois exclusions, et pourquoi elles ne sont pas des oublis
+
+1. **Les copies aval ne sortent pas.** `svc-tarification` ne détient que des projections
+   des tables ci-dessus, et `svc-notifications` en porte quatre. Les inclure ferait passer
+   pour une donnée de plus ce qui n'est qu'un second exemplaire de la même — souvent moins
+   complet que l'original. La règle vaut dans un seul sens : là où la copie porte **moins**
+   que sa source (`svc-planification.etablissement` et ses coordonnées, absentes du
+   read-model aval), c'est la **source** qui est exportée.
+2. **Le `jti` d'un jeton de désabonnement ne sort pas.** Ce jeton désabonne sans
+   authentification : recopié dans un fichier téléchargé, conservé, transféré, il resterait
+   actionnable par quiconque le lit. Le type, le canal et les dates suffisent à la
+   finalité ; le secret, non.
+3. **Les files techniques ne sortent pas.** `outbox` et `dead_letter` portent des payloads
+   d'événements en clair — donc, indirectement, des données déjà exportées par ailleurs.
+   Ce sont des artefacts de livraison, dont la réponse est une **borne temporelle** (§3,
+   T7), pas une ligne d'export.
+
+### Ce qui reste hors de portée
+
+L'export ne rend que ce qui vit **en base**. Les journaux d'exploitation (T5), les
+sauvegardes (T6) et les identités détenues par Cloudflare Access (T8) n'y figurent pas :
+aucun de ces trois n'est atteignable depuis le code applicatif. C'est la même frontière que
+celle de l'effacement, pour la même raison.

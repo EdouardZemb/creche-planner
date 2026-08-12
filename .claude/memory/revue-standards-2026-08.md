@@ -48,6 +48,27 @@
   `MO-2` à sa 3ᵉ occurrence. Vérifiée en rejouant l'énoncé v1.0 : refusé dans les 2 services.
   Consigné : `AM-55`→`AM-61`, `LE-34`, `LE-35` ; `AM-01` ✅, `AM-03`/`AM-36` avancées.
 
+- **2026-08-12 — lot 3 livré (portabilité, `AM-35` ✅).** `GET /api/v1/foyers/:id/export`
+  agrège **trois** services sources (un module `portabilite` par service, même découpage
+  que la cascade d'effacement du 2a) en un document à trois sections nommées pour la
+  personne. Téléchargement depuis « Ma famille » ; primitive de téléchargement remontée
+  de `couts/export.ts` vers `utils/telechargement.ts`.
+  **Ce que le lot a vraiment trouvé : deux façons d'exporter juste et de mentir quand
+  même.** (a) `preference_notification` — l'absence de ligne **vaut consentement** : les
+  lignes brutes auraient présenté les _écarts au défaut_ comme l'état complet ; on exporte
+  l'**effectif** via `fusionnerDefauts`. (b) `desabonnement_token.jti` est une **capacité**,
+  pas une donnée : il désabonne sans authentification, donc il ne sort pas — sondé par
+  `expect(JSON.stringify(vue)).not.toContain(jti)`.
+  **Décision de conception à retenir : aucune dégradation gracieuse sur cette route.**
+  Partout ailleurs dans la passerelle un amont muet fait perdre un enrichissement ; ici il
+  ferait livrer un export **amputé sans le dire**. Les 3 appels sont dans un seul `relayer`.
+  Porte née de là : **`pnpm portabilite`** — les 46 tables des 5 services doivent **toutes**
+  être classées en doc 37 §6 (exportée / copie / technique / hors périmètre), une table dite
+  exportée doit être **réellement lue** par le `portabilite.service.ts` de son service, et une
+  `copie` doit nommer une source elle-même exportée. Attendu **dérivé des `schema.ts`** ;
+  3 sondes `--autotest`, plus une vraie sonde jouée à la main (ajout d'un `pgTable` réel dans
+  un schéma ⇒ refus). Doc 37 passe en v1.2.
+
 ## Ce que la revue a établi (résumé)
 
 - **Angle mort n° 1 : RGPD** — aucune des obligations (art. 13/17/20/30) n'était
