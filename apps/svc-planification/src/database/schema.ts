@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   doublePrecision,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -282,16 +283,29 @@ export const processedEvent = pgTable('processed_event', {
  * transaction** que le changement d'état ; un relais le publie ensuite sur NATS
  * et renseigne `published_at`. `id` = identifiant d'enveloppe = **clé d'idempotence**.
  */
-export const outbox = pgTable('outbox', {
-  id: uuid('id').primaryKey(),
-  type: varchar('type', { length: 200 }).notNull(),
-  payload: jsonb('payload').notNull(),
-  occurredAt: timestamp('occurred_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  traceId: varchar('trace_id', { length: 64 }).notNull(),
-  publishedAt: timestamp('published_at', { withTimezone: true }),
-});
+export const outbox = pgTable(
+  'outbox',
+  {
+    id: uuid('id').primaryKey(),
+    type: varchar('type', { length: 200 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    traceId: varchar('trace_id', { length: 64 }).notNull(),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+  },
+  (table) => [
+    // Borne de rétention (lot 2b) : 30 j après publication effective.
+    index('outbox_published_at_idx').on(table.publishedAt),
+    // Backlog du relais, balayé **toutes les 2 s** : `published_at IS NULL` trié par
+    // `occurred_at`. Index partiel, donc de la taille de la file, pas de la table
+    // (volet index d'`AM-01`).
+    index('outbox_backlog_idx')
+      .on(table.occurredAt)
+      .where(sql`${table.publishedAt} is null`),
+  ],
+);
 
 /**
  * Dead-letter (chantier « Fondations backend », lot 1). Une ligne par message
@@ -302,19 +316,26 @@ export const outbox = pgTable('outbox', {
  * de `ConsumerModule.forRoot({ tableDeadLetter })` échoue si le service dérive).
  * Pas d'index sur `created_at` (volumes faibles).
  */
-export const deadLetter = pgTable('dead_letter', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  envelopeId: uuid('envelope_id'),
-  stream: varchar('stream', { length: 32 }).notNull(),
-  sujet: varchar('sujet', { length: 200 }).notNull(),
-  raison: varchar('raison', { length: 32 }).notNull(),
-  payload: text('payload').notNull(),
-  erreur: text('erreur'),
-  livraisons: integer('livraisons').notNull().default(1),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const deadLetter = pgTable(
+  'dead_letter',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    envelopeId: uuid('envelope_id'),
+    stream: varchar('stream', { length: 32 }).notNull(),
+    sujet: varchar('sujet', { length: 200 }).notNull(),
+    raison: varchar('raison', { length: 32 }).notNull(),
+    payload: text('payload').notNull(),
+    erreur: text('erreur'),
+    livraisons: integer('livraisons').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  // Borne de rétention (lot 2b) : 90 j. L'index arrive avec la purge, dans la même
+  // migration — une première purge sur une table jamais nettoyée est sinon un
+  // balayage séquentiel intégral.
+  (table) => [index('dead_letter_created_at_idx').on(table.createdAt)],
+);
 
 export type ContratRow = typeof contrat.$inferSelect;
 export type ContratVersionRow = typeof contratVersion.$inferSelect;

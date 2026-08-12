@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
 import { libelleSemaineFr } from '@creche-planner/shared-semaine';
-import type { MailerService } from '@creche-planner/nest-commons';
+import type { Clock, MailerService } from '@creche-planner/nest-commons';
 import { MAX_ESSAIS_PARENT, SchedulerHebdo } from './scheduler.hebdo.js';
-import type { Clock } from './clock.js';
 import type { OptionsScheduler } from './scheduler.options.js';
 import type {
   EnvoiRecapService,

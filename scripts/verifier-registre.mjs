@@ -534,17 +534,27 @@ const SONDES = [
   {
     nom: 'piste close sans preuve',
     code: 'clos-sans-preuve',
+    // Cible **dérivée** : la première piste portant un statut de clôture, quel que
+    // soit son identifiant. La version d'origine visait `AM-17` **et son ⛔** —
+    // elle aurait cessé de mordre le jour où cette ligne change de statut.
     abimer: (texte) =>
       texte.replace(
-        /(\|\s*AM-17\s*\|[^\n]*\|)\s*⛔\s*\|[^|\n]*\|/,
-        '$1 ⛔ | — |',
+        /(\|\s*AM-\d+\s*\|(?:[^|\n]*\|){4}\s*(?:✅|⛔)\s*\|)[^|\n]*\|/,
+        '$1 — |',
       ),
   },
   {
     nom: 'piste ouverte sans critère de sortie',
     code: 'ouvert-sans-critere',
+    // Cible **dérivée** : la première piste encore ouverte, quelle qu'elle soit. La
+    // version d'origine visait `AM-01` et a cessé de mordre au lot 2b, le jour où
+    // cette piste a été close — la mutation vidait alors le critère d'une ligne que
+    // la porte n'évalue plus.
     abimer: (texte) =>
-      texte.replace(/(\|\s*AM-01\s*\|[^|\n]*\|[^|\n]*\|)[^|\n]*\|/, '$1 — |'),
+      texte.replace(
+        /(\|\s*AM-\d+\s*\|[^|\n]*\|[^|\n]*\|)[^|\n]*(\|[^|\n]*\|\s*🔄\s*\|)/,
+        '$1 — $2',
+      ),
   },
   {
     nom: 'statut inconnu',
@@ -555,8 +565,14 @@ const SONDES = [
   {
     nom: 'leçon rattachée à un motif inexistant',
     code: 'motif-inconnu',
+    // Cible **dérivée** : le motif de la première leçon, quels que soient l'un et
+    // l'autre. La version d'origine visait `MO-1` **suivi de « Lot D2 »**, donc à la
+    // fois le motif et l'origine d'une leçon précise.
     abimer: (texte) =>
-      texte.replace(/\|\s*`MO-1`\s*\|(\s*Lot D2)/, '| `MO-9` |$1'),
+      texte.replace(
+        /(\|\s*LE-\d+\s*\|[^|\n]*\|[^|\n]*\|)\s*`MO-\d+`\s*\|/,
+        '$1 `MO-9` |',
+      ),
   },
   {
     nom: 'compteur de motif faux',
@@ -586,13 +602,26 @@ const SONDES = [
   {
     nom: 'occurrence oubliée par son motif',
     code: 'occurrence-manquante',
-    abimer: (texte) => texte.replace('LE-01, LE-02, LE-03,', 'LE-02, LE-03,'),
+    // Cible **dérivée** : la première occurrence citée par le premier motif, quelle
+    // qu'elle soit, retirée de sa liste. La version d'origine recopiait le début de
+    // la liste de `MO-1` — elle se serait périmée au premier réordonnancement.
+    abimer: (texte) =>
+      texte.replace(/(\|\s*`MO-\d+`\s*\|[^|\n]*\|)\s*LE-\d+,\s*/, '$1 '),
   },
   {
     nom: 'occurrence fantôme',
     code: 'occurrence-fantome',
+    // Cible **dérivée** : le premier motif du tableau, quels que soient son
+    // identifiant et sa liste d'occurrences. Cette sonde visait `LE-11, LE-12
+    // (×2)` en dur et a cessé de mordre au lot 2b, dès que MO-2 a gagné deux
+    // occurrences. C'est la deuxième fois que ce mode de défaillance frappe ici
+    // (`LE-33`) : la première correction avait dérivé la sonde qui avait échoué,
+    // et laissé littérales ses sœurs, écrites de la même main.
     abimer: (texte) =>
-      texte.replace('LE-11, LE-12 (×2)', 'LE-11, LE-12, LE-97 (×2)'),
+      texte.replace(
+        /(\|\s*`MO-\d+`\s*\|[^|\n]*\|[^|\n]*?)(\(×\d+\))/,
+        '$1LE-97 $2',
+      ),
   },
   {
     nom: 'motif au-delà du seuil sans porte',

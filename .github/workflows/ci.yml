@@ -177,6 +177,19 @@ jobs:
           node scripts/verifier-registre.mjs --autotest
           node scripts/verifier-registre.mjs
 
+      # Durées de conservation (doc 37 §3) — la v1.0 du registre énonçait huit
+      # durées en prose ; confrontées au code au moment de les outiller (lot 2b),
+      # DEUX nommaient un point de départ inexistant, et les transcrire en SQL
+      # aurait produit deux régressions silencieuses (un montant faux et plausible
+      # d'un côté, un réabonnement non consenti de l'autre). Ce step exige qu'une
+      # durée déclarée outillée NOMME sa colonne, et que celle-ci existe dans TOUS
+      # les schémas déclarant la table — attendu dérivé des `schema.ts`, jamais
+      # recopié. `--autotest` rejoue sa sonde négative.
+      - name: Durées de conservation — ancres réelles (bloquant)
+        run: |
+          node scripts/verifier-retentions.mjs --autotest
+          node scripts/verifier-retentions.mjs
+
       # Politique de documentation (doc 35), volet « navigation ». Un lien mort
       # ne se voit qu'en le suivant : renommer un fichier, renommer un titre
       # (l'ancre suit le titre) ou déplacer un document vers `exploitation/`

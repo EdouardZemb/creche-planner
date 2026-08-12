@@ -9,6 +9,7 @@ import {
   HealthModule,
   NatsModule,
   OutboxModule,
+  PurgeModule,
 } from '@creche-planner/nest-commons';
 import { REFERENTIEL_EVENT_SOURCE } from '@creche-planner/contracts-referentiel';
 import { loadConfig } from './config.js';
@@ -37,6 +38,9 @@ import { ReferentielModule } from './referentiel/referentiel.module.js';
       source: REFERENTIEL_EVENT_SOURCE,
       table: schema.outbox,
     }),
+    // Bornes temporelles de rétention (lot 2b). `deadLetter: null` : svc-referentiel est
+    // un pur producteur, il n'a aucun consommateur donc aucune table de rebuts.
+    PurgeModule.forRoot({ outbox: schema.outbox, deadLetter: null }),
     // Guard aval d'assertion inter-services (observe-only) — fondations lot 3.
     AssertionIdentiteModule.forRoot({ chargerConfig: loadConfig }),
   ],

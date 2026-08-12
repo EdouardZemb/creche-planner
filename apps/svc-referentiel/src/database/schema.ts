@@ -1,6 +1,8 @@
+import { sql } from 'drizzle-orm';
 import {
   bigint,
   date,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -116,16 +118,29 @@ export const jourNonFacturable = pgTable('jour_non_facturable', {
  * transaction** que le changement d'état ; un relais le publie ensuite sur NATS et
  * renseigne `published_at`. `id` = identifiant d'enveloppe = **clé d'idempotence**.
  */
-export const outbox = pgTable('outbox', {
-  id: uuid('id').primaryKey(),
-  type: varchar('type', { length: 200 }).notNull(),
-  payload: jsonb('payload').notNull(),
-  occurredAt: timestamp('occurred_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  traceId: varchar('trace_id', { length: 64 }).notNull(),
-  publishedAt: timestamp('published_at', { withTimezone: true }),
-});
+export const outbox = pgTable(
+  'outbox',
+  {
+    id: uuid('id').primaryKey(),
+    type: varchar('type', { length: 200 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    traceId: varchar('trace_id', { length: 64 }).notNull(),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+  },
+  (table) => [
+    // Borne de rétention (lot 2b) : 30 j après publication effective.
+    index('outbox_published_at_idx').on(table.publishedAt),
+    // Backlog du relais, balayé **toutes les 2 s** : `published_at IS NULL` trié par
+    // `occurred_at`. Index partiel, donc de la taille de la file, pas de la table
+    // (volet index d'`AM-01`).
+    index('outbox_backlog_idx')
+      .on(table.occurredAt)
+      .where(sql`${table.publishedAt} is null`),
+  ],
+);
 
 export type GrilleAbcmRow = typeof grilleAbcm.$inferSelect;
 export type BaremePsuRow = typeof baremePsu.$inferSelect;

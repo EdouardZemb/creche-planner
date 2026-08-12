@@ -37,7 +37,7 @@ export default defineConfig(() => ({
       reporter: ['text', 'html', 'lcov', 'json-summary'],
       include: ['src/lib/**/*.ts'],
       exclude: ['src/index.ts', '**/*.spec.ts'],
-      thresholds: { statements: 83, branches: 79, functions: 75, lines: 83 },
+      thresholds: { statements: 84, branches: 81, functions: 76, lines: 84 },
     },
   },
 }));

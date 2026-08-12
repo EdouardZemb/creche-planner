@@ -9,12 +9,14 @@ import {
   HealthModule,
   NatsModule,
   OutboxModule,
+  PurgeModule,
 } from '@creche-planner/nest-commons';
 import { FOYER_EVENT_SOURCE } from '@creche-planner/contracts-foyer';
 import { loadConfig } from './config.js';
 import * as schema from './database/schema.js';
 import { ConsumersModule } from './consumers/consumers.module.js';
 import { FoyerModule } from './foyer/foyer.module.js';
+import { tachesPurgeFoyer } from './purge/taches-purge.js';
 
 @Module({
   imports: [
@@ -38,6 +40,13 @@ import { FoyerModule } from './foyer/foyer.module.js';
     // première infra de consommation de svc-foyer.
     ConsumersModule,
     OutboxModule.forRoot({ source: FOYER_EVENT_SOURCE, table: schema.outbox }),
+    // Bornes temporelles de rétention (lot 2b) — distinctes de l'effacement à la
+    // demande du lot 2a, qui n'attend aucune échéance.
+    PurgeModule.forRoot({
+      outbox: schema.outbox,
+      deadLetter: schema.deadLetter,
+      taches: tachesPurgeFoyer,
+    }),
     // Guard aval d'assertion inter-services (observe-only tant qu'aucun
     // INTERSERVICE_AUTHZ_ENFORCE=1 n'est posé) — fondations lot 3, + scoping par
     // ressource (lot 4). svc-foyer scope en **direct** (foyer `:id`, e-mails

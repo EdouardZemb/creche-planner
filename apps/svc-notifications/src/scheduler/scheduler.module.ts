@@ -5,7 +5,7 @@ import { ValidationModule } from '../validation/validation.module.js';
 import { DestinatairesModule } from '../destinataires/destinataires.module.js';
 import { DesabonnementModule } from '../desabonnement/desabonnement.module.js';
 import { InboxModule } from '../inbox/inbox.module.js';
-import { CLOCK, horlogeSysteme } from './clock.js';
+import { CLOCK, horlogeSysteme } from '@creche-planner/nest-commons';
 import { EnvoiRecapService } from './envoi-recap.service.js';
 import { SchedulerHebdo } from './scheduler.hebdo.js';
 import { OPTIONS_SCHEDULER } from './scheduler.options.js';
