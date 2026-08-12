@@ -53,6 +53,12 @@ const ETAT_PARENT_ACTIF_DOUBLON =
 const ETAT_FOYER_UN_SEUL_PARENT = "le foyer n'a qu'un seul parent actif";
 // Foyer inexistant (404) : garantit l'absence du foyer visé (delete cascade).
 const ETAT_AUCUN_FOYER = 'aucun foyer avec cet id';
+// Effacement du foyer (lot 2) : foyer JETABLE, distinct du foyer de référence —
+// l'interaction le détruit. Seedé AVEC un parent : la collecte des `parentIds`
+// doit précéder la cascade, et c'est ici qu'elle s'exerce sur une base réelle.
+const ETAT_FOYER_JETABLE = 'un foyer jetable, cible de l’effacement';
+const PARENT_JETABLE_ID = '77777777-7777-4777-8777-777777777777';
+const EMAIL_PARENT_JETABLE = 'jetable@example.test';
 // L4 — désabonnement one-click (RFC 8058, PR5). Deux états DÉDIÉS qui seedent
 // parent + ligne `desabonnement_token` (`utilise_le=null`, `expire_le` 2100-01-01).
 // `ETAT_DESABO_OK` : couper EMAIL laisse IN_APP (défaut actif) → 204. `ETAT_DESABO_
@@ -307,6 +313,16 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
           const { id } = params as { id: string };
           // Garantit l'absence du foyer (enfants/parents cascadent) → 404 en lecture.
           await db`delete from foyer where id = ${id}`;
+        },
+        [ETAT_FOYER_JETABLE]: async (params?: unknown): Promise<void> => {
+          const { foyerId } = params as { foyerId: string };
+          // Table rase puis (ré)insertion : l'interaction précédente l'a détruit.
+          await seedFoyer(db, foyerId);
+          await db`delete from parent where id = ${PARENT_JETABLE_ID}`;
+          await db`
+            insert into parent (id, foyer_id, email, principal, ordre, actif)
+            values (${PARENT_JETABLE_ID}, ${foyerId}, ${EMAIL_PARENT_JETABLE}, true, 0, true)
+          `;
         },
         [ETAT_FOYER_AVEC_ENFANT]: async (params?: unknown): Promise<void> => {
           const { foyerId, enfantId } = params as {

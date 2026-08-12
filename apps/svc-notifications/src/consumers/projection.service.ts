@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { eq, sql } from 'drizzle-orm';
+import { eq, like, sql } from 'drizzle-orm';
 import {
   contratCreeEventSchema,
   contratModifieEventSchema,
@@ -17,10 +17,12 @@ import {
   ETABLISSEMENT_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-planification';
 import {
+  foyerSupprimeEventSchema,
   parentAjouteEventSchema,
   parentModifieEventSchema,
   parentRetireEventSchema,
   preferencesNotifModifieesEventSchema,
+  FOYER_SUPPRIME_TYPE,
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
@@ -30,8 +32,14 @@ import { DRIZZLE, type ResultatTraitement } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   contrat,
+  deadLetter,
+  envoiEtablissement,
+  envoiRecapHebdo,
+  envoiRecapParent,
   etablissement,
   foyerParent,
+  notification,
+  notificationHebdo,
   preferenceNotification,
   processedEvent,
 } from '../database/schema.js';
@@ -70,6 +78,12 @@ type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
  * retiré des destinataires, cf. `DestinatairesService`). L'event transporte l'état
  * **complet** des préférences du parent ; la projection remplace l'ensemble des lignes
  * du parent (delete + upsert dans une transaction).
+ *
+ * Depuis le lot « effacement » (RGPD, doc 37 §3), il consomme enfin
+ * `foyer.FoyerSupprime.v1` : ce service n'est pas qu'un read model reconstructible, il
+ * porte des données personnelles **figées** (corps de messages rendus, destinataires
+ * gelés, prénoms d'enfants) qu'aucune re-projection ne recréerait — leur effacement
+ * doit donc être fait ici, explicitement (cf. `appliquerFoyerSupprime`).
  */
 @Injectable()
 export class ProjectionService {
@@ -140,6 +154,9 @@ export class ProjectionService {
           return 'TRAITE';
         case ETABLISSEMENT_SUPPRIME_TYPE:
           await this.appliquerEtablissementSupprime(stream, donnees);
+          return 'TRAITE';
+        case FOYER_SUPPRIME_TYPE:
+          await this.appliquerFoyerSupprime(stream, donnees);
           return 'TRAITE';
         default:
           return 'IGNORE_TYPE_INCONNU'; // type non consommé par Notifications
@@ -522,6 +539,104 @@ export class ProjectionService {
       await tx
         .delete(etablissement)
         .where(eq(etablissement.id, evt.payload.etablissementId));
+    });
+  }
+
+  /**
+   * `FoyerSupprime` : le foyer a été **réellement effacé** côté `svc-foyer` (droit à
+   * l'effacement, doc 37 §3). Notifications est le service qui concentre le plus de
+   * données personnelles **figées** — corps de messages rendus, destinataires gelés à
+   * l'envoi, prénoms d'enfants dans les récaps — donc son effacement local est le plus
+   * chargé. Aucune contrainte FK ici : chaque table est vidée explicitement, dans une
+   * seule transaction, idempotente via `processed_event`.
+   *
+   * **Résolution des parents.** L'inbox in-app (`notification`) et les préférences
+   * (`preference_notification`) sont clés par `parent_id` et **ne portent aucun
+   * `foyer_id`** : c'est précisément pour elles que l'événement transporte `parentIds`.
+   * On prend l'**union** du payload et des `foyer_parent` projetés localement, et non
+   * le seul payload : une ligne `foyer_parent` projetée ici mais absente du payload
+   * (écart transitoire ou définitif entre deux read models distribués) laisserait sinon
+   * derrière elle des notifications orphelines — donc à jamais ineffaçables, puisque
+   * plus rien ne permettrait de les rattacher à un foyer.
+   *
+   * **`outbox` n'est PAS purgée.** C'est une file de **publication vivante**, pas un
+   * magasin : supprimer une ligne non encore publiée annulerait un événement **en vol**
+   * (l'événement d'effacement lui-même y transite). Sa borne est **temporelle** —
+   * purge 30 j après publication, doc 37 §3 T7 — et relève du lot suivant.
+   *
+   * **`dead_letter`, elle, EST purgée.** C'est un magasin **terminal** que plus rien ne
+   * relit, et il contient aujourd'hui des payloads **en clair** : tout événement du
+   * stream `FOYER` non géré par ce service y atterrit avec son contenu
+   * (`IGNORE_TYPE_INCONNU`). Le filtre est un `like` sur le texte du payload — un UUID
+   * est assez spécifique pour qu'un faux positif soit irréaliste, et cette forme évite
+   * tout cast JSON, qui exploserait sur une ligne `PARSE_KO` (message illisible, payload
+   * non-JSON par construction).
+   *
+   * **`processed_event` n'est PAS touchée** : c'est le garde-fou anti-rejeu (une purge
+   * ferait re-consommer tout le stream comme neuf), et doc 37 §3 l'exclut nommément —
+   * sa borne dépend de la rétention JetStream, qui n'existe pas encore.
+   *
+   * **Aucune ré-émission.** Les services aval sont eux aussi abonnés au stream `FOYER`
+   * et reçoivent `FoyerSupprime` directement de `svc-foyer` : relayer créerait une
+   * seconde source de vérité et un ordre de traitement non garanti.
+   */
+  private async appliquerFoyerSupprime(
+    stream: string,
+    donnees: unknown,
+  ): Promise<void> {
+    const evt = foyerSupprimeEventSchema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      const foyerId = evt.payload.foyerId;
+      // Union payload ∪ read model local (cf. docblock) : les parents **retirés**
+      // (soft-delete `actif = false`) en font partie — ce sont eux, précisément,
+      // dont les notifications survivaient jusqu'ici.
+      const parentsProjetes = await tx
+        .select()
+        .from(foyerParent)
+        .where(eq(foyerParent.foyerId, foyerId));
+      const parentIds = new Set<string>([
+        ...evt.payload.parentIds,
+        ...parentsProjetes.map((ligne) => ligne.parentId),
+      ]);
+
+      // (1) inbox in-app et (2) préférences : clés par parent, une passe par parent.
+      for (const parentId of parentIds) {
+        await tx
+          .delete(notification)
+          .where(eq(notification.parentId, parentId));
+        await tx
+          .delete(preferenceNotification)
+          .where(eq(preferenceNotification.parentId, parentId));
+      }
+
+      // (3) → (8) : tout ce qui porte un `foyer_id`, journaux d'envoi d'abord
+      // (destinataires et corps figés = la charge PII la plus lourde).
+      await tx
+        .delete(envoiRecapParent)
+        .where(eq(envoiRecapParent.foyerId, foyerId));
+      await tx
+        .delete(envoiRecapHebdo)
+        .where(eq(envoiRecapHebdo.foyerId, foyerId));
+      await tx
+        .delete(envoiEtablissement)
+        .where(eq(envoiEtablissement.foyerId, foyerId));
+      await tx
+        .delete(notificationHebdo)
+        .where(eq(notificationHebdo.foyerId, foyerId));
+      await tx.delete(contrat).where(eq(contrat.foyerId, foyerId));
+      await tx.delete(etablissement).where(eq(etablissement.foyerId, foyerId));
+
+      // (9) `foyer_parent` en dernier : c'est la table de résolution des parents,
+      // elle ne disparaît qu'une fois tout ce qu'elle sert à retrouver effacé.
+      await tx.delete(foyerParent).where(eq(foyerParent.foyerId, foyerId));
+
+      // (10) dead-letter : magasin terminal à payloads en clair (cf. docblock).
+      await tx
+        .delete(deadLetter)
+        .where(like(deadLetter.payload, `%${foyerId}%`));
     });
   }
 

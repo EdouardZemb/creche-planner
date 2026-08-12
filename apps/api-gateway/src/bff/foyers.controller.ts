@@ -50,8 +50,9 @@ import { relayer } from './relais.js';
  * parents (ajout / édition / retrait) — est `@FoyerScope('param:id')` : le **parent
  * du foyer** la pilote (l'admin garde un bypass réparateur), un tiers prend 403. La
  * gestion des **enfants** du foyer (ajout `POST`, édition `PUT`, suppression
- * `DELETE /foyers/:id/enfants[...]`) suit la même règle. Les **lectures**
- * (liste/lecture de foyer, liste de parents) restent ouvertes ici.
+ * `DELETE /foyers/:id/enfants[...]`) suit la même règle, ainsi que
+ * l'**effacement du foyer entier** (`DELETE /foyers/:id`, lot 2). Les
+ * **lectures** (liste/lecture de foyer, liste de parents) restent ouvertes ici.
  */
 @Controller({ path: 'foyers', version: '1' })
 export class FoyersController {
@@ -162,6 +163,24 @@ export class FoyersController {
   }
 
   /**
+   * **Efface le foyer entier** (droit à l'effacement, lot 2 ; `AM-34`).
+   * `@FoyerScope` : parent du foyer (admin bypass) — même garde que l'édition,
+   * parce que c'est la seule qui confronte le foyer visé à l'ensemble autorisé
+   * de l'appelant. `@AdminSeulement()` serait un piège : la garde est inactive
+   * quand `ADMIN_EMAILS` est vide, ce qui laisserait la route ouverte (`AN-17`).
+   *
+   * La suppression de la source est synchrone (204) ; l'effacement des **copies**
+   * détenues par tarification, notifications et planification voyage en
+   * événement d'intégration et arrive donc avec un délai.
+   */
+  @Delete(':id')
+  @FoyerScope('param:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  supprimer(@Param('id') id: string): Promise<void> {
+    return relayer(() => this.foyers.supprimerFoyer(id));
+  }
+
+  /**
    * Historique des **versions de ressources** du foyer (date d'effet, RFR, tranche)
    * — SFD 30, CA2 US-30-03. `@FoyerScope` : lisible par le parent du foyer.
    */
@@ -204,8 +223,9 @@ export class FoyersController {
 
   /**
    * Retire un **enfant** du foyer (hard delete côté `svc-foyer`). `@FoyerScope` :
-   * parent du foyer (admin bypass). Sans effet sur les contrats existants (couplage
-   * par prénom).
+   * parent du foyer (admin bypass). Sans effet sur les contrats existants : leur
+   * `enfantId` pointe alors vers un enfant disparu, et leur suppression reste un
+   * geste explicite de l'utilisateur.
    */
   @Delete(':id/enfants/:enfantId')
   @FoyerScope('param:id')
