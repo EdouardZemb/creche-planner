@@ -15,6 +15,7 @@
     "registre": "node scripts/verifier-registre.mjs",
     "retentions": "node scripts/verifier-retentions.mjs",
     "portabilite": "node scripts/verifier-portabilite.mjs",
+    "problemes": "node scripts/verifier-problemes.mjs",
     "empechements": "node scripts/verifier-empechements.mjs",
     "liens": "node scripts/verifier-liens-doc.mjs",
     "faits": "node scripts/verifier-faits-doc.mjs",

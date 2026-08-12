@@ -205,6 +205,22 @@ jobs:
           node scripts/verifier-portabilite.mjs --autotest
           node scripts/verifier-portabilite.mjs
 
+      # Format d'erreur unique de la passerelle (RFC 9457, AM-37) — le format
+      # vit dans trois fichiers qui ne peuvent pas s'importer : le contrat et son
+      # registre de codes, le document OpenAPI (qui ne peut RIEN importer, étant
+      # lu par le générateur de types via le type-stripping de Node) et les
+      # services, qui posent leurs codes métier en clair. Un code ajouté dans un
+      # service et inconnu du registre serait SILENCIEUSEMENT effacé par le
+      # filtre — l'écran retomberait sur un message générique sans que rien ne
+      # rougisse. Ce step exige que tout code émis soit au registre, que
+      # l'énumération publiée SOIT le registre, et que le type de média des deux
+      # côtés coïncide. L'attendu est DÉRIVÉ des sources. `--autotest` rejoue ses
+      # 4 sondes négatives.
+      - name: Format d'erreur RFC 9457 — aucun code hors registre (bloquant)
+        run: |
+          node scripts/verifier-problemes.mjs --autotest
+          node scripts/verifier-problemes.mjs
+
       # Empêchements d'outillage (doc 34 §6) — la liste « Encore réels » de
       # CONTRIBUTING tenait déjà l'inventaire des frictions d'atelier, mais
       # comme une FATALITÉ : aucune n'avait de remède planifié ni de critère de

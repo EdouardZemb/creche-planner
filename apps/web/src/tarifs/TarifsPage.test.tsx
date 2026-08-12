@@ -35,6 +35,7 @@ vi.mock('../api/client', () => ({
 vi.mock('../session/MoiContext', () => ({ useMoi: vi.fn() }));
 
 import { api, ApiError } from '../api/client';
+import { problemeCode } from '../utils/probleme.fixture';
 import { useMoi } from '../session/MoiContext';
 
 function ligne(overrides: Partial<GrilleAbcmVue> = {}): GrilleAbcmVue {
@@ -147,7 +148,7 @@ describe('TarifsPage', () => {
   it('affiche un message clair sur un 409 de chevauchement', async () => {
     vi.mocked(api.listerGrilles).mockResolvedValue([]);
     vi.mocked(api.publierGrille).mockRejectedValue(
-      new ApiError(409, { code: 'PERIODE_CHEVAUCHANTE', message: 'x' }),
+      new ApiError(409, problemeCode('PERIODE_CHEVAUCHANTE')),
     );
 
     monter();

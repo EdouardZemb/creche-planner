@@ -183,6 +183,28 @@ Supprimer le _dead config_ relevé dans `.eslintrc.json` (audit §3 / réserve).
   tags réels, soit **retirées**.
 - **CA2** `nx run-many -t lint` reste vert ; aucune frontière réelle affaiblie.
 
+### DEC-11 — Format d'erreur unique de la passerelle (RFC 9457) 🟠
+
+Le pendant, côté **erreurs**, de ce que DEC-03 a fait pour les succès : un front ne peut pas
+dériver du contrat ce que le contrat ne décrit pas. Avant ce lot, les **50** réponses 4xx/5xx du
+document n'annonçaient aucun corps, et quatre formes différentes atteignaient le navigateur selon
+la route empruntée — le front en a lu une **cinquième**, qui n'existait pas (`AN-21`).
+
+- **CA1** Toute réponse d'erreur de la passerelle est en `application/problem+json`
+  ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)), produite par un **filtre global** unique.
+  Une route ne peut y déroger qu'en portant `@FormatErreurNatif()` — parce que son corps porte
+  déjà de la donnée (aujourd'hui : le rapport de santé, qui nomme l'amont tombé).
+- **CA2** La **cause** d'un statut ambigu est portée par un `code` métier issu d'un registre
+  unique, et non par le libellé du message. Un code inconnu du registre n'est **pas** republié.
+- **CA3** Une erreur qui n'a pas été formulée pour un client (exception non HTTP) devient un 500
+  au détail générique ; la cause reste au journal.
+- **CA4** Le document OpenAPI décrit ce corps pour **chaque** réponse d'erreur, par dérivation et
+  non par recopie ; l'accord entre le registre, le contrat publié et les codes posés par les
+  services est tenu par la porte `pnpm problemes` (job `ci`).
+- **CA5** La frontière **interne** (service → passerelle) n'est pas concernée : la passerelle
+  **traduit** au bord. C'est ce qui permet de changer le contrat public sans toucher un seul pact
+  (`AM-70` porte la question de l'unification interne).
+
 ## 5. Critères de succès produit
 
 1. **Contrats découplés et prouvés** : un service ne compile qu'avec les contrats qu'il consomme,
@@ -209,3 +231,4 @@ lint typecheck test build` vert sur tous les projets ; **aucun changement de com
 | P2-1 `resilience.ts` dupliqué gateway/tarification           | DEC-08      |
 | P2-2 Dockerfile générique copiant tout le workspace          | DEC-09      |
 | Règles `type:application/infrastructure` mortes en ESLint    | DEC-10      |
+| `AM-37` quatre formats d'erreur, aucun filtre global gateway | DEC-11      |

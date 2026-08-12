@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gatewayOpenApiDocument } from '../../index.js';
+import { avecProblemes, gatewayOpenApiDocument } from '../../index.js';
 
 describe('gateway.openapi (BFF Phase 7)', () => {
   it('déclare OpenAPI 3.1.0', () => {
@@ -314,5 +314,73 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(gatewayOpenApiDocument.servers).toEqual([
       { url: 'http://localhost:3000' },
     ]);
+  });
+});
+
+/**
+ * `avecProblemes` est la seule chose qui attache un corps aux réponses d'erreur
+ * du document : 50 réponses en dépendent, et aucune n'est écrite à la main. Les
+ * cas ci-dessous sont ceux qui décident — le reste du document n'est qu'un très
+ * grand exemple du premier.
+ */
+describe('avecProblemes (dérivation du corps d’erreur, RFC 9457)', () => {
+  it('attache le problème à une réponse d’erreur qui n’en déclare aucun', () => {
+    const derive = avecProblemes({
+      paths: {
+        '/x': { get: { responses: { '404': { description: 'nope' } } } },
+      },
+    });
+    expect(derive.paths['/x'].get.responses['404']).toEqual({
+      description: 'nope',
+      content: {
+        'application/problem+json': {
+          schema: { $ref: '#/components/schemas/Probleme' },
+        },
+      },
+    });
+  });
+
+  // C'est cette règle — et non une liste d'exceptions — qui exempte le 503 de
+  // `/api/health`, dont le corps EST le rapport de santé.
+  it('laisse intacte une réponse d’erreur qui porte déjà de la donnée', () => {
+    const propre = {
+      description: 'santé',
+      content: { 'application/json': { schema: { $ref: '#/x' } } },
+    };
+    const derive = avecProblemes({
+      paths: { '/health': { get: { responses: { '503': { ...propre } } } } },
+    });
+    expect(derive.paths['/health'].get.responses['503']).toEqual(propre);
+  });
+
+  it('ne touche pas les réponses de succès', () => {
+    const derive = avecProblemes({
+      paths: { '/x': { get: { responses: { '204': { description: 'ok' } } } } },
+    });
+    expect(derive.paths['/x'].get.responses['204']).toEqual({
+      description: 'ok',
+    });
+  });
+
+  // Un `parameters` au niveau du chemin (OpenAPI 3.1 l'autorise) n'est pas une
+  // opération : le lire comme telle ferait planter la génération du document.
+  it('tolère un membre de path item qui n’est pas une opération', () => {
+    expect(() =>
+      avecProblemes({
+        paths: { '/x': { parameters: [{ name: 'id', in: 'path' }] } },
+      }),
+    ).not.toThrow();
+  });
+
+  it('ne modifie pas le document d’origine (copie, pas mutation)', () => {
+    const origine = {
+      paths: {
+        '/x': { get: { responses: { '404': { description: 'nope' } } } },
+      },
+    };
+    avecProblemes(origine);
+    expect(origine.paths['/x'].get.responses['404']).toEqual({
+      description: 'nope',
+    });
   });
 });

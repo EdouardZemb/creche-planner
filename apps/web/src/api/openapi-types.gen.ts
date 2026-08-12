@@ -252,7 +252,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -299,7 +301,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -343,7 +347,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -375,7 +381,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -420,14 +428,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Foyer inconnu. */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -475,7 +487,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -533,7 +547,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -589,7 +605,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -622,7 +640,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -699,7 +719,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -756,14 +778,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Adresse e-mail déjà utilisée. */
                 409: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -793,7 +819,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -875,14 +903,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Aucun profil parent pour cette identité (aucun foyer, ou foyer sans la ligne parent correspondante). */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -941,21 +973,27 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Aucune identité établie. */
                 401: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Aucun profil parent pour cette identité. */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1000,14 +1038,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Aucun profil parent pour cette identité. */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1057,14 +1099,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Notification inconnue (ou appartenant à un autre parent), ou aucun profil parent pour cette identité. */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1111,21 +1157,27 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Dernier canal actif d’un type de service : ce canal ne peut être coupé (gérez vos préférences). */
                 409: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Trop de requêtes (limitation de débit). */
                 429: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1173,14 +1225,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Trop de requêtes (limitation de débit). */
                 429: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1226,7 +1282,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1275,7 +1333,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1456,7 +1516,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1601,7 +1663,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1630,7 +1694,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1675,7 +1741,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1721,21 +1789,27 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Contrat inconnu. */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Une version existe déjà à cette date d’effet. */
                 409: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1793,14 +1867,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Contrat ou version inconnus. */
                 404: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1848,7 +1926,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -1979,7 +2059,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -2134,7 +2216,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -2193,7 +2277,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -2226,7 +2312,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -2313,14 +2401,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description La période chevauche une grille existante de la même tranche (rien n’est écrit). */
                 409: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -2378,14 +2470,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Période chevauchante (rien d’écrit). */
                 409: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -2442,14 +2538,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
                 /** @description Période chevauchante (rien d’écrit). */
                 409: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
                 };
             };
         };
@@ -2762,6 +2862,26 @@ export interface components {
             details: {
                 [key: string]: unknown;
             };
+        };
+        /** @description Corps d’erreur unique de la passerelle — RFC 9457 « Problem Details for HTTP APIs », servi en `application/problem+json`. `type`, `title`, `status`, `detail` et `instance` sont les membres normalisés ; `code` et `erreurs` sont deux membres d’EXTENSION (§3.2) que le produit utilise réellement. `title` résume le TYPE de problème et reste stable ; `detail` décrit CETTE occurrence. Seuls `type`/`code`/`status` sont faits pour être testés — les deux autres sont écrits pour être lus. Source de vérité du registre de codes : `contracts-kernel/dto/probleme.ts`. */
+        Probleme: {
+            /** @description URI du type de problème. `about:blank` quand le statut HTTP suffit à le décrire ; sinon une URN dérivée du code métier (`urn:probleme:creche-planner:<code-en-minuscules-tiretés>`). */
+            type: string;
+            title: string;
+            status: number;
+            detail?: string;
+            /** @description URI de la requête qui a produit ce problème. */
+            instance?: string;
+            /**
+             * @description Code métier distinguant la CAUSE d’un statut qui, seul, n’en dit rien — trois 409 différents ne se traitent pas de la même façon à l’écran. Absent quand le statut se suffit.
+             * @enum {string}
+             */
+            code?: "EMAIL_DEJA_UTILISE" | "PARENT_PRINCIPAL_EXISTANT" | "DERNIER_PARENT_ACTIF" | "PERIODE_CHEVAUCHANTE";
+            /** @description Détail par champ d’une erreur de validation. Absent hors validation. */
+            erreurs?: {
+                champ: string;
+                message: string;
+            }[];
         };
         /** @description Plantage remonté par le navigateur (lot C7). `route` est le `pathname` SEUL — jamais la query : les liens profonds portent `?semaine=` et `?enfant=<prénom>`, données personnelles qui n’ont rien à faire dans un journal d’exploitation. Les bornes sont appliquées des deux côtés (le client tronque, la gateway refuse). */
         ErreurClient: {

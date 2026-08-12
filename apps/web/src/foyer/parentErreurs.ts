@@ -1,26 +1,17 @@
 import { ApiError } from '../api/client';
-import { messageErreur } from '../utils/erreurs';
+import { codeProbleme, messageErreur } from '../utils/erreurs';
 import type { ErreurChamp } from '../utils/erreurs';
 
-/** Lit le `code` machine d'un corps d'erreur amont (`{ code, ... }`), si présent. */
+/** Lit le code métier du problème renvoyé par le BFF, si la réponse en porte un. */
 function codeErreur(err: unknown): string | undefined {
-  if (
-    err instanceof ApiError &&
-    typeof err.corps === 'object' &&
-    err.corps !== null
-  ) {
-    const code = (err.corps as Record<string, unknown>)['code'];
-    if (typeof code === 'string') {
-      return code;
-    }
-  }
-  return undefined;
+  return err instanceof ApiError ? codeProbleme(err.corps) : undefined;
 }
 
 /**
  * Message d'erreur d'une écriture parent, **précis par code** amont. `svc-foyer`
- * porte des 409 structurés (`code`) que le BFF relaie tel quel (cf. `relayer` +
- * `ErreurAmont`) ; on les traduit ici en langage parent. Un 409 **sans** code
+ * porte des 409 à code métier que le BFF republie dans le membre `code` de son
+ * problème RFC 9457 (cf. `ProblemeFilter` + `ErreurAmont`) ; on les traduit ici
+ * en langage parent. Un 409 **sans** code
  * (repli, ancien BFF) retombe sur le message fusionné historique ; les autres
  * statuts passent par le message standard.
  *

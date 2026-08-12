@@ -3,7 +3,15 @@
 // et propage les 4xx (404, 409, 422…). On centralise ici la conversion pour
 // éviter d'afficher des messages techniques bruts ("HTTP 502") à l'écran.
 
+import type { ErreurChamp } from '@creche-planner/contracts-kernel';
 import { ApiError } from '../api/client';
+
+/**
+ * Erreur de validation rattachée à un champ. Le type vient du contrat partagé
+ * (`import type` : rien n'est émis, la passerelle et le front décrivent donc la
+ * même forme sans que `zod` entre dans le bundle du navigateur).
+ */
+export type { ErreurChamp };
 
 const MESSAGE_5XX = 'Service indisponible, réessayez dans un instant.';
 
@@ -48,30 +56,49 @@ export function messageErreur(e: unknown): string {
   return 'Une erreur inattendue est survenue.';
 }
 
-/** Erreur de validation rattachée à un champ, telle que renvoyée par le BFF. */
-export interface ErreurChamp {
-  champ: string;
-  message: string;
+/** Vrai pour un objet indexable (et non un tableau). */
+function estObjet(valeur: unknown): valeur is Record<string, unknown> {
+  return (
+    typeof valeur === 'object' && valeur !== null && !Array.isArray(valeur)
+  );
 }
 
 /**
- * Extrait les erreurs par champ d'un corps de réponse BFF (AQ-12 : implémentation
- * unique, partagée par les formulaires foyer et contrat). Le BFF renvoie un
- * tableau `[{ champ, message }]` quand la validation détaille les champs ;
- * toute autre forme (corps absent, objet, entrées partielles) donne `[]` et
- * l'appelant retombe sur le message global ([messageErreur]).
+ * Extrait les erreurs par champ du corps `application/problem+json` renvoyé par
+ * la passerelle (AQ-12 : implémentation unique, partagée par les formulaires
+ * foyer, contrat, établissement et profil). Toute autre forme — corps absent,
+ * problème sans membre `erreurs`, entrées partielles — donne `[]`, et l'appelant
+ * retombe sur le message global ([messageErreur]).
+ *
+ * ⚠️ Cette fonction lisait auparavant un **tableau à la racine** du corps. Ce
+ * n'était pas la forme du fil : `BadRequestException([{ champ, message }])`
+ * ENVELOPPE le tableau (`{ message: [...], error, statusCode }`), si bien
+ * qu'aucune erreur par champ n'a jamais atteint un écran (`AN-21`). Les six
+ * tests qui « couvraient » ce chemin fabriquaient le corps à la main. Depuis le
+ * lot 4 des standards, le tableau a un nom dans le contrat : `erreurs`.
  */
 export function extraireErreurs(corps: unknown): ErreurChamp[] {
-  if (Array.isArray(corps)) {
-    return corps.filter(
-      (e): e is ErreurChamp =>
-        typeof e === 'object' &&
-        e !== null &&
-        typeof (e as Record<string, unknown>)['champ'] === 'string' &&
-        typeof (e as Record<string, unknown>)['message'] === 'string',
-    );
+  if (!estObjet(corps) || !Array.isArray(corps['erreurs'])) {
+    return [];
   }
-  return [];
+  return corps['erreurs'].filter(
+    (e): e is ErreurChamp =>
+      estObjet(e) &&
+      typeof e['champ'] === 'string' &&
+      typeof e['message'] === 'string',
+  );
+}
+
+/**
+ * Lit le **code métier** d'un problème (`{ code, ... }`), quand la passerelle en
+ * a posé un. C'est le seul membre qui se teste : `title` et `detail` sont écrits
+ * pour être lus, pas pour être comparés. Un statut seul ne dit pas la cause —
+ * trois 409 différents ne se traitent pas de la même façon à l'écran.
+ */
+export function codeProbleme(corps: unknown): string | undefined {
+  if (!estObjet(corps)) return undefined;
+  const code = corps['code'];
+  return typeof code === 'string' ? code : undefined;
 }
 
 /**

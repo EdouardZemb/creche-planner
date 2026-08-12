@@ -28,6 +28,7 @@ vi.mock('../api/client', () => ({
 }));
 
 import { api, ApiError } from '../api/client';
+import { problemeCode, problemeValidation } from '../utils/probleme.fixture';
 
 const mockedApi = api as unknown as {
   ajouterParent: ReturnType<typeof vi.fn>;
@@ -135,7 +136,7 @@ describe('ParentsSection', () => {
 
   it('affiche le message « dernier parent » sur un 409 DERNIER_PARENT_ACTIF au retrait', async () => {
     mockedApi.retirerParent.mockRejectedValueOnce(
-      new ApiError(409, { statusCode: 409, code: 'DERNIER_PARENT_ACTIF' }),
+      new ApiError(409, problemeCode('DERNIER_PARENT_ACTIF')),
     );
     render(
       <ParentsSection
@@ -183,9 +184,12 @@ describe('ParentsSection', () => {
 
   it('relie l’erreur de champ 400 à l’e-mail (aria-describedby)', async () => {
     mockedApi.ajouterParent.mockRejectedValueOnce(
-      new ApiError(400, [
-        { champ: 'email', message: 'adresse e-mail invalide' },
-      ]),
+      new ApiError(
+        400,
+        problemeValidation([
+          { champ: 'email', message: 'adresse e-mail invalide' },
+        ]),
+      ),
     );
     render(<ParentsSection foyerId={FOYER_ID} parentsInitiaux={[]} />);
 
