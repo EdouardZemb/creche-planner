@@ -221,6 +221,23 @@ jobs:
           node scripts/verifier-problemes.mjs --autotest
           node scripts/verifier-problemes.mjs
 
+      # Configuration d'environnement (AM-44) — depuis le lot 5 des standards,
+      # chaque app déclare dans son `config.ts` un `CHAMPS_ENV` qui EST
+      # l'inventaire des variables qu'elle lit, et `lireEnv` refuse le démarrage
+      # sur une valeur illisible. Cet inventaire n'a de valeur que s'il reste
+      # complet : les deux moitiés de la vérité vivent dans des fichiers qui ne
+      # peuvent pas se lire (du TypeScript dans un bundle, du YAML de Compose), et
+      # les deux dérives possibles sont MUETTES — un compose qui pose une variable
+      # que personne ne lit (`INTERSERVICE_AUTHZ_ENFORCE` l'était sur la
+      # passerelle, qui signe les assertions et ne les vérifie jamais), et une
+      # lecture de `process.env` hors du schéma, qui échappe au refus de démarrage
+      # et rouvre la divergence de lecture d'AN-20. Attendu DÉRIVÉ des composes et
+      # des `config.ts`. `--autotest` rejoue ses 6 sondes négatives.
+      - name: Configuration d'environnement — inventaire complet (bloquant)
+        run: |
+          node scripts/verifier-environnement.mjs --autotest
+          node scripts/verifier-environnement.mjs
+
       # Empêchements d'outillage (doc 34 §6) — la liste « Encore réels » de
       # CONTRIBUTING tenait déjà l'inventaire des frictions d'atelier, mais
       # comme une FATALITÉ : aucune n'avait de remède planifié ni de critère de
