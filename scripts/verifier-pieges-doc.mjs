@@ -213,6 +213,12 @@ const DOCUMENTS_RELEVES = [
  */
 const EXCEPTIONS = [
   {
+    fichier: 'docs/34-registre-ameliorations.md',
+    piege: 'worktree-faux-vert',
+    raison:
+      'leçon `LE-37` : elle relève le PÉRIMÈTRE de la garde de ce piège — `pnpm preflight` compare bien `git-dir` à `git-common-dir`, mais une écriture par chemin absolu ne fait tourner aucun processus au mauvais endroit, donc la porte reste verte. Une leçon sur le périmètre d’une garde doit pouvoir nommer le piège qu’elle garde, sinon elle ne dit rien.',
+  },
+  {
     fichier: '.claude/plans/consolidation-ui-et-qualite.md',
     piege: 'builds-de-libs-prealables',
     raison:

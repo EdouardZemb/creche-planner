@@ -19,7 +19,7 @@ techniques, qui n'attendent rien.
 - `AM-42` backoff exponentiel + jitter + discrimination 4xx (`libs/resilience`).
 - `AM-43` HSTS + garde des en-têtes (`apps/web/src/nginx-headers.spec.ts`), négatif joué.
 - `AM-38` `Retry-After` sur le 429 de la gateway.
-- `AM-51` veille standards (doc 36 + rituel doc 34 §6).
+- `AM-51` veille standards (doc 36 + rituel doc 34 §7).
 
 ## Lot 1 — RGPD documentaire (`AM-33`, `AM-36` volet décisions, `AM-46`) ✅ LIVRÉ
 

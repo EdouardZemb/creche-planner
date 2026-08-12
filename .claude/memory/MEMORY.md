@@ -8,6 +8,7 @@
 > leçons** de lot ne s'écrivent plus ici : elles vont au registre (doc 34, `/consigner`).
 
 - [Registre d'améliorations (doc 34)](../../docs/34-registre-ameliorations.md) — **où atterrissent désormais les pistes et les leçons** trouvées en cours de lot (`AM-xx`/`LE-xx`/motifs `MO-x`), avec l'inventaire des portes et leur périmètre déclaré ; porte `pnpm registre` (step bloquant du job `ci`), commandes `/consigner` et `/revue-processus`.
+- **Empêchements d'outillage (`EM-xx`, doc 34 §6, ouvert le 2026-08-12)** — une friction d'**atelier** qui a changé le livrable ; filtre en §1.5 (livrable changé + se reproduira + remède concevable), `EM` vs `AM` se tranche sur le remède (atelier ou produit). La liste « Encore réels » de `CONTRIBUTING.md` y est adossée piège par piège, gardée par `pnpm empechements` : **elle ne peut plus s'allonger sans mettre un remède en file**. Se consigne à l'**ouverture de la PR**, jamais au merge.
 
 ## Chantiers actifs
 

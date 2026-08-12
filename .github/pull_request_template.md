@@ -10,6 +10,7 @@
 - [ ] Documentation à jour si une règle métier ou une convention a changé (`docs/`).
 - [ ] Pas de TODO non tracké ; questions `Q-xx` résolues ou explicitement reportées.
 - [ ] **Registre** ([doc 34](../docs/34-registre-ameliorations.md)) : pistes et leçons vues pendant ce lot consignées (`AM-xx`, `LE-xx`) — ou « néant », et pourquoi.
+- [ ] **Empêchements** ([doc 34 §6](../docs/34-registre-ameliorations.md#6-empêchements-doutillage--em-xx)) : toute limitation de l'atelier qui a fait livrer **moins bien** que le lot ne le demandait est consignée (`EM-xx`) — c'est **maintenant** ou jamais, une session ne survit pas au merge de sa PR. Filtre en §1.5 ; « néant » est une réponse.
 - [ ] Pour un correctif (`fix:`) : ligne **« Cause racine : … — Prévention : … »** dans le commit + test de non-régression (cf. [doc 03](../docs/03-standards-developpement.md) §8).
 
 ## Revue assistée par IA

@@ -63,6 +63,14 @@ Suivre ce rituel dans l'ordre. Il encode les leçons payées par les lots préc�
 - **Pistes et leçons** trouvées en cours de lot → `/consigner` (registre doc 34, `AM-xx`/
   `LE-xx`/motifs) — plus jamais en prose dans `MEMORY.md` ; déclarer les identifiants
   consignés dans la PR.
+- **Empêchements d'outillage** subis pendant le lot → `/consigner` également, famille
+  `EM-xx` (doc 34 §6). Le filtre est en doc 34 §1.5 — trois conditions cumulatives : le
+  constat a **changé le livrable**, il **se reproduira**, un **remède est concevable**.
+  Le moment de consigner est **l'ouverture de la PR, pas le merge** : une session ne
+  survit pas au merge de sa propre PR, alors que l'empêchement est entièrement connu à
+  l'instant où on le subit. Écrire ce qu'il a **coûté au lot**, pas seulement ce qui
+  manque : « les sondes prouvent le SQL, jamais qu'une ligne survit » se traite, « il
+  n'y a pas de harnais » se contemple.
 - Faits durables d'un chantier (décision, état de prod, piège daté) → fiche du chantier
   dans `.claude/memory/`, et entrée d'index **≤ 2 lignes** dans `MEMORY.md` (le journal
   détaillé vit dans la fiche, jamais dans l'index).
