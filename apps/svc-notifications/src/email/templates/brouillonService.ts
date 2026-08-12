@@ -37,6 +37,14 @@ export interface BrouillonServiceParams {
   readonly etablissementLibelle: string;
   /** Enfants du foyer concernés par cet établissement, dans l'ordre d'affichage. */
   readonly enfants: readonly EnfantModifie[];
+  /**
+   * Lien vers la page publique d'information sur les données
+   * (`construireLienMentions(appUrl)`). **Obligatoire** : ce message est le **seul**
+   * canal par lequel l'agent de l'établissement apprend quoi que ce soit — il n'a pas
+   * de compte et n'ouvre jamais l'application. Un pied manquant le laisserait sans
+   * aucune information.
+   */
+  readonly lienMentions: string;
 }
 
 /** Catégories datées d'un jour, dans l'ordre d'affichage, avec leur libellé pluralisable. */
@@ -151,6 +159,35 @@ function lignesEnfant(enfant: EnfantModifie): string[] {
 }
 
 /**
+ * Phrase du pied d'information : pourquoi cette personne reçoit le message (collecte
+ * indirecte — c'est la famille qui a saisi son adresse de service), qui édite l'outil.
+ * C'est le seul endroit où elle peut l'apprendre : elle n'a pas de compte et n'ouvre
+ * jamais l'application.
+ */
+const PHRASE_MENTIONS =
+  "Vous recevez ce message parce que la famille vous a enregistré comme établissement d'accueil dans Crèche Planner, l'outil familial qu'elle utilise pour organiser la garde de ses enfants : votre adresse de service y a été saisie par elle, et non par vous.";
+
+/**
+ * Pied d'information (HTML + texte) apposé au récapitulatif adressé à l'établissement.
+ *
+ * **Exporté à dessein** : le corps réellement envoyé n'est pas toujours celui rendu
+ * ici. Quand le parent relit et réécrit le message dans l'application — ce que le front
+ * fait **systématiquement** (`RelectureEnvoi` envoie toujours son `sujet`/`corps`) —
+ * `EnvoiService` remplace le corps entier par son texte. Le pied doit alors être
+ * réapposé côté serveur, sinon il disparaît du **seul** canal qui atteigne l'agent
+ * d'établissement.
+ */
+export function piedInformationEtablissement(lienMentions: string): {
+  readonly html: string;
+  readonly text: string;
+} {
+  return {
+    html: `<p style="color:#666;font-size:0.85em">${PHRASE_MENTIONS} <a href="${echapper(lienMentions)}">Informations sur les données enregistrées</a>.</p>`,
+    text: `${PHRASE_MENTIONS}\nInformations sur les données enregistrées : ${lienMentions}`,
+  };
+}
+
+/**
  * Rend le brouillon (sujet + HTML + texte) du mail **agrégé par établissement** : un
  * bloc par enfant concerné, listant ses jours modifiés. Si aucun enfant n'a de
  * modification (cas dégénéré), le récap l'indique explicitement.
@@ -158,7 +195,7 @@ function lignesEnfant(enfant: EnfantModifie): string[] {
 export function brouillonServiceAgrege(
   params: BrouillonServiceParams,
 ): MessageRendu {
-  const { semaineIso, etablissementLibelle, enfants } = params;
+  const { semaineIso, etablissementLibelle, enfants, lienMentions } = params;
   // Libellé parent (« semaine du 6 au 12 juillet 2026 ») lisible par le service.
   const libelle = libelleSemaineFr(semaineIso);
   const subject = `Plannings modifiés — ${libelle}`;
@@ -179,12 +216,17 @@ export function brouillonServiceAgrege(
         ];
       });
 
+  // Pied d'information : rendu par la fonction exportée ci-dessus, parce que le service
+  // d'envoi doit pouvoir le réapposer quand le parent réécrit le corps.
+  const pied = piedInformationEtablissement(lienMentions);
+
   const html = [
     `<p>Bonjour ${etabHtml},</p>`,
     `<p>Voici le récapitulatif des modifications de planning pour la <strong>${libelle}</strong>.</p>`,
     ...blocsHtml,
     '<p>Cordialement,</p>',
     '<p>— Crèche Planner (pour la famille)</p>',
+    pied.html,
   ].join('\n');
 
   const blocsTexte = aucune
@@ -208,6 +250,8 @@ export function brouillonServiceAgrege(
     ...blocsTexte,
     'Cordialement,',
     '— Crèche Planner (pour la famille)',
+    '',
+    pied.text,
   ].join('\n');
 
   return { subject, html, text };

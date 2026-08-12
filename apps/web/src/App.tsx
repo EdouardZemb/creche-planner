@@ -17,12 +17,14 @@ import { EtablissementsPage } from './etablissements/EtablissementsPage';
 import { MonProfilPage } from './profil/MonProfilPage';
 import { TarifsPage } from './tarifs/TarifsPage';
 import { DesabonnementPage } from './desabonnement/DesabonnementPage';
+import { MentionsPage } from './mentions/MentionsPage';
 import { TitrePageContext, titreDocument } from './hooks/useTitrePage';
 import { useAnnonceRoute } from './hooks/useAnnonceRoute';
 import { BanniereHorsLigne } from './ui/BanniereHorsLigne';
 import { MoiProvider } from './session/MoiContext';
 import { Accueil } from './session/Accueil';
 import { Entete } from './layout/Entete';
+import { PiedPage } from './layout/PiedPage';
 import { GardeFoyer } from './layout/GardeFoyer';
 import { PageIntrouvable } from './layout/PageIntrouvable';
 import { titreDepuisPathname } from './layout/titreDepuisPathname';
@@ -86,6 +88,11 @@ function Coquille() {
             <Route path="/mon-profil" element={<MonProfilPage />} />
             <Route path="/tarifs" element={<TarifsPage />} />
             <Route path="/desabonnement" element={<DesabonnementPage />} />
+            {/* Informations sur les données (doc 37 § 5) : PUBLIQUE, donc au
+                même niveau que /desabonnement — hors `GardeFoyer`. Un agent
+                d'établissement arrivant depuis un courriel n'a ni compte ni
+                foyer : la page doit s'ouvrir sans contexte. */}
+            <Route path="/mentions" element={<MentionsPage />} />
             <Route path="/foyers/new" element={<FoyerFormPage />} />
             <Route path="/foyers/:foyerId" element={<GardeFoyer />}>
               {/* /foyers/:id nu rendait une page blanche (aucune route index) :
@@ -101,6 +108,11 @@ function Coquille() {
             <Route path="*" element={<PageIntrouvable />} />
           </Routes>
         </FrontiereErreur>
+        {/* Lien permanent vers /mentions. DANS `<main>` (dernier enfant) et non
+            en frère : c'est `main#contenu` qui porte le padding compensant la
+            barre d'onglets fixe du mobile — cf. l'en-tête de `PiedPage`. Hors de
+            la frontière de route : une page qui plante le laisse joignable. */}
+        <PiedPage />
       </main>
     </TitrePageContext.Provider>
   );

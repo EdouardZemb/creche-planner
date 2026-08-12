@@ -546,6 +546,24 @@ describe('SchedulerHebdo.declencher', () => {
     expect(message.to).toBe('solo@test');
     expect(message.headers).toBeUndefined();
     expect(message.text).not.toContain('/desabonnement');
+    // Même sans jeton, le pied d'information reste : il ne dépend pas du désabonnement.
+    expect(message.text).toContain('https://app.test/mentions');
+  });
+
+  it('le lien du pied d’information vient de `appUrl` (aucun domaine en dur)', async () => {
+    const dd = doubles([ETAB_CRECHE], [{ parentId: 'p1', email: 'solo@test' }]);
+    await scheduler(MARDI_8H01, [contratRow()], dd).declencher();
+
+    const message = dd.envoyer.mock.calls[0]?.[0] as {
+      html: string;
+      text: string;
+    };
+    // `OPTIONS.appUrl` vaut `https://app.test` : le lien en dérive, exactement comme
+    // le lien « valider » et le lien de désabonnement.
+    expect(message.html).toContain('href="https://app.test/mentions"');
+    expect(message.text).toContain(
+      'Informations sur vos données : https://app.test/mentions',
+    );
   });
 
   it('regroupe les contrats d’un même foyer en UN mail par parent (enfants groupés)', async () => {

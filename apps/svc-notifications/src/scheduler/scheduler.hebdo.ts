@@ -27,6 +27,7 @@ import {
   recapMardi,
   type RecapMardiEnfant,
 } from '../email/templates/recapMardi.js';
+import { construireLienMentions } from '../email/lienMentions.js';
 import {
   DestinatairesService,
   type DestinataireActif,
@@ -494,7 +495,12 @@ export class SchedulerHebdo
     this.logger.warn(
       `Foyer ${foyerId} sans parent destinataire — repli sur NOTIF_EMAIL_PARENT (${this.options.emailParent}, déprécié)`,
     );
-    const message = recapMardi({ enfants, semaineIso, lienApp });
+    const message = recapMardi({
+      enfants,
+      semaineIso,
+      lienApp,
+      lienMentions: construireLienMentions(this.options.appUrl),
+    });
     const resultat = await this.mailer.envoyer({
       to: this.options.emailParent,
       subject: message.subject,
@@ -576,6 +582,7 @@ export class SchedulerHebdo
         enfants,
         semaineIso,
         lienApp,
+        lienMentions: construireLienMentions(this.options.appUrl),
         ...(token
           ? {
               lienDesabonnement: `${this.options.appUrl}/desabonnement?token=${encodeURIComponent(token)}`,

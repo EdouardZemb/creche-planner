@@ -459,6 +459,33 @@ describe('App — coquille de navigation', () => {
     );
   });
 
+  it('Pied de page : le lien « Informations sur vos données » survit à la nav VIDE (`/moi` en vol)', () => {
+    // Le lien doit être PERMANENT. Posé dans la `<nav>` de l'en-tête il ne le
+    // serait pas : tout son contenu y est conditionnel et, tant que `/moi` n'a
+    // pas répondu, elle ne rend RIEN (cf. « la barre ne pilote rien » plus bas).
+    // On assert donc exactement cette fenêtre-là.
+    mockedApi.moi.mockReturnValue(
+      new Promise(() => {
+        /* jamais résolue : `/moi` reste en vol */
+      }),
+    );
+    rendre('/page-inconnue');
+
+    const nav = screen.getByRole('navigation', {
+      name: 'Navigation principale',
+    });
+    expect(within(nav).queryAllByRole('link')).toHaveLength(0);
+
+    const lien = screen.getByRole('link', {
+      name: 'Informations sur vos données',
+    });
+    expect(lien).toHaveAttribute('href', '/mentions');
+    // …et il vit DANS <main> : c'est `main#contenu` qui porte le padding-bottom
+    // compensant la barre d'onglets fixe du mobile. En frère de <main>, le pied
+    // passerait sous la barre à 375 px.
+    expect(document.querySelector('main#contenu')).toContainElement(lien);
+  });
+
   it('EX-02 : le header dérive ses liens du foyerId de la route (pas de localStorage)', async () => {
     // localStorage pointe vers un autre foyer : il ne doit PAS piloter le header.
     localStorage.setItem('creche:foyerId', 'autre-foyer');

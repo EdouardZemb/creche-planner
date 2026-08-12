@@ -123,7 +123,9 @@ function BlocEnvoiEtablissement({
 
   // Brouillon pré-rempli : la SEMAINE COMPLÈTE (7 jours) de chaque enfant
   // concerné, bien formulée. Le parent part de ce texte et peut tout réécrire —
-  // c'est son texte exact qui part (L8 achemine `sujet`/`corps`).
+  // c'est son texte exact qui part (L8 achemine `sujet`/`corps`), suivi du seul
+  // ajout serveur : le pied d'information de la crèche (annoncé sous la zone de
+  // saisie, réapposé par `EnvoiService` — il ne dépend pas de ce qui est tapé ici).
   const propose = composerBrouillonSemaineComplete({
     jours,
     contrats,
@@ -217,6 +219,15 @@ function BlocEnvoiEtablissement({
             setCorps(e.target.value);
           }}
         />
+
+        {/* Le serveur ajoute un pied de message au texte envoyé : le parent doit le
+            savoir, sans quoi l'écran promettrait « votre texte exact » alors qu'un
+            paragraphe de plus part réellement. */}
+        <p className="muted">
+          Un court pied de message est ajouté automatiquement à l’envoi : il dit
+          à la crèche pourquoi elle reçoit ce message et renvoie à la page
+          d’informations sur les données.
+        </p>
 
         <Bouton
           variante="secondaire"
