@@ -1174,6 +1174,32 @@ export const gatewayOpenApiDocument = {
           '404': { description: 'Foyer inconnu.' },
         },
       },
+      delete: {
+        summary: 'Effacer un foyer et tout ce qui s’y rattache',
+        description:
+          'Supprime définitivement le foyer : ressources et leur historique ' +
+          'versionné, journal de corrections, enfants, parents (y compris ' +
+          'ceux déjà retirés), préférences de notification et jetons de ' +
+          'désabonnement partent par cascade. L’effacement est ensuite ' +
+          'propagé aux copies détenues par les autres services via ' +
+          'l’événement `foyer.FoyerSupprime.v1` — contrats, plannings, ' +
+          'prestations, messages envoyés et boîte de réception. La ' +
+          'propagation est **asynchrone** : la réponse 204 acquitte la ' +
+          'suppression de la source, pas encore celle des copies. Geste ' +
+          'irréversible et non rejouable (un second appel répond 404).',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '204': { description: 'Foyer effacé (pas de contenu).' },
+          '404': { description: 'Foyer inconnu.' },
+        },
+      },
     },
     '/api/v1/foyers/{id}/versions': {
       get: {

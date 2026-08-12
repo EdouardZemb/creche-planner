@@ -18,15 +18,14 @@ const URL_REGISTRE =
  * ⚠️ Cadrage éditorial, tranché par l'ADR-0007 : l'exemption domestique de
  * l'article 2(2)(c) est **assumée**, le dépôt ne revendique **aucune conformité**.
  * Ce texte ne contient donc aucune formule réglementaire, et surtout il ne promet
- * que ce qui est OUTILLÉ aujourd'hui — le seul droit outillé est l'opposition
- * (désabonnement + préférences, ADR-0006).
+ * que ce qui est OUTILLÉ aujourd'hui — l'opposition (désabonnement + préférences,
+ * ADR-0006) et, depuis le lot 2, l'**effacement** (suppression du foyer entier,
+ * propagée aux copies aval par événement).
  *
  * La symétrie compte autant : ne rien promettre de faux, mais ne rien nier de
- * vrai non plus. Il n'existe ni suppression de la famille entière ni export
- * (doc 37 § 4) — la page le dit ; en revanche l'application supprime bel et bien
- * à l'unité (`retirerEnfant` est un hard delete en cascade, `supprimerContrat`
- * et `supprimerEtablissement` de même), et prétendre l'inverse contredirait la
- * phrase qui invite l'établissement à demander le retrait de ses coordonnées.
+ * vrai non plus. L'export n'existe toujours pas (doc 37 § 4) — la page le dit ;
+ * et il n'existe toujours **aucune purge automatique à l'échéance**, ce que la
+ * section « Combien de temps » doit continuer d'annoncer sans détour.
  */
 export function MentionsPage() {
   useTitrePage('Informations sur vos données');
@@ -75,8 +74,9 @@ export function MentionsPage() {
           l’application.
         </p>
         <p className="muted">
-          Ce sont des objectifs, pas encore un mécanisme : aucune suppression
-          automatique n’est en place à ce jour.
+          Ce sont des objectifs, pas encore un mécanisme : rien ne s’efface tout
+          seul à l’échéance. En revanche, vous pouvez tout effacer vous-même,
+          quand vous voulez (voir plus bas).
         </p>
 
         <h2>Par où passent ces données</h2>
@@ -111,15 +111,19 @@ export function MentionsPage() {
 
         <h2>Effacer ou récupérer vos données</h2>
         <p>
-          L’application sait déjà supprimer un enfant, un contrat ou une crèche
-          / école, et ces suppressions-là effacent réellement la donnée. Ce qui
-          manque, c’est le geste d’ensemble : il n’y a{' '}
-          <strong>ni suppression de la famille entière, ni export</strong>, donc
-          rien ne permet aujourd’hui de tout effacer d’un coup ni de récupérer
-          une copie de vos données. Retirer un parent, de même, le sort de la
-          famille mais conserve son nom et son adresse e-mail. Les deux
-          chantiers sont ouverts ; en attendant, la demande passe par la
-          personne qui édite l’outil.
+          Depuis <strong>Ma famille</strong>, le bouton « Effacer cette famille
+          » supprime tout d’un coup : enfants, contrats, plannings, ressources
+          et leur historique, parents, préférences de rappel et messages déjà
+          envoyés. C’est définitif, et cela vaut aussi pour les parents
+          précédemment retirés, dont le nom et l’adresse restaient jusque-là
+          enregistrés. La suppression d’un enfant, d’un contrat ou d’une crèche
+          / école à l’unité existe toujours et efface elle aussi réellement la
+          donnée.
+        </p>
+        <p>
+          Il n’y a en revanche <strong>toujours pas d’export</strong> : rien ne
+          permet de récupérer une copie de vos données. Ce chantier est ouvert ;
+          en attendant, la demande passe par la personne qui édite l’outil.
         </p>
 
         <h2>Vous recevez le récapitulatif d’une famille ?</h2>

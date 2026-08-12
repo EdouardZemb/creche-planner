@@ -96,6 +96,18 @@ export class FoyerController {
     return this.foyers.mettreAJour(id, dto);
   }
 
+  /**
+   * **Efface le foyer entier** (droit à l'effacement, lot 2). `204` sur succès,
+   * `404` si le foyer n'existe pas — la route est donc **non idempotente** au
+   * second appel, ce que le client web ne doit pas rejouer automatiquement.
+   * Le scoping `:id ∈ assertion.foyers` du contrôleur s'applique tel quel.
+   */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  supprimerFoyer(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.foyers.supprimerFoyer(id);
+  }
+
   /** Historique des versions de ressources du foyer (date d'effet, RFR, tranche). */
   @Get(':id/versions')
   listerVersions(

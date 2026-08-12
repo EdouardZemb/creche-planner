@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, HttpException } from '@nestjs/common';
 import type {
   FoyerClient,
   FoyerVue,
@@ -407,6 +407,30 @@ describe('FoyersController · liste scopée à l’identité (lot 5)', () => {
     });
 
     expect(vue).toEqual([]);
+  });
+});
+
+describe('FoyersController · effacement du foyer', () => {
+  it('relaie la suppression au service foyer', async () => {
+    const supprimerFoyer = vi.fn().mockResolvedValue(undefined);
+    const controller = new FoyersController({
+      supprimerFoyer,
+    } as unknown as FoyerClient);
+
+    await controller.supprimer('foyer-1');
+
+    expect(supprimerFoyer).toHaveBeenCalledWith('foyer-1');
+  });
+
+  it('propage un 404 amont plutôt que de le taire (geste non rejouable)', async () => {
+    const supprimerFoyer = vi.fn().mockRejectedValue(new Error('HTTP 404'));
+    const controller = new FoyersController({
+      supprimerFoyer,
+    } as unknown as FoyerClient);
+
+    await expect(controller.supprimer('foyer-1')).rejects.toBeInstanceOf(
+      HttpException,
+    );
   });
 });
 

@@ -348,7 +348,37 @@ export interface paths {
             };
         };
         post?: never;
-        delete?: never;
+        /**
+         * Effacer un foyer et tout ce qui s’y rattache
+         * @description Supprime définitivement le foyer : ressources et leur historique versionné, journal de corrections, enfants, parents (y compris ceux déjà retirés), préférences de notification et jetons de désabonnement partent par cascade. L’effacement est ensuite propagé aux copies détenues par les autres services via l’événement `foyer.FoyerSupprime.v1` — contrats, plannings, prestations, messages envoyés et boîte de réception. La propagation est **asynchrone** : la réponse 204 acquitte la suppression de la source, pas encore celle des copies. Geste irréversible et non rejouable (un second appel répond 404).
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Foyer effacé (pas de contenu). */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Foyer inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;

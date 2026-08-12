@@ -23,6 +23,7 @@ import {
 import { ParentsSection } from './ParentsSection';
 import { EnfantsSection } from './EnfantsSection';
 import { HistoriqueRessources } from './HistoriqueRessources';
+import { ZoneDangerFoyer } from './ZoneDangerFoyer';
 import { useContrats } from './useContrats';
 import { StatutSauvegarde, type EtatSauvegarde } from '../ui/StatutSauvegarde';
 import { ChargementPage } from '../ui/ChargementPage';
@@ -263,6 +264,14 @@ function FormulaireEdition({
       </form>
 
       <HistoriqueRessources key={rechargesHisto} foyerId={foyerId} />
+
+      {/* En dernier, délibérément : le geste irréversible ne doit pas se
+          trouver sur le chemin d'une édition ordinaire. */}
+      <ZoneDangerFoyer
+        foyerId={foyerId}
+        nbEnfants={enfants.length}
+        nbContrats={contrats.length}
+      />
     </div>
   );
 }

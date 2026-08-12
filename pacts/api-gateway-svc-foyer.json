@@ -68,6 +68,24 @@
       }
     },
     {
+      "description": "un effacement de foyer entier",
+      "providerStates": [
+        {
+          "name": "un foyer jetable, cible de l’effacement",
+          "params": {
+            "foyerId": "55555555-5555-4555-8555-555555555555"
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "path": "/api/foyers/55555555-5555-4555-8555-555555555555"
+      },
+      "response": {
+        "status": 204
+      }
+    },
+    {
       "description": "un rattachement d'enfant au foyer de référence",
       "providerStates": [
         {

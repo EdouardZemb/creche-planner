@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { getTableName, type Table } from 'drizzle-orm';
 import {
   CONTRAT_CREE_TYPE,
   CONTRAT_MODIFIE_TYPE,
@@ -8,6 +9,7 @@ import {
   ETABLISSEMENT_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-planification';
 import {
+  FOYER_SUPPRIME_TYPE,
   PARENT_AJOUTE_TYPE,
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
@@ -53,6 +55,49 @@ function fakeDb(marqueurInsere: boolean): Database {
       },
     ),
   } as unknown as Database;
+}
+
+/**
+ * Variante de {@link fakeDb} qui **espionne les suppressions** : chaque
+ * `tx.delete(<table>)` pousse le nom SQL de la table dans `suppressions`. Nécessaire
+ * pour l'effacement `FoyerSupprime`, dont le contrat porte justement sur **quelles
+ * tables sont vidées** — un `expect(db.transaction).toHaveBeenCalled()` ne dirait rien.
+ * `parentsProjetes` alimente le `select()` de résolution des parents (read model local).
+ */
+function fakeDbEspionSuppressions(
+  marqueurInsere: boolean,
+  parentsProjetes: readonly { parentId: string }[] = [],
+): {
+  db: Database;
+  suppressions: string[];
+  transaction: ReturnType<typeof vi.fn>;
+} {
+  const suppressions: string[] = [];
+  const tx = {
+    select: () => ({
+      from: () => ({ where: () => Promise.resolve([...parentsProjetes]) }),
+    }),
+    insert: () => ({
+      values: () => ({
+        onConflictDoNothing: () => ({
+          returning: () => Promise.resolve(marqueurInsere ? [{ id: 'x' }] : []),
+        }),
+        onConflictDoUpdate: () => Promise.resolve(),
+      }),
+    }),
+    update: () => ({ set: () => ({ where: () => Promise.resolve() }) }),
+    delete: (table: Table) => {
+      suppressions.push(getTableName(table));
+      return { where: () => Promise.resolve() };
+    },
+  };
+  const transaction = vi.fn(
+    async (cb: (t: unknown) => Promise<void>): Promise<void> => {
+      await cb(tx);
+    },
+  );
+  const db = { transaction } as unknown as Database;
+  return { db, suppressions, transaction };
 }
 
 const CONTRAT_ID = '55555555-0000-4000-8000-000000000000';
@@ -192,6 +237,35 @@ function evenementEtablissementSupprime(id: string): unknown {
     payload: { etablissementId: ETAB_ID },
   };
 }
+
+function evenementFoyerSupprime(
+  id: string,
+  parentIds: readonly string[] = [PARENT_ID],
+): unknown {
+  return {
+    id,
+    type: FOYER_SUPPRIME_TYPE,
+    source: 'svc-foyer',
+    version: 1,
+    occurredAt: '2026-10-20T00:00:00.000Z',
+    traceId: 'trace-fs',
+    payload: { foyerId: FOYER_ID, parentIds },
+  };
+}
+
+/** Tables que l'effacement d'un foyer doit vider, dans l'ordre du handler. */
+const TABLES_EFFACEES = [
+  'notification',
+  'preference_notification',
+  'envoi_recap_parent',
+  'envoi_recap_hebdo',
+  'envoi_etablissement',
+  'notification_hebdo',
+  'contrat',
+  'etablissement',
+  'foyer_parent',
+  'dead_letter',
+];
 
 describe('ProjectionService.traiter (Notifications)', () => {
   it('acquitte une enveloppe non reconnue sans toucher la base', async () => {
@@ -464,5 +538,78 @@ describe('ProjectionService.traiter (Notifications)', () => {
       ),
     ).resolves.toBe('TRAITE');
     expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Effacement d'un foyer (`FoyerSupprime`, RGPD doc 37 §3) : ici on ne vérifie que
+ * l'**aiguillage** et le fait qu'un rejeu n'écrit rien. L'oracle de **résidu** (plus
+ * aucune ligne des tables concernées, et les lignes d'un AUTRE foyer intactes) vit
+ * dans `projection.integration.spec.ts`, sur la base factice à état.
+ */
+describe('ProjectionService.traiter — FoyerSupprime (effacement)', () => {
+  const ID_EVT = '77777777-7777-4777-8777-ffffffffffff';
+
+  it('aiguille FoyerSupprime (stream FOYER) et acquitte', async () => {
+    const { db, transaction } = fakeDbEspionSuppressions(true);
+    const projection = new ProjectionService(db);
+    await expect(
+      projection.traiter('FOYER', evenementFoyerSupprime(ID_EVT)),
+    ).resolves.toBe('TRAITE');
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('efface une fois chaque table concernée (parent du payload compris)', async () => {
+    const { db, suppressions } = fakeDbEspionSuppressions(true);
+    const projection = new ProjectionService(db);
+
+    await projection.traiter('FOYER', evenementFoyerSupprime(ID_EVT));
+
+    expect(suppressions).toEqual(TABLES_EFFACEES);
+    // `outbox` (file de publication vivante) et `processed_event` (garde anti-rejeu)
+    // sont délibérément hors du périmètre : les citer ici fige la décision.
+    expect(suppressions).not.toContain('outbox');
+    expect(suppressions).not.toContain('processed_event');
+  });
+
+  it('union payload ∪ foyer_parent : un parent projeté hors payload est effacé aussi', async () => {
+    const AUTRE_PARENT = '99999999-8888-4888-8888-999999999999';
+    const { db, suppressions } = fakeDbEspionSuppressions(true, [
+      { parentId: PARENT_ID }, // déjà dans le payload : ne doit PAS doubler la passe
+      { parentId: AUTRE_PARENT }, // projeté localement seulement
+    ]);
+    const projection = new ProjectionService(db);
+
+    await projection.traiter('FOYER', evenementFoyerSupprime(ID_EVT));
+
+    // Deux parents distincts ⇒ deux passes (notification + preference_notification).
+    expect(suppressions.filter((t) => t === 'notification')).toHaveLength(2);
+    expect(
+      suppressions.filter((t) => t === 'preference_notification'),
+    ).toHaveLength(2);
+  });
+
+  it('rejeu (marqueur déjà présent) : AUCUNE suppression, acquitté quand même', async () => {
+    const { db, suppressions, transaction } = fakeDbEspionSuppressions(false);
+    const projection = new ProjectionService(db);
+
+    await expect(
+      projection.traiter('FOYER', evenementFoyerSupprime(ID_EVT)),
+    ).resolves.toBe('TRAITE');
+    expect(suppressions).toEqual([]);
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('NAK (re-livraison) si le payload FoyerSupprime est invalide', async () => {
+    const { db, suppressions } = fakeDbEspionSuppressions(true);
+    const projection = new ProjectionService(db);
+
+    await expect(
+      projection.traiter('FOYER', {
+        ...(evenementFoyerSupprime(ID_EVT) as Record<string, unknown>),
+        payload: { foyerId: FOYER_ID, parentIds: ['pas-un-uuid'] },
+      }),
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
+    expect(suppressions).toEqual([]);
   });
 });

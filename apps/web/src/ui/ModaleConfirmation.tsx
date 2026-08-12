@@ -18,6 +18,13 @@ export interface ModaleConfirmationProps {
    * focus initial, qui reste toujours sur « Annuler » (choix de sûreté).
    */
   destructif?: boolean;
+  /**
+   * Désactive l'action primaire. Sert aux confirmations **à friction** : le
+   * `children` porte alors une saisie de vérification (recopier un libellé) et
+   * l'appelant n'ouvre le bouton qu'une fois la saisie conforme. Par défaut
+   * `false` — les six confirmations existantes ne changent pas de comportement.
+   */
+  confirmerDesactive?: boolean;
   /** Contenu complémentaire rendu entre le message et les boutons. */
   children?: ReactNode;
 }
@@ -40,6 +47,7 @@ export function ModaleConfirmation({
   onConfirmer,
   onAnnuler,
   destructif = false,
+  confirmerDesactive = false,
   children,
 }: ModaleConfirmationProps) {
   const refAnnuler = useRef<HTMLButtonElement>(null);
@@ -56,6 +64,7 @@ export function ModaleConfirmation({
         </Bouton>
         <Bouton
           variante={destructif ? 'danger' : 'primaire'}
+          disabled={confirmerDesactive}
           onClick={onConfirmer}
         >
           {libelleConfirmer}

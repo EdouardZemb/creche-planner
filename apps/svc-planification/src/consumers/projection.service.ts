@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, like, ne } from 'drizzle-orm';
 import {
   enfantModifieEventSchema,
+  foyerSupprimeEventSchema,
   ENFANT_MODIFIE_TYPE,
+  FOYER_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-foyer';
 import {
   CONTRAT_MODIFIE_TYPE,
@@ -16,7 +18,13 @@ import {
   type ResultatTraitement,
 } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
-import { contrat, outbox, processedEvent } from '../database/schema.js';
+import {
+  contrat,
+  deadLetter,
+  etablissement,
+  outbox,
+  processedEvent,
+} from '../database/schema.js';
 
 /** Transaction Drizzle (type du callback `db.transaction`). */
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -30,13 +38,21 @@ type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
  * que les read-models aval (`svc-notifications`, `svc-tarification`) se rafraîchissent
  * sans changement de code chez eux.
  *
+ * Consomme aussi `foyer.FoyerSupprime.v1` (droit à l'effacement, doc 37 §3) :
+ * l'agrégat foyer ayant réellement disparu en amont, tout ce que Planification
+ * détient pour lui est supprimé — cf. {@link ProjectionService.appliquerFoyerSupprime}.
+ *
  * Idempotence : chaque enveloppe est marquée dans `processed_event` **dans la même
  * transaction** que la mise à jour — un rejeu at-least-once JetStream est un no-op
  * (en particulier, pas de double ré-émission `ContratModifie`).
  *
- * `EnfantAjoute`/`EnfantRetire` sont acquittés sans action : la création de contrat
- * porte déjà l'`enfantId`, et retirer un enfant ne supprime pas ses contrats (geste
- * explicite de l'utilisateur).
+ * `EnfantAjoute`/`EnfantRetire` ne sont pas consommés : la création de contrat porte
+ * déjà l'`enfantId`, et retirer un enfant ne supprime pas ses contrats (geste explicite
+ * de l'utilisateur). Attention, « non consommé » ne veut **pas** dire « acquitté sans
+ * action » : tout type non géré du stream FOYER part en `dead_letter` avec la raison
+ * `TYPE_INCONNU` **et son payload en clair** (`ConsumerModule`, lot 1 Fondations).
+ * C'est précisément ce qui rend la purge de `dead_letter` indispensable à l'effacement
+ * d'un foyer.
  */
 @Injectable()
 export class ProjectionService {
@@ -60,6 +76,9 @@ export class ProjectionService {
       switch (type) {
         case ENFANT_MODIFIE_TYPE:
           await this.appliquerEnfantModifie(stream, donnees);
+          return 'TRAITE';
+        case FOYER_SUPPRIME_TYPE:
+          await this.appliquerFoyerSupprime(stream, donnees);
           return 'TRAITE';
         default:
           return 'IGNORE_TYPE_INCONNU'; // type non consommé par Planification
@@ -154,6 +173,72 @@ export class ProjectionService {
           `Prénom rafraîchi sur ${String(rafraichis.length)} contrat(s) de l'enfant ${p.enfantId} (« ${p.prenom} »)`,
         );
       }
+    });
+  }
+
+  /**
+   * `FoyerSupprime` : le foyer a été **réellement supprimé** en amont (droit à
+   * l'effacement, doc 37 §3) ; tout ce que Planification détient pour lui doit
+   * disparaître avec lui.
+   *
+   * Deux tables seulement portent un `foyer_id` : `contrat` et `etablissement`. Les
+   * trois tables filles — `contrat_version`, `correction_journal`, `planning_mois` —
+   * pendent de `contrat` par une FK `ON DELETE cascade` (migrations 0000 et 0008) :
+   * les supprimer explicitement serait non seulement redondant, mais **mensonger sur
+   * qui garantit l'effacement**. C'est la contrainte SQL qui le garantit, y compris
+   * pour un contrat supprimé par une autre voie que ce handler.
+   *
+   * **L'ordre des deux DELETE est contraint, pas cosmétique** : la colonne
+   * `contrat.etablissement_id` référence `etablissement.id` en `ON DELETE no action`
+   * (migration 0003). Vider `etablissement` en premier violerait la contrainte et
+   * ferait échouer toute la transaction — l'effacement partirait alors en boucle de
+   * re-livraison sans jamais aboutir. C'est la seule régression réellement dangereuse
+   * de ce handler, d'où le test qui prouve l'ordre.
+   *
+   * `dead_letter` est purgée **pour ce foyer** : c'est un magasin **terminal**, que
+   * plus rien ne relit, et qui stocke aujourd'hui des **payloads en clair** — ce
+   * service ne consomme que deux types du stream FOYER, donc tout le reste y atterrit
+   * avec son contenu (`TYPE_INCONNU`). Le filtre est un `like` sur le texte du
+   * payload : la table ne porte pas de `foyer_id`, et un UUID est assez spécifique
+   * pour qu'un faux positif soit irréaliste. Pas de cast JSON — il exploserait sur une
+   * ligne `PARSE_KO`, dont le payload est non-JSON par construction.
+   *
+   * `outbox` n'est **pas** purgée : c'est une file de publication **vivante**, pas un
+   * magasin. Supprimer une ligne non encore publiée annulerait un événement en vol —
+   * l'événement d'effacement lui-même y transite, côté émetteur. Sa borne est
+   * **temporelle** (30 j après publication, doc 37 §3 T7) et relève du lot suivant.
+   *
+   * `processed_event` n'est **pas** touchée non plus : c'est le garde-fou anti-rejeu.
+   * L'effacer rouvrirait la porte à une re-projection du foyer à la prochaine
+   * re-livraison JetStream — soit exactement le résidu qu'on prétend supprimer. Doc 37
+   * §3 l'exclut nommément (sa borne dépend d'une rétention JetStream pas encore posée).
+   *
+   * **Aucune ré-émission** : les services aval sont eux-mêmes abonnés au stream FOYER
+   * et reçoivent `FoyerSupprime` directement de svc-foyer. Relayer créerait une seconde
+   * source de vérité et un ordre de traitement non garanti. `payload.parentIds` n'est
+   * pas exploité ici : aucune table de ce service n'est clée par parent.
+   */
+  private async appliquerFoyerSupprime(
+    stream: string,
+    donnees: unknown,
+  ): Promise<void> {
+    const evt = foyerSupprimeEventSchema.parse(donnees);
+    await this.db.transaction(async (tx) => {
+      if (!(await this.marquerTraite(tx, evt.id, stream, evt.type))) {
+        return;
+      }
+      const foyerId = evt.payload.foyerId;
+      // 1. Contrats du foyer — la cascade SQL emporte `contrat_version`,
+      //    `correction_journal` et `planning_mois`.
+      await tx.delete(contrat).where(eq(contrat.foyerId, foyerId));
+      // 2. Établissements du foyer — OBLIGATOIREMENT après (1), cf. la FK
+      //    `contrat.etablissement_id` en `no action`.
+      await tx.delete(etablissement).where(eq(etablissement.foyerId, foyerId));
+      // 3. Messages morts portant l'identifiant du foyer dans leur payload.
+      await tx
+        .delete(deadLetter)
+        .where(like(deadLetter.payload, `%${foyerId}%`));
+      this.logger.log(`Foyer ${foyerId} effacé du read model Planification`);
     });
   }
 }

@@ -287,6 +287,20 @@ export class FoyerClient {
     });
   }
 
+  /**
+   * DELETE `/api/foyers/:id` — **efface le foyer entier** (droit à l'effacement) :
+   * cascade SQL côté `svc-foyer`, puis propagation aux copies aval par
+   * `foyer.FoyerSupprime.v1`. Réponse 204 sans corps ; un second appel répond
+   * 404 (le geste n'est pas rejouable — ne pas le router par un client qui
+   * retente).
+   */
+  async supprimerFoyer(foyerId: string): Promise<void> {
+    await this.appel({
+      methode: 'DELETE',
+      chemin: `/api/foyers/${encodeURIComponent(foyerId)}`,
+    });
+  }
+
   /** GET `/api/foyers` — liste les foyers existants. */
   async lister(): Promise<FoyerVue[]> {
     return this.appel({

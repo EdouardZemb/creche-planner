@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { Table } from 'drizzle-orm';
 import {
   FOYER_MIS_A_JOUR_TYPE,
   FOYER_MIS_A_JOUR_V2_TYPE,
   FOYER_MIS_A_JOUR_V3_TYPE,
+  FOYER_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-foyer';
 import {
   CONTRAT_MODIFIE_TYPE,
@@ -16,6 +18,14 @@ import {
 import { ProjectionService } from './projection.service.js';
 import type { Database } from '../database/database.types.js';
 import type { PlanificationClient } from '../fallback/planification.client.js';
+import {
+  contrat,
+  deadLetter,
+  enfant,
+  foyer,
+  foyerVersion,
+  prestationMois,
+} from '../database/schema.js';
 
 /**
  * Tests d'**aiguillage et d'idempotence** du projecteur, sans Postgres. La
@@ -52,6 +62,45 @@ function fakeDb(marqueurInsere: boolean): Database {
       },
     ),
   } as unknown as Database;
+}
+
+/**
+ * Variante de {@link fakeDb} qui **observe les suppressions** : `tablesSupprimees`
+ * accumule, dans l'ordre, la table de chaque `delete(...)` ouvert dans la
+ * transaction. C'est ce qu'il faut pour juger une cascade d'effacement écrite à la
+ * main (aucune FK côté Tarification) : une table oubliée est un résidu de donnée
+ * personnelle, invisible autrement dans un fake sans état.
+ */
+function fakeDbAvecDeletes(marqueurInsere: boolean): {
+  db: Database;
+  tablesSupprimees: Table[];
+  transaction: ReturnType<typeof vi.fn>;
+} {
+  const tablesSupprimees: Table[] = [];
+  const tx = {
+    insert: () => ({
+      values: () => ({
+        onConflictDoNothing: () => ({
+          returning: () => Promise.resolve(marqueurInsere ? [{ id: 'x' }] : []),
+        }),
+        onConflictDoUpdate: () => Promise.resolve(),
+      }),
+    }),
+    update: () => ({
+      set: () => ({ where: () => Promise.resolve() }),
+    }),
+    delete: (table: Table) => {
+      tablesSupprimees.push(table);
+      return { where: () => Promise.resolve() };
+    },
+  };
+  const transaction = vi.fn(
+    async (cb: (t: unknown) => Promise<void>): Promise<void> => {
+      await cb(tx);
+    },
+  );
+  const db = { transaction } as unknown as Database;
+  return { db, tablesSupprimees, transaction };
 }
 
 const clientStub = {
@@ -120,6 +169,29 @@ function evenementContratSupprime(id: string): unknown {
     traceId: 'trace-4',
     payload: {
       contratId: '55555555-0000-4000-8000-000000000000',
+    },
+  };
+}
+
+/**
+ * `foyer.FoyerSupprime.v1` : effacement réel du foyer en amont. `parentIds` est porté
+ * par le contrat (boîte de réception de svc-notifications) mais n'a pas d'usage ici —
+ * aucune table du read model Tarification n'est clée par parent.
+ */
+function evenementFoyerSupprime(id: string): unknown {
+  return {
+    id,
+    type: FOYER_SUPPRIME_TYPE,
+    source: 'svc-foyer',
+    version: 1,
+    occurredAt: '2026-11-01T00:00:00.000Z',
+    traceId: 'trace-suppr',
+    payload: {
+      foyerId: '22222222-2222-4222-8222-222222222222',
+      parentIds: [
+        '77777777-0000-4000-8000-000000000001',
+        '77777777-0000-4000-8000-000000000002',
+      ],
     },
   };
 }
@@ -423,5 +495,72 @@ describe('ProjectionService.traiter', () => {
     // L'optimisation : pas de fetch des prestations sur un rejeu déjà projeté.
     expect(client.prestations).not.toHaveBeenCalled();
     expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it('aiguille un FoyerSupprime valide et acquitte', async () => {
+    const { db, transaction } = fakeDbAvecDeletes(true);
+    const projection = new ProjectionService(db, clientStub);
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementFoyerSupprime('dddddddd-dddd-4ddd-8ddd-dddddddddddd'),
+      ),
+    ).resolves.toBe('TRAITE');
+    expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('FoyerSupprime : efface TOUTES les tables portant la donnée du foyer', async () => {
+    const { db, tablesSupprimees } = fakeDbAvecDeletes(true);
+    const projection = new ProjectionService(db, clientStub);
+
+    await projection.traiter(
+      'FOYER',
+      evenementFoyerSupprime('dddddddd-dddd-4ddd-8ddd-dddddddddddd'),
+    );
+
+    // Liste exhaustive et volontairement figée : ajouter une table au read model
+    // sans l'ajouter à la cascade ferait passer un résidu de donnée personnelle.
+    // `processed_event` (anti-rejeu) et `outbox` (file vivante) en sont exclues.
+    expect(tablesSupprimees).toEqual([
+      prestationMois,
+      contrat,
+      enfant,
+      foyerVersion,
+      foyer,
+      deadLetter,
+    ]);
+  });
+
+  it('FoyerSupprime rejoué (marqueur déjà présent) : AUCUNE suppression, acquitté', async () => {
+    const { db, tablesSupprimees } = fakeDbAvecDeletes(false); // doublon
+    const projection = new ProjectionService(db, clientStub);
+
+    await expect(
+      projection.traiter(
+        'FOYER',
+        evenementFoyerSupprime('dddddddd-dddd-4ddd-8ddd-dddddddddddd'),
+      ),
+    ).resolves.toBe('TRAITE');
+    expect(tablesSupprimees).toEqual([]);
+  });
+
+  it('NAK si le payload FoyerSupprime est invalide (parentIds hors contrat)', async () => {
+    const { db, tablesSupprimees } = fakeDbAvecDeletes(true);
+    const projection = new ProjectionService(db, clientStub);
+    const base = evenementFoyerSupprime(
+      'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    ) as Record<string, unknown>;
+
+    await expect(
+      projection.traiter('FOYER', {
+        ...base,
+        payload: {
+          ...(base['payload'] as Record<string, unknown>),
+          parentIds: ['pas-un-uuid'],
+        },
+      }),
+    ).resolves.toBe('ECHEC_TRANSITOIRE');
+    // Rien n'a été effacé : la re-livraison reste sans effet de bord.
+    expect(tablesSupprimees).toEqual([]);
   });
 });
