@@ -81,6 +81,138 @@ export const gatewayOpenApiDocument = {
           'motif',
         ],
       },
+      LigneExport: {
+        type: 'object',
+        description:
+          'Une ligne d’export : un enregistrement tel qu’il vit dans la table ' +
+          'du service qui le détient. Les colonnes ne sont volontairement pas ' +
+          'décrites ici — les figer ferait une troisième copie du schéma, après ' +
+          'la table et l’interface du service, sans que rien ne garde les trois ' +
+          'alignées. La garantie contractuelle porte sur la présence des ' +
+          'sections, pas sur la forme des lignes.',
+        additionalProperties: true,
+      },
+      ExportPortabiliteVue: {
+        type: 'object',
+        description:
+          'Document d’export des données personnelles d’un foyer. Les sections ' +
+          'portent le nom de ce qu’elles contiennent pour la personne, pas ' +
+          'celui du service qui les détient.',
+        properties: {
+          versionFormat: {
+            type: 'integer',
+            description:
+              'Version du format du document (pas de l’application). ' +
+              'N’augmente que si une section est renommée ou retirée.',
+          },
+          genereLe: { type: 'string', format: 'date-time' },
+          foyerId: { type: 'string', format: 'uuid' },
+          situationFoyer: {
+            type: 'object',
+            description:
+              'Situation et ressources du foyer, enfants, parents (retirés ' +
+              'compris), préférences de notification effectives et traces de ' +
+              'désabonnement.',
+            properties: {
+              situationCourante: { $ref: '#/components/schemas/LigneExport' },
+              versionsRessources: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+              correctionsRessources: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+              enfants: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+              parents: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+              preferencesNotification: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+              jetonsDesabonnement: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+            },
+            required: [
+              'situationCourante',
+              'versionsRessources',
+              'correctionsRessources',
+              'enfants',
+              'parents',
+              'preferencesNotification',
+              'jetonsDesabonnement',
+            ],
+          },
+          gardeEtPlanning: {
+            type: 'object',
+            description:
+              'Contrats d’accueil et tout ce qui leur est rattaché (avenants, ' +
+              'corrections, plannings mensuels), et établissements déclarés.',
+            properties: {
+              contrats: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+              etablissements: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+            },
+            required: ['contrats', 'etablissements'],
+          },
+          communications: {
+            type: 'object',
+            description:
+              'Semaines soumises à validation, preuves de ce qui a réellement ' +
+              'été envoyé (au foyer, à chaque parent, à l’établissement) et ' +
+              'boîte de réception in-app.',
+            properties: {
+              validationsHebdo: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+              envoisRecapFoyer: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+              envoisRecapParent: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+              envoisEtablissement: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+              messagesInApp: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+            },
+            required: [
+              'validationsHebdo',
+              'envoisRecapFoyer',
+              'envoisRecapParent',
+              'envoisEtablissement',
+              'messagesInApp',
+            ],
+          },
+        },
+        required: [
+          'versionFormat',
+          'genereLe',
+          'foyerId',
+          'situationFoyer',
+          'gardeEtPlanning',
+          'communications',
+        ],
+      },
       EnfantVue: {
         type: 'object',
         description: 'Vue projetée d’un enfant rattaché à un foyer.',
@@ -1197,6 +1329,44 @@ export const gatewayOpenApiDocument = {
         ],
         responses: {
           '204': { description: 'Foyer effacé (pas de contenu).' },
+          '404': { description: 'Foyer inconnu.' },
+        },
+      },
+    },
+    '/api/v1/foyers/{id}/export': {
+      get: {
+        summary: 'Exporter les données personnelles du foyer',
+        description:
+          'Rassemble en un document JSON unique tout ce que les trois services ' +
+          '**sources** détiennent sur le foyer : situation et ressources, garde ' +
+          'et plannings, communications. Droit à la portabilité, tenu en ' +
+          'démarche volontaire (ADR-0007). Le périmètre exporté est celui de la ' +
+          'cascade d’effacement — ce qu’un effacement emporte, un export le rend ' +
+          '— aux exclusions déclarées près : les copies projetées de ' +
+          'svc-tarification (déjà présentes ici sous leur forme source), les ' +
+          'files techniques, et le `jti` d’un jeton de désabonnement, qui est ' +
+          'une capacité et non une donnée. Inventaire table par table dans ' +
+          'docs/37-registre-des-traitements.md §6. Les colonnes de chaque ligne ' +
+          'ne sont pas contractées : l’export suit les tables des services, et ' +
+          'les décrire ici en figerait une troisième copie.',
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Document d’export des données personnelles du foyer.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ExportPortabiliteVue' },
+              },
+            },
+          },
+          '403': { description: 'Foyer hors du périmètre de l’appelant.' },
           '404': { description: 'Foyer inconnu.' },
         },
       },

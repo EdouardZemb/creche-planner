@@ -18,7 +18,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
   // (lot D6), qui confronte le document au graphe de modules Nest et exige l'égalité
   // dans les deux sens. C'est lui qui a montré que 12 opérations servies — dont les
   // 6 routes `/notifications/*` — n'étaient documentées nulle part.
-  it('expose exactement les 38 routes attendues', () => {
+  it('expose exactement les 39 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -28,6 +28,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/openapi.json',
         '/api/v1/foyers',
         '/api/v1/foyers/{id}',
+        '/api/v1/foyers/{id}/export',
         '/api/v1/foyers/{id}/versions',
         '/api/v1/foyers/{id}/enfants',
         '/api/v1/foyers/{id}/enfants/{enfantId}',
@@ -61,6 +62,37 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/referentiel/baremes/psu',
         '/api/v1/referentiel/baremes/tranches',
       ].sort(),
+    );
+  });
+
+  // L'export de portabilité (lot 3) : la seule route dont la réponse rassemble
+  // trois services. On fige ici les **noms de sections** — ce sont eux qui font le
+  // contrat lisible par un humain qui ouvre le fichier, et un renommage silencieux
+  // casserait tout export déjà téléchargé sans qu'aucun type ne s'en aperçoive
+  // (les lignes, elles, sont volontairement libres).
+  it('expose l’export de portabilité avec ses trois sections nommées', () => {
+    const route = gatewayOpenApiDocument.paths['/api/v1/foyers/{id}/export'];
+    expect(
+      route.get.responses['200'].content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/ExportPortabiliteVue' });
+    expect(route.get.responses['403']).toBeDefined();
+    const schema =
+      gatewayOpenApiDocument.components.schemas.ExportPortabiliteVue;
+    expect(schema.required).toEqual([
+      'versionFormat',
+      'genereLe',
+      'foyerId',
+      'situationFoyer',
+      'gardeEtPlanning',
+      'communications',
+    ]);
+    expect(schema.properties.situationFoyer.required).toContain('parents');
+    expect(schema.properties.gardeEtPlanning.required).toEqual([
+      'contrats',
+      'etablissements',
+    ]);
+    expect(schema.properties.communications.required).toContain(
+      'envoisEtablissement',
     );
   });
 
@@ -274,6 +306,8 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(schemas.BrouillonEtablissementVue).toBeDefined();
     expect(schemas.EnvoiEtablissementResultat).toBeDefined();
     expect(schemas.SuiviEnvoisVue).toBeDefined();
+    expect(schemas.ExportPortabiliteVue).toBeDefined();
+    expect(schemas.LigneExport).toBeDefined();
   });
 
   it('expose le serveur local de la gateway', () => {

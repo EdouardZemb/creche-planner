@@ -7,6 +7,7 @@ import type { CoutMoisVue, CoutAnnuelVue } from '../types/bff';
 import { centimesEnEuros, deltaEnEuros } from '../utils/money';
 import { formaterMoisFr } from '../utils/dates';
 import { estFraisFixesAbcm } from '../utils/libelles';
+import { telechargerFichier } from '../utils/telechargement';
 
 const SEPARATEUR = ';'; // fr-FR : Excel attend le point-virgule (la virgule = décimale).
 
@@ -160,21 +161,5 @@ export function nomFichierCoutAnnuel(cout: CoutAnnuelVue): string {
  * DOM (no-op défensif, ex. SSR).
  */
 export function telechargerCsv(nomFichier: string, contenu: string): void {
-  if (
-    typeof document === 'undefined' ||
-    typeof URL.createObjectURL !== 'function'
-  ) {
-    return;
-  }
-  const blob = new Blob(['﻿', contenu], {
-    type: 'text/csv;charset=utf-8;',
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nomFichier;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  telechargerFichier(nomFichier, ['﻿', contenu], 'text/csv;charset=utf-8;');
 }

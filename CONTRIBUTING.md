@@ -36,6 +36,12 @@ corepack pnpm frontieres
 # Cf. la section « Pièges » ci-dessous.
 corepack pnpm pieges
 
+# Complétude de l'export de portabilité (< 1 s, step bloquant du job `ci`,
+# cf. doc 37 §6) : toute table déclarée par un service doit être classée —
+# exportée, copie d'une table elle-même exportée, technique, ou hors périmètre.
+# À lancer après tout ajout de table.
+corepack pnpm portabilite
+
 # Empêchements d'outillage (< 1 s, step bloquant du job `ci`, cf. doc 34 §6) :
 # chaque piège « encore réel » de la section ci-dessous doit porter sa ligne
 # `EM-xx` au registre — avec son remède, ou un renoncement daté.

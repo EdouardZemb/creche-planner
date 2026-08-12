@@ -36,6 +36,14 @@ export type EnfantVue = SchemaComposant<'EnfantVue'>;
 /** Vue projetée d'un parent — dérivée de `components.schemas.ParentVue`. */
 export type ParentVue = SchemaComposant<'ParentVue'>;
 
+/**
+ * Document d'export des données personnelles du foyer (portabilité, lot 3) —
+ * dérivé de `components.schemas.ExportPortabiliteVue`. Le web ne lit aucune
+ * ligne : il télécharge le document tel quel. Les sections sont contractées,
+ * les lignes volontairement libres (cf. `docs/37-registre-des-traitements.md` §6).
+ */
+export type ExportPortabiliteVue = SchemaComposant<'ExportPortabiliteVue'>;
+
 /** Identité courante + droits (admin, foyers autorisés) — dérivée de `components.schemas.MoiVue`. */
 export type MoiVue = SchemaComposant<'MoiVue'>;
 

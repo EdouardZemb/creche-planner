@@ -31,6 +31,10 @@ import {
   type ModifierParentDto,
 } from './foyer.dto.js';
 import {
+  PortabiliteService,
+  type ExportFoyerVue,
+} from '../portabilite/portabilite.service.js';
+import {
   FoyerService,
   type DossierFoyerVue,
   type EnfantVue,
@@ -47,7 +51,10 @@ import {
 @ScopeFoyerInterServices({ param: 'id' })
 @Controller('foyers')
 export class FoyerController {
-  constructor(private readonly foyers: FoyerService) {}
+  constructor(
+    private readonly foyers: FoyerService,
+    private readonly portabilite: PortabiliteService,
+  ) {}
 
   /**
    * Crée un foyer **et son dossier** (enfants + parents) en une seule commande
@@ -106,6 +113,17 @@ export class FoyerController {
   @HttpCode(HttpStatus.NO_CONTENT)
   supprimerFoyer(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.foyers.supprimerFoyer(id);
+  }
+
+  /**
+   * **Export de portabilité** de la part `svc-foyer` du foyer (lot 3 ; `AM-35`).
+   * Le scoping `:id ∈ assertion.foyers` du contrôleur s'applique tel quel : c'est
+   * la même garde que la lecture du dossier, pour la même raison — la réponse
+   * porte les revenus, les e-mails et les enfants du foyer.
+   */
+  @Get(':id/export')
+  exporter(@Param('id', ParseUUIDPipe) id: string): Promise<ExportFoyerVue> {
+    return this.portabilite.exporter(id);
   }
 
   /** Historique des versions de ressources du foyer (date d'effet, RFR, tranche). */

@@ -4,6 +4,7 @@ import type {
   DossierFoyerVue,
   FoyerVue,
   FoyerVersionVue,
+  ExportPortabiliteVue,
   EnfantVue,
   ParentVue,
   CreerEnfant,
@@ -370,6 +371,22 @@ export const api = {
       // `lire<undefined>` plutôt que `lire<void>` : même comportement sur un 204,
       // sans ajouter une occurrence à la baseline `no-invalid-void-type`.
     }).then((r) => lire<undefined>(r));
+  },
+
+  /**
+   * Export des données personnelles du foyer — `GET /v1/foyers/:id/export`
+   * (portabilité, lot 3). Lecture idempotente, mais **plus lente** que les
+   * autres : elle balaie dix-sept tables sur trois services.
+   */
+  exporterFoyer(
+    id: string,
+    opts: RequeteOptions = {},
+  ): Promise<ExportPortabiliteVue> {
+    return requeteIdempotente(
+      `${BASE}/v1/foyers/${encodeURIComponent(id)}/export`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<ExportPortabiliteVue>(r));
   },
 
   /** Historique des versions de ressources d'un foyer — `GET /v1/foyers/:id/versions`. */

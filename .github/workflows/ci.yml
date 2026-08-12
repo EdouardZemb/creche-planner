@@ -190,6 +190,21 @@ jobs:
           node scripts/verifier-retentions.mjs --autotest
           node scripts/verifier-retentions.mjs
 
+      # Complétude de l'export de portabilité (doc 37 §6) — un export se périme
+      # d'une façon particulière : il ne casse pas. On ajoute une table, on
+      # oublie de l'exporter, et le document continue de répondre 200 en ayant
+      # l'air complet — pire que vert, rassurant, puisqu'il affirme rendre les
+      # données de la personne. Ce step exige que les 46 tables des cinq services
+      # soient TOUTES classées (exportée / copie / technique / hors périmètre),
+      # qu'une table dite exportée soit réellement lue par le code d'export de
+      # son service, et qu'une copie nomme une source elle-même exportée.
+      # L'attendu est DÉRIVÉ des `schema.ts`, jamais recopié. `--autotest`
+      # rejoue ses 3 sondes négatives.
+      - name: Export de portabilité — aucune table hors classement (bloquant)
+        run: |
+          node scripts/verifier-portabilite.mjs --autotest
+          node scripts/verifier-portabilite.mjs
+
       # Empêchements d'outillage (doc 34 §6) — la liste « Encore réels » de
       # CONTRIBUTING tenait déjà l'inventaire des frictions d'atelier, mais
       # comme une FATALITÉ : aucune n'avait de remède planifié ni de critère de

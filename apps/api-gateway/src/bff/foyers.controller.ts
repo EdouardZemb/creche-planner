@@ -18,6 +18,12 @@ import {
   type FoyerVue,
   type ParentVue,
 } from '../clients/foyer.client.js';
+import { NotificationsClient } from '../clients/notifications.client.js';
+import { PlanificationClient } from '../clients/planification.client.js';
+import {
+  assemblerExport,
+  type ExportPortabiliteVue,
+} from './export-portabilite.js';
 import {
   ajouterEnfantSchema,
   ajouterParentSchema,
@@ -35,7 +41,9 @@ import type { RequeteIdentifiable } from '../security/identite.js';
 import { relayer } from './relais.js';
 
 /**
- * Façade BFF `/api/v1/foyers` : agrège `svc-foyer`. La création délègue à
+ * Façade BFF `/api/v1/foyers` : agrège `svc-foyer` — plus, pour la seule route
+ * d'export de portabilité, `svc-planification` et `svc-notifications`, les deux
+ * autres services **sources** de données du foyer. La création délègue à
  * `svc-foyer` **une seule commande transactionnelle** (foyer + enfants + parents)
  * et relaie le dossier ; la lecture renvoie le foyer **et** ses enfants/parents en
  * une réponse. Les parents exposent une vraie CRUD (sous-ressource éditable, cf.
@@ -56,7 +64,13 @@ import { relayer } from './relais.js';
  */
 @Controller({ path: 'foyers', version: '1' })
 export class FoyersController {
-  constructor(private readonly foyers: FoyerClient) {}
+  constructor(
+    private readonly foyers: FoyerClient,
+    // Les deux clients ci-dessous ne servent qu'à l'export de portabilité : c'est
+    // la seule route de ce contrôleur qui sorte de `svc-foyer`.
+    private readonly planification: PlanificationClient,
+    private readonly notifications: NotificationsClient,
+  ) {}
 
   /**
    * Crée un foyer et son dossier (enfants + parents) via **un seul appel**
@@ -178,6 +192,44 @@ export class FoyersController {
   @HttpCode(HttpStatus.NO_CONTENT)
   supprimer(@Param('id') id: string): Promise<void> {
     return relayer(() => this.foyers.supprimerFoyer(id));
+  }
+
+  /**
+   * **Export de portabilité** du foyer (droit à la portabilité, lot 3 ; `AM-35`).
+   * `@FoyerScope` : parent du foyer (admin bypass) — la réponse rassemble en un
+   * seul document tout ce que les trois services **sources** détiennent sur le
+   * foyer, donc la garde est celle de la lecture du dossier, pas moins.
+   *
+   * **Aucune dégradation gracieuse ici**, contrairement à `apercuImpact` ou aux
+   * préférences de `/moi` : un service muet y fait perdre un enrichissement, ce
+   * qui est rattrapable ; ici il ferait livrer un export **amputé sans le dire**,
+   * c'est-à-dire un document qui affirme être complet et ne l'est pas. Les trois
+   * appels sont donc dans un seul `relayer` : soit les trois répondent, soit
+   * l'export échoue.
+   *
+   * `svc-tarification` n'est **pas** interrogé : ses 5 tables sont des copies
+   * projetées des données ci-dessus (`docs/37-registre-des-traitements.md` §5).
+   * Les inclure ferait passer pour une donnée de plus ce qui n'est qu'un second
+   * exemplaire de la même.
+   */
+  @Get(':id/export')
+  @FoyerScope('param:id')
+  exporter(@Param('id') id: string): Promise<ExportPortabiliteVue> {
+    const genereLe = new Date().toISOString();
+    return relayer(async () => {
+      const [foyer, planification, notifications] = await Promise.all([
+        this.foyers.exporter(id),
+        this.planification.exporter(id),
+        this.notifications.exporter(id),
+      ]);
+      return assemblerExport({
+        foyerId: id,
+        genereLe,
+        foyer,
+        planification,
+        notifications,
+      });
+    });
   }
 
   /**

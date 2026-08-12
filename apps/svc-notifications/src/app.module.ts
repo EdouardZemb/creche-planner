@@ -21,6 +21,7 @@ import { EtablissementModule } from './etablissement/etablissement.module.js';
 import { ValidationModule } from './validation/validation.module.js';
 import { EnvoiModule } from './envoi/envoi.module.js';
 import { InboxModule } from './inbox/inbox.module.js';
+import { PortabiliteModule } from './portabilite/portabilite.module.js';
 import { SchedulerModule } from './scheduler/scheduler.module.js';
 import { ResolveurFoyerNotifications } from './security/resolveur-foyer.js';
 import { tachesPurgeNotifications } from './purge/taches-purge.js';
@@ -81,6 +82,9 @@ function optionsMailer(): OptionsMailer {
     ValidationModule,
     EnvoiModule,
     InboxModule,
+    // Export de portabilité (lot 3) : validations hebdo, preuves d'envoi et boîte
+    // de réception in-app du foyer.
+    PortabiliteModule,
     SchedulerModule,
     // Guard aval d'assertion inter-services (observe-only) — fondations lot 3, +
     // scoping par ressource (lot 4). La validation porte un contratId et l'inbox un

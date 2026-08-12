@@ -19,13 +19,14 @@ const URL_REGISTRE =
  * l'article 2(2)(c) est **assumée**, le dépôt ne revendique **aucune conformité**.
  * Ce texte ne contient donc aucune formule réglementaire, et surtout il ne promet
  * que ce qui est OUTILLÉ aujourd'hui — l'opposition (désabonnement + préférences,
- * ADR-0006) et, depuis le lot 2, l'**effacement** (suppression du foyer entier,
- * propagée aux copies aval par événement).
+ * ADR-0006), depuis le lot 2 l'**effacement** (suppression du foyer entier,
+ * propagée aux copies aval par événement), et depuis le lot 3 l'**export** des
+ * données personnelles (doc 37 §6).
  *
  * La symétrie compte autant : ne rien promettre de faux, mais ne rien nier de
- * vrai non plus. L'export n'existe toujours pas (doc 37 § 4) — la page le dit ;
- * et il n'existe toujours **aucune purge automatique à l'échéance**, ce que la
- * section « Combien de temps » doit continuer d'annoncer sans détour.
+ * vrai non plus. Ce que l'export **ne rend pas** est donc écrit ici aussi (les
+ * copies aval, le jeton de désabonnement), et la section « Combien de temps »
+ * continue d'annoncer sans détour ce qui n'est pas purgé à l'échéance.
  */
 export function MentionsPage() {
   useTitrePage('Informations sur vos données');
@@ -121,9 +122,15 @@ export function MentionsPage() {
           donnée.
         </p>
         <p>
-          Il n’y a en revanche <strong>toujours pas d’export</strong> : rien ne
-          permet de récupérer une copie de vos données. Ce chantier est ouvert ;
-          en attendant, la demande passe par la personne qui édite l’outil.
+          Au même endroit, le bouton «&nbsp;Télécharger mes données&nbsp;» rend
+          un fichier contenant tout ce qui est enregistré pour votre foyer :
+          ressources et leur historique, enfants, parents, contrats et avenants,
+          plannings saisis, établissements, préférences de rappel, et les
+          messages envoyés — à vous comme aux établissements. Deux choses n’y
+          figurent pas, volontairement : les <em>copies</em> qu’un service tient
+          d’un autre, déjà présentes sous leur forme d’origine, et les jetons
+          secrets des liens de désabonnement, qui agissent sans mot de passe et
+          n’ont donc rien à faire dans un fichier qui circule.
         </p>
 
         <h2>Vous recevez le récapitulatif d’une famille ?</h2>

@@ -168,10 +168,44 @@ export interface MajPreferencesSaisie {
   readonly preferences: readonly SaisiePreference[];
 }
 
+/**
+ * Une ligne d'export de portabilité : un objet libre. La passerelle **ne
+ * contracte pas les colonnes** — les décrire ici les triplerait (interface du
+ * service, schéma du client, document OpenAPI) sans que rien ne garde les trois
+ * copies alignées. Ce que la passerelle contracte, c'est la **présence de chaque
+ * section** (schéma ci-dessous) : un service qui cesserait silencieusement de
+ * rendre une section fait échouer l'export au lieu d'en livrer un tronqué.
+ */
+const ligneExportSchema = z.record(z.string(), z.unknown());
+
+const exportFoyerSchema = z.object({
+  situationCourante: ligneExportSchema,
+  versionsRessources: z.array(ligneExportSchema),
+  correctionsRessources: z.array(ligneExportSchema),
+  enfants: z.array(ligneExportSchema),
+  parents: z.array(ligneExportSchema),
+  preferencesNotification: z.array(ligneExportSchema),
+  jetonsDesabonnement: z.array(ligneExportSchema),
+});
+
+/** Part `svc-foyer` de l'export de portabilité (lot 3, `AM-35`). */
+export type ExportFoyerVue = z.infer<typeof exportFoyerSchema>;
+
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
   retries: 1,
   delaiEntreEssaisMs: 200,
+};
+
+/**
+ * L'export balaie sept tables et n'est pas sur le chemin critique d'un écran :
+ * le budget de 2 s des lectures courantes y serait un faux négatif sur un foyer
+ * ancien. Même arbitrage que `OPTIONS_ANNUEL` côté tarification.
+ */
+const OPTIONS_EXPORT: OptionsResilience = {
+  timeoutMs: 8000,
+  retries: 0,
+  delaiEntreEssaisMs: 0,
 };
 
 /**
@@ -193,6 +227,7 @@ export class FoyerClient {
     chemin: string;
     corps?: unknown;
     schema: ZodType<T>;
+    options?: OptionsResilience;
   }): Promise<T>;
   private appel(config: {
     methode: MethodeHttp;
@@ -204,12 +239,13 @@ export class FoyerClient {
     chemin: string;
     corps?: unknown;
     schema?: ZodType<T> | undefined;
+    options?: OptionsResilience;
   }): Promise<T | void> {
     const commun = {
       service: 'svc-foyer',
       logger: this.logger,
       breaker: this.breaker,
-      options: OPTIONS,
+      options: config.options ?? OPTIONS,
       methode: config.methode,
       url: `${loadConfig().foyerUrl}${config.chemin}`,
       corps: config.corps,
@@ -435,6 +471,16 @@ export class FoyerClient {
         `/parents/${encodeURIComponent(parentId)}/preferences`,
       corps: saisie,
       schema: z.array(preferenceVueSchema),
+    });
+  }
+
+  /** GET `/api/foyers/:id/export` — part `svc-foyer` de l'export de portabilité. */
+  async exporter(foyerId: string): Promise<ExportFoyerVue> {
+    return this.appel({
+      methode: 'GET',
+      chemin: `/api/foyers/${encodeURIComponent(foyerId)}/export`,
+      schema: exportFoyerSchema,
+      options: OPTIONS_EXPORT,
     });
   }
 
