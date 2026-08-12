@@ -46,6 +46,36 @@ async function creerFoyerJetable(
   return { foyerId: dossier.foyer.id, enfantId: enfant?.id ?? '' };
 }
 
+/** Plage horaire d'une semaine type, telle que l'attend `svc-planification`. */
+interface Plage {
+  debutHeures: number;
+  debutMinutes: number;
+  finHeures: number;
+  finMinutes: number;
+}
+
+const JOURS = [
+  'LUNDI',
+  'MARDI',
+  'MERCREDI',
+  'JEUDI',
+  'VENDREDI',
+  'SAMEDI',
+  'DIMANCHE',
+] as const;
+
+/**
+ * Complète une semaine partielle sur les **sept** jours : `svc-planification`
+ * valide la semaine type comme un objet dont chaque jour est requis, un jour
+ * manquant vaut 400 (et non « pas de garde ce jour-là »). Même contrainte que
+ * `completerSemaine` dans `scripts/seed-demo.mjs`.
+ */
+function semaineComplete(
+  partielle: Partial<Record<(typeof JOURS)[number], Plage[]>>,
+): Record<string, Plage[]> {
+  return Object.fromEntries(JOURS.map((j) => [j, partielle[j] ?? []]));
+}
+
 /**
  * Attend qu'une condition asynchrone devienne vraie, en bornant l'attente : la
  * propagation passe par l'outbox (relais ~2 s) puis JetStream, elle n'est jamais
@@ -84,16 +114,35 @@ test.describe('stack réelle : effacement du foyer et de ses copies aval', () =>
 
     // Un contrat, pour que svc-planification ait bien quelque chose à effacer —
     // sans lui, la liste serait vide avant même la suppression et l'oracle
-    // aval ne prouverait rien.
+    // aval ne prouverait rien. Le corps suit celui du seed (`scripts/seed-demo.mjs`) :
+    // `svc-planification` valide en profondeur un CRECHE_PSU (heures annuelles,
+    // mensualités, semaine type sur les **sept** jours) et l'établissement est
+    // obligatoire depuis P5.
+    const etablissement = await request.post(
+      `/api/v1/foyers/${foyerId}/etablissements`,
+      { data: { nom: 'Crèche jetable' } },
+    );
+    expect(etablissement.status()).toBe(201);
+    const { id: etablissementId } = (await etablissement.json()) as {
+      id: string;
+    };
+
     const contrat = await request.post('/api/v1/contrats', {
       data: {
         mode: 'CRECHE_PSU',
         foyerId,
         enfant: 'Effaçable',
         enfantId,
+        etablissementId,
         valideDu: '2026-01-01',
-        valideAu: null,
-        nouvelEtablissement: { nom: 'Crèche jetable' },
+        valideAu: '2026-07-31',
+        heuresAnnuellesContractualisees: 831.5,
+        nbMensualites: 7,
+        semaineType: semaineComplete({
+          LUNDI: [
+            { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
+          ],
+        }),
       },
     });
     expect(contrat.status()).toBe(201);
