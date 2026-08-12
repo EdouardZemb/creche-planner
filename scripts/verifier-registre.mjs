@@ -15,10 +15,10 @@
  *
  * Ce script rend la **forme** opposable, pas le jugement :
  *
- *   1. identifiants uniques et contigus par famille (`AM`, `LE`, `MO`) ;
+ *   1. identifiants uniques et contigus par famille (`AM`, `EM`, `LE`, `MO`) ;
  *   2. pas de statut sans sa contrepartie — une ligne close porte une PREUVE,
- *      une ligne ouverte porte un CRITÈRE DE SORTIE (piste) ou une PRÉVENTION
- *      (leçon) ;
+ *      une ligne ouverte porte un CRITÈRE DE SORTIE (piste, empêchement) ou une
+ *      PRÉVENTION (leçon) ;
  *   3. le compteur d'un motif récurrent est recalculé depuis les leçons qui le
  *      citent, dans les DEUX sens : un motif ne peut ni gonfler ni oublier une
  *      occurrence ;
@@ -198,12 +198,14 @@ function verifier(texte, verifierChemin) {
   const lecons = tableauApres(texte, /^## 3\. Leçons/);
   const motifs = tableauApres(texte, /^## 4\. Motifs/);
   const portes = tableauApres(texte, /^## 5\. Inventaire des portes/);
+  const empechements = tableauApres(texte, /^## 6\. Empêchements/);
 
   for (const [nom, tableau] of [
     ['§2 Pistes', pistes],
     ['§3 Leçons', lecons],
     ['§4 Motifs', motifs],
     ['§5 Portes', portes],
+    ['§6 Empêchements', empechements],
   ]) {
     if (!tableau || tableau.lignes.length === 0) {
       erreur(
@@ -214,7 +216,7 @@ function verifier(texte, verifierChemin) {
       );
     }
   }
-  if (!pistes || !lecons || !motifs || !portes) {
+  if (!pistes || !lecons || !motifs || !portes || !empechements) {
     return { constats, stats: {}, ouvertes: [] };
   }
 
@@ -223,6 +225,7 @@ function verifier(texte, verifierChemin) {
   const familles = {};
   for (const [famille, tableau] of [
     ['AM', pistes],
+    ['EM', empechements],
     ['LE', lecons],
     ['MO', motifs],
   ]) {
@@ -268,55 +271,62 @@ function verifier(texte, verifierChemin) {
     familles[famille] = { lignes: vues, ligneNo };
   }
 
-  // --- Pistes : statut, critère de sortie, preuve ---------------------------
-  const iStatutAM = colonne(pistes.entetes, 'statut');
-  const iCritere = colonne(pistes.entetes, 'critere');
-  const iPreuveAM = colonne(pistes.entetes, 'preuve');
-  const iPrio = colonne(pistes.entetes, 'prio');
+  // --- Pistes et empêchements : statut, critère de sortie, preuve -----------
+  // Les deux familles partagent la même forme de tableau (une ligne ouverte doit
+  // dire à quelle condition elle se ferme) et le même backlog publié : une piste
+  // dit ce que le PRODUIT devrait être, un empêchement ce que l'ATELIER coûte,
+  // mais aucune des deux ne se clôt sans critère de sortie. Les index de colonnes
+  // sont relus par tableau : rien n'oblige les deux à garder le même ordre.
   const stats = { P1: 0, P2: 0, P3: 0, ouvertes: 0, bloquees: 0, closes: 0 };
   /** @type {string[][]} */
   const ouvertes = [];
 
-  for (const [id, cellulesLigne] of familles['AM'].lignes) {
-    const ligne = familles['AM'].ligneNo.get(id) ?? 0;
-    const statut = cellulesLigne[iStatutAM];
-    if (!STATUTS.includes(statut)) {
-      erreur(
-        'statut-inconnu',
-        `${REGISTRE}:${ligne}`,
-        `statut « ${statut} » inconnu pour ${id}.`,
-        `statuts valides : ${STATUTS.join(' ')} (cf. §1.2).`,
-      );
-      continue;
-    }
-    if (STATUTS_CLOS.includes(statut)) {
-      stats.closes += 1;
-      if (vide(cellulesLigne[iPreuveAM])) {
+  for (const [famille, tableau] of [
+    ['AM', pistes],
+    ['EM', empechements],
+  ]) {
+    const iStatut = colonne(tableau.entetes, 'statut');
+    const iCritere = colonne(tableau.entetes, 'critere');
+    const iPreuve = colonne(tableau.entetes, 'preuve');
+    const iPrio = colonne(tableau.entetes, 'prio');
+    const iConstat = colonne(tableau.entetes, 'constat');
+
+    for (const [id, cellulesLigne] of familles[famille].lignes) {
+      const ligne = familles[famille].ligneNo.get(id) ?? 0;
+      const statut = cellulesLigne[iStatut];
+      if (!STATUTS.includes(statut)) {
         erreur(
-          'clos-sans-preuve',
+          'statut-inconnu',
           `${REGISTRE}:${ligne}`,
-          `${id} est ${statut} sans preuve : c’est exactement ainsi que les tableaux AQ-xx se sont périmés.`,
-          'citer la PR, le commit ou le fichier qui le prouve — ou rouvrir la ligne.',
+          `statut « ${statut} » inconnu pour ${id}.`,
+          `statuts valides : ${STATUTS.join(' ')} (cf. §1.2).`,
         );
+        continue;
       }
-    } else {
-      stats.ouvertes += 1;
-      if (statut === '⏸') stats.bloquees += 1;
-      const prio = (cellulesLigne[iPrio] ?? '').toUpperCase();
-      if (prio in stats) stats[prio] += 1;
-      ouvertes.push([
-        id,
-        prio,
-        cellulesLigne[colonne(pistes.entetes, 'constat')] ?? '',
-        statut,
-      ]);
-      if (vide(cellulesLigne[iCritere])) {
-        erreur(
-          'ouvert-sans-critere',
-          `${REGISTRE}:${ligne}`,
-          `${id} est ouvert sans critère de sortie : rien ne dira jamais qu’il est fini.`,
-          'écrire ce qui devra être vrai pour clore la ligne.',
-        );
+      if (STATUTS_CLOS.includes(statut)) {
+        stats.closes += 1;
+        if (vide(cellulesLigne[iPreuve])) {
+          erreur(
+            'clos-sans-preuve',
+            `${REGISTRE}:${ligne}`,
+            `${id} est ${statut} sans preuve : c’est exactement ainsi que les tableaux AQ-xx se sont périmés.`,
+            'citer la PR, le commit ou le fichier qui le prouve — ou rouvrir la ligne.',
+          );
+        }
+      } else {
+        stats.ouvertes += 1;
+        if (statut === '⏸') stats.bloquees += 1;
+        const prio = (cellulesLigne[iPrio] ?? '').toUpperCase();
+        if (prio in stats) stats[prio] += 1;
+        ouvertes.push([id, prio, cellulesLigne[iConstat] ?? '', statut]);
+        if (vide(cellulesLigne[iCritere])) {
+          erreur(
+            'ouvert-sans-critere',
+            `${REGISTRE}:${ligne}`,
+            `${id} est ouvert sans critère de sortie : rien ne dira jamais qu’il est fini.`,
+            'écrire ce qui devra être vrai pour clore la ligne.',
+          );
+        }
       }
     }
   }
@@ -554,6 +564,37 @@ const SONDES = [
       texte.replace(
         /(\|\s*AM-\d+\s*\|[^|\n]*\|[^|\n]*\|)[^|\n]*(\|[^|\n]*\|\s*🔄\s*\|)/,
         '$1 — $2',
+      ),
+  },
+  {
+    nom: 'empêchement — séquence trouée',
+    code: 'sequence-trouee',
+    // La famille `EM` (§6) doit entrer dans les MÊMES boucles que les autres :
+    // une famille ajoutée au document mais oubliée du script serait une porte
+    // qu'on croit large — le motif `MO-1`, ici à sa vingtième occurrence.
+    // Cible dérivée : le premier identifiant `EM`, quel qu'il soit, projeté hors
+    // de sa séquence.
+    abimer: (texte) => texte.replace(/(\|\s*EM-)\d+(\s*\|)/, '$190$2'),
+  },
+  {
+    nom: 'empêchement ouvert sans critère de sortie',
+    code: 'ouvert-sans-critere',
+    // Cible dérivée : le premier empêchement encore ouvert, quel qu'il soit.
+    abimer: (texte) =>
+      texte.replace(
+        /(\|\s*EM-\d+\s*\|[^|\n]*\|[^|\n]*\|)[^|\n]*(\|[^|\n]*\|\s*🔄\s*\|)/,
+        '$1 — $2',
+      ),
+  },
+  {
+    nom: 'empêchement écarté sans preuve',
+    code: 'clos-sans-preuve',
+    // Cible dérivée : le premier empêchement portant un statut de clôture. Un
+    // `⛔` sans raison écrite, c'est la fatalité que le §6 est censé remplacer.
+    abimer: (texte) =>
+      texte.replace(
+        /(\|\s*EM-\d+\s*\|(?:[^|\n]*\|){4}\s*(?:✅|⛔)\s*\|)[^|\n]*\|/,
+        '$1 — |',
       ),
   },
   {

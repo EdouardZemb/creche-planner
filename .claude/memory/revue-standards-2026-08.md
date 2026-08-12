@@ -5,7 +5,7 @@
 - **2026-08-10** (session distante) : revue complète de l'application contre les
   standards externes (sécurité, API/observabilité, données/RGPD/frontend). Constats
   consignés `AM-33` → `AM-51` + `LE-29` (doc 34) ; veille pérennisée en doc 36
-  (cadence trimestrielle, rituel doc 34 §6) ; plan par lots dans
+  (cadence trimestrielle, rituel doc 34 §7) ; plan par lots dans
   `.claude/plans/plan-standards-industriels.md`.
 - Lot 0 livré dans la même PR : backoff+jitter+discrimination 4xx
   (`libs/resilience`), HSTS + garde en-têtes (`apps/web/src/nginx-headers.spec.ts`),

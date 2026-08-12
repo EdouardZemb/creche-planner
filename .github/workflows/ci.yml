@@ -190,6 +190,20 @@ jobs:
           node scripts/verifier-retentions.mjs --autotest
           node scripts/verifier-retentions.mjs
 
+      # Empêchements d'outillage (doc 34 §6) — la liste « Encore réels » de
+      # CONTRIBUTING tenait déjà l'inventaire des frictions d'atelier, mais
+      # comme une FATALITÉ : aucune n'avait de remède planifié ni de critère de
+      # sortie, et leur nombre ne pouvait que croître — le mode de défaillance
+      # que le registre a été créé pour tuer côté produit, intact côté atelier.
+      # Ce step exige que chaque entrée de cette liste porte une ligne `EM-xx`
+      # (ouverte avec son remède, ou ⛔ avec un renoncement daté), et qu'une
+      # ligne close ne reste pas listée comme « encore réelle ». L'attendu est
+      # DÉRIVÉ de CONTRIBUTING, jamais recopié. `--autotest` rejoue ses 7 sondes.
+      - name: Empêchements d'outillage — pièges hérités mis en file (bloquant)
+        run: |
+          node scripts/verifier-empechements.mjs --autotest
+          node scripts/verifier-empechements.mjs
+
       # Politique de documentation (doc 35), volet « navigation ». Un lien mort
       # ne se voit qu'en le suivant : renommer un fichier, renommer un titre
       # (l'ancre suit le titre) ou déplacer un document vers `exploitation/`
