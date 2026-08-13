@@ -1,3 +1,28 @@
+## 0.16.0 (2026-08-13)
+
+### 🚀 Features
+
+- **config:** valider l'environnement au démarrage (AM-44, lot 5 standards) ([#319](https://github.com/EdouardZemb/creche-planner/pull/319))
+- **api:** format d'erreur unique application/problem+json (RFC 9457, lot 4 standards) ([#318](https://github.com/EdouardZemb/creche-planner/pull/318))
+- **rgpd:** export de portabilite du foyer et porte de completude (lot 3 standards) ([#317](https://github.com/EdouardZemb/creche-planner/pull/317))
+- **rgpd:** effacement du foyer propagé aux copies aval (lot 2a standards) ([#313](https://github.com/EdouardZemb/creche-planner/pull/313))
+- revue standards industriels — registre AM-33→AM-51, veille (doc 36), quick wins ([#301](https://github.com/EdouardZemb/creche-planner/pull/301))
+- **web:** chantier C lot C7 — frontieres d erreur React et remontee des plantages client ([#292](https://github.com/EdouardZemb/creche-planner/pull/292))
+
+### 🩹 Fixes
+
+- **securite:** audit — isolation de la liste des foyers, role sur le referentiel, rate-limit par client ([#298](https://github.com/EdouardZemb/creche-planner/pull/298))
+- **outillage:** chantier B lot B3 - readiness de chaine sur la gateway ([#285](https://github.com/EdouardZemb/creche-planner/pull/285))
+- **outillage:** sortir les declarations tsc de dist/ pour supprimer la course avec webpack ([#273](https://github.com/EdouardZemb/creche-planner/pull/273))
+
+### ❤️ Thank You
+
+- Claude
+- Claude Fable 5
+- Claude Opus 5
+- Claude Opus 5 (1M context)
+- Edouard Zemb @EdouardZemb
+
 ## 0.15.0 (2026-08-01)
 
 ### 🩹 Fixes

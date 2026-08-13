@@ -1,3 +1,22 @@
+## 0.16.0 (2026-08-13)
+
+### 🚀 Features
+
+- **config:** valider l'environnement au démarrage (AM-44, lot 5 standards) ([#319](https://github.com/EdouardZemb/creche-planner/pull/319))
+- **rgpd:** bornes temporelles de rétention et porte des durées (lot 2b standards) ([#314](https://github.com/EdouardZemb/creche-planner/pull/314))
+- **rgpd:** effacement du foyer propagé aux copies aval (lot 2a standards) ([#313](https://github.com/EdouardZemb/creche-planner/pull/313))
+
+### 🩹 Fixes
+
+- **securite:** debloque la CI (CVE brace-expansion) et corrige 3 alertes CodeQL ([#289](https://github.com/EdouardZemb/creche-planner/pull/289))
+- **outillage:** sortir les declarations tsc de dist/ pour supprimer la course avec webpack ([#273](https://github.com/EdouardZemb/creche-planner/pull/273))
+
+### ❤️ Thank You
+
+- Claude Opus 5
+- Claude Opus 5 (1M context)
+- Edouard Zemb @EdouardZemb
+
 ## 0.15.0 (2026-08-01)
 
 ### 🩹 Fixes
