@@ -21,8 +21,17 @@
  *   2. SCAN. Trivy sur les 6 images `ghcr.io/.../<svc>:<version>` (mêmes réglages
  *      que la porte build : severity HIGH,CRITICAL, `--ignore-unfixed`, `.trivyignore`
  *      partagé) en `--exit-code 0` → un finding ne fait JAMAIS échouer le scan.
- *   3. RAPPORT dans `GITHUB_STEP_SUMMARY` (toujours).
- *   4. NOTIFICATION e-mail sur findings, en RÉUTILISANT la conf SMTP de la Phase 4
+ *   3. VERDICT DE SOURCE. Pour chaque finding, on compare la version incriminée à
+ *      ce que le lockfile du dépôt résout AUJOURD'HUI. Sans cela le rapport ne dit
+ *      que « la prod est vulnérable » — pas s'il faut ÉCRIRE un correctif ou
+ *      seulement REDÉPLOYER, deux suites qui n'ont ni le même coût ni la même
+ *      urgence. Le cas du 2026-08-13 est l'archétype : CVE-2026-69152
+ *      (brace-expansion), corrigée en source depuis le 2026-08-05 (overrides pnpm,
+ *      PR #289), mais notifiée chaque matin parce que l'image 0.15.0 du 2026-08-01
+ *      est antérieure au correctif. Le mail ne le disait pas ; la question a été
+ *      réinstruite de zéro.
+ *   4. RAPPORT dans `GITHUB_STEP_SUMMARY` (toujours).
+ *   5. NOTIFICATION e-mail sur findings, en RÉUTILISANT la conf SMTP de la Phase 4
  *      (smarthost Gmail, expéditeur/destinataire `edouard.zemb@gmail.com`) via
  *      `curl` (aucune dépendance/action tierce à épingler ; curl est préinstallé).
  *      Le secret est le MÊME mot de passe d'application Gmail que la Phase 4, fourni
@@ -47,13 +56,23 @@
  *   SMTP_PASSWORD           mot de passe d'application Gmail (= Phase 4)
  *   SMTP_SMARTHOST/FROM/TO  défauts Phase 4 (smtp.gmail.com:587, edouard.zemb@…)
  *   SCAN_DRY_RUN=1          n'exécute ni Trivy ni curl (mise au point locale)
+ *   SCAN_DRY_RUN=verdicts   idem + injecte le JEU D'ESSAI des verdicts de source
+ *                           (les 4 états, dont un dérivé du lockfile réel) ; joué en
+ *                           CI par `veille-cve-autotest`
+ *   SCAN_LOCKFILE           lockfile de référence pour le verdict (défaut pnpm-lock.yaml)
  *   SCAN_FAKE_FINDING=1     injecte un finding SYNTHÉTIQUE [TEST] après le scan réel
  *                           (valide la chaîne e-mail sans vraie CVE ; opt-in dispatch)
  *   GITHUB_STEP_SUMMARY     fichier de résumé (posé par Actions)
  */
 
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  appendFileSync,
+  writeFileSync,
+  readFileSync,
+  mkdtempSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -64,7 +83,12 @@ const ENVIRONMENT = process.env.SCAN_ENVIRONMENT ?? 'production';
 const IMAGE_BASE =
   process.env.IMAGE_BASE ?? 'ghcr.io/edouardzemb/creche-planner';
 const SEVERITY = process.env.TRIVY_SEVERITY ?? 'HIGH,CRITICAL';
-const DRY_RUN = process.env.SCAN_DRY_RUN === '1';
+// Jeu d'essai des VERDICTS DE SOURCE (cf. ALERTES_DRY_RUN de veille-alertes.mjs) :
+// injecte des findings choisis pour exercer les 4 états, dont un DÉRIVÉ du lockfile
+// réel. Joué en CI par `veille-cve-autotest`. N'envoie ni Trivy ni curl.
+const JEU_ESSAI_VERDICTS = process.env.SCAN_DRY_RUN === 'verdicts';
+const DRY_RUN = process.env.SCAN_DRY_RUN === '1' || JEU_ESSAI_VERDICTS;
+const LOCKFILE = process.env.SCAN_LOCKFILE ?? 'pnpm-lock.yaml';
 // Affordance de TEST (cf. DEPLOY_FAKE_FAIL de deploy.mjs) : injecte un finding
 // SYNTHÉTIQUE après le scan réel pour exercer la chaîne de notification e-mail
 // (secret + curl + Gmail) sans attendre une vraie CVE-drift. Opt-in seulement
@@ -226,6 +250,171 @@ function scanImage(image) {
   return { vulns, error: null };
 }
 
+// --- Verdict de source : « corriger » ou seulement « redéployer » ? -----------
+//
+// RÈGLE CARDINALE, symétrique de celle de veille-alertes.mjs (« un appel qui échoue
+// n'est JAMAIS lu comme aucune alerte ») : ici, un doute n'est JAMAIS lu comme
+// « déjà corrigé ». Le faux vert coûterait bien plus cher que le faux doute — il
+// ferait classer « simple redéploiement » une CVE qui demande encore un correctif,
+// et la prod repartirait vulnérable en croyant le contraire. Tout ce qui n'est pas
+// PROUVÉ corrigé ressort donc en « à vérifier ».
+
+/**
+ * Lit les versions résolues par le lockfile pnpm (v9), sans dépendance YAML : la
+ * section `packages:` porte une clé `nom@version` par paquet. Retourne une Map
+ * nom → Set(versions), ou `null` si le fichier est illisible//vide — cas que
+ * l'appelant DOIT traiter comme un doute, pas comme « rien à signaler ».
+ * @returns {Map<string, Set<string>> | null}
+ */
+function lireVersionsSource(fichier = LOCKFILE) {
+  let texte;
+  try {
+    texte = readFileSync(fichier, 'utf8');
+  } catch (e) {
+    console.warn(`⚠️ lockfile « ${fichier} » illisible : ${e.message}`);
+    return null;
+  }
+  const versions = new Map();
+  let dansPackages = false;
+  for (const ligne of texte.split(/\r?\n/)) {
+    if (/^packages:\s*$/.test(ligne)) {
+      dansPackages = true;
+      continue;
+    }
+    if (!dansPackages) continue;
+    // Une ligne non indentée ferme la section (`snapshots:` suit `packages:`).
+    if (/^\S/.test(ligne)) break;
+    const m = /^ {2}'?((?:@[^/'\s]+\/)?[^@'\s]+)@([^:'()\s]+)'?:\s*$/.exec(
+      ligne,
+    );
+    if (!m) continue;
+    const [, nom, version] = m;
+    if (!versions.has(nom)) versions.set(nom, new Set());
+    versions.get(nom).add(version);
+  }
+  return versions.size ? versions : null;
+}
+
+/**
+ * Compare deux versions numériques segment par segment. Retourne -1, 0 ou 1 — et
+ * `null` dès qu'un segment n'est pas purement numérique (pré-release, epoch
+ * Debian, suffixe amont). On refuse alors de conclure : deviner ici, c'est
+ * fabriquer le faux vert que toute cette section existe pour empêcher.
+ */
+function comparerVersions(a, b) {
+  const sa = String(a).trim().split('.');
+  const sb = String(b).trim().split('.');
+  if (![...sa, ...sb].every((s) => /^\d+$/.test(s))) return null;
+  for (let i = 0; i < Math.max(sa.length, sb.length); i++) {
+    const x = Number(sa[i] ?? 0);
+    const y = Number(sb[i] ?? 0);
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+/**
+ * État d'UNE version du lockfile face à la liste de correctifs de l'advisory.
+ *
+ * Trivy liste un correctif PAR LIGNE MAJEURE (« 1.1.18, 2.1.4, 3.0.6, 5.0.9 ») :
+ * une version n'est corrigée que par le correctif de SA propre ligne. Une version
+ * dont la ligne majeure ne figure pas dans la liste est déclarée vulnérable si
+ * elle est SOUS la plus haute ligne corrigée (sa branche n'a pas reçu de correctif)
+ * et INDÉTERMINÉE si elle est au-dessus (majeure plus récente que l'advisory).
+ * @returns {'corrige'|'vulnerable'|'inconnu'}
+ */
+function etatDeLaVersion(version, correctifs) {
+  const majeure = (v) => String(v).trim().split('.')[0];
+  const memeLigne = correctifs.filter((f) => majeure(f) === majeure(version));
+  for (const f of memeLigne) {
+    const c = comparerVersions(version, f);
+    if (c === null) return 'inconnu';
+    if (c >= 0) return 'corrige';
+  }
+  if (memeLigne.length) return 'vulnerable'; // sa ligne a un correctif, elle est en deçà
+  const majeuresCorrigees = correctifs
+    .map((f) => Number(majeure(f)))
+    .filter((n) => Number.isFinite(n));
+  const m = Number(majeure(version));
+  if (!Number.isFinite(m) || !majeuresCorrigees.length) return 'inconnu';
+  return m < Math.max(...majeuresCorrigees) ? 'vulnerable' : 'inconnu';
+}
+
+/** Étiquettes affichées (rapport et e-mail). */
+const ETIQUETTES = {
+  corrige: '✅ déjà corrigé en source',
+  vulnerable: '🔴 encore présent en source',
+  inconnu: '❓ à vérifier',
+  'hors-arbre': '➖ hors arbre npm',
+};
+
+/**
+ * Verdict de la SOURCE pour un finding image : le correctif est-il déjà dans le
+ * dépôt ? « corrige » n'est prononcé que si TOUTES les versions du paquet
+ * présentes au lockfile sont prouvées corrigées — une seule douteuse suffit à
+ * faire basculer en « inconnu ».
+ * @returns {{etat: keyof typeof ETIQUETTES, texte: string}}
+ */
+function verdictSource(v, versionsSource) {
+  if (!versionsSource)
+    return { etat: 'inconnu', texte: 'lockfile source illisible' };
+  const presentes = [...(versionsSource.get(v.pkg) ?? [])].sort();
+  // Absent du lockfile : paquet OS (image de base Debian) ou binaire embarqué —
+  // la source npm n'a alors rien à en dire, et surtout pas « c'est corrigé ».
+  if (!presentes.length)
+    return {
+      etat: 'hors-arbre',
+      texte: 'absent du lockfile (paquet OS / image de base)',
+    };
+  const correctifs = String(v.fixed ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!correctifs.length)
+    return {
+      etat: 'inconnu',
+      texte: `source en ${presentes.join(', ')} — aucun correctif publié`,
+    };
+  const etats = presentes.map((p) => etatDeLaVersion(p, correctifs));
+  if (etats.includes('vulnerable')) {
+    const restantes = presentes.filter((_, i) => etats[i] === 'vulnerable');
+    return {
+      etat: 'vulnerable',
+      texte: `source ENCORE en ${restantes.join(', ')}`,
+    };
+  }
+  if (etats.includes('inconnu'))
+    return {
+      etat: 'inconnu',
+      texte: `source en ${presentes.join(', ')} — comparaison non concluante`,
+    };
+  return { etat: 'corrige', texte: `source en ${presentes.join(', ')}` };
+}
+
+/**
+ * Phrase de synthèse — la seule ligne du rapport qui dise quoi FAIRE. Elle ne
+ * conclut « un redéploiement suffit » que si AUCUN finding n'est ni encore
+ * présent ni douteux : un « à vérifier » pèse ici autant qu'un « vulnérable »,
+ * parce que la suite à donner (regarder) est la même.
+ * Les paquets hors arbre npm (OS de l'image de base) sont couverts par le
+ * redéploiement : le Dockerfile applique `apt-get upgrade` au stage runtime.
+ */
+function syntheseSource(compte) {
+  const aTraiter = compte.vulnerable + compte.inconnu;
+  if (aTraiter === 0) {
+    return (
+      `**Aucun correctif de code à écrire** — tous les findings sont déjà corrigés dans ` +
+      `la source (ou hors de l'arbre npm, donc couverts par la montée de l'image de base). ` +
+      `Un REDÉPLOIEMENT (rebuild → nx release → déploiement) remet la prod au niveau du dépôt.`
+    );
+  }
+  return (
+    `**${aTraiter} finding(s) à instruire en source** (${compte.vulnerable} encore ` +
+    `présent(s) au lockfile, ${compte.inconnu} à vérifier) — à traiter AVANT de republier ; ` +
+    `${compte.corrige + compte['hors-arbre']} autre(s) ne demandent qu'un redéploiement.`
+  );
+}
+
 /** Envoie l'e-mail via curl/SMTP (conf Phase 4). Retourne true si délivré. */
 function envoyerEmail(subject, body) {
   if (DRY_RUN) {
@@ -376,7 +565,63 @@ async function main() {
     });
   }
 
-  // 3) Rapport.
+  // Jeu d'essai des verdicts de source (SCAN_DRY_RUN=verdicts). Les quatre états,
+  // dont DEUX dérivés du lockfile réel plutôt qu'écrits en dur :
+  //   - brace-expansion / correctifs RÉELS de CVE-2026-69152 ⇒ attendu « corrigé »
+  //     TANT QUE les overrides pnpm de la PR #289 tiennent. Si quelqu'un les retire,
+  //     ce jeu d'essai bascule en « encore présent » et le job CI rougit : c'est un
+  //     RATCHET sur les overrides, pas seulement un test de la comparaison.
+  //   - même paquet, correctif hors d'atteinte ⇒ attendu « encore présent » : c'est
+  //     la SONDE NÉGATIVE, celle qui prouve que la comparaison mord encore.
+  if (JEU_ESSAI_VERDICTS) {
+    console.log(
+      '\n⚠️ SCAN_DRY_RUN=verdicts — jeu d’essai des verdicts de source.',
+    );
+    const cas = [
+      [
+        'CVE-2026-69152',
+        'brace-expansion',
+        '2.1.3',
+        '1.1.18, 2.1.4, 3.0.6, 5.0.9',
+      ],
+      ['CVE-ESSAI-VULN', 'brace-expansion', '2.1.3', '9999.0.0'],
+      ['CVE-ESSAI-OS', 'libgnutls30', '3.7.9-2', '3.7.9-2+deb12u7'],
+      ['CVE-ESSAI-SANSFIX', 'brace-expansion', '2.1.3', ''],
+    ];
+    totalHigh += cas.length;
+    rows.push(
+      `| \`(jeu d'essai)\` | 0 | ${cas.length} | 🧪 verdicts de source |`,
+    );
+    withFindings.push({
+      image: `${IMAGE_BASE}/api-gateway:${version} (JEU D'ESSAI VERDICTS)`,
+      vulns: cas.map(([id, pkg, installed, fixed]) => ({
+        id,
+        pkg,
+        installed,
+        fixed,
+        severity: 'HIGH',
+        title: 'Jeu d’essai — verdict de source',
+      })),
+    });
+  }
+
+  // 3) Verdict de source — écrire un correctif, ou seulement redéployer ?
+  const versionsSource = lireVersionsSource();
+  /** @type {Record<string, number>} */
+  const compteVerdicts = {
+    corrige: 0,
+    vulnerable: 0,
+    inconnu: 0,
+    'hors-arbre': 0,
+  };
+  for (const f of withFindings) {
+    for (const v of f.vulns) {
+      v.source = verdictSource(v, versionsSource);
+      compteVerdicts[v.source.etat]++;
+    }
+  }
+
+  // 4) Rapport.
   summary('| Service | CRITICAL | HIGH | État |');
   summary('| --- | ---: | ---: | --- |');
   for (const r of rows) summary(r);
@@ -389,15 +634,20 @@ async function main() {
     for (const { image, vulns } of withFindings) {
       summary(`**${image}**`);
       summary('');
-      summary('| CVE | Paquet | Installée → corrigée | Sévérité |');
-      summary('| --- | --- | --- | --- |');
+      summary(
+        '| CVE | Paquet | Installée → corrigée | Sévérité | Source du dépôt |',
+      );
+      summary('| --- | --- | --- | --- | --- |');
       for (const v of vulns) {
         summary(
-          `| ${v.id} | \`${v.pkg}\` | \`${v.installed}\` → \`${v.fixed || '—'}\` | ${v.severity} |`,
+          `| ${v.id} | \`${v.pkg}\` | \`${v.installed}\` → \`${v.fixed || '—'}\` | ${v.severity} | ` +
+            `${ETIQUETTES[v.source.etat]} (${v.source.texte}) |`,
         );
       }
       summary('');
     }
+    summary(`> ${syntheseSource(compteVerdicts)}`);
+    summary('');
   }
 
   // Erreurs de scan = veille cassée → run ROUGE (après avoir publié le résumé).
@@ -431,8 +681,14 @@ async function main() {
     `Total : ${totalCritical} CRITICAL, ${totalHigh} HIGH (corrigibles, hors .trivyignore).`,
     ``,
     `Ces CVE ont probablement été divulguées APRÈS le build de l'image (l'artefact`,
-    `immuable n'est plus rescané au build). Action : republier une version corrigée`,
-    `(rebuild → nx release → déploiement) ou allowlister sciemment dans .trivyignore.`,
+    `immuable n'est plus rescané au build).`,
+    ``,
+    `ACTION — ${syntheseSource(compteVerdicts).replace(/\*\*/g, '')}`,
+    ``,
+    `Le verdict « source » compare la version incriminée à ce que le lockfile du dépôt`,
+    `résout AUJOURD'HUI sur main. Il ne dit « déjà corrigé » que si c'est PROUVÉ ; tout`,
+    `doute ressort en « à vérifier ». Reste possible : allowlister sciemment dans`,
+    `.trivyignore, avec justification datée.`,
     ``,
   ];
   for (const { image, vulns } of withFindings) {
@@ -440,6 +696,9 @@ async function main() {
     for (const v of vulns) {
       bodyLines.push(
         `   - [${v.severity}] ${v.id}  ${v.pkg} ${v.installed} → ${v.fixed || '(pas de correctif)'}`,
+      );
+      bodyLines.push(
+        `     source du dépôt : ${ETIQUETTES[v.source.etat]} — ${v.source.texte}`,
       );
     }
     bodyLines.push('');

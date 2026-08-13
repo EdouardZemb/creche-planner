@@ -1282,3 +1282,95 @@ jobs:
             echec "l'aide réclame un PAT alors que la fonctionnalité est désactivée"
           fi
           echo "✅ Un 403 « désactivé » oriente vers l'activation, pas vers un PAT."
+
+  # AUTO-TEST de la VEILLE CVE (`image-rescan.mjs`), même patron que ci-dessus.
+  #
+  # CE QUE ÇA GARDE — le VERDICT DE SOURCE : pour chaque CVE trouvée sur une image en
+  # ligne, le rapport dit si le correctif est DÉJÀ dans le dépôt (⇒ redéployer suffit)
+  # ou s'il reste à écrire. Sans ce verdict, un même mail « HIGH corrigible » couvrait
+  # les deux cas : le 2026-08-13, CVE-2026-69152 (brace-expansion) a été réinstruite de
+  # zéro alors qu'elle était corrigée en source depuis 8 jours (overrides pnpm, PR #289).
+  #
+  # DEUX PROPRIÉTÉS, pas une. (1) La comparaison mord — cas au correctif hors d'atteinte,
+  # qui DOIT ressortir « encore présent » ; (2) c'est un RATCHET SUR LES OVERRIDES pnpm :
+  # l'attendu du 1er cas est DÉRIVÉ du lockfile réel, donc retirer les overrides
+  # brace-expansion fait rougir ce job. Sonde négative jouée à la main avant merge
+  # (lockfile forcé à 2.1.3 ⇒ le verdict bascule bien en « encore présent »).
+  #
+  # RÈGLE CARDINALE VERROUILLÉE ICI — un doute n'est JAMAIS lu comme « déjà corrigé »
+  # (symétrique du « un appel en échec n'est jamais aucune alerte » ci-dessus) : un faux
+  # « corrigé » ferait repartir la prod vulnérable en croyant l'inverse.
+  veille-cve-autotest:
+    name: Auto-test veille CVE
+    needs: config-changes
+    if: needs.config-changes.outputs.config == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Verdict de source — les quatre états, et le ratchet sur les overrides
+        env:
+          # Version explicite : sans elle le script interroge l'API Deployments. Le
+          # mot de passe est factice — `SCAN_DRY_RUN` n'envoie aucun e-mail, mais son
+          # absence ferait AVORTER le run avant les assertions (veille muette interdite).
+          SCAN_VERSION: 0.0.0-autotest
+          SCAN_DRY_RUN: verdicts
+          SMTP_PASSWORD: factice
+        run: |
+          set +e
+          set -uo pipefail
+          SORTIE=$(node .github/workflows/scripts/image-rescan.mjs)
+          CODE=$?
+
+          echec() { echo "::error::$1"; echo "--- sortie obtenue ---"; echo "$SORTIE"; exit 1; }
+
+          # 0) Des findings ne cassent JAMAIS la veille (divergence assumée avec
+          #    veille-alertes.yml) : le jeu d'essai en porte 4, la sortie reste 0.
+          [ "$CODE" -eq 0 ] || echec "un finding ne doit pas faire échouer la veille, obtenu $CODE"
+
+          # 1) RATCHET — attendu dérivé du lockfile : brace-expansion est corrigée en
+          #    source (overrides ^1.1.18/^2.1.4/^5.0.9). Un rouge ici = overrides retirés.
+          echo "$SORTIE" | grep -qF 'CVE-2026-69152' \
+            || echec "le cas dérivé du lockfile a disparu du jeu d'essai"
+          echo "$SORTIE" | grep 'CVE-2026-69152' | grep -qF 'déjà corrigé en source' \
+            || echec "brace-expansion n'est plus corrigée en source — les overrides pnpm ont-ils sauté ?"
+
+          # 2) SONDE NÉGATIVE — correctif hors d'atteinte : la comparaison doit mordre.
+          #    Sans elle, un verdict qui dirait « corrigé » à tout le monde passerait vert.
+          echo "$SORTIE" | grep 'CVE-ESSAI-VULN' | grep -qF 'encore présent en source' \
+            || echec "un correctif hors d'atteinte doit ressortir « encore présent »"
+
+          # 3) Paquet OS (absent du lockfile npm) : ne jamais prétendre en juger.
+          echo "$SORTIE" | grep 'CVE-ESSAI-OS' | grep -qF 'hors arbre npm' \
+            || echec "un paquet OS doit être dit hors arbre npm, pas jugé"
+
+          # 4) Advisory sans correctif publié : doute, donc « à vérifier ».
+          echo "$SORTIE" | grep 'CVE-ESSAI-SANSFIX' | grep -qF 'à vérifier' \
+            || echec "une CVE sans correctif publié doit rester « à vérifier »"
+
+          echo "✅ Verdicts de source conformes, et le ratchet sur les overrides tient."
+
+      - name: Un lockfile illisible ne vaut JAMAIS « déjà corrigé »
+        run: |
+          # Symétrique du POINT MORT de la veille alertes : la cécité doit se voir.
+          # Si un lockfile introuvable rendait « corrigé », toute CVE serait classée
+          # « redéployer suffit » le jour où le fichier bouge de place.
+          set +e
+          set -uo pipefail
+          SORTIE=$(SCAN_VERSION=0.0.0-autotest SCAN_DRY_RUN=verdicts SMTP_PASSWORD=factice \
+            SCAN_LOCKFILE=/inexistant/pnpm-lock.yaml \
+            node .github/workflows/scripts/image-rescan.mjs)
+
+          echec() { echo "::error::$1"; echo "--- sortie obtenue ---"; echo "$SORTIE"; exit 1; }
+
+          if echo "$SORTIE" | grep -qF 'déjà corrigé en source'; then
+            echec "lockfile illisible lu comme « déjà corrigé » — le faux vert est de retour"
+          fi
+          echo "$SORTIE" | grep -qF 'lockfile source illisible' \
+            || echec "la cécité doit être NOMMÉE dans le rapport"
+          echo "✅ Un lockfile illisible reste un doute."
