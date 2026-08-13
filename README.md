@@ -41,17 +41,18 @@ métier tarifaire pur (100 % couvert, CT-01..20), les 5 services, API Gateway/BF
 découplage micro-services, accessibilité **WCAG AA**. S'y ajoutent les chantiers
 livrés en continu :
 
-| Chantier                                    | Livré                                                                                                                                                                                                                                     |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Notifications & validation hebdomadaire     | récap e-mail du mardi (rejoué jusqu'à la semaine cible), édition des besoins depuis le mail, in-app, parcours « valider ma semaine »                                                                                                      |
-| Parents du foyer                            | identité Cloudflare Access, isolation par foyer **active en prod**                                                                                                                                                                        |
-| Établissements en entité libre              | l'annuaire des établissements est saisi par le foyer, l'ancien modèle figé est démantelé                                                                                                                                                  |
-| Cycle de vie du foyer                       | création / modification / clôture, gardes `@FoyerScope` et `@CreationFoyerUnique`                                                                                                                                                         |
-| Tableau de bord « ma journée »              | vue du jour par enfant, absence crèche signalée en deux gestes                                                                                                                                                                            |
-| Profil parent & préférences de notification | préférences type × canal, désabonnement RGPD (`List-Unsubscribe`)                                                                                                                                                                         |
-| Contrats & besoins, qualité des coûts       | contrat rattaché à l'enfant par référence, écrans de coûts consolidés mensuel/annuel                                                                                                                                                      |
-| Versionnement à date d'effet (SFD 30)       | avenants de contrat, historique et correction rétroactive, grilles/barème projetés, écran **Tarifs**                                                                                                                                      |
-| Consolidation UI & qualité                  | risques prod (sauvegardes hors-site chiffrées, heartbeat externe, alerte migrations, durcissement conteneurs), outillage de session, découpage des gros composants web, **frontières d'erreur React + remontée des plantages navigateur** |
+| Chantier                                    | Livré                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Notifications & validation hebdomadaire     | récap e-mail du mardi (rejoué jusqu'à la semaine cible), édition des besoins depuis le mail, in-app, parcours « valider ma semaine »                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Parents du foyer                            | identité Cloudflare Access, isolation par foyer **active en prod**                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Établissements en entité libre              | l'annuaire des établissements est saisi par le foyer, l'ancien modèle figé est démantelé                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Cycle de vie du foyer                       | création / modification / clôture, gardes `@FoyerScope` et `@CreationFoyerUnique`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Tableau de bord « ma journée »              | vue du jour par enfant, absence crèche signalée en deux gestes                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Profil parent & préférences de notification | préférences type × canal, désabonnement RGPD (`List-Unsubscribe`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Contrats & besoins, qualité des coûts       | contrat rattaché à l'enfant par référence, écrans de coûts consolidés mensuel/annuel                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Versionnement à date d'effet (SFD 30)       | avenants de contrat, historique et correction rétroactive, grilles/barème projetés, écran **Tarifs**                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Consolidation UI & qualité                  | risques prod (sauvegardes hors-site chiffrées, heartbeat externe, alerte migrations, durcissement conteneurs), outillage de session, découpage des gros composants web, **frontières d'erreur React + remontée des plantages navigateur**                                                                                                                                                                                                                                                                                            |
+| Standards industriels & RGPD (lots 0 → 5)   | droits des personnes outillés de bout en bout — **registre des traitements** ([doc 37](docs/37-registre-des-traitements.md)) et page publique `/mentions`, **effacement du foyer** propagé aux read models par événement, **bornes de rétention** avec purge périodique, **export de portabilité** agrégé sur trois services ; format d'erreur unique **`application/problem+json`** (RFC 9457) ; **validation d'environnement au démarrage** (un service refuse de démarrer sur une configuration invalide, en nommant la variable) |
 
 L'état d'avancement détaillé (**source de vérité**) vit en
 [doc 06](docs/06-etat-davancement.md) ; le plan initial en
@@ -66,18 +67,20 @@ Toute la conception vit dans [`docs/`](docs/) et **précède** le code.
 besoin) ; pour contribuer : [CONTRIBUTING.md](CONTRIBUTING.md) +
 [CONVENTIONS.md](CONVENTIONS.md). Les incontournables :
 
-| Doc                                                                                                          | Contenu                                                                                                                                                                   |
-| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [01 — Spécification fonctionnelle](docs/01-spec-fonctionnelle.md)                                            | Périmètre, acteurs, user stories, règles métier, critères d'acceptation                                                                                                   |
-| [02 — Modèle de coût (PSU/CNAF)](docs/02-modele-de-cout.md)                                                  | Formules, glossaire, invariants, jeu de cas de test chiffrés                                                                                                              |
-| [03 — Standards de développement](docs/03-standards-developpement.md)                                        | Clean code, SOLID, hexagonal, conventions, tests, Git, CI                                                                                                                 |
-| [04 — Architecture & technologies](docs/04-architecture-et-technos.md)                                       | Comparatif techno, choix justifiés, découpage en **microservices**                                                                                                        |
-| [05 — Plan de développement](docs/05-plan-de-developpement.md)                                               | Phases, jalons, lotissement, definition of done                                                                                                                           |
-| [06 — État d'avancement & reprise](docs/06-etat-davancement.md)                                              | **Source de vérité de l'avancement** : phases livrées, features, arborescence, commandes, conventions, guide de reprise                                                   |
-| [20 — Plan de test](docs/20-plan-de-test.md) · [21 — Politique de test](docs/21-politique-strategie-test.md) | Niveaux de test, couverture attendue, gestion des anomalies                                                                                                               |
-| [24 — Déploiement & exploitation](docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md)                   | Production : portes de déploiement, topologie pull-based, runbooks (dossier [`docs/exploitation/`](docs/exploitation/))                                                   |
-| [30 — Versionnement à date d'effet](docs/30-sfd-versionnement-dates-effet.md)                                | Avenants, grilles/barèmes versionnés, passé immuable — socle des SFD 31 → 33 (à l'étude)                                                                                  |
-| [ADR](docs/adr/)                                                                                             | 0001 → 0006 : microservices · grain des services & politiques tarifaires · toolchain · décentralisation des contrats · registre de contrats · préférences de notification |
+| Doc                                                                                                          | Contenu                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [01 — Spécification fonctionnelle](docs/01-spec-fonctionnelle.md)                                            | Périmètre, acteurs, user stories, règles métier, critères d'acceptation                                                                                                                                                           |
+| [02 — Modèle de coût (PSU/CNAF)](docs/02-modele-de-cout.md)                                                  | Formules, glossaire, invariants, jeu de cas de test chiffrés                                                                                                                                                                      |
+| [03 — Standards de développement](docs/03-standards-developpement.md)                                        | Clean code, SOLID, hexagonal, conventions, tests, Git, CI                                                                                                                                                                         |
+| [04 — Architecture & technologies](docs/04-architecture-et-technos.md)                                       | Comparatif techno, choix justifiés, découpage en **microservices**                                                                                                                                                                |
+| [05 — Plan de développement](docs/05-plan-de-developpement.md)                                               | Phases, jalons, lotissement, definition of done                                                                                                                                                                                   |
+| [06 — État d'avancement & reprise](docs/06-etat-davancement.md)                                              | **Source de vérité de l'avancement** : phases livrées, features, arborescence, commandes, conventions, guide de reprise                                                                                                           |
+| [20 — Plan de test](docs/20-plan-de-test.md) · [21 — Politique de test](docs/21-politique-strategie-test.md) | Niveaux de test, couverture attendue, gestion des anomalies                                                                                                                                                                       |
+| [24 — Déploiement & exploitation](docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md)                   | Production : portes de déploiement, topologie pull-based, runbooks (dossier [`docs/exploitation/`](docs/exploitation/))                                                                                                           |
+| [30 — Versionnement à date d'effet](docs/30-sfd-versionnement-dates-effet.md)                                | Avenants, grilles/barèmes versionnés, passé immuable — socle des SFD 31 → 33 (à l'étude)                                                                                                                                          |
+| [34 — Registre d'améliorations](docs/34-registre-ameliorations.md)                                           | **Boucle d'amélioration** : pistes `AM`, leçons `LE`, motifs `MO`, empêchements `EM` — plus l'**inventaire des portes**, avec ce que chacune ne couvre pas et sa sonde négative                                                   |
+| [37 — Registre des traitements](docs/37-registre-des-traitements.md)                                         | **RGPD** : traitements, tiers, durées de conservation et classement des tables (exporté / copie / technique) — adossé à [ADR-0007](docs/adr/0007-exemption-domestique-et-demarche-volontaire.md)                                  |
+| [ADR](docs/adr/)                                                                                             | 0001 → 0007 : microservices · grain des services & politiques tarifaires · toolchain · décentralisation des contrats · registre de contrats · préférences de notification · **exemption domestique & démarche volontaire** (RGPD) |
 
 ## Architecture (résumé)
 
@@ -93,9 +96,9 @@ Calcul multi-modes via stratégies `PolitiqueTarifaire`. Détails en docs 04 + A
 
 ```
 apps/
-  web/                # front React 19 + Vite 8 (PWA, port 4200) — accueil, dashboard « ma journée », planning, contrats, coûts, établissements, tarifs, profil, notifications in-app ; ne parle qu'au BFF ; E2E Playwright (mocké + stack réelle) + non-régression visuelle
-  api-gateway/        # BFF NestJS (port 3000) — agrégation /api/v1 orientée écran via clients REST résilients (foyers, contrats, couts, etablissements, notifications, moi, desabonnement, erreurs-client), auth/CORS/rate-limit, OpenAPI ; pacts consumer + E2E API
-  svc-foyer/          # foyer, enfants, parents, préférences de notification, seuils de tranche versionnés (port 3002, base 5434) — Postgres (Drizzle), outbox + NATS, API /api/foyers
+  web/                # front React 19 + Vite 8 (PWA, port 4200) — accueil, dashboard « ma journée », planning, contrats, coûts, établissements, tarifs, profil, notifications in-app, page publique `/mentions` ; ne parle qu'au BFF ; E2E Playwright (mocké + stack réelle) + non-régression visuelle
+  api-gateway/        # BFF NestJS (port 3000) — agrégation /api/v1 orientée écran via clients REST résilients (foyers, contrats, couts, etablissements, notifications, moi, desabonnement, erreurs-client), auth/CORS/rate-limit, OpenAPI, **erreurs `application/problem+json` (RFC 9457)** traduites au bord ; pacts consumer + E2E API
+  svc-foyer/          # foyer, enfants, parents, préférences de notification, seuils de tranche versionnés (port 3002, base 5434) — Postgres (Drizzle), outbox + NATS, API /api/foyers ; effacement du foyer (cascade + événement d’intégration) et export de portabilité
   svc-referentiel/    # catalogue tarifaire versionné (port 3001, base 5433) — grilles/barèmes, publication de grille, outbox, API /api/grilles
   svc-planification/  # planning multi-modes réel/simulé, contrats versionnés + avenants, établissements (port 3004, base 5435) — outbox + NATS, API /api/contrats, /api/prestations & /api/etablissements
   svc-tarification/   # read model + calcul du coût (port 3005, base 5436) — consommateurs idempotents, projection des grilles et du barème, fallback REST résilient, API /api/couts & /api/couts/annuel
@@ -103,7 +106,7 @@ apps/
 libs/
   shared-kernel/      # value objects purs : Money, Duree, Tranche, DomainError + socle d'entité versionnée (PeriodeValidite, sélection de version) — 100% testé
   contracts/          # contrats décentralisés PAR CONTEXTE (ADR-0004) : kernel/ (enveloppe événement, OpenAPI gateway), foyer/, referentiel/, planification/, notifications/ — DTO Zod + événements + AsyncAPI
-  nest-commons/       # briques NestJS partagées entre services (bootstrap, base, santé, mailer, messaging, outbox, sécurité)
+  nest-commons/       # briques NestJS partagées entre services (bootstrap, base, santé, mailer, messaging, outbox, sécurité, configuration d’environnement validée, purge des rétentions)
   resilience/         # timeout / retry / circuit-breaker réutilisables (clients REST)
   observability/      # bootstrap OpenTelemetry + options pino corrélées
   shared/
@@ -117,7 +120,7 @@ libs/
   planification/
     domain/           # génération prestations du mois, planning réel/simulé, état jour de garde (TS pur, 100% testé)
 pacts/                # contrats Pact versionnés : api-gateway → svc-foyer / svc-referentiel / svc-planification / svc-tarification / svc-notifications
-scripts/              # deploy.mjs (seule voie de livraison), pollers de release/staging, sauvegardes + restauration, seed-demo.mjs, e2e-stack.mjs, preflight.mjs, verifier-frontieres.mjs, verifier-pieges-doc.mjs, comparer-empreinte.mjs, services.json (source unique de la topologie)
+scripts/              # deploy.mjs (seule voie de livraison), pollers de release/staging, sauvegardes + restauration, seed-demo.mjs, e2e-stack.mjs, preflight.mjs, les vérificateurs des portes (frontieres, pieges, liens, faits, statuts, tracabilite, registre, retentions, portabilite, problemes, environnement, empechements), comparer-empreinte.mjs, services.json (source unique de la topologie)
 docker/               # configs otel-collector, tempo, prometheus, alertmanager, grafana, loki, promtail
 docker-compose.yml    # 27 services : 7 apps + Postgres (×5) + NATS + observabilité (OTel/Tempo/Prometheus/Alertmanager/Grafana/Loki/Promtail) + 7 exporters
                       # les ports ne sont publiés QUE par docker-compose.override.yml (dev/CI) ; la prod n'expose que Caddy
@@ -147,6 +150,8 @@ corepack pnpm check          # = nx run-many -t lint typecheck test build
 # Portes rapides, aussi jouées par le job `ci`
 corepack pnpm frontieres     # frontières Nx & vocabulaire partagé
 corepack pnpm pieges         # pièges morts recopiés dans un plan ou une doc
+corepack pnpm registre       # registre d'améliorations : formes, preuves, compteurs
+corepack pnpm environnement  # inventaire des variables d'environnement lues
 
 # Front web en dev (Vite, HMR) — proxifie /api vers la gateway :3000
 corepack pnpm nx serve web   # http://localhost:4200
@@ -221,13 +226,25 @@ régression silencieuse :
 - **warnings ESLint** figés dans `lint-baseline.json` (aucun ajout accepté) ;
 - **documentation** : `pnpm liens` (liens internes et ancres), `pnpm faits` (les
   valeurs citées confrontées à leur source), `pnpm statuts` (statut daté de
-  chaque document) et `pnpm tracabilite` (exigences `CT`/`UT` ↔ tests, dans les
-  deux sens), cf. [doc 35](docs/35-politique-documentation.md) ;
+  chaque document), `pnpm tracabilite` (exigences `CT`/`UT` ↔ tests, dans les
+  deux sens) et `pnpm registre` (forme, preuves et compteurs de
+  [doc 34](docs/34-registre-ameliorations.md)), cf.
+  [doc 35](docs/35-politique-documentation.md) ;
+- **portes de conception** — chacune confronte un écrit à son code, avec un
+  attendu **dérivé** de la source plutôt que recopié : `pnpm retentions` (une
+  durée de conservation déclarée nomme sa colonne, et cette colonne existe),
+  `pnpm portabilite` (toute table est classée, et une table dite exportée est
+  réellement lue), `pnpm problemes` (le registre des codes d'erreur métier),
+  `pnpm environnement` (aucune lecture de `process.env` hors configuration,
+  aucun réglage de compose inerte) et `pnpm empechements` ;
 - **dérive de contrats** : `pact-drift`, `pact-can-i-deploy`, types OpenAPI du
   front régénérés et comparés à l'octet ;
 - **E2E** web mocké, smoke stack et E2E stack réelle sur les images affectées ;
-- **sécurité** : Trivy (image + fs), CodeQL, Semgrep, scan de secrets, plus une
-  veille hebdomadaire des alertes ouvertes ;
+- **sécurité** : Trivy (image + fs), CodeQL, Semgrep, scan de secrets, plus deux
+  veilles **quotidiennes** — les alertes ouvertes (CodeQL/Dependabot), et un
+  **re-scan CVE des images déjà déployées** qui dit, pour chaque vulnérabilité,
+  si le correctif est **déjà en source** (un redéploiement suffit) ou reste à
+  écrire ;
 - **hors CI bloquante** : mutation testing Stryker sur les libs domaine
   (hebdomadaire, seuil 80 %) et métriques DORA depuis l'historique des
   déploiements.
