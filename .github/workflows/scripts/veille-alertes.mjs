@@ -30,6 +30,30 @@
  * alerte »**. Un `catch` qui renvoie une liste vide transformerait un point mort en
  * feu vert — c'est précisément le bug qu'on refuse d'écrire ici.
  *
+ * ── PÉRIMÈTRE BLOQUANT : CE QUI EST EMBARQUÉ (AM-75) ────────────────────────
+ * Le seuil ne mord que sur les paquets **réellement livrés**. Le job `security`
+ * de ci.yml tient déjà cet étage — bloquant sur les dépendances de production,
+ * informatif sur l'arbre complet — et la veille ne l'avait pas : l'activation des
+ * alertes Dependabot (2026-08-13) a fait apparaître 4 `high` qui sont TOUTES de
+ * l'outillage de test, et qui suffisaient à rendre ce workflow rouge en
+ * permanence. Une veille toujours rouge n'est plus lue.
+ *
+ * Le périmètre est **DÉRIVÉ du lockfile**, jamais recopié : clôture des
+ * `dependencies` (pas `devDependencies`) des importateurs `apps/*`, en suivant
+ * les liens `workspace:` vers les libs — c'est exactement l'arbre que
+ * `pnpm install --prod` pose dans les images (cf. Dockerfile, stage `deps`).
+ *
+ * ⚠️ Le champ `scope` de Dependabot ne peut PAS servir d'arbitre : il annonce
+ * `axios` en `runtime` parce qu'elle est en `dependencies` de son parent — or ce
+ * parent est `@pact-foundation/pact`, une devDependency. Trivy, qui raisonne sur
+ * le lockfile, a raison contre lui ; on raisonne donc comme Trivy.
+ *
+ * RÈGLE CARDINALE, dans le même esprit que le reste du fichier : **un doute
+ * compte comme EMBARQUÉ**. Lockfile illisible, ou clôture invraisemblablement
+ * petite (parseur cassé par un changement de format), et toutes les alertes
+ * redeviennent bloquantes — le rapport le dit alors explicitement. L'erreur qu'on
+ * refuse d'écrire ici est celle qui rendrait le seuil silencieusement permissif.
+ *
  * ── DIVERGENCE ASSUMÉE avec image-scan.yml ──────────────────────────────────
  * La veille CVE des images est NON BLOQUANTE (findings ⇒ run vert + e-mail ; seul
  * un échec opérationnel passe au rouge). Ici c'est l'inverse pour les findings :
@@ -59,12 +83,15 @@
  *   GITHUB_REPOSITORY    défaut EdouardZemb/creche-planner
  *   ALERTES_SEUIL        sévérités qui font rougir (défaut `critical,high`)
  *   ALERTES_DRY_RUN      jeu d'essai synthétique, aucun appel réseau : `1` (charge
- *                        hostile, chemin ALERTES) ou `dependabot-desactive`
- *                        (403 « alerts are disabled », chemin POINT MORT)
+ *                        hostile, chemin ALERTES), `dependabot-desactive`
+ *                        (403 « alerts are disabled », chemin POINT MORT),
+ *                        `perimetre` (une alerte embarquée + une d'outillage) ou
+ *                        `perimetre-outillage` (outillage SEUL ⇒ doit sortir VERT)
+ *   ALERTES_LOCKFILE     lockfile de référence du périmètre (défaut pnpm-lock.yaml)
  *   GITHUB_STEP_SUMMARY  fichier de résumé (posé par Actions)
  */
 
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 
 const REPO = process.env.GITHUB_REPOSITORY ?? 'EdouardZemb/creche-planner';
 const TOKEN = process.env.ALERTS_TOKEN || process.env.GITHUB_TOKEN || '';
@@ -73,7 +100,20 @@ const TOKEN = process.env.ALERTS_TOKEN || process.env.GITHUB_TOKEN || '';
 // l'aide affichée pointe vers Settings et NON vers un PAT à fabriquer.
 const CAS_DEPENDABOT_DESACTIVE =
   process.env.ALERTES_DRY_RUN === 'dependabot-desactive';
-const DRY_RUN = process.env.ALERTES_DRY_RUN === '1' || CAS_DEPENDABOT_DESACTIVE;
+// Jeux d'essai du périmètre (AM-75). `perimetre` mélange une alerte embarquée et
+// une d'outillage ; `perimetre-outillage` ne porte QUE l'outillage et doit sortir
+// VERT — c'est la sonde qui prouve que la distinction change bien le verdict.
+const CAS_PERIMETRE = process.env.ALERTES_DRY_RUN === 'perimetre';
+const CAS_PERIMETRE_OUTILLAGE =
+  process.env.ALERTES_DRY_RUN === 'perimetre-outillage';
+const DRY_RUN =
+  process.env.ALERTES_DRY_RUN === '1' ||
+  CAS_DEPENDABOT_DESACTIVE ||
+  CAS_PERIMETRE ||
+  CAS_PERIMETRE_OUTILLAGE;
+const LOCKFILE = process.env.ALERTES_LOCKFILE || 'pnpm-lock.yaml';
+/** Le PAT est-il posé ? Sert à nommer la cause d'un 403, pas à la deviner. */
+const PAT_POSE = Boolean(process.env.ALERTS_TOKEN);
 // `||` et NON `??` : sur cron, `github.event.inputs.seuil` vaut la chaîne VIDE
 // (pas `undefined`). Avec `??` le seuil serait `[]`, donc plus aucune alerte
 // « au-dessus du seuil » — un FAUX VERT, précisément ce que ce script combat.
@@ -147,6 +187,146 @@ async function lireAlertes(chemin) {
     statut: 'pagination',
     detail: `plus de ${PAGES_MAX * PAR_PAGE} alertes ouvertes sur ${chemin} — décompte tronqué, à regarder à la main`,
   };
+}
+
+// --- Périmètre embarqué (AM-75) ---------------------------------------------
+
+/**
+ * Nombre de paquets sous lequel on refuse de croire la clôture. L'arbre de
+ * production de six services NestJS en compte plusieurs centaines : un total
+ * ridicule signale un parseur cassé (format de lockfile changé), pas un projet
+ * sobre. On préfère alors rendre le seuil TROP strict que silencieusement laxiste.
+ */
+const CLOTURE_MINIMALE = 50;
+
+/** Retire les quotes simples d'une clé YAML. @param {string} s */
+const denuder = (s) => s.replace(/^'(.*)'$/, '$1');
+
+/**
+ * Calcule l'ensemble des NOMS de paquets réellement embarqués dans les images,
+ * en lisant `pnpm-lock.yaml` (v9) sans dépendance YAML.
+ *
+ * Départ : les importateurs `apps/*` — ce sont les projets qui produisent une
+ * image. On ne suit que leurs `dependencies` (les `devDependencies` ne sont pas
+ * installées par le `pnpm install --prod` du Dockerfile), et on traverse les
+ * liens `workspace:` (`link:../../libs/…`) pour atteindre les dépendances des
+ * libs, elles aussi filtrées sur leur bloc de production.
+ *
+ * Comparaison par NOM, pas par version : deux versions d'un même paquet peuvent
+ * coexister entre l'arbre de dev et celui de prod, et le doute doit compter comme
+ * embarqué. C'est volontairement le sens strict.
+ *
+ * @returns {Set<string> | null} `null` = périmètre inconnu (l'appelant DOIT alors
+ *   tout traiter comme embarqué).
+ */
+function arbreEmbarque(fichier = LOCKFILE) {
+  let texte;
+  try {
+    texte = readFileSync(fichier, 'utf8');
+  } catch {
+    return null;
+  }
+
+  /** @type {Map<string, Map<string, string>>} importateur → (paquet → version|link:) */
+  const importateurs = new Map();
+  /** @type {Map<string, {nom: string, cle: string}[]>} clé de snapshot → deps */
+  const snapshots = new Map();
+
+  let section = '';
+  let importateur = '';
+  let cle = '';
+  let bloc = '';
+  let paquet = '';
+
+  for (const ligne of texte.split(/\r?\n/)) {
+    if (/^[a-zA-Z]/.test(ligne)) {
+      section = ligne.replace(/:.*$/, '');
+      importateur = cle = bloc = paquet = '';
+      continue;
+    }
+    let m;
+    if (section === 'importers') {
+      if ((m = /^ {2}(\S.*?):\s*$/.exec(ligne))) {
+        importateur = denuder(m[1]);
+        bloc = paquet = '';
+        importateurs.set(importateur, new Map());
+      } else if ((m = /^ {4}([A-Za-z]+):\s*$/.exec(ligne))) {
+        bloc = m[1];
+        paquet = '';
+      } else if (
+        bloc === 'dependencies' &&
+        (m = /^ {6}(\S.*?):\s*$/.exec(ligne))
+      ) {
+        paquet = denuder(m[1]);
+      } else if (
+        bloc === 'dependencies' &&
+        paquet &&
+        importateur &&
+        (m = /^ {8}version:\s*(.+?)\s*$/.exec(ligne))
+      ) {
+        importateurs.get(importateur)?.set(paquet, denuder(m[1]));
+      }
+      continue;
+    }
+    if (section === 'snapshots') {
+      if ((m = /^ {2}(\S.*?):(?:\s*\{\})?\s*$/.exec(ligne))) {
+        cle = denuder(m[1]);
+        bloc = '';
+        snapshots.set(cle, []);
+      } else if ((m = /^ {4}([A-Za-z]+):\s*$/.exec(ligne))) {
+        bloc = m[1];
+      } else if (
+        (bloc === 'dependencies' || bloc === 'optionalDependencies') &&
+        cle &&
+        (m = /^ {6}(\S.*?):\s*(\S.*?)\s*$/.exec(ligne))
+      ) {
+        const nom = denuder(m[1]);
+        snapshots.get(cle)?.push({ nom, cle: `${nom}@${denuder(m[2])}` });
+      }
+    }
+  }
+
+  /** Résout `link:../../libs/x` depuis l'importateur `depuis`. */
+  const resoudreLien = (depuis, cible) => {
+    const segments = depuis === '.' ? [] : depuis.split('/');
+    for (const seg of cible.slice('link:'.length).split('/')) {
+      if (seg === '..') segments.pop();
+      else if (seg && seg !== '.') segments.push(seg);
+    }
+    return segments.join('/');
+  };
+
+  const noms = new Set();
+  const vusImportateurs = new Set();
+  const vusSnapshots = new Set();
+
+  const visiterSnapshot = (clef) => {
+    if (vusSnapshots.has(clef)) return;
+    vusSnapshots.add(clef);
+    for (const dep of snapshots.get(clef) ?? []) {
+      noms.add(dep.nom);
+      visiterSnapshot(dep.cle);
+    }
+  };
+
+  const visiterImportateur = (chemin) => {
+    if (vusImportateurs.has(chemin)) return;
+    vusImportateurs.add(chemin);
+    for (const [nom, version] of importateurs.get(chemin) ?? []) {
+      if (version.startsWith('link:')) {
+        visiterImportateur(resoudreLien(chemin, version));
+        continue;
+      }
+      noms.add(nom);
+      visiterSnapshot(`${nom}@${version}`);
+    }
+  };
+
+  for (const chemin of importateurs.keys()) {
+    if (chemin.startsWith('apps/')) visiterImportateur(chemin);
+  }
+
+  return noms.size >= CLOTURE_MINIMALE ? noms : null;
 }
 
 /**
@@ -236,15 +416,19 @@ function refAlerte(numero, url) {
  * @param {any[]} alertes
  * @param {(a: any) => string} severite
  */
-function compter(alertes, severite) {
+function compter(alertes, severite, dansLePerimetre = () => true) {
   /** @type {Record<string, number>} */
   const parSeverite = {};
   for (const alerte of alertes) {
     const niveau = severite(alerte);
     parSeverite[niveau] = (parSeverite[niveau] ?? 0) + 1;
   }
-  const bloquantes = alertes.filter((a) => SEUIL.includes(severite(a)));
-  return { parSeverite, bloquantes };
+  const auSeuil = alertes.filter((a) => SEUIL.includes(severite(a)));
+  // Au-dessus du seuil, on sépare ce qui est LIVRÉ de ce qui ne l'est pas. Les
+  // secondes ne disparaissent pas : elles sont listées, elles ne bloquent pas.
+  const bloquantes = auSeuil.filter((a) => dansLePerimetre(a));
+  const horsPerimetre = auSeuil.filter((a) => !dansLePerimetre(a));
+  return { parSeverite, bloquantes, horsPerimetre };
 }
 
 /**
@@ -259,19 +443,65 @@ function compter(alertes, severite) {
  * Ce jeu contient une alerte `high` : `ALERTES_DRY_RUN=1` sort donc en `exit=1`
  * (chemin ALERTES), c'est normal — il exerce le cas « findings » de bout en bout.
  *
+ * ⚠️ Le paquet de ce jeu hostile est `pino` — un paquet RÉELLEMENT embarqué. Ce
+ * n'est pas cosmétique : depuis AM-75 le seuil ne mord que sur le périmètre livré,
+ * et un nom fictif rendrait ce jeu non bloquant, donc `exit=0` — il cesserait
+ * silencieusement de tester le chemin ALERTES. La charge d'injection, elle, reste
+ * dans `summary` et `html_url`, qui sont les valeurs qu'`assainir()` doit couvrir.
+ *
  * `ALERTES_DRY_RUN=dependabot-desactive` substitue à la source Dependabot le 403
  * « alerts are disabled » réellement observé le 2026-08-05 : sortie en `exit=1`
  * elle aussi (chemin POINT MORT), mais elle vérifie que l'aide affichée envoie
  * vers Settings → Code security et pas vers un `ALERTS_TOKEN` sans effet.
+ *
+ * `ALERTES_DRY_RUN=perimetre` / `perimetre-outillage` exercent AM-75, avec des
+ * attendus **dérivés du lockfile réel** : `pino` est une dépendance de production,
+ * `@pact-foundation/pact` un outil de test. Le second jeu ne porte QUE l'outillage
+ * et doit sortir **VERT** — c'est la sonde qui prouve que la distinction change
+ * réellement le verdict, et pas seulement l'affichage.
  */
+/** Alerte Dependabot synthétique, réduite à ce que la classification regarde. */
+const alerteEssai = (numero, paquet, resume) => ({
+  number: numero,
+  html_url: `https://github.com/${REPO}/security/dependabot/${numero}`,
+  dependency: { package: { name: paquet } },
+  security_advisory: { severity: 'high', summary: resume },
+});
+
 function jeuDEssai() {
+  const codeScanning = {
+    ok: /** @type {const} */ (true),
+    alertes: [
+      { rule: { security_severity_level: null, id: 'js/unused-local' } },
+    ],
+  };
+
+  if (CAS_PERIMETRE || CAS_PERIMETRE_OUTILLAGE) {
+    const outillage = alerteEssai(
+      31,
+      '@pact-foundation/pact',
+      'Outil de test — jamais installé par le pnpm install --prod des images',
+    );
+    return {
+      codeScanning,
+      dependabot: {
+        ok: /** @type {const} */ (true),
+        alertes: CAS_PERIMETRE_OUTILLAGE
+          ? [outillage]
+          : [
+              alerteEssai(
+                30,
+                'pino',
+                'Dépendance de production réelle — doit bloquer',
+              ),
+              outillage,
+            ],
+      },
+    };
+  }
+
   return {
-    codeScanning: {
-      ok: /** @type {const} */ (true),
-      alertes: [
-        { rule: { security_severity_level: null, id: 'js/unused-local' } },
-      ],
-    },
+    codeScanning,
     dependabot: CAS_DEPENDABOT_DESACTIVE
       ? {
           ok: /** @type {const} */ (false),
@@ -285,7 +515,9 @@ function jeuDEssai() {
             {
               number: 7,
               html_url: 'https://exemple-malveillant.test/hameçonnage',
-              dependency: { package: { name: 'paquet-piege' } },
+              // Paquet RÉELLEMENT embarqué : sans cela le jeu cesserait de
+              // bloquer et ne testerait plus le chemin ALERTES (cf. en-tête).
+              dependency: { package: { name: 'pino' } },
               security_advisory: {
                 severity: 'high',
                 summary:
@@ -314,9 +546,38 @@ const sources = DRY_RUN
 dire(`# Veille alertes de sécurité — ${REPO}`);
 dire('');
 dire(
-  `Seuil de blocage : **${SEUIL.join(', ')}**${DRY_RUN ? ` — ⚠️ jeu d’essai (\`ALERTES_DRY_RUN=${CAS_DEPENDABOT_DESACTIVE ? 'dependabot-desactive' : '1'}\`)` : ''}`,
+  `Seuil de blocage : **${SEUIL.join(', ')}**${DRY_RUN ? ` — ⚠️ jeu d’essai (\`ALERTES_DRY_RUN=${process.env.ALERTES_DRY_RUN}\`)` : ''}`,
 );
 dire('');
+
+// --- Périmètre livré, calculé UNE fois (AM-75) ------------------------------
+const EMBARQUES = arbreEmbarque();
+if (EMBARQUES === null) {
+  dire(
+    '⚠️ **Périmètre livré inconnu** — lockfile illisible, ou clôture invraisemblablement ' +
+      'petite (parseur à revoir). **Toutes** les alertes comptent donc comme embarquées : ' +
+      'le seuil est volontairement trop strict, on refuse de le rendre permissif sur un doute.',
+  );
+} else {
+  dire(
+    `Périmètre bloquant : **${EMBARQUES.size} paquets embarqués**, dérivés du lockfile ` +
+      '(dépendances de production des projets `apps/*`, liens `workspace:` suivis) — ' +
+      "et non du champ `scope` de Dependabot. L'outillage de dev reste listé, sans bloquer.",
+  );
+}
+dire('');
+
+/**
+ * Une alerte Dependabot bloque-t-elle ? Comparaison par NOM de paquet : deux
+ * versions d'un même paquet peuvent coexister entre l'arbre de dev et celui de
+ * prod, et le doute doit compter comme embarqué.
+ */
+const PERIMETRE_DEPENDABOT = {
+  adjectif: 'embarquée',
+  dansLePerimetre: (/** @type {any} */ a) =>
+    EMBARQUES === null ||
+    EMBARQUES.has(String(a?.dependency?.package?.name ?? '')),
+};
 
 /** @type {string[]} */
 const pointsMorts = [];
@@ -330,8 +591,11 @@ const bloquants = [];
  * @param {(a: any) => string} decrire
  * @param {string | ((r: any) => string)} aide marche à suivre, éventuellement
  *   calculée depuis le résultat (un même statut peut avoir plusieurs causes).
+ * @param {{dansLePerimetre: (a: any) => boolean, adjectif: string} | null} perimetre
+ *   restriction du BLOCAGE à ce qui est réellement livré (AM-75). Absent ⇒ tout
+ *   ce qui est au-dessus du seuil bloque, comportement d'origine.
  */
-function rapporter(titre, resultat, severite, decrire, aide) {
+function rapporter(titre, resultat, severite, decrire, aide, perimetre = null) {
   dire(`## ${titre}`);
   dire('');
 
@@ -349,11 +613,30 @@ function rapporter(titre, resultat, severite, decrire, aide) {
     dire('');
     dire(typeof aide === 'function' ? aide(resultat) : aide);
     dire('');
-    pointsMorts.push(`${titre} (statut ${resultat.statut})`);
+    // Le verdict final est la ligne qu'on lit en premier : elle doit NOMMER la
+    // cause quand on la connaît, pas se contenter d'un statut HTTP.
+    // ⚠️ Le 403 « alerts are disabled » n'a RIEN à voir avec le PAT : y répondre
+    // « ALERTS_TOKEN absent » enverrait fabriquer un jeton sans effet — le travers
+    // corrigé en PR #289. On lit donc le corps AVANT de nommer la cause.
+    const desactive = /dependabot alerts are disabled/i.test(
+      String(resultat.detail ?? ''),
+    );
+    const cause = desactive
+      ? ' — alertes désactivées sur le dépôt'
+      : titre === 'Dependabot' && resultat.statut === 403
+        ? PAT_POSE
+          ? ' — `ALERTS_TOKEN` posé mais refusé (expiré ou scope insuffisant)'
+          : ' — `ALERTS_TOKEN` absent'
+        : '';
+    pointsMorts.push(`${titre} (statut ${resultat.statut}${cause})`);
     return;
   }
 
-  const { parSeverite, bloquantes } = compter(resultat.alertes, severite);
+  const { parSeverite, bloquantes, horsPerimetre } = compter(
+    resultat.alertes,
+    severite,
+    perimetre ? perimetre.dansLePerimetre : undefined,
+  );
 
   if (resultat.alertes.length === 0) {
     dire('✅ Aucune alerte ouverte.');
@@ -369,22 +652,43 @@ function rapporter(titre, resultat, severite, decrire, aide) {
   dire(`${resultat.alertes.length} alerte(s) ouverte(s) — ${detail}`);
   dire('');
 
-  if (bloquantes.length === 0) {
-    dire('✅ Aucune au-dessus du seuil.');
+  /** Liste bornée, pour ne pas noyer le résumé. */
+  const lister = (alertes) => {
+    for (const alerte of alertes.slice(0, 20)) {
+      dire(`- **${severite(alerte)}** — ${decrire(alerte)}`);
+    }
+    if (alertes.length > 20) dire(`- … et ${alertes.length - 20} autre(s).`);
     dire('');
-    return;
+  };
+
+  if (bloquantes.length === 0) {
+    dire(
+      perimetre
+        ? `✅ Aucune alerte **${perimetre.adjectif}** au-dessus du seuil.`
+        : '✅ Aucune au-dessus du seuil.',
+    );
+    dire('');
+  } else {
+    dire(
+      perimetre
+        ? `🔴 **${bloquantes.length} alerte(s) ${perimetre.adjectif}(s) au-dessus du seuil :**`
+        : `🔴 **${bloquantes.length} alerte(s) au-dessus du seuil :**`,
+    );
+    dire('');
+    lister(bloquantes);
+    bloquants.push(`${titre} : ${bloquantes.length}`);
   }
 
-  dire(`🔴 **${bloquantes.length} alerte(s) au-dessus du seuil :**`);
-  dire('');
-  for (const alerte of bloquantes.slice(0, 20)) {
-    dire(`- **${severite(alerte)}** — ${decrire(alerte)}`);
+  // Ce qui franchit le seuil sans être livré : listé, jamais bloquant. On le
+  // montre pour qu'un « vert » ne passe pas pour une absence d'alertes.
+  if (perimetre && horsPerimetre.length > 0) {
+    dire(
+      `ℹ️ **${horsPerimetre.length} alerte(s) ≥ seuil hors périmètre livré** — outillage de dev ` +
+        `(non installé par le \`pnpm install --prod\` des images) : informatif, ne bloque pas.`,
+    );
+    dire('');
+    lister(horsPerimetre);
   }
-  if (bloquantes.length > 20) {
-    dire(`- … et ${bloquantes.length - 20} autre(s).`);
-  }
-  dire('');
-  bloquants.push(`${titre} : ${bloquantes.length}`);
 }
 
 rapporter(
@@ -411,9 +715,14 @@ rapporter(
       ? 'Les alertes Dependabot sont **désactivées sur le dépôt** : aucun jeton ne ' +
         'lèvera ce 403. Les activer dans Settings → Code security → Dependabot alerts. ' +
         'Inutile de poser un `ALERTS_TOKEN` tant que la fonctionnalité est éteinte.'
-      : 'Ce `403` signifie que le `GITHUB_TOKEN` par défaut ne couvre pas ' +
-        '`dependabot/alerts` sur ce dépôt. Poser un secret Actions `ALERTS_TOKEN` ' +
-        '(PAT avec le scope `security_events`) : le script le préfère au jeton par défaut.',
+      : PAT_POSE
+        ? 'Un `ALERTS_TOKEN` **est posé** et le 403 persiste : le PAT est expiré, ' +
+          'révoqué, ou ne porte pas le scope `security_events`. Le renouveler.'
+        : '**`ALERTS_TOKEN` absent** — c’est la seule cause ici, et le remède tient ' +
+          'en un geste : créer un PAT au scope `security_events` et le poser en secret ' +
+          'Actions `ALERTS_TOKEN`. Le `GITHUB_TOKEN` par défaut ne couvre pas ' +
+          '`dependabot/alerts`, et aucune permission de workflow ne l’y autorise.',
+  PERIMETRE_DEPENDABOT,
 );
 
 dire('## Verdict');
@@ -434,7 +743,8 @@ if (bloquants.length > 0) {
 }
 if (code === 0) {
   dire(
-    `✅ **VERT** — les deux sources ont répondu, aucune alerte ouverte ≥ \`${SEUIL.join('/')}\`.`,
+    `✅ **VERT** — les deux sources ont répondu, et aucune alerte ≥ \`${SEUIL.join('/')}\` ` +
+      `ne touche le périmètre livré${EMBARQUES === null ? '' : ` (${EMBARQUES.size} paquets embarqués)`}.`,
   );
   dire('');
   dire('Ce vert est opposable : la vérification a bien eu lieu.');
