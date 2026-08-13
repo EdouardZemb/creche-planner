@@ -9,15 +9,14 @@
 # Format : un identifiant par ligne, ex.
 #   CVE-2024-XXXXX  # raison + date + lien advisory
 
-# brace-expansion 2.1.3 (transitif via minimatch@5/@9) : DoS par motif forgé.
-# Seul correctif amont = 5.0.8, rupture d'API (export nommé `expand` seulement ;
-# minimatch 5 appelle le module comme fonction, minimatch 9 son export défaut →
-# crash runtime si on force la v5). minimatch 5.1.9/9.0.9 (dernières de leurs
-# lignes) restent sur brace-expansion ^2.x : aucun correctif 2.x publié.
-# Exposition limitée : patterns glob internes (build/outillage), pas d'entrée
-# utilisateur. Ajouté 2026-07-28 — réviser dès qu'un correctif 2.x ou des
-# minimatch corrigés existent. https://avd.aquasec.com/nvd/cve-2026-14257
-CVE-2026-14257
+# CVE-2026-14257 (brace-expansion) — RETIRÉE de l'allowlist le 2026-08-13.
+# Elle avait été ajoutée le 2026-07-28 au motif « aucun correctif 2.x publié,
+# seul correctif amont = 5.0.8 avec rupture d'API ». Ce motif est FAUX depuis le
+# 2026-08-05 : les overrides pnpm de la PR #289 (^1.1.18 / ^2.1.4 / ^5.0.9, posés
+# pour CVE-2026-69152, qui contournait justement la mitigation de celle-ci) ont
+# amené un correctif 2.x dans l'arbre. L'entrée demandait elle-même sa révision
+# « dès qu'un correctif 2.x existe » — c'est le cas, elle n'a plus d'objet.
+# Une allowlist qu'on ne périme pas finit par masquer une vraie récurrence.
 
 # react-router 7.18.1 : CSRF limité au mode RSC (React Server Components),
 # non utilisé ici (SPA mode data, aucun usage RSC/@react-router/dev dans le
