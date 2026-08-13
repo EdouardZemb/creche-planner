@@ -19,6 +19,12 @@
       "types": "./dist/lib/security/assertion-identite.d.ts",
       "import": "./dist/lib/security/assertion-identite.js",
       "default": "./dist/lib/security/assertion-identite.js"
+    },
+    "./config": {
+      "@creche-planner/source": "./src/lib/config/env.ts",
+      "types": "./dist/lib/config/env.d.ts",
+      "import": "./dist/lib/config/env.js",
+      "default": "./dist/lib/config/env.js"
     }
   },
   "nx": {
@@ -39,7 +45,8 @@
     "nodemailer": "^9.0.3",
     "postgres": "^3.4.9",
     "reflect-metadata": "^0.2.2",
-    "tslib": "^2.3.0"
+    "tslib": "^2.3.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/nodemailer": "^8.0.1"

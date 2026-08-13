@@ -1,4 +1,5 @@
 export * from './lib/common/clock.js';
+export * from './lib/config/env.js';
 export * from './lib/common/domain-exception.filter.js';
 export * from './lib/common/trace.js';
 export * from './lib/database/database.module.js';

@@ -1,3 +1,5 @@
+import { champEnv, type ValeursEnv } from '../config/env.js';
+
 /**
  * Config d'assertion inter-services lue par le guard aval : le **secret** partagé
  * (`ASSERTION_IDENTITE_SECRET`) et le flag d'**enforce** (`INTERSERVICE_AUTHZ_ENFORCE`).
@@ -13,18 +15,29 @@ export interface ConfigAssertion {
 }
 
 /**
- * Lit la config d'assertion depuis l'environnement (défauts partagés par les 5
- * services). Un secret absent, vide ou blanc ⇒ `undefined` (mode legacy) ;
- * l'enforce n'est actif que sur la valeur exacte `'1'`. Centralisé ici pour que
- * chaque `config.ts` de service se limite à `assertion: lireConfigAssertion()`.
+ * Les deux variables d'environnement de l'assertion, **déclarées une fois** pour
+ * les cinq services : `secret` absent, vide ou blanc ⇒ mode legacy ; l'enforce
+ * n'est actif que sur la valeur exacte `'1'` (`AM-30` : la bascule reste
+ * ouverte, mais elle est désormais visible dans chaque schéma).
+ *
+ * À reprendre dans le `champs` de `lireEnv` par un simple `...CHAMPS_ASSERTION`,
+ * puis à matérialiser par `configAssertion(valeurs)`. La lecture directe de
+ * `process.env` qui vivait ici (`lireConfigAssertion`) a disparu au lot 5 : deux
+ * lectures d'une même variable — l'une validée, l'autre non — est précisément la
+ * forme d'`AN-20`.
  */
-export function lireConfigAssertion(
-  env: NodeJS.ProcessEnv = process.env,
+export const CHAMPS_ASSERTION = {
+  ASSERTION_IDENTITE_SECRET: champEnv.secret(),
+  INTERSERVICE_AUTHZ_ENFORCE: champEnv.bascule(),
+} as const;
+
+/** Matérialise la config d'assertion depuis les valeurs déjà validées. */
+export function configAssertion(
+  valeurs: ValeursEnv<typeof CHAMPS_ASSERTION>,
 ): ConfigAssertion {
-  const brut = env['ASSERTION_IDENTITE_SECRET']?.trim();
   return {
-    secret: brut !== undefined && brut !== '' ? brut : undefined,
-    enforce: env['INTERSERVICE_AUTHZ_ENFORCE'] === '1',
+    secret: valeurs.ASSERTION_IDENTITE_SECRET,
+    enforce: valeurs.INTERSERVICE_AUTHZ_ENFORCE,
   };
 }
 

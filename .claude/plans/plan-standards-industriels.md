@@ -208,11 +208,50 @@ danger était imaginaire, mais parce que la conception l'a dissous (écart 1).
    peut montrer que le `Content-Type` survit à `res.json()` d'Express (qui pose
    `application/json` si personne ne l'a devancé) : l'assertion vit sur le bundle réel.
 
-## Lot 5 — validation d'environnement (`AM-44`)
+## Lot 5 — validation d'environnement (`AM-44`) ✅ LIVRÉ
 
-Schéma zod unique par app (les 6 `config.ts`), boot refusé sur config invalide avec le
-champ nommé. Reprendre les garde-fous `verifierConfigProduction()` dans le schéma.
-S'articule avec `AM-30` (bascules fail-open) : le schéma rend chaque bascule **visible**.
+**Fait le 2026-08-12**, branche `feat/standards-lot5-validation-environnement`.
+
+Une **trousse partagée** (`libs/nest-commons/src/lib/config/env.ts` : `champEnv`,
+`lireEnv`, `RegleProduction`) déclarée par un `CHAMPS_ENV` dans chacun des six
+`config.ts` ; `loadConfig()` valide ce qu'il lit, et `main.ts` l'appelle avant de rien
+monter. Porte `pnpm environnement` (6 sondes) + refus prouvé sur le **bundle réel**
+(`refus-config.e2e.spec.ts`, gateway et notifications).
+
+L'énoncé demandait « un schéma zod unique **par app** ». Il y en a un par app —
+mais la **règle de lecture** est partagée, et c'est le seul écart qui compte.
+
+**Six écarts à l'énoncé, constatés contre le code :**
+
+1. **Six schémas indépendants auraient été six miroirs** (`LE-40`). `PORT` est lu six
+   fois, `DATABASE_URL`/`NATS_URL`/`ASSERTION_IDENTITE_SECRET` cinq fois, les URL amont
+   dans trois services chacune. Ce qui se partage n'est pas le _nom_ mais ce qui compte
+   comme un entier, comme absent, et ce qu'on ose citer dans un refus — recopié six
+   fois, cela divergerait, et c'est exactement ainsi qu'`AN-20` est né. Ce qui reste
+   local est la **déclaration**.
+2. **Il y avait trois `verifierConfigProduction()` homonymes, pas deux** (gateway,
+   `svc-foyer`, `svc-notifications`) ; aucune au registre `MIROIRS`, et **trois services
+   sans aucun garde-fou**. Elles deviennent des `RegleProduction` nommées portées par la
+   déclaration : il n'y a plus de garde qu'un `main.ts` puisse oublier d'appeler.
+3. **Le défaut coûtait déjà plus que le `NaN` sur `PORT` annoncé.** `RATE_LIMIT_MAX=cent`
+   donnait `NaN`, et `recents.length >= NaN` est **toujours faux** : le rate-limit était
+   désactivé en silence. Et **trois specs affirmaient le `NaN` de `PORT`**, motivé en
+   commentaire (`LE-41`) : le défaut n'était pas ignoré, il avait rang de contrat.
+4. **`estUrlEmailPublique` reste une règle métier explicite**, pas un `z.url()` : la
+   validation de forme accepterait `https://192.168.1.129`, et les liens d'e-mail
+   seraient injoignables hors-LAN. Sondée sur le bundle réel (piège `MO-2` désamorcé).
+5. **Le repli fail-safe de `RATE_LIMIT_PROXY_HOPS` disparaît** : `0` sur valeur illisible
+   était sûr côté confiance, mais rouvrait `AN-15` sans le dire (fenêtre de rate-limit
+   unique partagée). Une valeur qu'on ne sait pas lire est une panne de configuration.
+6. **`AM-30` est rendue visible, pas fermée** : les quatre bascules fail-open sont
+   déclarées nommément avec leur défaut. Les fermer est un geste d'exploitation.
+
+**Ce que la porte a trouvé en naissant** : `INTERSERVICE_AUTHZ_ENFORCE` était posée sur
+`api-gateway` dans `docker-compose.server.yml`. La passerelle **signe** les assertions,
+elle ne les vérifie jamais — la ligne était inerte, mais laissait croire que basculer
+l'enforce (geste PO du chantier fondations) se règle sur la passerelle. Retirée.
+
+Consigné : `AM-44` ✅, `AM-71`/`AM-72` ouvertes, `LE-41`/`LE-42`, `EM-12`.
 
 ## Lot 6 — piste d'audit acteur (`AM-45`)
 

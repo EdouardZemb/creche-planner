@@ -1,42 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { loadConfig } from './config.js';
 
 /**
- * `loadConfig()` lit l'environnement du conteneur (`PORT` / `DATABASE_URL` /
- * `NATS_URL`) et retombe sur les défauts de dev local. Chaque test isole ces trois
- * variables (snapshot + restauration en `afterEach`) pour ne fuir aucun état.
- * Modèle : `apps/svc-foyer/src/config.spec.ts`.
+ * Déclaration d'environnement de `svc-referentiel` (`AM-44`, lot 5 standards).
+ * `loadConfig(env)` valide ce qu'il lit et prend son environnement en paramètre :
+ * le snapshot/restauration de `process.env` qu'exigeait cette spec a disparu.
  */
 describe('loadConfig (svc-referentiel)', () => {
-  const CLES = [
-    'PORT',
-    'DATABASE_URL',
-    'NATS_URL',
-    'ASSERTION_IDENTITE_SECRET',
-    'INTERSERVICE_AUTHZ_ENFORCE',
-  ] as const;
-  const initial: Record<string, string | undefined> = {};
-
-  beforeEach(() => {
-    for (const cle of CLES) {
-      initial[cle] = process.env[cle];
-      Reflect.deleteProperty(process.env, cle);
-    }
-  });
-
-  afterEach(() => {
-    for (const cle of CLES) {
-      const valeur = initial[cle];
-      if (valeur === undefined) {
-        Reflect.deleteProperty(process.env, cle);
-      } else {
-        process.env[cle] = valeur;
-      }
-    }
-  });
-
   it("applique les défauts de dev local quand aucune variable n'est posée", () => {
-    expect(loadConfig()).toEqual({
+    expect(loadConfig({})).toEqual({
       port: 3001,
       databaseUrl:
         'postgres://referentiel:referentiel@localhost:5433/referentiel',
@@ -46,11 +18,13 @@ describe('loadConfig (svc-referentiel)', () => {
   });
 
   it("lit PORT / DATABASE_URL / NATS_URL depuis l'environnement", () => {
-    process.env['PORT'] = '4005';
-    process.env['DATABASE_URL'] = 'postgres://u:p@db:5432/ref';
-    process.env['NATS_URL'] = 'nats://broker:4222';
-
-    expect(loadConfig()).toEqual({
+    expect(
+      loadConfig({
+        PORT: '4005',
+        DATABASE_URL: 'postgres://u:p@db:5432/ref',
+        NATS_URL: 'nats://broker:4222',
+      }),
+    ).toEqual({
       port: 4005,
       databaseUrl: 'postgres://u:p@db:5432/ref',
       natsUrl: 'nats://broker:4222',
@@ -58,15 +32,30 @@ describe('loadConfig (svc-referentiel)', () => {
     });
   });
 
-  it('coerce PORT en nombre (Number(port))', () => {
-    process.env['PORT'] = '8080';
-    const config = loadConfig();
-    expect(config.port).toBe(8080);
-    expect(typeof config.port).toBe('number');
+  // ÉCART ASSUMÉ AU LOT 5 — cette spec AFFIRMAIT le défaut : « PORT non numérique
+  // → NaN (coercition Number brute, pas de garde) ». `listen(NaN)` fait écouter
+  // Node sur un port éphémère : le conteneur démarre, la healthcheck du port
+  // déclaré échoue, et Docker le redémarre en boucle sans qu'aucun log ne nomme
+  // la variable. Le refus au démarrage remplace la boucle.
+  it.each(['pas-un-nombre', '0', '65536', '3001.5'])(
+    'refuse le démarrage sur un PORT inexploitable (%s)',
+    (valeur) => {
+      expect(() => loadConfig({ PORT: valeur })).toThrow(/PORT/u);
+    },
+  );
+
+  it('refuse le démarrage en production sur les replis localhost (AM-44)', () => {
+    expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(
+      /DATABASE_URL[\s\S]*NATS_URL|NATS_URL[\s\S]*DATABASE_URL/u,
+    );
   });
 
-  it('PORT non numérique → NaN (coercition Number brute, pas de garde)', () => {
-    process.env['PORT'] = 'pas-un-nombre';
-    expect(Number.isNaN(loadConfig().port)).toBe(true);
+  it("lit l'assertion d'identité inter-services (fondations lot 3)", () => {
+    expect(
+      loadConfig({
+        ASSERTION_IDENTITE_SECRET: 'secret-test',
+        INTERSERVICE_AUTHZ_ENFORCE: '1',
+      }).assertion,
+    ).toEqual({ secret: 'secret-test', enforce: true });
   });
 });

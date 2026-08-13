@@ -143,7 +143,29 @@ orthographié n'élargit pas la contrainte, il la **resserre** sans le dire.
   la boucle de dev — et `pnpm pieges`, qui refuse la réapparition de l'ancienne
   consigne dans un plan.
 
-## 6. Outillage évalué mais différé
+## 6. Configuration d'environnement
+
+- **Une app ne lit jamais `process.env` ailleurs que dans son `config.ts`.** Elle y
+  déclare un `CHAMPS_ENV` — l'objet qui **est** l'inventaire de ce qu'elle lit — avec
+  les fabriques de
+  [`@creche-planner/nest-commons/config`](libs/nest-commons/src/lib/config/env.ts)
+  (`champEnv.port`, `urlService`, `urlPostgres`, `bascule`, `secret`…), puis
+  `loadConfig(env?)` matérialise sa forme métier via `lireEnv`.
+- `lireEnv` **valide** : une valeur illisible refuse le démarrage en nommant le
+  champ, au lieu de propager un `NaN` ou un repli `localhost` jusqu'à la première
+  requête. Les exigences qui ne valent qu'en production (jeton requis sauf
+  échappatoire, secret non-dev, URL publique) s'écrivent en `RegleProduction`
+  **portée par la déclaration** — il n'y a pas de garde-fou séparé qu'un `main.ts`
+  puisse oublier d'appeler.
+- Le refus **nomme** la variable et ne cite sa valeur que si sa forme est mécanique
+  (nombre, bascule, URL de service) : un texte libre peut porter un secret ou une
+  donnée personnelle.
+- `pnpm environnement` tient l'accord entre les schémas et les composes (variable
+  posée mais lue par personne, variable lue hors du schéma, variable déclarée sans
+  ligne de compose ni motif écrit). À jouer après tout ajout de variable, **des deux
+  côtés**.
+
+## 7. Outillage évalué mais différé
 
 `type-coverage` et `knip` ont été évalués : tous deux nécessitent une
 configuration spécifique à la structure « solution » d'Nx (type-coverage ne voit

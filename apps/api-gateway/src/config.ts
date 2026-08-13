@@ -1,3 +1,11 @@
+import {
+  champEnv,
+  estProduction,
+  lireEnv,
+  type RegleProduction,
+  type ValeursEnv,
+} from '@creche-planner/nest-commons/config';
+
 /** Réglages du rate-limit (fenêtre glissante simple, en mémoire). */
 export interface RateLimitConfig {
   /** Largeur de la fenêtre (ms). */
@@ -41,14 +49,15 @@ export interface GatewayConfig {
   /**
    * Jeton d'API attendu (auth Bearer). Si **absent**, l'authentification est
    * **désactivée** (confort de dev local). En production, cette absence doit
-   * être un **choix explicite** : `verifierConfigProduction()` refuse le
-   * démarrage sans jeton ni échappatoire `GATEWAY_AUTH_DISABLED=1` (AQ-01).
+   * être un **choix explicite** : `REGLE_JETON_MACHINE` refuse le démarrage
+   * sans jeton ni échappatoire `GATEWAY_AUTH_DISABLED=1` (AQ-01).
    *
-   * Une valeur **vide ou blanche** vaut **absente** (`texteNonVide`), exactement
-   * comme la lit `verifierConfigProduction()`. Les deux lectures divergeaient
-   * (AN-20) : `GATEWAY_TOKEN=""` passait le garde-fou de démarrage — qui le
-   * traite comme absent — puis armait le guard sur un jeton vide, si bien que
-   * toute requête sans `Authorization: Bearer ` (avec l'espace) était rejetée.
+   * Une valeur **vide ou blanche** vaut **absente** : c'est un invariant de la
+   * trousse `lireEnv`, donc de la **seule** lecture qui existe désormais. Les
+   * deux lectures d'avant divergeaient (AN-20) : `GATEWAY_TOKEN=""` passait le
+   * garde-fou de démarrage — qui le traitait comme absent — puis armait le guard
+   * sur un jeton vide, si bien que toute requête sans `Authorization: Bearer `
+   * (avec l'espace) était rejetée.
    */
   readonly authToken: string | undefined;
   /**
@@ -110,112 +119,132 @@ export interface GatewayConfig {
   readonly assertionSecret: string | undefined;
 }
 
-/** Normalise une variable d'env : trim, et chaîne vide/blanche → `undefined`. */
-function texteNonVide(valeur: string | undefined): string | undefined {
-  const t = valeur?.trim();
-  return t !== undefined && t !== '' ? t : undefined;
-}
-
-/** Découpe une liste d'environnement « a,b ,c » en tableau nettoyé. */
-function parseListe(valeur: string | undefined): string[] {
-  return (valeur ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}
-
 /**
- * Entier `>= 0` lu d'une variable d'env ; toute valeur absente, non numérique,
- * négative ou fractionnaire retombe sur `0`. Un réglage de confiance illisible
- * doit valoir « je ne fais confiance à personne », jamais un `NaN` propagé.
- */
-function entierPositifOuZero(valeur: string | undefined): number {
-  const n = Number(texteNonVide(valeur) ?? '0');
-  return Number.isInteger(n) && n >= 0 ? n : 0;
-}
-
-/** Parse l'allowlist `ADMIN_EMAILS` : minuscules, dédoublonnée, ordre stable. */
-function parseAdminEmails(valeur: string | undefined): string[] {
-  const vus = new Set<string>();
-  for (const brut of parseListe(valeur)) {
-    vus.add(brut.toLowerCase());
-  }
-  return [...vus];
-}
-
-/**
- * Garde-fou de démarrage : en production, deux configs d'auth doivent être des
- * **choix explicites**, jamais des oublis. L'échappatoire commune est
- * `GATEWAY_AUTH_DISABLED=1` (la prod actuelle tourne volontairement sans auth :
- * gateway non exposée — reverse-proxy + ports non publiés + Cloudflare Access,
- * décision doc 24 ; c'est l'override `docker-compose.server.yml` qui pose
- * l'échappatoire, pas un défaut implicite).
+ * Variables d'environnement lues par la passerelle (`AM-44`, lot 5 standards).
+ * **Cette déclaration est l'inventaire** : toute variable lue ailleurs qu'ici est
+ * refusée par la porte `pnpm environnement`, et toute variable posée par un
+ * compose sans figurer ici est un réglage inerte.
  *
- * 1. **AQ-01 (doc 27)** — `GATEWAY_TOKEN` (auth machine web→gateway) : lève si
- *    prod sans jeton (absent ou vide) **et** sans `GATEWAY_AUTH_DISABLED=1`.
- * 2. **PR5 (identité B1)** — validation JWT Cloudflare Access : lève si prod
- *    sans `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` **et** sans
- *    `GATEWAY_AUTH_DISABLED=1`. Même philosophie : faire confiance à l'email
- *    vérifié par CF exige d'avoir configuré contre quoi valider sa signature.
+ * Les quatre bascules **fail-open** d'`AM-30` y figurent nommément
+ * (`ADMIN_EMAILS`, `CF_ACCESS_*`, `FOYER_AUTHZ_ENFORCE`, plus l'échappatoire
+ * `GATEWAY_AUTH_DISABLED`) : le lot les rend **visibles**, il ne les ferme pas —
+ * les fermer est un geste d'exploitation, pas de code.
+ *
+ * ⚠️ La passerelle n'importe **pas** `CHAMPS_ASSERTION` : elle **signe** les
+ * assertions, elle ne les vérifie pas, donc `INTERSERVICE_AUTHZ_ENFORCE` ne la
+ * concerne pas (cf. le constat sur `docker-compose.server.yml`).
  */
-export function verifierConfigProduction(
-  env: Record<string, string | undefined> = process.env,
-): void {
-  if (env['NODE_ENV'] !== 'production') {
-    return;
-  }
-  // Échappatoire unique : auth volontairement désactivée (gateway non exposée).
-  if (env['GATEWAY_AUTH_DISABLED'] === '1') {
-    return;
-  }
-  // Garde-fou 1 — jeton machine (AQ-01).
-  const jeton = env['GATEWAY_TOKEN']?.trim();
-  if (jeton === undefined || jeton === '') {
-    throw new Error(
-      "GATEWAY_TOKEN requis en production : sans lui l'authentification de la " +
+export const CHAMPS_ENV = {
+  PORT: champEnv.port(3000),
+  REFERENTIEL_URL: champEnv.urlService('http://localhost:3001'),
+  FOYER_URL: champEnv.urlService('http://localhost:3002'),
+  PLANIFICATION_URL: champEnv.urlService('http://localhost:3004'),
+  TARIFICATION_URL: champEnv.urlService('http://localhost:3005'),
+  NOTIFICATIONS_URL: champEnv.urlService('http://localhost:3006'),
+  GATEWAY_TOKEN: champEnv.secret(),
+  GATEWAY_AUTH_DISABLED: champEnv.bascule(),
+  CORS_ORIGINS: champEnv.liste(),
+  // Fenêtre bornée à 1 h : au-delà, la fenêtre glissante en mémoire garde une
+  // liste d'horodatages par client sans jamais la purger.
+  RATE_LIMIT_FENETRE_MS: champEnv.entier({
+    defaut: 60000,
+    min: 1,
+    max: 3600000,
+  }),
+  RATE_LIMIT_MAX: champEnv.entier({ defaut: 120, min: 1, max: 1000000 }),
+  // Nombre de relais de confiance : `0` reste le défaut sûr, mais une valeur
+  // illisible refuse désormais le démarrage au lieu de retomber sur `0` — un
+  // repli qui rouvrait AN-15 (fenêtre de rate-limit unique) sans rien dire.
+  RATE_LIMIT_PROXY_HOPS: champEnv.entier({ defaut: 0, min: 0, max: 10 }),
+  CF_ACCESS_TEAM_DOMAIN: champEnv.secret(),
+  CF_ACCESS_AUD: champEnv.secret(),
+  ADMIN_EMAILS: champEnv.allowlist(),
+  FOYER_AUTHZ_ENFORCE: champEnv.bascule(),
+  ASSERTION_IDENTITE_SECRET: champEnv.secret(),
+} as const;
+
+type ValeursGateway = ValeursEnv<typeof CHAMPS_ENV>;
+
+/**
+ * Échappatoire commune aux deux règles d'auth : la prod actuelle tourne
+ * volontairement sans auth (gateway non exposée — reverse-proxy + ports non
+ * publiés + Cloudflare Access, décision doc 24 ; c'est
+ * `docker-compose.server.yml` qui pose l'échappatoire, pas un défaut implicite).
+ */
+function authVolontairementDesactivee(valeurs: ValeursGateway): boolean {
+  return valeurs.GATEWAY_AUTH_DISABLED;
+}
+
+/**
+ * **AQ-01 (doc 27)** — `GATEWAY_TOKEN` (auth machine web→gateway) : refuse le
+ * démarrage en prod sans jeton (absent ou vide) **et** sans échappatoire.
+ * (Jusqu'au lot 5 : premier garde-fou de `verifierConfigProduction()`.)
+ */
+export const REGLE_JETON_MACHINE: RegleProduction<ValeursGateway> = {
+  nom: 'jeton machine (AQ-01)',
+  verifier: (valeurs) =>
+    !authVolontairementDesactivee(valeurs) &&
+    valeurs.GATEWAY_TOKEN === undefined
+      ? "GATEWAY_TOKEN requis en production : sans lui l'authentification de la " +
         'gateway est désactivée. Pour la désactiver volontairement (gateway non ' +
-        'exposée, cf. doc 24), poser GATEWAY_AUTH_DISABLED=1.',
-    );
-  }
-  // Garde-fou 2 — identité Cloudflare Access (PR5).
-  const teamDomain = env['CF_ACCESS_TEAM_DOMAIN']?.trim();
-  const aud = env['CF_ACCESS_AUD']?.trim();
-  if (!teamDomain || !aud) {
-    throw new Error(
-      'CF_ACCESS_TEAM_DOMAIN et CF_ACCESS_AUD requis en production : la ' +
+        'exposée, cf. doc 24), poser GATEWAY_AUTH_DISABLED=1.'
+      : undefined,
+};
+
+/**
+ * **PR5 (identité B1)** — validation JWT Cloudflare Access : refuse le démarrage
+ * en prod sans `CF_ACCESS_TEAM_DOMAIN` + `CF_ACCESS_AUD` **et** sans
+ * échappatoire. Même philosophie que ci-dessus : faire confiance à l'e-mail
+ * vérifié par CF exige d'avoir configuré contre quoi valider sa signature.
+ */
+export const REGLE_IDENTITE_CLOUDFLARE: RegleProduction<ValeursGateway> = {
+  nom: 'identité Cloudflare Access (PR5)',
+  verifier: (valeurs) =>
+    !authVolontairementDesactivee(valeurs) &&
+    (valeurs.CF_ACCESS_TEAM_DOMAIN === undefined ||
+      valeurs.CF_ACCESS_AUD === undefined)
+      ? 'CF_ACCESS_TEAM_DOMAIN et CF_ACCESS_AUD requis en production : la ' +
         'validation du JWT Cloudflare Access (option B1) ne peut vérifier ni ' +
         "l'issuer ni l'audience sans eux. Pour démarrer sans identité CF " +
-        '(gateway non exposée, cf. doc 24), poser GATEWAY_AUTH_DISABLED=1.',
-    );
-  }
-}
+        '(gateway non exposée, cf. doc 24), poser GATEWAY_AUTH_DISABLED=1.'
+      : undefined,
+};
 
-/** Configuration de la gateway depuis l'environnement, avec défauts de dev local. */
-export function loadConfig(): GatewayConfig {
-  const origins = parseListe(process.env['CORS_ORIGINS']);
+/**
+ * Configuration de la gateway, **validée** au premier appel (donc au démarrage :
+ * `main.ts` l'appelle en première instruction). Une variable illisible refuse le
+ * démarrage en nommant le champ, au lieu de propager un `NaN` — `RATE_LIMIT_MAX`
+ * non numérique **désactivait le rate-limit en silence** (`hits >= NaN` est
+ * toujours faux).
+ */
+export function loadConfig(
+  env: Record<string, string | undefined> = process.env,
+): GatewayConfig {
+  const valeurs = lireEnv('api-gateway', CHAMPS_ENV, {
+    env,
+    regles: [REGLE_JETON_MACHINE, REGLE_IDENTITE_CLOUDFLARE],
+  });
   return {
-    port: Number(process.env['PORT'] ?? 3000),
-    referentielUrl: process.env['REFERENTIEL_URL'] ?? 'http://localhost:3001',
-    foyerUrl: process.env['FOYER_URL'] ?? 'http://localhost:3002',
-    planificationUrl:
-      process.env['PLANIFICATION_URL'] ?? 'http://localhost:3004',
-    tarificationUrl: process.env['TARIFICATION_URL'] ?? 'http://localhost:3005',
-    notificationsUrl:
-      process.env['NOTIFICATIONS_URL'] ?? 'http://localhost:3006',
-    authToken: texteNonVide(process.env['GATEWAY_TOKEN']),
-    corsOrigins: origins.length > 0 ? origins : ['*'],
+    port: valeurs.PORT,
+    referentielUrl: valeurs.REFERENTIEL_URL,
+    foyerUrl: valeurs.FOYER_URL,
+    planificationUrl: valeurs.PLANIFICATION_URL,
+    tarificationUrl: valeurs.TARIFICATION_URL,
+    notificationsUrl: valeurs.NOTIFICATIONS_URL,
+    authToken: valeurs.GATEWAY_TOKEN,
+    corsOrigins: valeurs.CORS_ORIGINS.length > 0 ? valeurs.CORS_ORIGINS : ['*'],
     rateLimit: {
-      fenetreMs: Number(process.env['RATE_LIMIT_FENETRE_MS'] ?? 60000),
-      maxRequetes: Number(process.env['RATE_LIMIT_MAX'] ?? 120),
+      fenetreMs: valeurs.RATE_LIMIT_FENETRE_MS,
+      maxRequetes: valeurs.RATE_LIMIT_MAX,
     },
-    proxyHops: entierPositifOuZero(process.env['RATE_LIMIT_PROXY_HOPS']),
+    proxyHops: valeurs.RATE_LIMIT_PROXY_HOPS,
     identite: {
-      cfTeamDomain: texteNonVide(process.env['CF_ACCESS_TEAM_DOMAIN']),
-      cfAud: texteNonVide(process.env['CF_ACCESS_AUD']),
-      devHeaderAutorise: process.env['NODE_ENV'] !== 'production',
+      cfTeamDomain: valeurs.CF_ACCESS_TEAM_DOMAIN,
+      cfAud: valeurs.CF_ACCESS_AUD,
+      devHeaderAutorise: !estProduction(valeurs),
     },
-    adminEmails: parseAdminEmails(process.env['ADMIN_EMAILS']),
-    foyerAuthzEnforce: process.env['FOYER_AUTHZ_ENFORCE'] === '1',
-    assertionSecret: texteNonVide(process.env['ASSERTION_IDENTITE_SECRET']),
+    adminEmails: valeurs.ADMIN_EMAILS,
+    foyerAuthzEnforce: valeurs.FOYER_AUTHZ_ENFORCE,
+    assertionSecret: valeurs.ASSERTION_IDENTITE_SECRET,
   };
 }

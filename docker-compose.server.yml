@@ -350,9 +350,10 @@ services:
       # tag `aud` de l'application CF. Vides → validation JWT inactive (le guard
       # d'identité ne pose aucune identité ; comportement legacy). Non secrets au
       # sens strict, mais PII-adjacents → versionnés chiffrés dans .env.server.enc.
-      # NB : le garde-fou de boot `verifierConfigProduction` qui les EXIGE en prod
-      # est court-circuité par GATEWAY_AUTH_DISABLED=1 ci-dessus ; le guard, lui,
-      # les consomme dès qu'elles sont posées (indépendant de cette échappatoire).
+      # NB : la règle de boot `REGLE_IDENTITE_CLOUDFLARE` (apps/api-gateway/src/config.ts)
+      # qui les EXIGE en prod est court-circuitée par GATEWAY_AUTH_DISABLED=1
+      # ci-dessus ; le guard, lui, les consomme dès qu'elles sont posées
+      # (indépendant de cette échappatoire).
       CF_ACCESS_TEAM_DOMAIN: ${CF_ACCESS_TEAM_DOMAIN:-}
       CF_ACCESS_AUD: ${CF_ACCESS_AUD:-}
       # PR6 — provisioning admin. CSV d'e-mails admin (PII → .env.server.enc). Vide
@@ -367,10 +368,15 @@ services:
       # Assertion d'identité inter-services (fondations lot 3). Secret partagé
       # gateway+services, REQUIS en prod (`:?`) : à définir dans .env.server PUIS
       # .env.server.enc (sops) AVANT le prochain déploiement, sinon `docker compose
-      # config` échoue. INTERSERVICE_AUTHZ_ENFORCE reste vide (observe-only) tant
-      # qu'on ne bascule pas l'enforce — décision ops ultérieure (lot 4).
+      # config` échoue.
+      #
+      # INTERSERVICE_AUTHZ_ENFORCE n'est PAS posée ici : la passerelle SIGNE les
+      # assertions, elle ne les vérifie jamais — la bascule d'enforce est lue par
+      # les cinq `svc-*` (guard aval), qui la portent chacun. La ligne a existé sur
+      # ce service jusqu'au lot 5 des standards : inerte, elle laissait croire que
+      # basculer l'enforce se réglait ici. Constat rendu impossible à reproduire
+      # par `pnpm environnement`.
       ASSERTION_IDENTITE_SECRET: ${ASSERTION_IDENTITE_SECRET:?defini .env.server}
-      INTERSERVICE_AUTHZ_ENFORCE: ${INTERSERVICE_AUTHZ_ENFORCE:-}
 
   # --- Front : plus de port LAN direct (servi via Caddy) ---------------------
   web:

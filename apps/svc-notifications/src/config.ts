@@ -1,14 +1,20 @@
 import {
-  lireConfigAssertion,
+  champEnv,
+  CHAMPS_ASSERTION,
+  configAssertion,
+  lireEnv,
   type ConfigAssertion,
+  type RegleProduction,
+  type ValeursEnv,
 } from '@creche-planner/nest-commons';
 
 /**
  * Configuration e-mail du service. L'envoi vers un tiers réel est un effet de bord à
  * **isoler, tracer et pouvoir couper** : `dryRun` vaut **true par défaut** (on ne
  * spamme pas une vraie crèche) et n'est désactivé que par un `NOTIF_EMAIL_DRY_RUN`
- * **explicitement** `false` (même philosophie de garde-fou que `verifierConfigProduction`
- * côté gateway). L'`allowlist`, si renseignée, redirige tout destinataire hors-prod.
+ * **explicitement** `false` (forme `champEnv.basculeExtinction` : un garde-fou ne se
+ * lève que sur un mot exact). L'`allowlist`, si renseignée, redirige tout
+ * destinataire hors-prod.
  */
 export interface EmailConfig {
   readonly host: string;
@@ -73,14 +79,6 @@ export interface ServiceConfig {
   readonly assertion: ConfigAssertion;
 }
 
-/** Découpe une liste CSV « a, b ,c » en tableau nettoyé. */
-function parseListe(valeur: string | undefined): string[] {
-  return (valeur ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}
-
 /**
  * Une URL de **base** est acceptable pour les liens d'e-mail (récap du mardi,
  * désabonnement one-click) seulement si un parent **hors réseau local** peut
@@ -97,6 +95,10 @@ function parseListe(valeur: string | undefined): string[] {
  * passe ce filtre — c'est l'**action ops** (poser la bonne origine publique dans
  * `.env.server.enc`) qui garantit le bon domaine ; ce garde-fou est le **filet**,
  * pas le correctif. Parsing via `URL` natif, aucune dépendance IP.
+ *
+ * ⚠️ Cette règle est **métier**, pas syntaxique : un `champEnv.urlService()` (donc
+ * un `z.url()`) accepterait `http://192.168.1.129` sans broncher. Elle reste donc
+ * une règle de production explicite, jamais remplacée par la validation de forme.
  */
 export function estUrlEmailPublique(url: string): boolean {
   let parsee: URL;
@@ -124,75 +126,111 @@ export function estUrlEmailPublique(url: string): boolean {
 }
 
 /**
- * Garde-fou de démarrage (miroir de `verifierConfigProduction` côté api-gateway
- * et svc-foyer) : en **production**, les URL de base insérées dans les liens des
- * e-mails de rappel — `NOTIF_APP_URL` (lien « valider mon planning ») et
+ * Variables d'environnement lues par ce service (`AM-44`, lot 5 standards).
+ * **Cette déclaration est l'inventaire** : toute variable lue ailleurs qu'ici est
+ * refusée par la porte `pnpm environnement`, et toute variable posée par un
+ * compose sans figurer ici est un réglage inerte.
+ */
+export const CHAMPS_ENV = {
+  PORT: champEnv.port(3006),
+  DATABASE_URL: champEnv.urlPostgres(
+    'postgres://notifications:notifications@localhost:5437/notifications',
+  ),
+  NATS_URL: champEnv.urlNats('nats://localhost:4222'),
+  PLANIFICATION_URL: champEnv.urlService('http://localhost:3004'),
+  FOYER_URL: champEnv.urlService('http://localhost:3002'),
+  // Les deux URL des liens d'e-mail : la **forme** est validée ici (URL absolue),
+  // la règle **métier** (https + domaine public) est
+  // `REGLE_URLS_LIENS_EMAIL` ci-dessous. Leur repli de dev vise `localhost`, donc
+  // la trousse refuse déjà le démarrage en production si elles ne sont pas posées.
+  NOTIF_APP_URL: champEnv.urlService('http://localhost:4200'),
+  NOTIF_PUBLIC_API_URL: champEnv.urlService('http://localhost:3000'),
+  NOTIF_UNSUBSCRIBE_MAILTO: champEnv.texte(''),
+  NOTIF_SCHEDULER_HEURE: champEnv.entier({ defaut: 8, min: 0, max: 23 }),
+  NOTIF_SCHEDULER_FORCER: champEnv.bascule(),
+  SMTP_HOST: champEnv.texte('smtp.gmail.com'),
+  SMTP_PORT: champEnv.port(587),
+  SMTP_USER: champEnv.texte(''),
+  SMTP_PASSWORD: champEnv.secretAvecRepli(''),
+  NOTIF_EMAIL_FROM: champEnv.texte(
+    'Crèche Planner <ne-pas-repondre@example.org>',
+  ),
+  NOTIF_EMAIL_PARENT: champEnv.texte('edouard.zemb@gmail.com'),
+  // Garde-fou : dry-run par défaut, levé seulement par un `false` explicite.
+  NOTIF_EMAIL_DRY_RUN: champEnv.basculeExtinction('false'),
+  NOTIF_EMAIL_ALLOWLIST: champEnv.liste(),
+  ...CHAMPS_ASSERTION,
+} as const;
+
+/**
+ * Garde-fou de démarrage (jusqu'au lot 5 : `verifierConfigProduction()`, l'un des
+ * trois homonymes du dépôt) : en **production**, les URL de base insérées dans les
+ * liens des e-mails de rappel — `NOTIF_APP_URL` (lien « valider mon planning ») et
  * `NOTIF_PUBLIC_API_URL` (cible one-click `List-Unsubscribe`) — doivent être des
  * URL **https à nom de domaine public**. Réglées sur l'IP LAN du serveur (défaut
  * historique via `SERVER_ORIGIN`), les liens sont **injoignables hors-LAN** et
  * **à certificat invalide** pour le parent : le service **refuse de démarrer**
  * pour rendre cette mauvaise configuration bruyante plutôt que silencieuse.
  *
- * Hors production (dev / test / e2e local avec `http://localhost:*`), le
- * garde-fou est **inactif** : la validation ne s'applique qu'à `NODE_ENV`
- * production. Fonction **pure** (ni log ni effet de bord) : le bootstrap
- * (`main.ts`) journalise avant de propager le `throw`.
+ * Hors production (dev / test / e2e local avec `http://localhost:*`), la règle est
+ * **inactive** — `lireEnv` ne joue les règles qu'en production.
  */
-export function verifierConfigProduction(
-  config: Pick<ServiceConfig, 'appUrl' | 'publicApiUrl'>,
-  env: Record<string, string | undefined> = process.env,
-): void {
-  if (env['NODE_ENV'] !== 'production') {
-    return;
-  }
-  const invalides: string[] = [];
-  if (!estUrlEmailPublique(config.appUrl)) {
-    invalides.push(`NOTIF_APP_URL=${config.appUrl}`);
-  }
-  if (!estUrlEmailPublique(config.publicApiUrl)) {
-    invalides.push(`NOTIF_PUBLIC_API_URL=${config.publicApiUrl}`);
-  }
-  if (invalides.length > 0) {
-    throw new Error(
+export const REGLE_URLS_LIENS_EMAIL: RegleProduction<
+  ValeursEnv<typeof CHAMPS_ENV>
+> = {
+  nom: "URL des liens d'e-mail",
+  verifier: (valeurs) => {
+    const candidates: readonly (readonly [string, string])[] = [
+      ['NOTIF_APP_URL', valeurs.NOTIF_APP_URL],
+      ['NOTIF_PUBLIC_API_URL', valeurs.NOTIF_PUBLIC_API_URL],
+    ];
+    const invalides = candidates.filter(([, url]) => !estUrlEmailPublique(url));
+    if (invalides.length === 0) {
+      return undefined;
+    }
+    return (
       'NOTIF_APP_URL/NOTIF_PUBLIC_API_URL doit être une URL https à nom de ' +
-        'domaine public (pas une IP ni localhost) : sinon les liens des e-mails ' +
-        'de rappel sont injoignables ou à certificat invalide pour les parents. ' +
-        `Valeur(s) reçue(s) : ${invalides.join(', ')}.`,
+      'domaine public (pas une IP ni localhost) : sinon les liens des e-mails ' +
+      'de rappel sont injoignables ou à certificat invalide pour les parents. ' +
+      `Valeur(s) reçue(s) : ${invalides.map(([nom, url]) => `${nom}=${url}`).join(', ')}.`
     );
-  }
-}
+  },
+};
 
-/** Configuration du service depuis l'environnement, avec des défauts de dev local. */
-export function loadConfig(): ServiceConfig {
+/**
+ * Configuration du service, **validée** au premier appel (donc au démarrage :
+ * `main.ts` l'appelle en première instruction). Une variable illisible refuse le
+ * démarrage en nommant le champ, au lieu de propager un `NaN` ou un repli
+ * `localhost` jusqu'à la première requête.
+ */
+export function loadConfig(
+  env: Record<string, string | undefined> = process.env,
+): ServiceConfig {
+  const valeurs = lireEnv('svc-notifications', CHAMPS_ENV, {
+    env,
+    regles: [REGLE_URLS_LIENS_EMAIL],
+  });
   return {
-    port: Number(process.env['PORT'] ?? 3006),
-    databaseUrl:
-      process.env['DATABASE_URL'] ??
-      'postgres://notifications:notifications@localhost:5437/notifications',
-    natsUrl: process.env['NATS_URL'] ?? 'nats://localhost:4222',
-    planificationUrl:
-      process.env['PLANIFICATION_URL'] ?? 'http://localhost:3004',
-    foyerUrl: process.env['FOYER_URL'] ?? 'http://localhost:3002',
-    appUrl: process.env['NOTIF_APP_URL'] ?? 'http://localhost:4200',
-    publicApiUrl:
-      process.env['NOTIF_PUBLIC_API_URL'] ?? 'http://localhost:3000',
-    unsubscribeMailto: process.env['NOTIF_UNSUBSCRIBE_MAILTO'] ?? '',
-    schedulerHeure: Number(process.env['NOTIF_SCHEDULER_HEURE'] ?? 8),
-    // Test uniquement (e2e stack) : ignore la fenêtre « mardi ≥ heure ».
-    schedulerForcer: process.env['NOTIF_SCHEDULER_FORCER'] === '1',
+    port: valeurs.PORT,
+    databaseUrl: valeurs.DATABASE_URL,
+    natsUrl: valeurs.NATS_URL,
+    planificationUrl: valeurs.PLANIFICATION_URL,
+    foyerUrl: valeurs.FOYER_URL,
+    appUrl: valeurs.NOTIF_APP_URL,
+    publicApiUrl: valeurs.NOTIF_PUBLIC_API_URL,
+    unsubscribeMailto: valeurs.NOTIF_UNSUBSCRIBE_MAILTO,
+    schedulerHeure: valeurs.NOTIF_SCHEDULER_HEURE,
+    schedulerForcer: valeurs.NOTIF_SCHEDULER_FORCER,
     email: {
-      host: process.env['SMTP_HOST'] ?? 'smtp.gmail.com',
-      port: Number(process.env['SMTP_PORT'] ?? 587),
-      user: process.env['SMTP_USER'] ?? '',
-      password: process.env['SMTP_PASSWORD'] ?? '',
-      from:
-        process.env['NOTIF_EMAIL_FROM'] ??
-        'Crèche Planner <ne-pas-repondre@example.org>',
-      parent: process.env['NOTIF_EMAIL_PARENT'] ?? 'edouard.zemb@gmail.com',
-      // Garde-fou : dry-run par défaut, désactivé seulement par un `false` explicite.
-      dryRun: process.env['NOTIF_EMAIL_DRY_RUN'] !== 'false',
-      allowlist: parseListe(process.env['NOTIF_EMAIL_ALLOWLIST']),
+      host: valeurs.SMTP_HOST,
+      port: valeurs.SMTP_PORT,
+      user: valeurs.SMTP_USER,
+      password: valeurs.SMTP_PASSWORD,
+      from: valeurs.NOTIF_EMAIL_FROM,
+      parent: valeurs.NOTIF_EMAIL_PARENT,
+      dryRun: valeurs.NOTIF_EMAIL_DRY_RUN,
+      allowlist: valeurs.NOTIF_EMAIL_ALLOWLIST,
     },
-    assertion: lireConfigAssertion(),
+    assertion: configAssertion(valeurs),
   };
 }

@@ -1,6 +1,11 @@
 import {
-  lireConfigAssertion,
+  champEnv,
+  CHAMPS_ASSERTION,
+  configAssertion,
+  lireEnv,
   type ConfigAssertion,
+  type RegleProduction,
+  type ValeursEnv,
 } from '@creche-planner/nest-commons';
 
 export interface ServiceConfig {
@@ -27,54 +32,81 @@ export interface DesabonnementConfig {
 
 /**
  * Secret de désabonnement de **dev uniquement** (défaut local). Ce n'est **pas**
- * un secret de prod : `verifierConfigProduction` refuse de démarrer en production
- * s'il est resté à cette valeur (comme absent/vide). Source **unique**, réutilisée
- * par `loadConfig` **et** le garde-fou (jamais deux littéraux à garder synchro).
+ * un secret de prod : la règle `REGLE_SECRET_DESABONNEMENT` refuse de démarrer en
+ * production s'il est resté à cette valeur. Source **unique**, réutilisée par la
+ * déclaration `CHAMPS_ENV` **et** par la règle (jamais deux littéraux à garder
+ * synchro).
  */
 export const SECRET_DESABONNEMENT_DEV = 'dev-desabonnement-secret-non-prod';
 
 /**
- * Garde-fou de démarrage (miroir de `api-gateway/verifierConfigProduction`) : en
- * production, le secret HMAC qui signe les jetons de désabonnement one-click
- * (RFC 8058) doit être un **vrai** secret, jamais le fallback de dev. Sans lui,
- * les liens « se désabonner » seraient signés avec une constante **publique**,
- * donc forgeables. Hors production, aucune exigence (dev/test tournent sur le
- * défaut). **Aucune échappatoire** : le secret est toujours requis en prod.
+ * Variables d'environnement lues par ce service (`AM-44`, lot 5 standards).
+ * **Cette déclaration est l'inventaire** : toute variable lue ailleurs qu'ici est
+ * refusée par la porte `pnpm environnement`, et toute variable posée par un
+ * compose sans figurer ici est un réglage inerte.
  */
-export function verifierConfigProduction(
-  env: Record<string, string | undefined> = process.env,
-): void {
-  if (env['NODE_ENV'] !== 'production') {
-    return;
-  }
-  const secret = env['DESABONNEMENT_TOKEN_SECRET']?.trim();
-  if (
-    secret === undefined ||
-    secret === '' ||
-    secret === SECRET_DESABONNEMENT_DEV
-  ) {
-    throw new Error(
-      'DESABONNEMENT_TOKEN_SECRET requis en production : les jetons de ' +
-        'désabonnement one-click (RFC 8058) sont signés avec ce secret HMAC. ' +
-        'Absent, vide ou resté au défaut de dev, les liens de désabonnement ' +
-        'seraient forgeables. Poser un vrai secret dans .env.server.enc.',
-    );
-  }
-}
+export const CHAMPS_ENV = {
+  PORT: champEnv.port(3002),
+  DATABASE_URL: champEnv.urlPostgres(
+    'postgres://foyer:foyer@localhost:5434/foyer',
+  ),
+  NATS_URL: champEnv.urlNats('nats://localhost:4222'),
+  DESABONNEMENT_TOKEN_SECRET: champEnv.secretAvecRepli(
+    SECRET_DESABONNEMENT_DEV,
+  ),
+  // Borné à 365 j : au-delà, un lien de désabonnement circulant dans une vieille
+  // boîte reste actionnable plus longtemps que la donnée qu'il protège.
+  DESABONNEMENT_TOKEN_TTL_JOURS: champEnv.entier({
+    defaut: 30,
+    min: 1,
+    max: 365,
+  }),
+  ...CHAMPS_ASSERTION,
+} as const;
 
-/** Configuration du service depuis l'environnement, avec des défauts de dev local. */
-export function loadConfig(): ServiceConfig {
+/**
+ * Garde-fou de démarrage (jusqu'au lot 5 : `verifierConfigProduction()`, l'un des
+ * trois homonymes du dépôt — cf. `libs/nest-commons/src/lib/config/env.ts`) : en
+ * production, le secret HMAC qui signe les jetons de désabonnement one-click
+ * (RFC 8058) doit être un **vrai** secret, jamais le repli de dev. Sans lui, les
+ * liens « se désabonner » seraient signés avec une constante **publique**, donc
+ * forgeables. Hors production, aucune exigence (dev/test tournent sur le repli).
+ * **Aucune échappatoire** : le secret est toujours requis en prod.
+ */
+export const REGLE_SECRET_DESABONNEMENT: RegleProduction<
+  ValeursEnv<typeof CHAMPS_ENV>
+> = {
+  nom: 'secret de désabonnement (RFC 8058)',
+  verifier: (valeurs) =>
+    valeurs.DESABONNEMENT_TOKEN_SECRET === SECRET_DESABONNEMENT_DEV
+      ? 'DESABONNEMENT_TOKEN_SECRET requis en production : les jetons de ' +
+        'désabonnement one-click sont signés avec ce secret HMAC. Resté au ' +
+        'repli de dev (valeur publique), les liens seraient forgeables. Poser ' +
+        'un vrai secret dans .env.server.enc.'
+      : undefined,
+};
+
+/**
+ * Configuration du service, **validée** au premier appel (donc au démarrage :
+ * `main.ts` l'appelle en première instruction). Une variable illisible refuse le
+ * démarrage en nommant le champ, au lieu de propager un `NaN` ou un repli
+ * `localhost` jusqu'à la première requête.
+ */
+export function loadConfig(
+  env: Record<string, string | undefined> = process.env,
+): ServiceConfig {
+  const valeurs = lireEnv('svc-foyer', CHAMPS_ENV, {
+    env,
+    regles: [REGLE_SECRET_DESABONNEMENT],
+  });
   return {
-    port: Number(process.env['PORT'] ?? 3002),
-    databaseUrl:
-      process.env['DATABASE_URL'] ??
-      'postgres://foyer:foyer@localhost:5434/foyer',
-    natsUrl: process.env['NATS_URL'] ?? 'nats://localhost:4222',
+    port: valeurs.PORT,
+    databaseUrl: valeurs.DATABASE_URL,
+    natsUrl: valeurs.NATS_URL,
     desabonnement: {
-      secret:
-        process.env['DESABONNEMENT_TOKEN_SECRET'] ?? SECRET_DESABONNEMENT_DEV,
-      ttlJours: Number(process.env['DESABONNEMENT_TOKEN_TTL_JOURS'] ?? 30),
+      secret: valeurs.DESABONNEMENT_TOKEN_SECRET,
+      ttlJours: valeurs.DESABONNEMENT_TOKEN_TTL_JOURS,
     },
-    assertion: lireConfigAssertion(),
+    assertion: configAssertion(valeurs),
   };
 }

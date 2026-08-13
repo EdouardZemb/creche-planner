@@ -53,7 +53,17 @@ describe('IdentiteGuard (pose l’identité, ne refuse rien)', () => {
   });
 
   it('ignore X-Dev-User-Email en production (pas d’identité de dev spoofable)', async () => {
+    // Une production ne se simule pas à moitié : depuis le lot 5 des standards,
+    // `loadConfig()` refuse en production une URL amont laissée à son repli
+    // `localhost` (AM-44). Ce test pose donc l'environnement d'une vraie prod —
+    // le guard lit la config à chaque requête.
     process.env['NODE_ENV'] = 'production';
+    process.env['GATEWAY_AUTH_DISABLED'] = '1';
+    process.env['REFERENTIEL_URL'] = 'http://svc-referentiel:3001';
+    process.env['FOYER_URL'] = 'http://svc-foyer:3002';
+    process.env['PLANIFICATION_URL'] = 'http://svc-planification:3004';
+    process.env['TARIFICATION_URL'] = 'http://svc-tarification:3005';
+    process.env['NOTIFICATIONS_URL'] = 'http://svc-notifications:3006';
     const guard = new IdentiteGuard(fakeReflector(false));
     const req = requete({ headers: { 'x-dev-user-email': 'parent@test.fr' } });
     const ok = await guard.canActivate(fakeContext(req));
