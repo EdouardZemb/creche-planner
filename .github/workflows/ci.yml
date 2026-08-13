@@ -1238,7 +1238,10 @@ jobs:
             || echec "référence sans lien attendue pour une html_url refusée"
 
           # 4) Tout doit tenir sur UNE ligne : un saut de ligne casserait la structure.
-          NB=$(echo "$SORTIE" | grep -c 'paquet-piege')
+          #    On compte sur un jeton du RÉSUMÉ hostile (« Faux titre ») et non sur le
+          #    nom du paquet : depuis AM-75 celui-ci doit être un paquet réellement
+          #    embarqué (`pino`), sans quoi le jeu ne bloquerait plus.
+          NB=$(echo "$SORTIE" | grep -c 'Faux titre')
           [ "$NB" -eq 1 ] || echec "l'entrée hostile s'étale sur $NB lignes (sauts de ligne non retirés)"
 
           echo "✅ Assainissement, refus de lien et code de sortie conformes."
@@ -1282,6 +1285,55 @@ jobs:
             echec "l'aide réclame un PAT alors que la fonctionnalité est désactivée"
           fi
           echo "✅ Un 403 « désactivé » oriente vers l'activation, pas vers un PAT."
+
+      - name: Périmètre bloquant — seul l'embarqué fait rougir (AM-75)
+        run: |
+          # Le seuil ne doit mordre que sur ce que les images installent vraiment.
+          # Attendus DÉRIVÉS du lockfile réel : `pino` est une dépendance de
+          # production, `@pact-foundation/pact` un outil de test. Si la clôture
+          # cassait (format de lockfile changé), le 1er cas cesserait de bloquer
+          # et ce job rougirait — c'est le but.
+          set +e
+          set -uo pipefail
+
+          echec() { echo "::error::$1"; echo "--- sortie obtenue ---"; echo "$2"; exit 1; }
+
+          MIXTE=$(ALERTES_DRY_RUN=perimetre node .github/workflows/scripts/veille-alertes.mjs)
+          CODE_MIXTE=$?
+          [ "$CODE_MIXTE" -eq 1 ] || echec "une alerte embarquée doit faire sortir en 1, obtenu $CODE_MIXTE" "$MIXTE"
+          echo "$MIXTE" | grep -qF 'embarquée(s) au-dessus du seuil' \
+            || echec "l'alerte embarquée n'est pas annoncée comme bloquante" "$MIXTE"
+          echo "$MIXTE" | grep -qF 'hors périmètre livré' \
+            || echec "l'alerte d'outillage doit rester listée en informatif" "$MIXTE"
+
+          # SONDE NÉGATIVE — l'outillage SEUL doit sortir VERT. C'est elle qui prouve
+          # que la distinction change le VERDICT, et pas seulement l'affichage : sans
+          # le périmètre, ce cas sortirait en 1 comme avant.
+          OUTIL=$(ALERTES_DRY_RUN=perimetre-outillage node .github/workflows/scripts/veille-alertes.mjs)
+          CODE_OUTIL=$?
+          [ "$CODE_OUTIL" -eq 0 ] || echec "l'outillage seul ne doit pas bloquer, obtenu $CODE_OUTIL" "$OUTIL"
+          echo "$OUTIL" | grep -qF 'ne touche le périmètre livré' \
+            || echec "le vert doit dire qu'il porte sur le périmètre livré, pas sur « aucune alerte »" "$OUTIL"
+
+          echo "✅ Seul l'embarqué bloque ; l'outillage reste listé."
+
+      - name: Un périmètre inconnu ne rend JAMAIS le seuil permissif
+        run: |
+          # Symétrique du POINT MORT : si le lockfile devient illisible, on ne
+          # dégrade pas vers « rien ne bloque » — tout redevient bloquant.
+          set +e
+          set -uo pipefail
+          SORTIE=$(ALERTES_DRY_RUN=perimetre-outillage \
+            ALERTES_LOCKFILE=/inexistant/pnpm-lock.yaml \
+            node .github/workflows/scripts/veille-alertes.mjs)
+          CODE=$?
+
+          echec() { echo "::error::$1"; echo "--- sortie obtenue ---"; echo "$SORTIE"; exit 1; }
+
+          [ "$CODE" -eq 1 ] || echec "un périmètre inconnu doit tout rendre bloquant, obtenu $CODE"
+          echo "$SORTIE" | grep -qF 'Périmètre livré inconnu' \
+            || echec "la cécité sur le périmètre doit être NOMMÉE dans le rapport"
+          echo "✅ Un périmètre inconnu reste strict."
 
   # AUTO-TEST de la VEILLE CVE (`image-rescan.mjs`), même patron que ci-dessus.
   #
