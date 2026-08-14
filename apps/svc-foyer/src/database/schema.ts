@@ -97,6 +97,60 @@ export const correctionJournal = pgTable('correction_journal', {
 });
 
 /**
+ * **Piste d'audit acteur** du dossier foyer (lot 6 du plan standards, `AM-45` ;
+ * OWASP ASVS V7). Une ligne par mutation réussie des données sensibles du foyer —
+ * ressources, enfants, parents, préférences — avec **qui** l'a faite.
+ *
+ * Trois décisions de forme, chacune contre une alternative qui paraissait plus
+ * simple :
+ *
+ * 1. **Un journal, pas une colonne sur la ligne mutée.** L'énoncé d'`AM-45` disait
+ *    « colonne acteur » ; la moitié des mutations sensibles sont des
+ *    **suppressions** (`retirerEnfant` est un `DELETE` réel), et une colonne
+ *    disparaît avec sa ligne. Le retrait d'un parent — c'est-à-dire la révocation
+ *    de l'accès d'une personne au foyer — est justement l'événement qu'aucune
+ *    colonne ne saurait garder.
+ * 2. **Écrite dans la transaction de la mutation.** Même patron que l'outbox : une
+ *    ligne d'audit qui survivrait à un `ROLLBACK` affirmerait un fait qui n'a pas
+ *    eu lieu, et une écriture après coup se perdrait au premier incident.
+ * 3. **`acteur` est nullable, `acteur_type` ne l'est pas.** Tant que
+ *    `INTERSERVICE_AUTHZ_ENFORCE` n'est pas basculé, une requête sans assertion
+ *    valide passe : la mutation a lieu sans acteur établi. On écrit alors
+ *    `acteur_type = 'inconnu'` — un trou nommé, comptable, mesurable — plutôt
+ *    qu'aucune ligne.
+ *
+ * Ce que cette table **ne peut pas** tracer : l'effacement du foyer lui-même. Elle
+ * part par `ON DELETE CASCADE` avec lui, et une ligne insérée après le `DELETE`
+ * violerait la clé étrangère. Cette action-là n'a que le journal applicatif
+ * (doc 37, T5) — cf. `journal-audit.service.ts`.
+ */
+export const journalAudit = pgTable(
+  'journal_audit',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    foyerId: uuid('foyer_id')
+      .notNull()
+      .references(() => foyer.id, { onDelete: 'cascade' }),
+    /** Action consignée, prise dans `ACTIONS_AUDIT` (`audit/journal-audit.actions.ts`). */
+    action: varchar('action', { length: 64 }).notNull(),
+    /** Nature de la ressource visée (`enfant`, `parent`, `foyer_version`…). */
+    cibleType: varchar('cible_type', { length: 32 }).notNull(),
+    /** Identifiant de la ressource visée ; nul quand l'action porte le foyer entier. */
+    cibleId: uuid('cible_id'),
+    /** `parent` | `service` | `inconnu` — la forme de l'acteur, toujours connue. */
+    acteurType: varchar('acteur_type', { length: 16 }).notNull(),
+    /** E-mail du parent ou nom du service ; **nul** si `acteur_type = 'inconnu'`. */
+    acteur: varchar('acteur', { length: 320 }),
+    creeLe: timestamp('cree_le', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // Lecture (export de portabilité) et purge (borne T9) balaient toutes deux par
+    // foyer puis par date : un seul index sert les deux.
+    index('journal_audit_foyer_date_idx').on(table.foyerId, table.creeLe),
+  ],
+);
+
+/**
  * Read-model du **barème de seuils de tranche** projeté depuis le stream
  * `REFERENTIEL` (`referentiel.BaremeTranchesPublie.v1`, SFD 30, D2). `svc-foyer`
  * devient consommateur (sa **première** infra de consommation) pour dériver la

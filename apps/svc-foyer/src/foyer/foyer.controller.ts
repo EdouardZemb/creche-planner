@@ -11,7 +11,11 @@ import {
   Put,
   Query,
 } from '@nestjs/common';
-import { ScopeFoyerInterServices } from '@creche-planner/nest-commons';
+import {
+  ActeurCourant,
+  ScopeFoyerInterServices,
+  type Acteur,
+} from '@creche-planner/nest-commons';
 import type { FoyerId } from '@creche-planner/contracts-foyer';
 import {
   ajouterEnfantSchema,
@@ -67,8 +71,9 @@ export class FoyerController {
   @Post()
   creer(
     @Body(new ZodValidationPipe(creerFoyerSchema)) dto: CreerFoyerDto,
+    @ActeurCourant() acteur: Acteur,
   ): Promise<DossierFoyerVue> {
-    return this.foyers.creer(dto);
+    return this.foyers.creer(dto, acteur);
   }
 
   /**
@@ -99,8 +104,9 @@ export class FoyerController {
   mettreAJour(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(ecrireFoyerSchema)) dto: EcrireFoyerDto,
+    @ActeurCourant() acteur: Acteur,
   ): Promise<FoyerVue> {
-    return this.foyers.mettreAJour(id, dto);
+    return this.foyers.mettreAJour(id, dto, acteur);
   }
 
   /**
@@ -111,8 +117,11 @@ export class FoyerController {
    */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  supprimerFoyer(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
-    return this.foyers.supprimerFoyer(id);
+  supprimerFoyer(
+    @Param('id', ParseUUIDPipe) id: string,
+    @ActeurCourant() acteur: Acteur,
+  ): Promise<void> {
+    return this.foyers.supprimerFoyer(id, acteur);
   }
 
   /**
@@ -139,8 +148,9 @@ export class FoyerController {
   ajouterEnfant(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(ajouterEnfantSchema)) dto: AjouterEnfantDto,
+    @ActeurCourant() acteur: Acteur,
   ): Promise<EnfantVue> {
-    return this.foyers.ajouterEnfant(id, dto);
+    return this.foyers.ajouterEnfant(id, dto, acteur);
   }
 
   @Get(':id/enfants')
@@ -153,8 +163,9 @@ export class FoyerController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('enfantId', ParseUUIDPipe) enfantId: string,
     @Body(new ZodValidationPipe(modifierEnfantSchema)) dto: ModifierEnfantDto,
+    @ActeurCourant() acteur: Acteur,
   ): Promise<EnfantVue> {
-    return this.foyers.modifierEnfant(id, enfantId, dto);
+    return this.foyers.modifierEnfant(id, enfantId, dto, acteur);
   }
 
   @Delete(':id/enfants/:enfantId')
@@ -162,8 +173,9 @@ export class FoyerController {
   retirerEnfant(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('enfantId', ParseUUIDPipe) enfantId: string,
+    @ActeurCourant() acteur: Acteur,
   ): Promise<void> {
-    return this.foyers.retirerEnfant(id, enfantId);
+    return this.foyers.retirerEnfant(id, enfantId, acteur);
   }
 
   @Post(':id/parents')
@@ -171,8 +183,9 @@ export class FoyerController {
   ajouterParent(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(ajouterParentSchema)) dto: AjouterParentDto,
+    @ActeurCourant() acteur: Acteur,
   ): Promise<ParentVue> {
-    return this.foyers.ajouterParent(id, dto);
+    return this.foyers.ajouterParent(id, dto, acteur);
   }
 
   @Get(':id/parents')
@@ -185,8 +198,9 @@ export class FoyerController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('parentId', ParseUUIDPipe) parentId: string,
     @Body(new ZodValidationPipe(modifierParentSchema)) dto: ModifierParentDto,
+    @ActeurCourant() acteur: Acteur,
   ): Promise<ParentVue> {
-    return this.foyers.modifierParent(id, parentId, dto);
+    return this.foyers.modifierParent(id, parentId, dto, acteur);
   }
 
   @Delete(':id/parents/:parentId')
@@ -194,8 +208,9 @@ export class FoyerController {
   retirerParent(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('parentId', ParseUUIDPipe) parentId: string,
+    @ActeurCourant() acteur: Acteur,
   ): Promise<void> {
-    return this.foyers.retirerParent(id, parentId);
+    return this.foyers.retirerParent(id, parentId, acteur);
   }
 
   /** Préférences de notification effectives du parent (défaut §5.1 + choix stockés). */
@@ -216,7 +231,8 @@ export class FoyerController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('parentId', ParseUUIDPipe) parentId: string,
     @Body(new ZodValidationPipe(majPreferencesSchema)) dto: MajPreferencesDto,
+    @ActeurCourant() acteur: Acteur,
   ): Promise<PreferenceVue[]> {
-    return this.foyers.majPreferences(id, parentId, dto);
+    return this.foyers.majPreferences(id, parentId, dto, acteur);
   }
 }
