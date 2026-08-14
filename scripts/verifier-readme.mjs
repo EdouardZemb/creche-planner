@@ -452,7 +452,15 @@ function lotsDuPlan(contenu) {
   return { livres, ouverts };
 }
 
-/** Les numéros de lots cités par une ligne du README (`lots 0 → 5, 7`). */
+/**
+ * Les numéros de lots cités par une ligne du README (`lots 0 → 5, 7`), avec le
+ * texte BRUT qui les porte : les sondes mutent ce texte-là, quelle que soit la
+ * forme choisie par le rédacteur. Une sonde qui présupposerait la plage
+ * cesserait de mordre le jour où la ligne passe à l'énumération — que le remède
+ * affiché par cette porte propose lui-même (`LE-22`, `LE-33`).
+ *
+ * @returns {{ cites: Set<number>, brut: string } | null}
+ */
 function lotsCites(ligne) {
   const liste =
     /lots?\s+(\d+(?:\s*(?:→|->|–|—)\s*\d+)?(?:\s*,\s*\d+(?:\s*(?:→|->|–|—)\s*\d+)?)*)/.exec(
@@ -470,7 +478,7 @@ function lotsCites(ligne) {
     const seul = /(\d+)/.exec(morceau);
     if (seul !== null) cites.add(Number(seul[1]));
   }
-  return cites;
+  return { cites, brut: liste[0] };
 }
 
 /** Rend l'ensemble trié sous la forme la plus courte qui le décrive. */
@@ -478,10 +486,36 @@ function enumerer(numeros) {
   return [...numeros].sort((a, b) => a - b).join(', ');
 }
 
+/**
+ * Les plans dont le README répond : ceux qui marquent au moins un lot livré.
+ *
+ * Le critère a d'abord été « au moins un lot livré ET au moins un lot ouvert »
+ * — un plan « en cours ». C'était un piège à retardement, trouvé en revue : le
+ * jour où le dernier lot du seul plan concerné se clôt, plus aucun plan n'entre
+ * dans le périmètre, la garde anti-balayage-à-vide se déclenche, et AUCUNE
+ * édition du README ne peut la faire taire. Une porte doit toujours nommer un
+ * remède atteignable ; un chantier terminé se relate d'ailleurs exactement
+ * comme un chantier en cours.
+ *
+ * @returns {{ plan: string, livres: Set<number> }[]}
+ */
+function plansSuivis() {
+  const suivis = [];
+  for (const entree of entrees('.claude/plans')) {
+    if (!entree.isFile() || !entree.name.endsWith('.md')) continue;
+    const plan = `.claude/plans/${entree.name}`;
+    const contenu = lireTexte(plan);
+    if (contenu === null) continue;
+    const { livres } = lotsDuPlan(contenu);
+    if (livres.size > 0) suivis.push({ plan, livres });
+  }
+  return suivis;
+}
+
 function verifierLots() {
-  const plans = entrees('.claude/plans')
-    .filter((e) => e.isFile() && e.name.endsWith('.md'))
-    .map((e) => `.claude/plans/${e.name}`);
+  const plans = entrees('.claude/plans').filter(
+    (e) => e.isFile() && e.name.endsWith('.md'),
+  );
   if (plans.length === 0) {
     erreur(
       '.claude/plans/',
@@ -493,21 +527,12 @@ function verifierLots() {
   const readme = lireTexte(README);
   if (readme === null) return;
 
-  /** @type {{ plan: string, livres: Set<number>, ouverts: Set<number> }[]} */
-  const enCours = [];
-  for (const plan of plans) {
-    const contenu = lireTexte(plan);
-    if (contenu === null) continue;
-    const { livres, ouverts } = lotsDuPlan(contenu);
-    if (livres.size > 0 && ouverts.size > 0) {
-      enCours.push({ plan, livres, ouverts });
-    }
-  }
-  if (enCours.length === 0) {
+  const suivis = plansSuivis();
+  if (suivis.length === 0) {
     erreur(
       '.claude/plans/',
       'balayage-vide',
-      'aucun plan « en cours » (au moins un lot livré et un lot ouvert) — soit tous les chantiers sont clos, soit la marque de clôture des titres a changé de forme et la porte ne garde plus rien.',
+      `aucun des ${plans.length} plans ne marque un seul lot livré — la marque de clôture des titres a changé de forme, et la porte ne garde plus rien.`,
       'un titre de lot livré porte `✅` (ex. `## Lot 4 — … ✅ LIVRÉ`).',
     );
     return;
@@ -515,18 +540,19 @@ function verifierLots() {
   faitsVerifies.add('lots-livres');
 
   const lignes = readme.split('\n');
-  for (const { plan, livres } of enCours) {
+  for (const { plan, livres } of suivis) {
     const ligne = lignes.find((l) => l.includes(plan));
     if (ligne === undefined) {
       erreur(
         README,
         'plan-non-lie',
-        `le chantier en cours \`${plan}\` (lots livrés : ${enumerer(livres)}) n'est lié nulle part.`,
+        `le chantier \`${plan}\` (lots livrés : ${enumerer(livres)}) n'est lié nulle part.`,
         'lui donner sa ligne dans la table des chantiers de « État du projet », avec le lien vers le plan et les lots livrés.',
       );
       continue;
     }
-    const cites = lotsCites(ligne);
+    const lots = lotsCites(ligne);
+    const cites = lots === null ? null : lots.cites;
     if (cites === null) {
       erreur(
         README,
@@ -698,16 +724,26 @@ const SONDES = [
       const dernier = reels[reels.length - 1];
       if (dernier === undefined) throw new Error('aucun ADR réel');
       const cible = String(dernier).padStart(4, '0');
-      const precedent = String(dernier - 1).padStart(4, '0');
-      // La plage, ET les liens directs s'il y en a — un ADR resté lié ailleurs
-      // dans le document est couvert par l'autre voie, et la sonde ne
-      // prouverait rien. Le lien direct est facultatif : `muter()` lèverait sur
-      // son absence, alors qu'ici elle est un état légitime du document.
-      const sansPlage = muter(
-        texte,
-        new RegExp(`→ ${cible}`),
-        `→ ${precedent}`,
-      );
+      const ligne = ligneAdr(texte);
+      if (ligne === null) throw new Error('ligne ADR introuvable');
+      const separateur = ligne.description.indexOf(' : ');
+      if (separateur === -1) throw new Error('ligne ADR sans ses intitulés');
+      // On réécrit la partie « numéros » de la ligne à partir de ce qu'elle
+      // COUVRE, moins le dernier ADR — sans présupposer qu'elle soit écrite en
+      // plage : `numerosCouverts` accepte aussi l'énumération, et une sonde qui
+      // exigerait `→ NNNN` cesserait de mordre le jour où la ligne change de
+      // forme, sans que rien ne le dise (`LE-22`, `LE-33`).
+      const numeros = ligne.description.slice(0, separateur);
+      const restants = [...numerosCouverts(numeros)]
+        .filter((n) => n !== dernier)
+        .sort((a, b) => a - b)
+        .map((n) => String(n).padStart(4, '0'));
+      if (restants.length === 0) throw new Error('un seul ADR annoncé');
+      // Les liens directs aussi : un ADR resté lié ailleurs dans le document
+      // est couvert par l'autre voie, et la sonde ne prouverait rien. Ce lien
+      // est facultatif — `muter()` lèverait sur son absence, alors qu'elle est
+      // un état légitime du document.
+      const sansPlage = muter(texte, numeros, ` ${restants.join(', ')} `);
       return sansPlage.replace(
         new RegExp(`docs/adr/${cible}-[a-z0-9-]+\\.md`, 'g'),
         'docs/adr/',
@@ -734,38 +770,33 @@ const SONDES = [
     nom: 'lot livré non relaté par le README',
     fichier: README,
     abimer: (texte) => {
-      const plan = entrees('.claude/plans')
-        .map((e) => `.claude/plans/${e.name}`)
-        .find((p) => {
-          const contenu = lireTexte(p);
-          if (contenu === null) return false;
-          const { livres, ouverts } = lotsDuPlan(contenu);
-          return livres.size > 0 && ouverts.size > 0 && texte.includes(p);
-        });
-      if (plan === undefined) throw new Error('aucun plan en cours lié');
-      const ligne = texte.split('\n').find((l) => l.includes(plan));
-      const cites = ligne === undefined ? null : lotsCites(ligne);
-      if (ligne === undefined || cites === null) {
-        throw new Error('aucun lot cité à abîmer');
-      }
-      const dernier = Math.max(...cites);
-      return muter(
-        texte,
-        ligne,
-        ligne.replace(new RegExp(`(→\\s*)${dernier}\\b`), `$1${dernier - 1}`),
-      );
+      const suivi = plansSuivis().find((s) => texte.includes(s.plan));
+      if (suivi === undefined) throw new Error('aucun plan suivi n’est lié');
+      const ligne = texte.split('\n').find((l) => l.includes(suivi.plan));
+      const lots = ligne === undefined ? null : lotsCites(ligne);
+      if (lots === null) throw new Error('aucun lot cité à abîmer');
+      // On réécrit l'expression de lots à partir de ce qu'elle CITE, moins le
+      // dernier — la forme (plage ou énumération) n'est pas présupposée. Le
+      // remède affiché par la porte elle-même propose l'énumération : une sonde
+      // qui exigerait `→ N` casserait sur son propre conseil.
+      const restants = [...lots.cites]
+        .filter((n) => n !== Math.max(...lots.cites))
+        .sort((a, b) => a - b);
+      if (restants.length === 0) throw new Error('un seul lot cité');
+      return muter(texte, lots.brut, `lots ${enumerer(restants)}`);
     },
     code: 'lot-livre-non-relate',
   },
   {
-    nom: 'chantier en cours non lié',
+    nom: 'chantier à lots livrés non lié',
     fichier: README,
     abimer: (texte) => {
-      const plan = entrees('.claude/plans')
-        .map((e) => `.claude/plans/${e.name}`)
-        .find((p) => texte.includes(p));
-      if (plan === undefined) throw new Error('aucun plan lié');
-      return muter(texte, new RegExp(plan, 'g'), '.claude/plans/');
+      // Le même filtre que la porte : un plan quelconque cité dans le README
+      // (sans lot livré) ne produirait AUCUN constat, et la sonde accuserait la
+      // porte de ne plus mordre. Défaut trouvé en revue.
+      const suivi = plansSuivis().find((s) => texte.includes(s.plan));
+      if (suivi === undefined) throw new Error('aucun plan suivi n’est lié');
+      return muter(texte, new RegExp(suivi.plan, 'g'), '.claude/plans/');
     },
     code: 'plan-non-lie',
   },
