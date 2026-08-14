@@ -1355,8 +1355,10 @@ jobs:
           CS=$(echo "$SORTIE" | grep '^Code scanning')
 
           # 1) Dependabot ne doit JAMAIS envoyer `page` — c'est le 400 du 14/08.
+          #    ⚠️ Chercher `page=` tout court matche `per_page=100` et rend un faux
+          #    positif (constaté sur cette PR même) : on vise le SÉPARATEUR.
           case "$DEP" in
-            *"page="*) echec "l'URL Dependabot porte un paramètre \`page\` : l'API le refuse (400)" ;;
+            *"&page="*|*"?page="*) echec "l'URL Dependabot porte un paramètre \`page\` : l'API le refuse (400)" ;;
           esac
           case "$DEP" in
             *"pagination=curseur"*) ;;
