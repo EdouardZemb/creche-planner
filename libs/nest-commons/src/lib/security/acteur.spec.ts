@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACTEUR_INCONNU,
   acteurDepuisAssertion,
+  identiteActeur,
   libelleActeur,
 } from './acteur.js';
 import {
@@ -42,6 +43,20 @@ describe('acteurDepuisAssertion', () => {
     expect(acteur).toEqual({ type: 'parent', email: 'claire@example.test' });
   });
 
+  /**
+   * Un administrateur **contourne** l'appartenance au foyer (`AppartenanceGuard`,
+   * bypass `ADMIN_EMAILS`) : le confondre avec un parent ferait apparaître, dans
+   * l'export d'un foyer, un « parent » dont l'adresse n'appartient à personne du
+   * foyer. C'est la confusion qu'une piste d'audit existe pour empêcher.
+   */
+  it("distingue l'administrateur du parent, l'e-mail étant le même champ", () => {
+    const acteur = acteurDepuisAssertion(
+      chargeReelle({ email: 'po@example.test', admin: true }),
+    );
+    expect(acteur).toEqual({ type: 'admin', email: 'po@example.test' });
+    expect(identiteActeur(acteur)).toBe('po@example.test');
+  });
+
   it('rend un acteur service depuis une assertion machine', () => {
     const acteur = acteurDepuisAssertion(
       chargeReelle({ machine: 'api-gateway' }),
@@ -68,9 +83,32 @@ describe('libelleActeur', () => {
     expect(libelleActeur({ type: 'parent', email: 'a@b.test' })).toBe(
       'a@b.test',
     );
+    expect(libelleActeur({ type: 'admin', email: 'po@b.test' })).toBe(
+      'admin:po@b.test',
+    );
     expect(libelleActeur({ type: 'service', nom: 'api-gateway' })).toBe(
       'service:api-gateway',
     );
     expect(libelleActeur(ACTEUR_INCONNU)).toBe('inconnu');
+  });
+});
+
+describe('identiteActeur', () => {
+  /**
+   * Ce que la **colonne** porte, et qui n'est pas le libellé : la nature vit déjà
+   * dans `acteur_type`, la répéter dans la valeur rendrait toute recherche par
+   * e-mail dépendante d'un préfixe.
+   */
+  it('rend l’identité nue, sans la nature, et null quand il n’y en a pas', () => {
+    expect(identiteActeur({ type: 'parent', email: 'a@b.test' })).toBe(
+      'a@b.test',
+    );
+    expect(identiteActeur({ type: 'admin', email: 'po@b.test' })).toBe(
+      'po@b.test',
+    );
+    expect(identiteActeur({ type: 'service', nom: 'api-gateway' })).toBe(
+      'api-gateway',
+    );
+    expect(identiteActeur(ACTEUR_INCONNU)).toBeNull();
   });
 });

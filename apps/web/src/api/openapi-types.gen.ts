@@ -2604,7 +2604,7 @@ export interface components {
             genereLe: string;
             /** Format: uuid */
             foyerId: string;
-            /** @description Situation et ressources du foyer, enfants, parents (retirés compris), préférences de notification effectives et traces de désabonnement. */
+            /** @description Situation et ressources du foyer, enfants, parents (retirés compris), préférences de notification effectives, traces de désabonnement et piste d’audit des modifications du dossier. */
             situationFoyer: {
                 situationCourante: components["schemas"]["LigneExport"];
                 versionsRessources: components["schemas"]["LigneExport"][];
@@ -2613,6 +2613,7 @@ export interface components {
                 parents: components["schemas"]["LigneExport"][];
                 preferencesNotification: components["schemas"]["LigneExport"][];
                 jetonsDesabonnement: components["schemas"]["LigneExport"][];
+                pisteAudit: components["schemas"]["LigneExport"][];
             };
             /** @description Contrats d’accueil et tout ce qui leur est rattaché (avenants, corrections, plannings mensuels), et établissements déclarés. */
             gardeEtPlanning: {

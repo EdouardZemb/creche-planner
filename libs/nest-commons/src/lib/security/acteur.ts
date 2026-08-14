@@ -12,6 +12,12 @@
  *
  * - `parent` — assertion parent : l'e-mail a été vérifié au bord, c'est le cas
  *   nominal d'une action venue d'un écran ;
+ * - `admin` — assertion parent portant `admin: true` : un e-mail de `ADMIN_EMAILS`,
+ *   qui **contourne** l'appartenance au foyer (provisioning). Le distinguer n'est
+ *   pas cosmétique : sans cela, une action d'exploitation sur le dossier de
+ *   n'importe quel foyer s'écrirait `parent`, et l'export montrerait comme parent
+ *   une adresse qui n'en est pas une. C'est exactement la confusion qu'une piste
+ *   d'audit existe pour empêcher ;
  * - `service` — assertion machine : un service appelle un autre (relecture,
  *   repli, tâche de fond). Il n'y a **pas** de personne derrière l'action, et
  *   écrire un e-mail au hasard serait une fausse piste d'audit ;
@@ -32,6 +38,7 @@ import type { ChargeAssertion } from './assertion-identite.js';
 /** Acteur établi (ou non) d'une requête. Union discriminée exhaustive. */
 export type Acteur =
   | { readonly type: 'parent'; readonly email: string }
+  | { readonly type: 'admin'; readonly email: string }
   | { readonly type: 'service'; readonly nom: string }
   | { readonly type: 'inconnu' };
 
@@ -54,7 +61,9 @@ export function acteurDepuisAssertion(
     return ACTEUR_INCONNU;
   }
   if (charge.email !== undefined) {
-    return { type: 'parent', email: charge.email };
+    return charge.admin === true
+      ? { type: 'admin', email: charge.email }
+      : { type: 'parent', email: charge.email };
   }
   if (charge.machine !== undefined) {
     return { type: 'service', nom: charge.machine };
@@ -68,10 +77,31 @@ export function acteurDepuisAssertion(
  * la cardinalité et publierait une donnée personnelle dans Prometheus — les
  * compteurs n'étiquettent que le `type`.
  */
+/**
+ * **Identité nue** de l'acteur, telle qu'on la persiste : l'e-mail, ou le nom du
+ * service, ou `null` quand il n'y en a pas. Distincte de {@link libelleActeur} : une
+ * colonne accompagnée d'un `acteur_type` n'a pas à répéter la nature dans la valeur
+ * — et `null` plutôt que le mot « inconnu », qui serait indiscernable d'un acteur
+ * réellement nommé ainsi.
+ */
+export function identiteActeur(acteur: Acteur): string | null {
+  switch (acteur.type) {
+    case 'parent':
+    case 'admin':
+      return acteur.email;
+    case 'service':
+      return acteur.nom;
+    case 'inconnu':
+      return null;
+  }
+}
+
 export function libelleActeur(acteur: Acteur): string {
   switch (acteur.type) {
     case 'parent':
       return acteur.email;
+    case 'admin':
+      return `admin:${acteur.email}`;
     case 'service':
       return `service:${acteur.nom}`;
     case 'inconnu':

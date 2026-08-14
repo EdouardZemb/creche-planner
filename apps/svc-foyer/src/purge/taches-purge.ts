@@ -72,13 +72,21 @@ export const RETENTION_JOURNAL_AUDIT_JOURS = 3 * 365;
  * seul**, sa date de création est donc aussi sa date de dernière modification, et
  * c'est le seul cas simple des bornes de ce service.
  *
- * Ce qui ne va pas de soi, c'est de la borner **du tout**. Un journal d'audit qu'on
- * efface perd la propriété qui le rend utile ; mais celui-ci nomme des personnes
- * (l'e-mail de l'acteur), et une donnée personnelle sans durée est exactement ce que
- * le registre a été écrit pour interdire. Trois ans est la durée que le registre
- * assigne déjà aux deux autres traces du même dossier — l'historique versionné des
- * ressources (T1) et le journal de corrections (T1bis) : la piste ne survit pas à ce
- * qu'elle documente, et ne meurt pas avant lui.
+ * Ce qui ne va pas de soi, c'est de la borner **du tout**, et l'arbitrage mérite
+ * d'être écrit parce qu'il n'est pas symétrique.
+ *
+ * Le registre assigne 3 ans à l'historique versionné des ressources (T1) et au
+ * journal de corrections (T1bis) — mais ces deux lignes sont **écartées** (⛔) : leur
+ * point de départ n'existe pas en base, et rien ne les purge aujourd'hui. La piste
+ * d'audit, elle, a une ancre propre. La borner à 3 ans la fait donc **mourir avant ce
+ * qu'elle documente** : passé ce délai, une correction rétroactive subsistera sans son
+ * auteur. C'est le prix assumé, et il se paie dans ce sens-là plutôt que dans l'autre
+ * pour une raison précise : la piste est le seul des trois à porter une donnée
+ * personnelle **de l'acteur** — une adresse e-mail qui, sans borne, s'accumulerait
+ * sans terme ni nécessité. Le fond de la trace (l'avant/après de la correction)
+ * survit sans elle ; c'est l'inverse qui serait irrécupérable.
+ *
+ * Le jour où T1/T1bis deviennent outillées, cette durée se relit avec elles.
  *
  * `LE-35` s'applique-t-elle ? Non : personne n'interprète l'**absence** d'une ligne
  * ici. Aucune règle métier ne lit cette table — ni garde, ni machine à états, ni

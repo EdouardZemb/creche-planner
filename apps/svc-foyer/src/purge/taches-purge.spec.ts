@@ -124,17 +124,6 @@ describe('tachePurgeJournalAudit', () => {
     // Drizzle lie une borne `Date` en chaîne ISO, jamais en `Date` (`LE-36`).
     expect(params).toEqual([BORNE.toISOString()]);
   });
-
-  /**
-   * **Garde de cohérence, dérivée** : la piste d'audit ne doit pas s'effacer avant ce
-   * qu'elle documente. Les deux durées viennent du même §3 ; les comparer ici fait
-   * échouer le test le jour où l'une bouge sans l'autre, plutôt qu'en production.
-   */
-  it('ne meurt pas avant la trace qu’elle accompagne', () => {
-    expect(RETENTION_JOURNAL_AUDIT_JOURS).toBeGreaterThanOrEqual(
-      RETENTION_DESABONNEMENT_TOKEN_JOURS,
-    );
-  });
 });
 
 describe('tachesPurgeFoyer', () => {

@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { metrics } from '@opentelemetry/api';
-import { libelleActeur, type Acteur } from '@creche-planner/nest-commons';
+import {
+  identiteActeur,
+  libelleActeur,
+  type Acteur,
+} from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import { journalAudit } from '../database/schema.js';
 import type { ActionAudit, CibleAudit } from './journal-audit.actions.js';
@@ -71,10 +75,10 @@ export class JournalAuditService {
       cibleType: entree.cibleType,
       cibleId: entree.cibleId ?? null,
       acteurType: entree.acteur.type,
-      // `inconnu` n'a pas de nom : la colonne reste nulle plutôt que de porter le
-      // mot « inconnu », qui serait indiscernable d'un acteur ainsi nommé.
-      acteur:
-        entree.acteur.type === 'inconnu' ? null : libelleActeur(entree.acteur),
+      // L'identité **nue** : la nature est déjà dans `acteur_type`, et `inconnu`
+      // laisse la colonne nulle plutôt que d'y écrire le mot « inconnu », qui
+      // serait indiscernable d'un acteur réellement nommé ainsi.
+      acteur: identiteActeur(entree.acteur),
     });
     this.tracer(entree, true);
   }
