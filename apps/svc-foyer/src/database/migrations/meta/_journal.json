@@ -43,6 +43,13 @@
       "when": 1786518168818,
       "tag": "0005_purge_bornes_temporelles",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786708070001,
+      "tag": "0006_journal_audit",
+      "breakpoints": true
     }
   ]
 }

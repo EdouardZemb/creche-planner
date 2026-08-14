@@ -40,7 +40,13 @@ import {
   type ParentAjoutePayload,
   type ParentRetirePayload,
 } from '@creche-planner/contracts-foyer';
-import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
+import {
+  DRIZZLE,
+  traceIdCourant,
+  type Acteur,
+} from '@creche-planner/nest-commons';
+import { ACTIONS_AUDIT } from '../audit/journal-audit.actions.js';
+import { JournalAuditService } from '../audit/journal-audit.service.js';
 import type { Database } from '../database/database.types.js';
 import {
   baremeTranches,
@@ -156,7 +162,10 @@ function violationUnicite(
 
 @Injectable()
 export class FoyerService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly audit: JournalAuditService,
+  ) {}
 
   /** Date du jour ISO `YYYY-MM-DD` (défaut de date d'effet, H1 granularité jour). */
   private aujourdHui(): string {
@@ -239,7 +248,7 @@ export class FoyerService {
    * liste s'il n'est pas déjà saisi. Un e-mail dupliqué (unicité) annule **tout**
    * le dossier (409 via `traduireUnicite`).
    */
-  async creer(dto: CreerFoyerDto): Promise<DossierFoyerVue> {
+  async creer(dto: CreerFoyerDto, acteur: Acteur): Promise<DossierFoyerVue> {
     // Validation domaine AVANT toute écriture (foyer + chaque enfant).
     const domaine = this.versDomaine(dto);
     const foyerId = randomUUID();
@@ -338,6 +347,17 @@ export class FoyerService {
             .values(this.evenementParentEtat(PARENT_AJOUTE_TYPE, ligne));
           parents.push(this.versParentVue(ligne));
         }
+        // Une seule ligne d'audit pour la création : le dossier initial est une
+        // commande transactionnelle unique, pas dix mutations enchaînées. Les
+        // enfants et les parents qu'elle pose sont dans la réponse comme dans
+        // l'export ; les démultiplier ici noierait la piste sans rien apprendre.
+        await this.audit.consigner(tx, {
+          foyerId,
+          action: ACTIONS_AUDIT.FOYER_CREE,
+          cibleType: 'foyer',
+          cibleId: foyerId,
+          acteur,
+        });
         const foyerVue = this.versVue(foyerId, courante, tranche);
         return { foyer: foyerVue, enfants, parents };
       });
@@ -354,7 +374,11 @@ export class FoyerService {
    * complet est ré-émis en `FoyerMisAJour.v3` (tarification projette chaque version)
    * et la ligne `foyer` courante est rafraîchie sur la version applicable aujourd'hui.
    */
-  async mettreAJour(id: string, dto: EcrireFoyerDto): Promise<FoyerVue> {
+  async mettreAJour(
+    id: string,
+    dto: EcrireFoyerDto,
+    acteur: Acteur,
+  ): Promise<FoyerVue> {
     const domaine = this.versDomaine(dto);
     const dateEffet = dto.dateEffet ?? this.aujourdHui();
     const { ligne, tranche } = await this.db.transaction(async (tx) => {
@@ -396,13 +420,32 @@ export class FoyerService {
         });
       if (existante) {
         // Correction rétroactive : journalise l'avant/après (D6).
+        const correctionId = randomUUID();
         await tx.insert(correctionJournal).values({
-          id: randomUUID(),
+          id: correctionId,
           foyerId: id,
           versionId,
           avant: this.snapshotVersion(existante),
           apres: { dateEffet, ...valeurs },
           motif: dto.motif ?? null,
+        });
+        // La cible est la ligne de correction, pas la version : une même version
+        // peut être corrigée plusieurs fois, viser la version rendrait le
+        // rapprochement ambigu (cf. `CIBLES_AUDIT`).
+        await this.audit.consigner(tx, {
+          foyerId: id,
+          action: ACTIONS_AUDIT.RESSOURCES_CORRIGEES,
+          cibleType: 'correction_journal',
+          cibleId: correctionId,
+          acteur,
+        });
+      } else {
+        await this.audit.consigner(tx, {
+          foyerId: id,
+          action: ACTIONS_AUDIT.RESSOURCES_SAISIES,
+          cibleType: 'foyer_version',
+          cibleId: versionId,
+          acteur,
         });
       }
       return this.rafraichirEtEmettre(tx, id, baremes);
@@ -432,7 +475,7 @@ export class FoyerService {
    * (patron outbox) : si sa frappe échoue, la suppression est annulée — on ne
    * peut pas effacer localement sans que l'aval l'apprenne.
    */
-  async supprimerFoyer(foyerId: string): Promise<void> {
+  async supprimerFoyer(foyerId: string, acteur: Acteur): Promise<void> {
     await this.db.transaction(async (tx) => {
       // Collecte AVANT suppression : après le DELETE en cascade, la table est vide.
       const parents = await tx
@@ -456,6 +499,18 @@ export class FoyerService {
         payload,
         traceId: traceIdCourant(),
       });
+    });
+    // Piste d'audit **hors base** (lot 6) : `journal_audit` part en cascade avec le
+    // foyer, une insertion après le `DELETE` violerait la clé étrangère et une
+    // insertion avant serait emportée. Seule action du service dans ce cas, et la
+    // seule à être consignée APRÈS la transaction — un journal applicatif ne se
+    // ROLLBACK pas, il ne doit donc parler que de ce qui a été commité.
+    this.audit.consignerHorsBase({
+      foyerId,
+      action: ACTIONS_AUDIT.FOYER_EFFACE,
+      cibleType: 'foyer',
+      cibleId: foyerId,
+      acteur,
     });
   }
 
@@ -513,6 +568,7 @@ export class FoyerService {
   async ajouterEnfant(
     foyerId: string,
     dto: AjouterEnfantDto,
+    acteur: Acteur,
   ): Promise<EnfantVue> {
     // Valide via le domaine (prénom non vide, date interprétable).
     const enfantDomaine = Enfant.creer({
@@ -551,6 +607,13 @@ export class FoyerService {
         payload,
         traceId: traceIdCourant(),
       });
+      await this.audit.consigner(tx, {
+        foyerId,
+        action: ACTIONS_AUDIT.ENFANT_AJOUTE,
+        cibleType: 'enfant',
+        cibleId: enfantId,
+        acteur,
+      });
       return ligneInseree;
     });
     return this.versEnfantVue(ligne);
@@ -570,6 +633,7 @@ export class FoyerService {
     foyerId: string,
     enfantId: string,
     dto: ModifierEnfantDto,
+    acteur: Acteur,
   ): Promise<EnfantVue> {
     // Valide via le domaine (prénom non vide, date interprétable) avant écriture.
     const enfantDomaine = Enfant.creer({
@@ -598,6 +662,13 @@ export class FoyerService {
         payload,
         traceId: traceIdCourant(),
       });
+      await this.audit.consigner(tx, {
+        foyerId,
+        action: ACTIONS_AUDIT.ENFANT_MODIFIE,
+        cibleType: 'enfant',
+        cibleId: enfantId,
+        acteur,
+      });
       return ligneMaj;
     });
     return this.versEnfantVue(ligne);
@@ -607,7 +678,11 @@ export class FoyerService {
    * Retire un enfant du foyer (**hard delete** — pas de colonne `actif`, cohérent
    * avec le `ON DELETE CASCADE`) + émet `EnfantRetire` dans la même transaction.
    */
-  async retirerEnfant(foyerId: string, enfantId: string): Promise<void> {
+  async retirerEnfant(
+    foyerId: string,
+    enfantId: string,
+    acteur: Acteur,
+  ): Promise<void> {
     await this.db.transaction(async (tx) => {
       const supprime = await tx
         .delete(enfant)
@@ -625,6 +700,15 @@ export class FoyerService {
         type: ENFANT_RETIRE_TYPE,
         payload,
         traceId: traceIdCourant(),
+      });
+      // La ligne `enfant` vient de disparaître : c'est ici, et nulle part sur la
+      // ligne mutée, que l'acteur d'un retrait peut être gardé.
+      await this.audit.consigner(tx, {
+        foyerId,
+        action: ACTIONS_AUDIT.ENFANT_RETIRE,
+        cibleType: 'enfant',
+        cibleId: enfantId,
+        acteur,
       });
     });
   }
@@ -644,6 +728,7 @@ export class FoyerService {
   async ajouterParent(
     foyerId: string,
     dto: AjouterParentDto,
+    acteur: Acteur,
   ): Promise<ParentVue> {
     const parentId = parentIdSchema.parse(randomUUID());
     const email = dto.email.trim();
@@ -704,6 +789,15 @@ export class FoyerService {
         await tx
           .insert(outbox)
           .values(this.evenementParentEtat(PARENT_AJOUTE_TYPE, ligneParent));
+        // Réactivation comprise : dans les deux cas un accès au foyer s'ouvre pour
+        // une personne, et c'est l'événement que la piste doit garder.
+        await this.audit.consigner(tx, {
+          foyerId,
+          action: ACTIONS_AUDIT.PARENT_AJOUTE,
+          cibleType: 'parent',
+          cibleId: ligneParent.id,
+          acteur,
+        });
         return ligneParent;
       });
       return this.versParentVue(ligne);
@@ -727,6 +821,7 @@ export class FoyerService {
     foyerId: string,
     parentId: string,
     dto: ModifierParentDto,
+    acteur: Acteur,
   ): Promise<ParentVue> {
     const set: Partial<typeof parent.$inferInsert> = { updatedAt: new Date() };
     if (dto.email !== undefined) set.email = dto.email.trim();
@@ -754,6 +849,15 @@ export class FoyerService {
         await tx
           .insert(outbox)
           .values(this.evenementParentEtat(PARENT_MODIFIE_TYPE, ligneMaj));
+        // `actif: false` passe ici sans emprunter `retirerParent` : la piste ne
+        // distingue pas les deux chemins, elle garde la modification et son auteur.
+        await this.audit.consigner(tx, {
+          foyerId,
+          action: ACTIONS_AUDIT.PARENT_MODIFIE,
+          cibleType: 'parent',
+          cibleId: parentId,
+          acteur,
+        });
         return ligneMaj;
       });
       return this.versParentVue(ligne);
@@ -763,7 +867,11 @@ export class FoyerService {
   }
 
   /** Retire un parent (soft-delete `actif = false`) + émet `ParentRetire`. */
-  async retirerParent(foyerId: string, parentId: string): Promise<void> {
+  async retirerParent(
+    foyerId: string,
+    parentId: string,
+    acteur: Acteur,
+  ): Promise<void> {
     await this.db.transaction(async (tx) => {
       // Refuser le retrait du dernier parent actif (DANS la transaction, verrou).
       await this.gardeDernierParentActif(tx, foyerId, parentId);
@@ -785,6 +893,16 @@ export class FoyerService {
         type: PARENT_RETIRE_TYPE,
         payload,
         traceId: traceIdCourant(),
+      });
+      // Révocation de l'accès d'une personne au foyer : la mutation la plus
+      // sensible du service au sens d'ASVS V7, et celle qu'aucune colonne sur la
+      // ligne mutée ne dirait (le soft-delete n'a pas d'auteur).
+      await this.audit.consigner(tx, {
+        foyerId,
+        action: ACTIONS_AUDIT.PARENT_RETIRE,
+        cibleType: 'parent',
+        cibleId: parentId,
+        acteur,
       });
     });
   }
@@ -836,6 +954,7 @@ export class FoyerService {
     foyerId: string,
     parentId: string,
     dto: MajPreferencesDto,
+    acteur: Acteur,
   ): Promise<PreferenceVue[]> {
     return this.db.transaction(async (tx) => {
       await this.parentDuFoyer(tx, foyerId, parentId);
@@ -893,6 +1012,15 @@ export class FoyerService {
         type: PREFERENCES_NOTIF_MODIFIEES_TYPE,
         payload: payloadPreferences(foyerId, parentId, effectives),
         traceId: traceIdCourant(),
+      });
+      // Consignée APRÈS l'invariant « au moins un canal actif » : une commande
+      // refusée n'a rien muté, l'écrire ici affirmerait un changement inexistant.
+      await this.audit.consigner(tx, {
+        foyerId,
+        action: ACTIONS_AUDIT.PREFERENCES_MODIFIEES,
+        cibleType: 'parent',
+        cibleId: parentId,
+        acteur,
       });
       return effectives;
     });

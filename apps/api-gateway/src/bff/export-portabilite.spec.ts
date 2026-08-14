@@ -19,6 +19,7 @@ function parts(overrides: Partial<PartsExport> = {}): PartsExport {
       parents: [{ email: 'alex@example.test' }],
       preferencesNotification: [],
       jetonsDesabonnement: [],
+      pisteAudit: [],
     },
     planification: { contrats: [], etablissements: [] },
     notifications: {

@@ -9,11 +9,16 @@ import {
 import { FoyerController } from './foyer.controller.js';
 import { FoyerService } from './foyer.service.js';
 import { PortabiliteService } from '../portabilite/portabilite.service.js';
+import { JournalAuditService } from '../audit/journal-audit.service.js';
 
 @Module({
   controllers: [FoyerController, DesabonnementController],
   providers: [
     FoyerService,
+    // Piste d'audit acteur (lot 6, `AM-45`) : un provider, pas un module — son
+    // seul consommateur est `FoyerService`, et un `@Module` de plus coûterait une
+    // directive `no-extraneous-class` sans rien découpler.
+    JournalAuditService,
     // Export de portabilité (lot 3) : servi par `FoyerController` pour hériter du
     // scoping `:id ∈ assertion.foyers` posé au niveau du contrôleur.
     PortabiliteService,

@@ -8,6 +8,7 @@ import {
   enfant,
   foyer,
   foyerVersion,
+  journalAudit,
   parent,
   preferenceNotification,
 } from '../database/schema.js';
@@ -83,6 +84,21 @@ export interface ExportJetonDesabonnement {
   readonly expireLe: string;
 }
 
+/**
+ * Une action consignée à la piste d'audit (`journal_audit`, lot 6). C'est ici que
+ * le foyer **consulte** sa piste : « qui a changé quoi, et quand ». L'acteur y est
+ * rendu tel qu'il a été établi — `null` quand aucune assertion valide n'avait été
+ * présentée, ce que l'export dit plutôt que de le taire.
+ */
+export interface ExportActionAudit {
+  readonly action: string;
+  readonly cibleType: string;
+  readonly cibleId: string | null;
+  readonly acteurType: string;
+  readonly acteur: string | null;
+  readonly le: string;
+}
+
 /** Part `svc-foyer` de l'export de portabilité d'un foyer. */
 export interface ExportFoyerVue {
   readonly situationCourante: ExportSituationCourante;
@@ -92,13 +108,19 @@ export interface ExportFoyerVue {
   readonly parents: readonly ExportParent[];
   readonly preferencesNotification: readonly ExportPreference[];
   readonly jetonsDesabonnement: readonly ExportJetonDesabonnement[];
+  readonly pisteAudit: readonly ExportActionAudit[];
 }
 
 /**
  * **Export de portabilité** de la part `svc-foyer` d'un foyer (droit à la
  * portabilité, lot 3 ; `AM-35`). Le périmètre est celui de la cascade
  * d'effacement du lot 2a — ce qu'un effacement emporte, un export doit le
- * rendre — soit les 7 tables rattachées au foyer, directement ou par `parent`.
+ * rendre — soit les 8 tables rattachées au foyer, directement ou par `parent`.
+ *
+ * La 8ᵉ est `journal_audit` (lot 6) : la piste d'audit des mutations du dossier.
+ * L'exporter est le sens que ce dépôt donne à « consultable » dans le critère
+ * d'`AM-45` — le foyer voit qui a changé quoi, par le même téléchargement que le
+ * reste de son dossier, sans écran ni route de plus.
  *
  * Deux écarts assumés, qui ne s'improvisent pas :
  *
@@ -133,7 +155,7 @@ export class PortabiliteService {
     // `desabonnement_token`) : ils se lisent avant elles. Les parents **retirés**
     // (soft-delete) sont inclus — leur nom et leur e-mail sont encore là, et
     // l'effacement les emporte : l'export doit les montrer.
-    const [versions, corrections, enfants, parents] = await Promise.all([
+    const [versions, corrections, enfants, parents, audit] = await Promise.all([
       this.db
         .select()
         .from(foyerVersion)
@@ -154,6 +176,11 @@ export class PortabiliteService {
         .from(parent)
         .where(eq(parent.foyerId, foyerId))
         .orderBy(asc(parent.ordre), asc(parent.createdAt)),
+      this.db
+        .select()
+        .from(journalAudit)
+        .where(eq(journalAudit.foyerId, foyerId))
+        .orderBy(asc(journalAudit.creeLe)),
     ]);
 
     const parentIds = parents.map((p) => p.id);
@@ -204,6 +231,14 @@ export class PortabiliteService {
       })),
       preferencesNotification: preferences,
       jetonsDesabonnement: jetons,
+      pisteAudit: audit.map((a) => ({
+        action: a.action,
+        cibleType: a.cibleType,
+        cibleId: a.cibleId,
+        acteurType: a.acteurType,
+        acteur: a.acteur,
+        le: a.creeLe.toISOString(),
+      })),
     };
   }
 

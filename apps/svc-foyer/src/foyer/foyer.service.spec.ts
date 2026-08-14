@@ -16,7 +16,10 @@ import {
   PARENT_RETIRE_TYPE,
   PREFERENCES_NOTIF_MODIFIEES_TYPE,
 } from '@creche-planner/contracts-foyer';
+import type { Acteur } from '@creche-planner/nest-commons';
 import { FoyerService } from './foyer.service.js';
+import { ACTIONS_AUDIT } from '../audit/journal-audit.actions.js';
+import { JournalAuditService } from '../audit/journal-audit.service.js';
 import type { Database } from '../database/database.types.js';
 import {
   baremeTranches,
@@ -76,6 +79,14 @@ function ligneFoyerVersion(
  */
 
 const FOYER_ID = '22222222-2222-4222-8222-222222222222';
+
+/**
+ * Acteur de référence des mutations (lot 6, `AM-45`) : un parent identifié, tel
+ * que le décorateur `@ActeurCourant` le tire de l'assertion vérifiée. Les tests
+ * qui n'ont rien à dire de la piste d'audit le passent sans le regarder ; ceux qui
+ * la vérifient assertent la ligne `journal_audit` produite.
+ */
+const ACTEUR: Acteur = { type: 'parent', email: 'claire@example.test' };
 
 /** DTO de référence : RFR 72 705 € > 50 000 € ⇒ tranche 3 (doc 02 §0). */
 const DTO_FOYER: EcrireFoyerDto = {
@@ -272,9 +283,9 @@ function fakeDbCreationRollback(): {
 describe('FoyerService.creer (transactionnalité outbox)', () => {
   it('insère le foyer + la version initiale + l’outbox FoyerMisAJour.v3 dans UNE transaction (centimes, tranche dérivée)', async () => {
     const { db, transaction, insertValues } = fakeDbTransaction();
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    const dossier = await service.creer(DTO_CREATION);
+    const dossier = await service.creer(DTO_CREATION, ACTEUR);
 
     expect(transaction).toHaveBeenCalledTimes(1);
     // L'état : montants convertis en centimes entiers (fidèle à Money).
@@ -323,11 +334,11 @@ describe('FoyerService.creer (transactionnalité outbox)', () => {
 
   it('INVARIANT : un échec de l’insert outbox se propage (rollback) — pas de foyer sans événement', async () => {
     const { db, transaction } = fakeDbTransaction({ echecOutbox: true });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     // L'échec survient DANS l'unique transaction : sur une vraie base, l'insert
     // du foyer est annulé avec celui de l'outbox (atomicité, doc 06 §8.4).
-    await expect(service.creer(DTO_CREATION)).rejects.toThrow(
+    await expect(service.creer(DTO_CREATION, ACTEUR)).rejects.toThrow(
       'outbox indisponible',
     );
     expect(transaction).toHaveBeenCalledTimes(1);
@@ -335,10 +346,10 @@ describe('FoyerService.creer (transactionnalité outbox)', () => {
 
   it('une validation domaine en échec (nbParts ≤ 0) ne touche JAMAIS la base', async () => {
     const { db, transaction, insertValues } = fakeDbTransaction();
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.creer({ ...DTO_CREATION, nbParts: 0 }),
+      service.creer({ ...DTO_CREATION, nbParts: 0 }, ACTEUR),
     ).rejects.toThrow('nombre de parts invalide');
     expect(transaction).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();
@@ -348,14 +359,17 @@ describe('FoyerService.creer (transactionnalité outbox)', () => {
 describe('FoyerService.creer (dossier atomique : enfants + parents + créateur)', () => {
   it('insère foyer + enfants + parents et rattache le créateur en fin (ordre suivant)', async () => {
     const { db, transaction, insertValues } = fakeDbTransaction();
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    const dossier = await service.creer({
-      ...DTO_CREATION,
-      enfants: [{ prenom: '  Mia ', dateNaissance: '2024-03-15' }],
-      parents: [{ email: 'saisi@example.com', principal: true, ordre: 0 }],
-      createurEmail: 'createur@example.com',
-    });
+    const dossier = await service.creer(
+      {
+        ...DTO_CREATION,
+        enfants: [{ prenom: '  Mia ', dateNaissance: '2024-03-15' }],
+        parents: [{ email: 'saisi@example.com', principal: true, ordre: 0 }],
+        createurEmail: 'createur@example.com',
+      },
+      ACTEUR,
+    );
 
     expect(transaction).toHaveBeenCalledTimes(1);
     // Tous les événements dans la même transaction, dans l'ordre du dossier :
@@ -384,13 +398,18 @@ describe('FoyerService.creer (dossier atomique : enfants + parents + créateur)'
 
   it('ne duplique pas le créateur déjà saisi (comparaison insensible à la casse)', async () => {
     const { db, insertValues } = fakeDbTransaction();
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    const dossier = await service.creer({
-      ...DTO_CREATION,
-      parents: [{ email: 'Createur@Example.com', principal: false, ordre: 0 }],
-      createurEmail: 'createur@example.com',
-    });
+    const dossier = await service.creer(
+      {
+        ...DTO_CREATION,
+        parents: [
+          { email: 'Createur@Example.com', principal: false, ordre: 0 },
+        ],
+        createurEmail: 'createur@example.com',
+      },
+      ACTEUR,
+    );
 
     expect(dossier.parents).toHaveLength(1);
     expect(dossier.parents[0]?.email).toBe('Createur@Example.com');
@@ -402,9 +421,9 @@ describe('FoyerService.creer (dossier atomique : enfants + parents + créateur)'
 
   it('sans createurEmail (admin / mode hérité) : aucun parent auto-rattaché', async () => {
     const { db, insertValues } = fakeDbTransaction();
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    const dossier = await service.creer(DTO_CREATION);
+    const dossier = await service.creer(DTO_CREATION, ACTEUR);
 
     expect(dossier.parents).toEqual([]);
     const aParent = insertValues.mock.calls.some(
@@ -415,19 +434,22 @@ describe('FoyerService.creer (dossier atomique : enfants + parents + créateur)'
 
   it('INVARIANT : e-mail du 2ᵉ parent dupliqué → 409 et rollback complet du dossier', async () => {
     const { db, transaction } = fakeDbCreationRollback();
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     // L'échec (23505) survient DANS l'unique transaction : sur une vraie base,
     // le foyer, l'enfant et le 1er parent sont annulés avec lui (atomicité).
     await expect(
-      service.creer({
-        ...DTO_CREATION,
-        enfants: [{ prenom: 'Mia', dateNaissance: '2024-03-15' }],
-        parents: [
-          { email: 'a@example.com', principal: false, ordre: 0 },
-          { email: 'b@example.com', principal: false, ordre: 1 },
-        ],
-      }),
+      service.creer(
+        {
+          ...DTO_CREATION,
+          enfants: [{ prenom: 'Mia', dateNaissance: '2024-03-15' }],
+          parents: [
+            { email: 'a@example.com', principal: false, ordre: 0 },
+            { email: 'b@example.com', principal: false, ordre: 1 },
+          ],
+        },
+        ACTEUR,
+      ),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(transaction).toHaveBeenCalledTimes(1);
   });
@@ -436,9 +458,9 @@ describe('FoyerService.creer (dossier atomique : enfants + parents + créateur)'
 describe('FoyerService.mettreAJour (versions à date d’effet)', () => {
   it('crée une version + ré-émet FoyerMisAJour.v3 + rafraîchit la ligne foyer courante', async () => {
     const { db, transaction, updateSet, insertValues } = fakeDbTransaction();
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    const vue = await service.mettreAJour(FOYER_ID, DTO_FOYER);
+    const vue = await service.mettreAJour(FOYER_ID, DTO_FOYER, ACTEUR);
 
     expect(transaction).toHaveBeenCalledTimes(1);
     // La version applicable aujourd'hui rafraîchit la ligne foyer courante.
@@ -467,12 +489,16 @@ describe('FoyerService.mettreAJour (versions à date d’effet)', () => {
 
   it('date d’effet future : la version est créée à cette date', async () => {
     const { db, insertValues } = fakeDbTransaction();
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    await service.mettreAJour(FOYER_ID, {
-      ...DTO_FOYER,
-      dateEffet: '2027-01-01',
-    });
+    await service.mettreAJour(
+      FOYER_ID,
+      {
+        ...DTO_FOYER,
+        dateEffet: '2027-01-01',
+      },
+      ACTEUR,
+    );
 
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -487,14 +513,18 @@ describe('FoyerService.mettreAJour (versions à date d’effet)', () => {
     const { db, insertValues } = fakeDbTransaction({
       versions: [ligneFoyerVersion({ dateEffet: '2026-01-01' })],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    await service.mettreAJour(FOYER_ID, {
-      ...DTO_FOYER,
-      rfr: 18000,
-      dateEffet: '2026-01-01',
-      motif: 'avis rectifié',
-    });
+    await service.mettreAJour(
+      FOYER_ID,
+      {
+        ...DTO_FOYER,
+        rfr: 18000,
+        dateEffet: '2026-01-01',
+        motif: 'avis rectifié',
+      },
+      ACTEUR,
+    );
 
     // Une ligne de correction_journal (avant/après) est écrite.
     const correction = insertValues.mock.calls.find(
@@ -508,10 +538,10 @@ describe('FoyerService.mettreAJour (versions à date d’effet)', () => {
 
   it('lève NotFoundException si le foyer est introuvable — AUCUN événement émis', async () => {
     const { db, insertValues } = fakeDbTransaction({ foyerPresent: false });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.mettreAJour(FOYER_ID, DTO_FOYER),
+      service.mettreAJour(FOYER_ID, DTO_FOYER, ACTEUR),
     ).rejects.toBeInstanceOf(NotFoundException);
     // Le 404 est détecté AVANT toute écriture : pas d'événement fantôme.
     expect(insertValues).not.toHaveBeenCalled();
@@ -524,7 +554,7 @@ describe('FoyerService.obtenir / lister (tranche dérivée du barème versionné
       [ligneFoyer({ rfrCentimes: 1500000 })],
       [ligneBaremeTranches()],
     );
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const vue = await service.obtenir(FOYER_ID);
     expect(vue).toMatchObject({ rfrEuros: 15000, tranche: 1 });
@@ -535,7 +565,7 @@ describe('FoyerService.obtenir / lister (tranche dérivée du barème versionné
       [ligneFoyer({ rfrCentimes: 2000000 })],
       [ligneBaremeTranches()],
     );
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const vue = await service.obtenir(FOYER_ID);
     expect(vue.tranche).toBe(2);
@@ -543,7 +573,7 @@ describe('FoyerService.obtenir / lister (tranche dérivée du barème versionné
 
   it('503 si le barème de tranches est froid (read-model vide) — jamais de tranche fausse', async () => {
     const db = fakeDbLecture([ligneFoyer()], []);
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
     await expect(service.obtenir(FOYER_ID)).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
@@ -551,7 +581,7 @@ describe('FoyerService.obtenir / lister (tranche dérivée du barème versionné
 
   it('lève NotFoundException si le foyer est introuvable', async () => {
     const db = fakeDbLecture([], [ligneBaremeTranches()]);
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
     await expect(service.obtenir(FOYER_ID)).rejects.toBeInstanceOf(
       NotFoundException,
     );
@@ -563,7 +593,7 @@ describe('FoyerService.obtenir / lister (tranche dérivée du barème versionné
       rfrCentimes: 1000000,
     });
     const db = fakeDbLecture([ligneFoyer(), autre], [ligneBaremeTranches()]);
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const vues = await service.lister();
     expect(vues).toHaveLength(2);
@@ -589,7 +619,7 @@ describe('FoyerService.listerVersions (historique des ressources)', () => {
       ],
       [ligneBaremeTranches()],
     );
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const versions = await service.listerVersions(FOYER_ID);
     expect(versions.map((v) => v.dateEffet)).toEqual([
@@ -606,12 +636,16 @@ describe('FoyerService.ajouterEnfant (validation domaine + outbox)', () => {
     const { db, transaction, insertValues } = fakeDbTransaction({
       foyerPresent: true,
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    const vue = await service.ajouterEnfant(FOYER_ID, {
-      prenom: '  Mia ',
-      dateNaissance: '2024-03-15',
-    });
+    const vue = await service.ajouterEnfant(
+      FOYER_ID,
+      {
+        prenom: '  Mia ',
+        dateNaissance: '2024-03-15',
+      },
+      ACTEUR,
+    );
 
     expect(transaction).toHaveBeenCalledTimes(1);
     // L'enfant : prénom passé par le domaine (trim).
@@ -638,26 +672,34 @@ describe('FoyerService.ajouterEnfant (validation domaine + outbox)', () => {
 
   it('lève NotFoundException si le foyer est introuvable — ni enfant ni événement insérés', async () => {
     const { db, insertValues } = fakeDbTransaction({ foyerPresent: false });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.ajouterEnfant(FOYER_ID, {
-        prenom: 'Mia',
-        dateNaissance: '2024-03-15',
-      }),
+      service.ajouterEnfant(
+        FOYER_ID,
+        {
+          prenom: 'Mia',
+          dateNaissance: '2024-03-15',
+        },
+        ACTEUR,
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(insertValues).not.toHaveBeenCalled();
   });
 
   it('un prénom vide est refusé par le domaine AVANT toute transaction', async () => {
     const { db, transaction } = fakeDbTransaction({ foyerPresent: true });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.ajouterEnfant(FOYER_ID, {
-        prenom: '   ',
-        dateNaissance: '2024-03-15',
-      }),
+      service.ajouterEnfant(
+        FOYER_ID,
+        {
+          prenom: '   ',
+          dateNaissance: '2024-03-15',
+        },
+        ACTEUR,
+      ),
     ).rejects.toThrow('prénom');
     expect(transaction).not.toHaveBeenCalled();
   });
@@ -674,7 +716,7 @@ describe('FoyerService.listerEnfants', () => {
         createdAt: new Date('2026-01-01T00:00:00Z'),
       },
     ]);
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const vues = await service.listerEnfants(FOYER_ID);
     expect(vues).toEqual([
@@ -742,12 +784,17 @@ describe('FoyerService.modifierEnfant', () => {
     const { db, transaction, updateSet, insertValues } = fakeDbEnfantTx({
       lignes: [ligneEnfant({ prenom: 'Zoé', dateNaissance: '2023-03-12' })],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    const vue = await service.modifierEnfant(FOYER_ID, ENFANT_ID, {
-      prenom: '  Zoé ',
-      dateNaissance: '2023-03-12',
-    });
+    const vue = await service.modifierEnfant(
+      FOYER_ID,
+      ENFANT_ID,
+      {
+        prenom: '  Zoé ',
+        dateNaissance: '2023-03-12',
+      },
+      ACTEUR,
+    );
 
     expect(transaction).toHaveBeenCalledTimes(1);
     // Le prénom est passé par le domaine (trim) avant écriture.
@@ -770,26 +817,36 @@ describe('FoyerService.modifierEnfant', () => {
 
   it('lève NotFoundException si l’enfant est introuvable — aucun événement émis', async () => {
     const { db, insertValues } = fakeDbEnfantTx({ lignes: [] });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.modifierEnfant(FOYER_ID, ENFANT_ID, {
-        prenom: 'Zoé',
-        dateNaissance: '2023-03-12',
-      }),
+      service.modifierEnfant(
+        FOYER_ID,
+        ENFANT_ID,
+        {
+          prenom: 'Zoé',
+          dateNaissance: '2023-03-12',
+        },
+        ACTEUR,
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(insertValues).not.toHaveBeenCalled();
   });
 
   it('un prénom vide est refusé par le domaine AVANT toute transaction', async () => {
     const { db, transaction } = fakeDbEnfantTx({ lignes: [ligneEnfant()] });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.modifierEnfant(FOYER_ID, ENFANT_ID, {
-        prenom: '   ',
-        dateNaissance: '2023-03-12',
-      }),
+      service.modifierEnfant(
+        FOYER_ID,
+        ENFANT_ID,
+        {
+          prenom: '   ',
+          dateNaissance: '2023-03-12',
+        },
+        ACTEUR,
+      ),
     ).rejects.toThrow('prénom');
     expect(transaction).not.toHaveBeenCalled();
   });
@@ -800,9 +857,9 @@ describe('FoyerService.retirerEnfant (hard delete + événement)', () => {
     const { db, transaction, deleteWhere, insertValues } = fakeDbEnfantTx({
       lignes: [ligneEnfant()],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    await service.retirerEnfant(FOYER_ID, ENFANT_ID);
+    await service.retirerEnfant(FOYER_ID, ENFANT_ID, ACTEUR);
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(deleteWhere).toHaveBeenCalledTimes(1);
@@ -816,10 +873,10 @@ describe('FoyerService.retirerEnfant (hard delete + événement)', () => {
 
   it('lève NotFoundException si l’enfant est introuvable — aucun événement émis', async () => {
     const { db, insertValues } = fakeDbEnfantTx({ lignes: [] });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.retirerEnfant(FOYER_ID, ENFANT_ID),
+      service.retirerEnfant(FOYER_ID, ENFANT_ID, ACTEUR),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(insertValues).not.toHaveBeenCalled();
   });
@@ -884,9 +941,9 @@ describe('FoyerService.supprimerFoyer (cascade + événement d’intégration)',
       lignes: [{ id: FOYER_ID }],
       parents: [{ id: PARENT_ACTIF }, { id: PARENT_RETIRE }],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    await service.supprimerFoyer(FOYER_ID);
+    await service.supprimerFoyer(FOYER_ID, ACTEUR);
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(deleteWhere).toHaveBeenCalledTimes(1);
@@ -907,7 +964,10 @@ describe('FoyerService.supprimerFoyer (cascade + événement d’intégration)',
       parents: [{ id: PARENT_ACTIF }],
     });
 
-    await new FoyerService(db).supprimerFoyer(FOYER_ID);
+    await new FoyerService(db, new JournalAuditService()).supprimerFoyer(
+      FOYER_ID,
+      ACTEUR,
+    );
 
     expect(ordre).toEqual(['select', 'delete', 'insert']);
   });
@@ -918,7 +978,10 @@ describe('FoyerService.supprimerFoyer (cascade + événement d’intégration)',
       parents: [],
     });
 
-    await new FoyerService(db).supprimerFoyer(FOYER_ID);
+    await new FoyerService(db, new JournalAuditService()).supprimerFoyer(
+      FOYER_ID,
+      ACTEUR,
+    );
 
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -931,7 +994,10 @@ describe('FoyerService.supprimerFoyer (cascade + événement d’intégration)',
     const { db, insertValues } = fakeDbSuppressionTx({ lignes: [] });
 
     await expect(
-      new FoyerService(db).supprimerFoyer(FOYER_ID),
+      new FoyerService(db, new JournalAuditService()).supprimerFoyer(
+        FOYER_ID,
+        ACTEUR,
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(insertValues).not.toHaveBeenCalled();
   });
@@ -957,9 +1023,12 @@ describe('FoyerService.supprimerFoyer (cascade + événement d’intégration)',
       ),
     } as unknown as Database;
 
-    await expect(new FoyerService(db).supprimerFoyer(FOYER_ID)).rejects.toThrow(
-      'outbox indisponible',
-    );
+    await expect(
+      new FoyerService(db, new JournalAuditService()).supprimerFoyer(
+        FOYER_ID,
+        ACTEUR,
+      ),
+    ).rejects.toThrow('outbox indisponible');
   });
 });
 
@@ -1085,14 +1154,18 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
     const { db, transaction, insertValues } = fakeDbParentTx({
       foyerPresent: true,
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    const vue = await service.ajouterParent(FOYER_ID, {
-      email: 'parent@example.com',
-      prenom: 'Alex',
-      principal: true,
-      ordre: 0,
-    });
+    const vue = await service.ajouterParent(
+      FOYER_ID,
+      {
+        email: 'parent@example.com',
+        prenom: 'Alex',
+        principal: true,
+        ordre: 0,
+      },
+      ACTEUR,
+    );
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(insertValues).toHaveBeenCalledWith(
@@ -1120,14 +1193,18 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
 
   it('lève NotFoundException si le foyer est introuvable — ni parent ni événement', async () => {
     const { db, insertValues } = fakeDbParentTx({ foyerPresent: false });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.ajouterParent(FOYER_ID, {
-        email: 'parent@example.com',
-        principal: false,
-        ordre: 0,
-      }),
+      service.ajouterParent(
+        FOYER_ID,
+        {
+          email: 'parent@example.com',
+          principal: false,
+          ordre: 0,
+        },
+        ACTEUR,
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(insertValues).not.toHaveBeenCalled();
   });
@@ -1140,14 +1217,18 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
         constraint_name: 'parent_email_par_foyer_actif_idx',
       },
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const err = await service
-      .ajouterParent(FOYER_ID, {
-        email: 'parent@example.com',
-        principal: false,
-        ordre: 0,
-      })
+      .ajouterParent(
+        FOYER_ID,
+        {
+          email: 'parent@example.com',
+          principal: false,
+          ordre: 0,
+        },
+        ACTEUR,
+      )
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect((err as ConflictException).getResponse()).toMatchObject({
@@ -1170,14 +1251,18 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
       },
       envelopperErreurInsert: true,
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const err = await service
-      .ajouterParent(FOYER_ID, {
-        email: 'parent@example.com',
-        principal: false,
-        ordre: 0,
-      })
+      .ajouterParent(
+        FOYER_ID,
+        {
+          email: 'parent@example.com',
+          principal: false,
+          ordre: 0,
+        },
+        ACTEUR,
+      )
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect((err as ConflictException).getResponse()).toMatchObject({
@@ -1196,14 +1281,18 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
       },
       envelopperErreurInsert: true,
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const err = await service
-      .ajouterParent(FOYER_ID, {
-        email: 'parent@example.com',
-        principal: true,
-        ordre: 0,
-      })
+      .ajouterParent(
+        FOYER_ID,
+        {
+          email: 'parent@example.com',
+          principal: true,
+          ordre: 0,
+        },
+        ACTEUR,
+      )
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect((err as ConflictException).getResponse()).toMatchObject({
@@ -1223,14 +1312,18 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
         ligneParent({ actif: true, prenom: 'Alex', principal: true }),
       ],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    const vue = await service.ajouterParent(FOYER_ID, {
-      email: 'PARENT@example.com', // casse différente : match insensible à la casse
-      prenom: 'Alex',
-      principal: true,
-      ordre: 0,
-    });
+    const vue = await service.ajouterParent(
+      FOYER_ID,
+      {
+        email: 'PARENT@example.com', // casse différente : match insensible à la casse
+        prenom: 'Alex',
+        principal: true,
+        ordre: 0,
+      },
+      ACTEUR,
+    );
 
     // Réactivation via UPDATE (actif=true + valeurs de la saisie), pas d'insert parent.
     expect(updateSet).toHaveBeenCalledWith(
@@ -1240,8 +1333,14 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
         principal: true,
       }),
     );
-    // Le seul insert restant est l'événement outbox ParentAjoute (état complet).
-    expect(insertValues).toHaveBeenCalledTimes(1);
+    // AUCUNE ligne `parent` n'est insérée (c'est tout l'objet de la réactivation) :
+    // le test porte sur l'absence d'insert de parent, pas sur un décompte global —
+    // depuis le lot 6, la piste d'audit écrit elle aussi dans la transaction.
+    expect(
+      insertValues.mock.calls.filter(
+        (appel) => (appel[0] as Record<string, unknown>)['email'] !== undefined,
+      ),
+    ).toEqual([]);
     expect(insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         type: PARENT_AJOUTE_TYPE,
@@ -1259,14 +1358,18 @@ describe('FoyerService.ajouterParent (validation foyer + outbox)', () => {
         constraint_name: 'parent_principal_unique_idx',
       },
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const err = await service
-      .ajouterParent(FOYER_ID, {
-        email: 'parent@example.com',
-        principal: true,
-        ordre: 0,
-      })
+      .ajouterParent(
+        FOYER_ID,
+        {
+          email: 'parent@example.com',
+          principal: true,
+          ordre: 0,
+        },
+        ACTEUR,
+      )
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect((err as ConflictException).getResponse()).toMatchObject({
@@ -1281,12 +1384,17 @@ describe('FoyerService.modifierParent', () => {
     const { db, transaction, updateSet, insertValues } = fakeDbParentTx({
       lignesUpdate: [ligneParent({ email: 'neuf@example.com' })],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    const vue = await service.modifierParent(FOYER_ID, PARENT_ID, {
-      email: 'neuf@example.com',
-      actif: false,
-    });
+    const vue = await service.modifierParent(
+      FOYER_ID,
+      PARENT_ID,
+      {
+        email: 'neuf@example.com',
+        actif: false,
+      },
+      ACTEUR,
+    );
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(updateSet).toHaveBeenCalledWith(
@@ -1302,19 +1410,19 @@ describe('FoyerService.modifierParent', () => {
     const { db, updateSet } = fakeDbParentTx({
       lignesUpdate: [ligneParent()],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    await service.modifierParent(FOYER_ID, PARENT_ID, {});
+    await service.modifierParent(FOYER_ID, PARENT_ID, {}, ACTEUR);
     const set = updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(Object.keys(set)).toEqual(['updatedAt']);
   });
 
   it('lève NotFoundException si le parent est introuvable — aucun événement', async () => {
     const { db, insertValues } = fakeDbParentTx({ lignesUpdate: [] });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.modifierParent(FOYER_ID, PARENT_ID, { actif: false }),
+      service.modifierParent(FOYER_ID, PARENT_ID, { actif: false }, ACTEUR),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(insertValues).not.toHaveBeenCalled();
   });
@@ -1323,10 +1431,10 @@ describe('FoyerService.modifierParent', () => {
     const { db, updateSet, insertValues, forUpdate } = fakeDbParentTx({
       parentsActifs: [{ id: PARENT_ID }],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const err = await service
-      .modifierParent(FOYER_ID, PARENT_ID, { actif: false })
+      .modifierParent(FOYER_ID, PARENT_ID, { actif: false }, ACTEUR)
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect((err as ConflictException).getResponse()).toMatchObject({
@@ -1343,9 +1451,9 @@ describe('FoyerService.modifierParent', () => {
       parentsActifs: [{ id: PARENT_ID }, { id: 'autre-parent' }],
       lignesUpdate: [ligneParent({ actif: false })],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    await service.modifierParent(FOYER_ID, PARENT_ID, { actif: false });
+    await service.modifierParent(FOYER_ID, PARENT_ID, { actif: false }, ACTEUR);
     expect(updateSet).toHaveBeenCalledWith(
       expect.objectContaining({ actif: false }),
     );
@@ -1355,11 +1463,16 @@ describe('FoyerService.modifierParent', () => {
     const { db, forUpdate } = fakeDbParentTx({
       lignesUpdate: [ligneParent({ email: 'neuf@example.com' })],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    await service.modifierParent(FOYER_ID, PARENT_ID, {
-      email: 'neuf@example.com',
-    });
+    await service.modifierParent(
+      FOYER_ID,
+      PARENT_ID,
+      {
+        email: 'neuf@example.com',
+      },
+      ACTEUR,
+    );
     expect(forUpdate).not.toHaveBeenCalled();
   });
 });
@@ -1370,9 +1483,9 @@ describe('FoyerService.retirerParent (soft-delete + événement)', () => {
       parentsActifs: [{ id: PARENT_ID }, { id: 'autre-parent' }],
       lignesUpdate: [ligneParent({ actif: false })],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    await service.retirerParent(FOYER_ID, PARENT_ID);
+    await service.retirerParent(FOYER_ID, PARENT_ID, ACTEUR);
 
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(updateSet).toHaveBeenCalledWith(
@@ -1391,10 +1504,10 @@ describe('FoyerService.retirerParent (soft-delete + événement)', () => {
       parentsActifs: [{ id: 'autre-parent' }],
       lignesUpdate: [],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.retirerParent(FOYER_ID, PARENT_ID),
+      service.retirerParent(FOYER_ID, PARENT_ID, ACTEUR),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(insertValues).not.toHaveBeenCalled();
   });
@@ -1405,10 +1518,10 @@ describe('FoyerService.retirerParent (soft-delete + événement)', () => {
         parentsActifs: [{ id: PARENT_ID }],
         lignesUpdate: [ligneParent({ actif: false })],
       });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const err = await service
-      .retirerParent(FOYER_ID, PARENT_ID)
+      .retirerParent(FOYER_ID, PARENT_ID, ACTEUR)
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect((err as ConflictException).getResponse()).toMatchObject({
@@ -1427,7 +1540,7 @@ describe('FoyerService.retirerParent (soft-delete + événement)', () => {
 describe('FoyerService.listerParents', () => {
   it('projette les parents actifs en ParentVue', async () => {
     const db = fakeDbParentLecture('select', [ligneParent()]);
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const vues = await service.listerParents(FOYER_ID);
     expect(vues).toEqual([
@@ -1448,7 +1561,7 @@ describe('FoyerService.listerParents', () => {
 describe('FoyerService.foyersParEmail (résolution identité→foyers)', () => {
   it('renvoie les foyerId des parents actifs pour l’e-mail (insensible casse)', async () => {
     const db = fakeDbParentLecture('selectDistinct', [{ foyerId: FOYER_ID }]);
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const foyers = await service.foyersParEmail('  Parent@Example.com  ');
     expect(foyers).toEqual([FOYER_ID]);
@@ -1456,7 +1569,7 @@ describe('FoyerService.foyersParEmail (résolution identité→foyers)', () => {
 
   it('renvoie [] pour un e-mail vide sans interroger la base', async () => {
     const db = {} as unknown as Database;
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
     expect(await service.foyersParEmail('   ')).toEqual([]);
   });
 });
@@ -1547,7 +1660,7 @@ describe('FoyerService.lirePreferences (défauts fusionnés)', () => {
       parent: { id: PARENT_ID, foyerId: FOYER_ID },
       rows: [],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const prefs = await service.lirePreferences(FOYER_ID, PARENT_ID);
     expect(prefs).toEqual([
@@ -1579,7 +1692,7 @@ describe('FoyerService.lirePreferences (défauts fusionnés)', () => {
         }),
       ],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     const prefs = await service.lirePreferences(FOYER_ID, PARENT_ID);
     expect(prefs[0]).toMatchObject({
@@ -1593,7 +1706,7 @@ describe('FoyerService.lirePreferences (défauts fusionnés)', () => {
 
   it('lève NotFoundException si le parent n’appartient pas au foyer', async () => {
     const db = fakeDbPreferencesLecture({ rows: [] });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
     await expect(
       service.lirePreferences(FOYER_ID, PARENT_ID),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -1614,14 +1727,27 @@ describe('FoyerService.majPreferences (upsert + outbox + invariant)', () => {
           }),
         ],
       });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
-    const prefs = await service.majPreferences(FOYER_ID, PARENT_ID, {
-      preferences: [
-        { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: false },
-        { typeNotification: 'VALIDATION_HEBDO', canal: 'IN_APP', actif: true },
-      ],
-    });
+    const prefs = await service.majPreferences(
+      FOYER_ID,
+      PARENT_ID,
+      {
+        preferences: [
+          {
+            typeNotification: 'VALIDATION_HEBDO',
+            canal: 'EMAIL',
+            actif: false,
+          },
+          {
+            typeNotification: 'VALIDATION_HEBDO',
+            canal: 'IN_APP',
+            actif: true,
+          },
+        ],
+      },
+      ACTEUR,
+    );
 
     expect(transaction).toHaveBeenCalledTimes(1);
     // Upsert idempotent : un onConflictDoUpdate par préférence, ciblant la clé
@@ -1682,23 +1808,28 @@ describe('FoyerService.majPreferences (upsert + outbox + invariant)', () => {
         }),
       ],
     });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.majPreferences(FOYER_ID, PARENT_ID, {
-        preferences: [
-          {
-            typeNotification: 'VALIDATION_HEBDO',
-            canal: 'EMAIL',
-            actif: false,
-          },
-          {
-            typeNotification: 'VALIDATION_HEBDO',
-            canal: 'IN_APP',
-            actif: false,
-          },
-        ],
-      }),
+      service.majPreferences(
+        FOYER_ID,
+        PARENT_ID,
+        {
+          preferences: [
+            {
+              typeNotification: 'VALIDATION_HEBDO',
+              canal: 'EMAIL',
+              actif: false,
+            },
+            {
+              typeNotification: 'VALIDATION_HEBDO',
+              canal: 'IN_APP',
+              actif: false,
+            },
+          ],
+        },
+        ACTEUR,
+      ),
     ).rejects.toBeInstanceOf(BadRequestException);
     // L'invariant est contrôlé AVANT l'insert outbox : pas d'événement fantôme
     // (et sur une vraie base la transaction est annulée avec les upserts).
@@ -1711,15 +1842,140 @@ describe('FoyerService.majPreferences (upsert + outbox + invariant)', () => {
 
   it('lève NotFoundException si le parent n’appartient pas au foyer — aucun upsert ni événement', async () => {
     const { db, insertValues } = fakeDbPreferencesTx({ readback: [] });
-    const service = new FoyerService(db);
+    const service = new FoyerService(db, new JournalAuditService());
 
     await expect(
-      service.majPreferences(FOYER_ID, PARENT_ID, {
-        preferences: [
-          { typeNotification: 'VALIDATION_HEBDO', canal: 'EMAIL', actif: true },
-        ],
-      }),
+      service.majPreferences(
+        FOYER_ID,
+        PARENT_ID,
+        {
+          preferences: [
+            {
+              typeNotification: 'VALIDATION_HEBDO',
+              canal: 'EMAIL',
+              actif: true,
+            },
+          ],
+        },
+        ACTEUR,
+      ),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(insertValues).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Piste d'audit acteur (lot 6, `AM-45`). Ces tests n'utilisent **pas** de double du
+ * `JournalAuditService` : le vrai service écrit dans le faux `tx`, et les
+ * assertions portent sur la ligne réellement produite. Un double n'aurait prouvé
+ * que l'appel, pas la ligne — et c'est la ligne qui est la piste.
+ */
+describe('FoyerService — piste d’audit acteur', () => {
+  /** Lignes `journal_audit` réellement insérées (discriminées par `action`). */
+  function lignesAudit(
+    insertValues: ReturnType<typeof vi.fn>,
+  ): Record<string, unknown>[] {
+    return insertValues.mock.calls
+      .map((appel) => appel[0] as Record<string, unknown>)
+      .filter((valeurs) => typeof valeurs['action'] === 'string');
+  }
+
+  it('trace le retrait d’un enfant, que le DELETE rend intraçable autrement', async () => {
+    const { db, insertValues } = fakeDbEnfantTx({ lignes: [ligneEnfant()] });
+
+    await new FoyerService(db, new JournalAuditService()).retirerEnfant(
+      FOYER_ID,
+      ENFANT_ID,
+      ACTEUR,
+    );
+
+    expect(lignesAudit(insertValues)).toEqual([
+      {
+        foyerId: FOYER_ID,
+        action: ACTIONS_AUDIT.ENFANT_RETIRE,
+        cibleType: 'enfant',
+        cibleId: ENFANT_ID,
+        acteurType: 'parent',
+        acteur: 'claire@example.test',
+      },
+    ]);
+  });
+
+  it('distingue une saisie de ressources d’une correction, et vise la ligne de correction', async () => {
+    // Date d'effet libre → saisie.
+    const saisie = fakeDbTransaction();
+    await new FoyerService(saisie.db, new JournalAuditService()).mettreAJour(
+      FOYER_ID,
+      { ...DTO_FOYER, dateEffet: '2027-01-01' },
+      ACTEUR,
+    );
+    expect(lignesAudit(saisie.insertValues)).toEqual([
+      expect.objectContaining({
+        action: ACTIONS_AUDIT.RESSOURCES_SAISIES,
+        cibleType: 'foyer_version',
+      }),
+    ]);
+
+    // Même date qu'une version existante → correction rétroactive.
+    const correction = fakeDbTransaction({
+      versions: [ligneFoyerVersion({ dateEffet: '2026-01-01' })],
+    });
+    await new FoyerService(
+      correction.db,
+      new JournalAuditService(),
+    ).mettreAJour(
+      FOYER_ID,
+      { ...DTO_FOYER, rfr: 18000, dateEffet: '2026-01-01' },
+      ACTEUR,
+    );
+    const [ligne] = lignesAudit(correction.insertValues);
+    expect(ligne).toMatchObject({
+      action: ACTIONS_AUDIT.RESSOURCES_CORRIGEES,
+      cibleType: 'correction_journal',
+    });
+    // La cible EST la ligne de correction écrite dans la même transaction : c'est
+    // ce qui rend le rapprochement exact quand une version est corrigée deux fois.
+    const ligneCorrection = correction.insertValues.mock.calls
+      .map((appel) => appel[0] as Record<string, unknown>)
+      .find((valeurs) => valeurs['avant'] !== undefined);
+    expect(ligne?.['cibleId']).toBe(ligneCorrection?.['id']);
+  });
+
+  it('écrit la ligne même sans acteur établi, en le nommant « inconnu »', async () => {
+    // Mode observe : assertion absente ou invalide ⇒ la mutation a lieu quand
+    // même. Ne rien écrire rendrait la piste indiscernable d'une piste vide.
+    const { db, insertValues } = fakeDbEnfantTx({ lignes: [ligneEnfant()] });
+
+    await new FoyerService(db, new JournalAuditService()).retirerEnfant(
+      FOYER_ID,
+      ENFANT_ID,
+      { type: 'inconnu' },
+    );
+
+    expect(lignesAudit(insertValues)[0]).toMatchObject({
+      acteurType: 'inconnu',
+      // Nul, et non le mot « inconnu » : une colonne portant ce texte serait
+      // indiscernable d'un acteur réellement nommé ainsi.
+      acteur: null,
+    });
+  });
+
+  it('n’écrit AUCUNE ligne pour l’effacement du foyer — la table part avec lui', async () => {
+    const { db, insertValues } = fakeDbSuppressionTx({
+      lignes: [{ id: FOYER_ID }],
+      parents: [{ id: PARENT_ID }],
+    });
+
+    await new FoyerService(db, new JournalAuditService()).supprimerFoyer(
+      FOYER_ID,
+      ACTEUR,
+    );
+
+    // `journal_audit` référence `foyer` en ON DELETE CASCADE : insérée avant le
+    // DELETE elle serait emportée, après elle violerait la clé étrangère. Cette
+    // action-là n'a que le journal applicatif (doc 37 T5, §7).
+    expect(lignesAudit(insertValues)).toEqual([]);
+    // L'événement d'intégration, lui, part bien : rien d'autre n'a changé.
+    expect(insertValues).toHaveBeenCalledTimes(1);
   });
 });

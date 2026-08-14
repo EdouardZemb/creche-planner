@@ -25,6 +25,8 @@ export * from './lib/purge/purge.module.js';
 export * from './lib/purge/purge.options.js';
 export * from './lib/purge/purge.service.js';
 export * from './lib/purge/purge.taches.js';
+export * from './lib/security/acteur.js';
+export * from './lib/security/acteur.decorator.js';
 export * from './lib/security/assertion-identite.js';
 export * from './lib/security/assertion-identite.options.js';
 export * from './lib/security/assertion-identite.guard.js';

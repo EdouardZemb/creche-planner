@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { Database } from '../database/database.types.js';
-import { desabonnementToken } from '../database/schema.js';
+import { desabonnementToken, journalAudit } from '../database/schema.js';
 import { loadConfig } from '../config.js';
 import {
   RETENTION_DESABONNEMENT_TOKEN_JOURS,
+  RETENTION_JOURNAL_AUDIT_JOURS,
   tachePurgeDesabonnementToken,
+  tachePurgeJournalAudit,
   tachesPurgeFoyer,
 } from './taches-purge.js';
 
@@ -106,15 +108,34 @@ describe('tachePurgeDesabonnementToken', () => {
   });
 });
 
+describe('tachePurgeJournalAudit', () => {
+  it('porte la durée du registre (T9 : 3 ans)', () => {
+    const tache = tachePurgeJournalAudit(fauxDb().db);
+    expect(tache.nom).toBe('journal_audit');
+    expect(tache.retentionJours).toBe(RETENTION_JOURNAL_AUDIT_JOURS);
+  });
+
+  it('supprime sur la piste d’audit, ancrée sur sa date de création', async () => {
+    const { db, tables, conditions } = fauxDb(7);
+    expect(await tachePurgeJournalAudit(db).executer(BORNE)).toBe(7);
+    expect(tables).toEqual([journalAudit]);
+    const { sql, params } = rendre(conditions[0]);
+    expect(sql).toContain('"cree_le" < ');
+    // Drizzle lie une borne `Date` en chaîne ISO, jamais en `Date` (`LE-36`).
+    expect(params).toEqual([BORNE.toISOString()]);
+  });
+});
+
 describe('tachesPurgeFoyer', () => {
   /**
    * `correction_journal` est délibérément absente : la durée que le registre lui assigne
    * part de la **date d'effet de la version**, colonne que la table ne porte pas. Écart
    * assumé, écrit en `docs/37-registre-des-traitements.md` §4 — ce test le rend visible.
    */
-  it('ne borne que les jetons de désabonnement côté tables propres au service', () => {
+  it('borne les jetons de désabonnement et la piste d’audit, et rien d’autre', () => {
     expect(tachesPurgeFoyer(fauxDb().db).map((t) => t.nom)).toEqual([
       'desabonnement_token',
+      'journal_audit',
     ]);
   });
 });

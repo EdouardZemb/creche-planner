@@ -111,8 +111,8 @@ const documentEcrit = {
             type: 'object',
             description:
               'Situation et ressources du foyer, enfants, parents (retirés ' +
-              'compris), préférences de notification effectives et traces de ' +
-              'désabonnement.',
+              'compris), préférences de notification effectives, traces de ' +
+              'désabonnement et piste d’audit des modifications du dossier.',
             properties: {
               situationCourante: { $ref: '#/components/schemas/LigneExport' },
               versionsRessources: {
@@ -139,6 +139,10 @@ const documentEcrit = {
                 type: 'array',
                 items: { $ref: '#/components/schemas/LigneExport' },
               },
+              pisteAudit: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
             },
             required: [
               'situationCourante',
@@ -148,6 +152,7 @@ const documentEcrit = {
               'parents',
               'preferencesNotification',
               'jetonsDesabonnement',
+              'pisteAudit',
             ],
           },
           gardeEtPlanning: {
