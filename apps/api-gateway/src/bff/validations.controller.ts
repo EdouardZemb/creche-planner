@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Query,
@@ -168,8 +170,16 @@ export class ValidationsController {
     });
   }
 
-  /** Valide la semaine `:semaineIso` du contrat `:contratId`. */
+  /**
+   * Valide la semaine `:semaineIso` du contrat `:contratId`.
+   *
+   * **200 explicite** (lot 7, `AM-39`) : un `@Post` sans `@HttpCode` répond 201
+   * chez Nest, ce que le contrat n'a jamais déclaré. La route n'expose aucune
+   * ressource créée — elle rend l'issue de la validation d'une semaine qui
+   * existait déjà.
+   */
   @Post('validations/:contratId/:semaineIso')
+  @HttpCode(HttpStatus.OK)
   @FoyerScope('contrat:contratId')
   valider(
     @Param('contratId') contratId: string,
