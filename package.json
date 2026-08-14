@@ -15,6 +15,7 @@
     "registre": "node scripts/verifier-registre.mjs",
     "retentions": "node scripts/verifier-retentions.mjs",
     "portabilite": "node scripts/verifier-portabilite.mjs",
+    "acteur": "node scripts/verifier-piste-audit.mjs",
     "problemes": "node scripts/verifier-problemes.mjs",
     "environnement": "node scripts/verifier-environnement.mjs",
     "empechements": "node scripts/verifier-empechements.mjs",

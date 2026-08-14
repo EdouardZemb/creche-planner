@@ -205,6 +205,23 @@ jobs:
           node scripts/verifier-portabilite.mjs --autotest
           node scripts/verifier-portabilite.mjs
 
+      # Piste d'audit acteur (doc 37 §7, AM-45) — une piste d'audit se périme
+      # exactement comme l'export : elle ne casse pas. On ajoute une route de
+      # mutation, elle n'écrit rien, et la piste continue de répondre — cohérente,
+      # simplement muette sur ce qui vient d'arriver. Sur le seul artefact dont
+      # toute la valeur est d'être exhaustif, c'est pire que vert. Ce step exige
+      # que les 30 routes de mutation des cinq services soient TOUTES classées
+      # (auditée / journal seul / exemptée / hors périmètre / différée), qu'une
+      # route dite auditée nomme une action réellement consignée par du code de
+      # production ET reçoive son acteur (`@ActeurCourant()` sur son handler — ce
+      # qu'un contexte ambiant n'aurait pas permis de constater), et qu'un report
+      # nomme une piste ENCORE OUVERTE du registre. L'attendu est DÉRIVÉ des
+      # contrôleurs. `--autotest` rejoue ses 5 sondes négatives.
+      - name: Piste d'audit acteur — aucune mutation hors classement (bloquant)
+        run: |
+          node scripts/verifier-piste-audit.mjs --autotest
+          node scripts/verifier-piste-audit.mjs
+
       # Format d'erreur unique de la passerelle (RFC 9457, AM-37) — le format
       # vit dans trois fichiers qui ne peuvent pas s'importer : le contrat et son
       # registre de codes, le document OpenAPI (qui ne peut RIEN importer, étant

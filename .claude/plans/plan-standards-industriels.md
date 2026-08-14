@@ -253,11 +253,55 @@ l'enforce (geste PO du chantier fondations) se règle sur la passerelle. Retiré
 
 Consigné : `AM-44` ✅, `AM-71`/`AM-72` ouvertes, `LE-41`/`LE-42`, `EM-12`.
 
-## Lot 6 — piste d'audit acteur (`AM-45`)
+## Lot 6 — piste d'audit acteur (`AM-45`) ✅ LIVRÉ
 
-Colonne acteur sur les mutations sensibles (revenus, parents, enfants) + journalisation
-des succès. L'identité existe déjà dans la gateway (`IdentiteGuard`) et se propage par
-assertion HMAC : il s'agit de la **persister**, pas de la créer.
+**Fait le 2026-08-14**, branche `feat/standards-lot6-piste-audit-acteur`.
+
+Table `journal_audit` dans `svc-foyer` (ajout seul, rattachée au foyer), écrite dans la
+**transaction de la mutation** pour les dix routes de mutation du dossier — ressources,
+enfants, parents, préférences. L'acteur arrive par un **paramètre explicite**
+(`@ActeurCourant()`, `libs/nest-commons`) tiré de l'assertion HMAC déjà vérifiée. La
+piste sort dans l'**export de portabilité** (c'est le sens donné à « consultable »), et
+se borne à 3 ans (doc 37 §3, T9, avec sa tâche de purge).
+
+**Trois écarts à l'énoncé, constatés contre le code :**
+
+1. **« Colonne acteur » était impossible pour la moitié du périmètre** (`LE-47`). Les
+   suppressions sont des mutations sensibles à part entière — `retirerEnfant` est un
+   `DELETE` réel, et le **retrait d'un parent est la révocation de l'accès d'une
+   personne au foyer**. Une colonne disparaît avec sa ligne, ou perd son sens avec le
+   soft-delete. D'où un journal en ajout seul, et non des colonnes éparpillées.
+2. **Une action ne peut pas être tracée du tout, et il fallait le trouver avant de
+   l'écrire** : l'effacement du foyer. La table part en `ON DELETE CASCADE` avec lui —
+   insérée avant, la ligne est emportée ; après, elle viole la clé étrangère. Le journal
+   applicatif (T5) est le seul lieu où cette action survit. C'est la classe
+   « journal seul » du §7, et elle n'a qu'un membre.
+3. **L'acteur est un paramètre, pas un `AsyncLocalStorage`.** La passerelle n'a pas le
+   choix (ses clients sont des singletons) ; ici le chemin est direct, et un paramètre
+   est **constatable de l'extérieur** — c'est ce qui permet à la porte d'exiger
+   `@ActeurCourant()` sur le handler de toute route déclarée auditée.
+
+**Ce que le lot a vraiment trouvé, au-delà de l'énoncé** : la section d'export ajoutée
+côté service aurait été **silencieusement effacée** du document téléchargé. Le client de
+la passerelle valide par un `z.object`, qui strippe les clés inconnues, et `pnpm
+portabilite` s'arrête au service — son périmètre déclaré était exact, la chaîne est plus
+longue que lui (`LE-48` → `MO-1`, remède en `AM-78`).
+
+**Décision de conception à retenir : on écrit la ligne même sans acteur.** Tant que
+`INTERSERVICE_AUTHZ_ENFORCE` reste à 0, une requête sans assertion valide mute quand
+même. Ne rien écrire rendrait la piste indiscernable d'une piste vide ; on écrit donc
+`acteur_type = 'inconnu'`, et le compteur `foyer_audit_actions_total{acteur="inconnu"}`
+devient l'indicateur de la bascule enforce — même lecture que
+`gateway_authz_refus_total` pour l'appartenance foyer.
+
+Porte **`pnpm acteur`** (5 sondes `--autotest` + 2 négatifs réels joués à la main) : les
+30 routes de mutation des cinq services sont classées au §7 de doc 37, une route auditée
+nomme une action réellement consignée **et** reçoit son acteur, une action déclarée que
+plus personne ne nomme est morte, et un report `différée` doit nommer une piste
+**encore ouverte** — fermer `AM-76` sans auditer `svc-planification` fait rougir la CI.
+
+Consigné : `AM-45` ✅, `AM-76`/`AM-77` (extension aux deux autres services),
+`AM-78` (traversée passerelle), `LE-47`, `LE-48`.
 
 ## Lot 7 — sémantique HTTP restante (`AM-39`, `AM-40`, `AM-41`)
 
