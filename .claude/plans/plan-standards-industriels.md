@@ -328,11 +328,41 @@ qu'annoncé sur deux des trois pistes et plus grand sur la troisième** :
 
 Consigné : `AM-39`/`AM-40`/`AM-41` ✅, `LE-49`, `AM-80`.
 
-## Lot 8 — durcissements ops (`AM-47` ⏸, `AM-48`, `AM-50`)
+## Lot 8 — durcissements ops (`AM-47` ⏸, `AM-48`, `AM-50`) — ✅ livré 2026-08-15
 
-Compose durci (`no-new-privileges`, `cap_drop`, `read_only` où possible) — vérification
-sur la pile réelle = poste principal. `minimumReleaseAge` : instruire l'impact
-Dependabot avant de poser. SPF/DKIM/DMARC : bloqué sur décision PO (domaine d'envoi).
+Deux des trois axes sont soldés ; le troisième reste à la décision du PO. Les deux traités
+avaient un énoncé qui **désignait le mauvais endroit**, chacun à sa façon.
+
+- **`AM-48` — outillée.** Le durcissement est posé dans le compose de **base**, pas dans
+  l'override de production comme le demandait le critère de sortie : les trois piles le
+  fusionnent, donc la posture est la même partout **et** elle est exercée par `smoke-stack`
+  et `e2e-stack` à chaque PR. Posée côté serveur, elle n'aurait été éprouvée qu'en
+  déployant. 29 services en `no-new-privileges` + `cap_drop: [ALL]`, 26 en `read_only`,
+  3 exemptions motivées (`AM-83` — les trois services d'infra sans volume nommé), 6 services
+  reprenant une capacité nommée. ⚠️ Le `user: 1000` que le `Dockerfile` et le doc 06
+  annonçaient « porté par le compose serveur » n'a **jamais existé** : défense en profondeur
+  écrite, absente — les deux mentions sont corrigées.
+  **Ce que le lot a vraiment trouvé : un durcissement peut passer le premier boot et tuer
+  tous les suivants** (`LE-53`). Le jeu de capacités minimal de Postgres démarre sur un
+  volume vide et meurt au second boot, quand les données existent en `0700` pour l'uid 70.
+  Les deux jobs de pile de la CI lèvent des piles **neuves** : ils auraient été verts sur un
+  compose qui casse la production au premier redémarrage. D'où le protocole de vérification
+  du lot : `up --wait`, **puis redémarrage complet**, puis smoke.
+  Porte : **`pnpm conteneurs`** (6 sondes), périmètre déclaré au registre §5.
+- **`AM-50` — outillée, mais pas dans `.npmrc`.** Depuis la version 10.16 de pnpm les réglages pnpm se
+  lisent dans `pnpm-workspace.yaml` ; posée où l'énoncé la demandait, la ligne aurait été
+  **ignorée sans message** (`LE-54`, mesuré : 350 jours de délai en `.npmrc` laissent
+  résoudre une version publiée depuis 318 jours). Délai posé à 4320 min (3 j), **accordé au
+  `cooldown.default-days` de Dependabot**, désormais écrit en clair. Impact instruit par la
+  mesure : `--frozen-lockfile` n'est pas concerné (CI et images Docker inchangées), et pnpm 10
+  n'échoue jamais — il se rabat en silence sur une autre version. C'est donc une mesure
+  d'hygiène, pas une garde, et c'est écrit comme telle.
+  Porte : **`pnpm quarantaine`** (5 sondes).
+- **`AM-47` — toujours ⏸, non ouverte.** SPF/DKIM/DMARC supposent un **domaine d'envoi** ; les
+  courriels partent aujourd'hui d'un compte Gmail personnel. Le geste est une décision PO
+  (rester sur Gmail, ou prendre un domaine), et les enregistrements DNS vivent hors du dépôt.
+
+Consigné : `AM-48`/`AM-50` ✅, `AM-82`/`AM-83`, `LE-53` (→ `MO-1`), `LE-54` (→ `MO-2`), `EM-14`.
 
 ## Lot 9 — WCAG 2.2 (`AM-49`)
 

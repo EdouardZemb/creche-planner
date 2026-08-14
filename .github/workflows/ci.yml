@@ -255,6 +255,36 @@ jobs:
           node scripts/verifier-environnement.mjs --autotest
           node scripts/verifier-environnement.mjs
 
+      # Durcissement des conteneurs (AM-48, lot 8 des standards) — les trois
+      # options du CIS Docker que Docker n'applique pas de lui-même
+      # (`no-new-privileges` §5.25, `cap_drop: [ALL]` §5.3, `read_only` §5.12)
+      # étaient absentes des QUATRE composes. Elles sont désormais posées sur les
+      # 29 services des trois piles, par une ancre YAML partagée — d'où cette
+      # porte : oublier `<<: *durcissement` sur un service NEUF ne casse rien, ne
+      # se voit pas dans un diff et ne rougirait nulle part, alors qu'un conteneur
+      # trop permissif démarre parfaitement. Toute capacité reprise et toute
+      # racine inscriptible doivent porter un motif, et une entrée de registre
+      # devenue fausse est signalée dans l'autre sens. `--autotest` rejoue ses
+      # 6 sondes négatives.
+      - name: Durcissement des conteneurs — posture CIS complète (bloquant)
+        run: |
+          node scripts/verifier-conteneurs.mjs --autotest
+          node scripts/verifier-conteneurs.mjs
+
+      # Quarantaine des publications npm (AM-50, lot 8 des standards) — le dépôt
+      # attend 3 jours avant de RÉSOUDRE une version fraîchement publiée, fenêtre
+      # que visent les compromissions de compte de mainteneur. Ce réglage a deux
+      # façons de devenir inerte en silence : au mauvais endroit (dans `.npmrc`,
+      # que pnpm ne lit plus pour ses réglages depuis 10.16 — c'est le placement
+      # que demandait l'énoncé d'origine, et il est SANS EFFET, mesuré), ou
+      # désaccordé du cooldown de Dependabot (le manifeste remonte, la résolution
+      # ne suit pas). Ce step exige les deux, avec l'attendu DÉRIVÉ des fichiers.
+      # `--autotest` rejoue ses 5 sondes négatives.
+      - name: Quarantaine des publications npm — délai actif et accordé (bloquant)
+        run: |
+          node scripts/verifier-quarantaine.mjs --autotest
+          node scripts/verifier-quarantaine.mjs
+
       # Empêchements d'outillage (doc 34 §6) — la liste « Encore réels » de
       # CONTRIBUTING tenait déjà l'inventaire des frictions d'atelier, mais
       # comme une FATALITÉ : aucune n'avait de remède planifié ni de critère de

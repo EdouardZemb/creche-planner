@@ -50,6 +50,22 @@ corepack pnpm portabilite
 # d'environnement, des deux côtés (schéma ou compose).
 corepack pnpm environnement
 
+# Durcissement des conteneurs (< 1 s, step bloquant du job `ci`, cf. AM-48) :
+# tout service des trois piles Compose tourne en `no-new-privileges` +
+# `cap_drop: [ALL]`, racine en lecture seule sauf exemption motivée dans le
+# script, et toute capacité reprise y est nommée. À lancer après tout ajout de
+# service ou modification de posture. ⚠️ La porte ne prouve PAS que la pile
+# démarre, et encore moins qu'elle REDÉMARRE : le jeu de capacités minimal de
+# Postgres passe le premier boot et meurt au second (`LE-53`). Un changement de
+# durcissement se vérifie sur la pile réelle, redémarrage compris.
+corepack pnpm conteneurs
+
+# Quarantaine des publications npm (< 1 s, step bloquant du job `ci`, cf. AM-50) :
+# le délai avant d'installer une version fraîchement publiée doit être déclaré
+# dans `pnpm-workspace.yaml` (jamais dans `.npmrc`, ignoré en silence depuis la
+# version 10.16 de pnpm) et rester égal au `cooldown` de Dependabot.
+corepack pnpm quarantaine
+
 # Empêchements d'outillage (< 1 s, step bloquant du job `ci`, cf. doc 34 §6) :
 # chaque piège « encore réel » de la section ci-dessous doit porter sa ligne
 # `EM-xx` au registre — avec son remède, ou un renoncement daté.
