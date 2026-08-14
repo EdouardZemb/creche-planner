@@ -2,6 +2,7 @@ import {
   type CallHandler,
   type ExecutionContext,
   Injectable,
+  Logger,
   type NestInterceptor,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -58,13 +59,20 @@ function baseRessource(requete: RequeteHttp): string | undefined {
  * client contrôle. Le client résout la référence contre l'URL qu'il a appelée,
  * ce qui est exactement la bonne origine, sans avoir à la deviner ici.
  *
- * Aucune requête n'échoue à cause de cet en-tête : un identifiant absent, vide
- * ou non textuel (un amont qui change de forme) fait **renoncer** au `Location`,
- * jamais lever — le corps de la réponse, lui, est déjà validé par le schéma zod
- * du client concerné.
+ * **Aucune requête n'échoue à cause de cet en-tête**, et cette garantie doit être
+ * tenue par le code, pas seulement promise. Un identifiant absent, vide ou non
+ * textuel fait renoncer au `Location` ; et l'extraction elle-même est protégée,
+ * parce qu'elle **déréférence** (`vue.foyer.id`) : le schéma zod du client rend
+ * la forme sûre aujourd'hui, mais rien dans le typage du décorateur ne l'impose,
+ * et l'enjeu est asymétrique — nous sommes **après** l'écriture. Une exception
+ * ici transformerait une création réussie en 500, sur lequel le client
+ * relancerait une création déjà faite. Un en-tête décoratif ne vaut pas ce
+ * risque : on le laisse tomber, en le journalisant.
  */
 @Injectable()
 export class LocationInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(LocationInterceptor.name);
+
   constructor(private readonly reflector: Reflector) {}
 
   intercept(
@@ -88,7 +96,18 @@ export class LocationInterceptor implements NestInterceptor {
     return suivant.handle().pipe(
       map((vue: unknown) => {
         const reponse = http.getResponse<ReponseHttp>();
-        const id = identifiant(vue);
+        let id: string | undefined;
+        try {
+          id = identifiant(vue);
+        } catch (erreur) {
+          // La création a réussi : on rend la réponse, amputée de son en-tête.
+          this.logger.warn(
+            `Location non posé sur ${base} : ${
+              erreur instanceof Error ? erreur.message : String(erreur)
+            }`,
+          );
+          return vue;
+        }
         if (typeof id === 'string' && id.length > 0 && !reponse.headersSent) {
           reponse.setHeader('Location', `${base}/${encodeURIComponent(id)}`);
         }

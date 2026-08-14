@@ -37,7 +37,16 @@ export function configurerApp(app: INestApplication): void {
     type: VersioningType.URI,
     defaultVersion: VERSION_NEUTRAL,
   });
-  app.enableCors(
-    corsOrigins.includes('*') ? undefined : { origin: [...corsOrigins] },
-  );
+  // `exposedHeaders` : sans lui, un navigateur d'une **autre origine** ne peut pas
+  // lire `Location` — le CORS n'expose que six en-têtes de réponse par défaut, et
+  // `Location` n'en fait pas partie. Le contrat le déclare `required` sur les
+  // créations depuis le lot 7 : sans cette ligne, la promesse serait tenue sur le
+  // fil et invisible dans le client, ce qu'aucun test ne verrait (le `fetch` de
+  // Node n'applique aucune règle CORS). Latent aujourd'hui — le SPA est servi en
+  // même origine — donc exactement le genre d'écart qui se découvre le jour où on
+  // sépare les domaines.
+  app.enableCors({
+    ...(corsOrigins.includes('*') ? {} : { origin: [...corsOrigins] }),
+    exposedHeaders: ['Location'],
+  });
 }

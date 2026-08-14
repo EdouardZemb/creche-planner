@@ -542,6 +542,76 @@ describe('OpenAPI · statut de succès et Location (lot 7, AM-39)', () => {
     expect(desaccords).toEqual([]);
   });
 
+  /**
+   * L'URI que le `Location` désignera existe-t-elle dans l'API ? L'intercepteur
+   * la compose comme « URL de la collection + identifiant rendu » : la cible est
+   * donc le chemin de la route suivi d'**un** segment de paramètre. Un `Location`
+   * vers une URI que l'API n'adresse pas serait un cul-de-sac ; la garde exige
+   * qu'un `path` du contrat lui corresponde.
+   *
+   * **Ce qu'elle ne couvre pas**, et il faut le dire : elle prouve que l'URI
+   * existe, pas que l'identifiant rendu soit celui de cette ressource-là. C'est
+   * exactement l'angle mort de `POST /contrats/{id}/versions`, dont la cible
+   * `…/versions/{versionId}` existe bel et bien, mais dont la réponse porte
+   * l'identifiant du **contrat** — raison pour laquelle cette route est exclue à
+   * la main, et non par cette garde.
+   */
+  it('vise une URI que le contrat adresse (Location jamais en cul-de-sac)', () => {
+    const chemins = Object.keys(gatewayOpenApiDocument.paths);
+    const orphelines = routes
+      .filter((r) => r.ressourceCreee)
+      .filter((r) => {
+        const collection = r.operation.split(' ')[1] ?? '';
+        return !chemins.some((chemin) =>
+          new RegExp(
+            `^${collection.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\{[^/{}]+\\}$`,
+          ).test(chemin),
+        );
+      })
+      .map((r) => r.operation)
+      .sort((a, b) => a.localeCompare(b));
+    expect(orphelines).toEqual([]);
+  });
+
+  /**
+   * Constat écrit plutôt que supposé : sur les cinq URI créées, **une seule** se
+   * lit en `GET` (`/foyers/{id}`) ; les quatre autres n'exposent que `PUT` et
+   * `DELETE`. Le `Location` y reste juste — la RFC 9110 §10.2.2 en fait l'URI de
+   * la ressource créée, pas une promesse de lisibilité, et une URI qui accepte
+   * `PUT`/`DELETE` **est** une ressource. Mais un client qui la suivrait en `GET`
+   * prendrait un 404, et personne ne doit le découvrir en production.
+   *
+   * Ce test **fige la liste** : le jour où une lecture par identifiant est
+   * ajoutée (ou retirée), il le dit. C'est la seule façon de garder le sujet
+   * visible sans écrire une route qu'aucun écran ne demande.
+   */
+  it('dit lesquelles des URI créées se lisent en GET', () => {
+    const chemins = new Set(Object.keys(gatewayOpenApiDocument.paths));
+    const lisible = (operation: string): boolean => {
+      const collection = operation.split(' ')[1] ?? '';
+      for (const chemin of chemins) {
+        if (!chemin.startsWith(`${collection}/{`)) continue;
+        if (chemin.slice(collection.length + 1).includes('/')) continue;
+        const item = gatewayOpenApiDocument.paths[
+          chemin as keyof typeof gatewayOpenApiDocument.paths
+        ] as Record<string, unknown>;
+        if ('get' in item) return true;
+      }
+      return false;
+    };
+    const parLisibilite = routes
+      .filter((r) => r.ressourceCreee)
+      .map((r) => `${lisible(r.operation) ? 'GET' : '———'} ${r.operation}`)
+      .sort((a, b) => a.localeCompare(b));
+    expect(parLisibilite).toEqual([
+      '——— POST /api/v1/contrats',
+      '——— POST /api/v1/foyers/{foyerId}/etablissements',
+      '——— POST /api/v1/foyers/{id}/enfants',
+      '——— POST /api/v1/foyers/{id}/parents',
+      'GET POST /api/v1/foyers',
+    ]);
+  });
+
   // Le périmètre déclaré de la garde, écrit en test plutôt qu'en prose : elle
   // exige l'accord code/contrat, jamais qu'une création **doive** poser un
   // `Location`. Cinq 201 n'en posent pas, et chacune pour une raison constatée
