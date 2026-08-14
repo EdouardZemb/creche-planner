@@ -362,7 +362,9 @@ avaient un énoncé qui **désignait le mauvais endroit**, chacun à sa façon.
   courriels partent aujourd'hui d'un compte Gmail personnel. Le geste est une décision PO
   (rester sur Gmail, ou prendre un domaine), et les enregistrements DNS vivent hors du dépôt.
 
-Consigné : `AM-48`/`AM-50` ✅, `AM-82`/`AM-83`, `LE-53` (→ `MO-1`), `LE-54` (→ `MO-2`), `EM-14`.
+**Trouvé en lisant les checks de la PR elle-même :** les trois jobs de pile étaient **`skipping`** — ils ne se déclenchent que si `nx affected` trouve un projet déployable touché, et un diff purement Compose n'en touche aucun. La pile n'était donc **jamais bootée par les PR qui changent la pile**, et le commentaire de `config-changes` décrivait ce trou mot pour mot depuis sa création (`LE-55`). Corrigé par un filtre de chemins `pile`.
+
+Consigné : `AM-48`/`AM-50` ✅, `AM-82`/`AM-83`, `LE-53` et `LE-55` (→ `MO-1`), `LE-54` (→ `MO-2`), `EM-14`.
 
 ## Lot 9 — WCAG 2.2 (`AM-49`)
 

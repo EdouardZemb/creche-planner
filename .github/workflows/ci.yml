@@ -615,9 +615,12 @@ jobs:
   # services + gateway + web). On NE la monte QUE si un projet DÉPLOYABLE est affecté
   # (service/gateway/web), via la sortie `has_projects` de `affected-images` : un diff
   # purement docs/libs ne déclenche plus la pile. `timeout-minutes` borne un hang.
+  # AJOUT (lot 8) : la pile est AUSSI montée quand le diff touche la pile elle-même
+  # (`config-changes.outputs.pile` — composes, docker/**, Dockerfile). Sans cela, une
+  # PR purement compose — celle qui change la pile — ne la bootait JAMAIS.
   smoke-stack:
-    needs: [ci, pact-can-i-deploy, affected-images]
-    if: needs.affected-images.outputs.has_projects == 'true'
+    needs: [ci, pact-can-i-deploy, affected-images, config-changes]
+    if: needs.affected-images.outputs.has_projects == 'true' || needs.config-changes.outputs.pile == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -703,9 +706,11 @@ jobs:
   # `pact-can-i-deploy`. Comme `smoke-stack` (P2-7), on ne joue ce job que si un
   # projet déployable est affecté (`affected-images.has_projects`). `pnpm e2e:stack`
   # orchestre up --build --wait + seed --verify + Playwright stack + down -v.
+  # Comme `smoke-stack` : un diff qui touche la pile elle-même (composes, docker/**,
+  # Dockerfile) la déclenche aussi, via `config-changes.outputs.pile` (lot 8).
   e2e-stack:
-    needs: [ci, pact-can-i-deploy, affected-images]
-    if: needs.affected-images.outputs.has_projects == 'true'
+    needs: [ci, pact-can-i-deploy, affected-images, config-changes]
+    if: needs.affected-images.outputs.has_projects == 'true' || needs.config-changes.outputs.pile == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -1065,6 +1070,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       config: ${{ steps.filter.outputs.config }}
+      pile: ${{ steps.filter.outputs.pile }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1079,6 +1085,19 @@ jobs:
               - 'docker/**'
               - 'docker-compose*.yml'
               - '.github/workflows/**'
+            # Sous-ensemble qui décrit la PILE elle-même (lot 8 des standards). Il
+            # DÉCLENCHE smoke-stack et e2e-stack, que `affected-images` seul
+            # laissait skipper sur un diff purement compose — c'est-à-dire
+            # exactement sur les PR qui changent la pile. Le durcissement CIS
+            # (AM-48) vit dans docker-compose.yml : sans cette entrée, rien
+            # n'aurait jamais bootté la pile durcie avant un déploiement.
+            # Volontairement plus étroit que `config` : un changement de
+            # workflow n'a pas à monter la pile.
+            pile:
+              - 'docker/**'
+              - 'docker-compose*.yml'
+              - 'Dockerfile'
+              - 'apps/web/Dockerfile'
 
   # Phase 5 — VALIDATION DES CONFIGS INFRA/OBSERVABILITÉ. Comble l'angle mort décrit
   # sur `config-changes` : on VALIDE statiquement chaque config, puis on PROUVE que la
