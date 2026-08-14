@@ -1335,6 +1335,47 @@ jobs:
             || echec "la cécité sur le périmètre doit être NOMMÉE dans le rapport"
           echo "✅ Un périmètre inconnu reste strict."
 
+      - name: Chaque source garde SA pagination et SON jeton
+        run: |
+          # Le 2026-08-14, un seul réglage pour deux endpoints a produit deux pannes
+          # d'un coup, invisibles tant que le 403 tombait avant : `dependabot/alerts`
+          # REFUSE `page` (400, pagination au curseur), et lui envoyer le PAT du
+          # workflow casse `code-scanning/alerts` quand ce PAT est restreint aux
+          # alertes Dependabot. La sonde lit les URL que le script construit VRAIMENT.
+          set +e
+          set -uo pipefail
+          SORTIE=$(ALERTES_DRY_RUN=pagination node .github/workflows/scripts/veille-alertes.mjs)
+          CODE=$?
+
+          echec() { echo "::error::$1"; echo "--- sortie obtenue ---"; echo "$SORTIE"; exit 1; }
+
+          [ "$CODE" -eq 0 ] || echec "la sonde de pagination doit sortir en 0, obtenu $CODE"
+
+          DEP=$(echo "$SORTIE" | grep '^Dependabot ')
+          CS=$(echo "$SORTIE" | grep '^Code scanning')
+
+          # 1) Dependabot ne doit JAMAIS envoyer `page` — c'est le 400 du 14/08.
+          case "$DEP" in
+            *"page="*) echec "l'URL Dependabot porte un paramètre \`page\` : l'API le refuse (400)" ;;
+          esac
+          case "$DEP" in
+            *"pagination=curseur"*) ;;
+            *) echec "Dependabot doit se paginer au curseur" ;;
+          esac
+
+          # 2) Le code scanning garde `page` ET le jeton du run : lui donner le PAT
+          #    l'a cassé (« Resource not accessible by personal access token »).
+          case "$CS" in
+            *"page=1"*) ;;
+            *) echec "le code scanning doit garder la pagination par page" ;;
+          esac
+          case "$CS" in
+            *"jeton=GITHUB_TOKEN"*) ;;
+            *) echec "le code scanning doit être lu avec le jeton du run, pas avec le PAT" ;;
+          esac
+
+          echo "✅ Pagination et jeton corrects, source par source."
+
   # AUTO-TEST de la VEILLE CVE (`image-rescan.mjs`), même patron que ci-dessus.
   #
   # CE QUE ÇA GARDE — le VERDICT DE SOURCE : pour chaque CVE trouvée sur une image en
