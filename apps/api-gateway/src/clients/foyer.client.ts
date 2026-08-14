@@ -186,6 +186,7 @@ const exportFoyerSchema = z.object({
   parents: z.array(ligneExportSchema),
   preferencesNotification: z.array(ligneExportSchema),
   jetonsDesabonnement: z.array(ligneExportSchema),
+  pisteAudit: z.array(ligneExportSchema),
 });
 
 /** Part `svc-foyer` de l'export de portabilité (lot 3, `AM-35`). */
@@ -198,7 +199,7 @@ const OPTIONS: OptionsResilience = {
 };
 
 /**
- * L'export balaie sept tables et n'est pas sur le chemin critique d'un écran :
+ * L'export balaie huit tables et n'est pas sur le chemin critique d'un écran :
  * le budget de 2 s des lectures courantes y serait un faux négatif sur un foyer
  * ancien. Même arbitrage que `OPTIONS_ANNUEL` côté tarification.
  */

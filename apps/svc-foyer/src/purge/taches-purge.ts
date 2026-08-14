@@ -1,7 +1,7 @@
 import type { TachePurge } from '@creche-planner/nest-commons';
 import { and, isNotNull, isNull, lt, or } from 'drizzle-orm';
 import type { Database } from '../database/database.types.js';
-import { desabonnementToken } from '../database/schema.js';
+import { desabonnementToken, journalAudit } from '../database/schema.js';
 
 /**
  * T3bis — jetons de désabonnement : **3 ans depuis la dernière modification**
@@ -62,11 +62,48 @@ export function tachePurgeDesabonnementToken(db: Database): TachePurge {
 }
 
 /**
- * Bornes temporelles de `svc-foyer` (lot 2b). `correction_journal` **n'y figure pas** :
- * la durée que le registre lui assigne part de la **date d'effet de la version**, colonne
- * que la table ne porte pas — cf. l'écart assumé en `docs/37-registre-des-traitements.md`
- * §4.
+ * T9 — piste d'audit acteur : **3 ans depuis l'action**
+ * (`docs/37-registre-des-traitements.md` §3).
+ */
+export const RETENTION_JOURNAL_AUDIT_JOURS = 3 * 365;
+
+/**
+ * Borne de la piste d'audit (lot 6), ancrée sur `cree_le` — la table est en **ajout
+ * seul**, sa date de création est donc aussi sa date de dernière modification, et
+ * c'est le seul cas simple des bornes de ce service.
+ *
+ * Ce qui ne va pas de soi, c'est de la borner **du tout**. Un journal d'audit qu'on
+ * efface perd la propriété qui le rend utile ; mais celui-ci nomme des personnes
+ * (l'e-mail de l'acteur), et une donnée personnelle sans durée est exactement ce que
+ * le registre a été écrit pour interdire. Trois ans est la durée que le registre
+ * assigne déjà aux deux autres traces du même dossier — l'historique versionné des
+ * ressources (T1) et le journal de corrections (T1bis) : la piste ne survit pas à ce
+ * qu'elle documente, et ne meurt pas avant lui.
+ *
+ * `LE-35` s'applique-t-elle ? Non : personne n'interprète l'**absence** d'une ligne
+ * ici. Aucune règle métier ne lit cette table — ni garde, ni machine à états, ni
+ * anti-double-envoi ; ses seuls lecteurs sont l'export de portabilité et un humain.
+ * Une ligne purgée est une trace perdue, pas un comportement changé.
+ */
+export function tachePurgeJournalAudit(db: Database): TachePurge {
+  return {
+    nom: 'journal_audit',
+    retentionJours: RETENTION_JOURNAL_AUDIT_JOURS,
+    executer: async (borne) => {
+      const resultat = await db
+        .delete(journalAudit)
+        .where(lt(journalAudit.creeLe, borne));
+      return resultat.count;
+    },
+  };
+}
+
+/**
+ * Bornes temporelles de `svc-foyer` (lot 2b, étendues au lot 6).
+ * `correction_journal` **n'y figure pas** : la durée que le registre lui assigne part
+ * de la **date d'effet de la version**, colonne que la table ne porte pas — cf.
+ * l'écart assumé en `docs/37-registre-des-traitements.md` §4.
  */
 export function tachesPurgeFoyer(db: Database): readonly TachePurge[] {
-  return [tachePurgeDesabonnementToken(db)];
+  return [tachePurgeDesabonnementToken(db), tachePurgeJournalAudit(db)];
 }

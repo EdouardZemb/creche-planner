@@ -92,13 +92,18 @@ function ligneParent(
   };
 }
 
-/** Les 7 réponses attendues, dans l'ordre : foyer, versions, corrections, enfants, parents, préférences, jetons. */
+/**
+ * Les 8 réponses attendues, **dans l'ordre des `select()`** : foyer, versions,
+ * corrections, enfants, parents, piste d'audit, puis les deux tables filles
+ * (préférences, jetons), lues après les parents dont elles dépendent.
+ */
 function reponses(
   parents: Record<string, unknown>[],
   preferences: Record<string, unknown>[] = [],
   jetons: Record<string, unknown>[] = [],
+  audit: Record<string, unknown>[] = [],
 ): unknown[][] {
-  return [[ligneFoyer()], [], [], [], parents, preferences, jetons];
+  return [[ligneFoyer()], [], [], [], parents, audit, preferences, jetons];
 }
 
 describe('PortabiliteService (svc-foyer)', () => {
@@ -115,7 +120,7 @@ describe('PortabiliteService (svc-foyer)', () => {
   // lecture filtre. Une clé de rattachement fausse rendrait les données d'un
   // AUTRE foyer avec exactement la même forme, et tous les autres tests
   // passeraient. On rend donc le prédicat en SQL par le vrai dialecte.
-  it('filtre les 5 tables du foyer sur le foyer, et les 2 tables filles sur ses parents', async () => {
+  it('filtre les 6 tables du foyer sur le foyer, et les 2 tables filles sur ses parents', async () => {
     const { db, conditions } = fakeDbLecture(
       ...reponses([ligneParent()], [], []),
     );
@@ -124,18 +129,19 @@ describe('PortabiliteService (svc-foyer)', () => {
     await service.exporter(FOYER_ID);
 
     const rendus = conditions.map(rendre);
-    expect(rendus).toHaveLength(7);
-    // foyer, foyer_version, correction_journal, enfant, parent → tous sur le foyer.
-    for (const rendu of rendus.slice(0, 5)) {
+    expect(rendus).toHaveLength(8);
+    // foyer, foyer_version, correction_journal, enfant, parent, journal_audit →
+    // tous sur le foyer.
+    for (const rendu of rendus.slice(0, 6)) {
       expect(rendu.params).toEqual([FOYER_ID]);
     }
     expect(rendus[0]?.sql).toContain('"id"');
-    for (const rendu of rendus.slice(1, 5)) {
+    for (const rendu of rendus.slice(1, 6)) {
       expect(rendu.sql).toContain('"foyer_id"');
     }
     // preference_notification et desabonnement_token n'ont PAS de `foyer_id` :
     // elles se rattachent par `parent_id`, jamais par le foyer.
-    for (const rendu of rendus.slice(5)) {
+    for (const rendu of rendus.slice(6)) {
       expect(rendu.params).toEqual([PARENT_ID]);
       expect(rendu.sql).toContain('"parent_id"');
       expect(rendu.sql).not.toContain('"foyer_id"');
@@ -210,6 +216,7 @@ describe('PortabiliteService (svc-foyer)', () => {
         },
       ],
       [ligneParent()],
+      [],
       [],
       [],
     );
@@ -363,7 +370,66 @@ describe('PortabiliteService (svc-foyer)', () => {
 
     expect(vue.preferencesNotification).toEqual([]);
     expect(vue.jetonsDesabonnement).toEqual([]);
-    // foyer + versions + corrections + enfants + parents = 5, et rien de plus.
-    expect(nbSelect()).toBe(5);
+    // foyer + versions + corrections + enfants + parents + audit = 6, rien de plus.
+    expect(nbSelect()).toBe(6);
+  });
+
+  /**
+   * La piste d'audit (lot 6) est le seul endroit où le foyer lit **qui** a changé
+   * son dossier ; c'est le sens donné à « consultable » dans le critère d'`AM-45`.
+   * Un acteur non établi sort tel quel : l'export dit le trou plutôt que de le taire.
+   */
+  it('rend la piste d’audit, acteur compris, y compris quand il est inconnu', async () => {
+    const { db } = fakeDbLecture(
+      ...reponses(
+        [ligneParent()],
+        [],
+        [],
+        [
+          {
+            id: 'a1',
+            foyerId: FOYER_ID,
+            action: 'parent.retire',
+            cibleType: 'parent',
+            cibleId: PARENT_RETIRE_ID,
+            acteurType: 'parent',
+            acteur: 'alex@example.test',
+            creeLe: LE,
+          },
+          {
+            id: 'a2',
+            foyerId: FOYER_ID,
+            action: 'foyer.ressources.saisies',
+            cibleType: 'foyer_version',
+            cibleId: null,
+            acteurType: 'inconnu',
+            acteur: null,
+            creeLe: LE,
+          },
+        ],
+      ),
+    );
+    const service = new PortabiliteService(db);
+
+    const vue = await service.exporter(FOYER_ID);
+
+    expect(vue.pisteAudit).toEqual([
+      {
+        action: 'parent.retire',
+        cibleType: 'parent',
+        cibleId: PARENT_RETIRE_ID,
+        acteurType: 'parent',
+        acteur: 'alex@example.test',
+        le: LE.toISOString(),
+      },
+      {
+        action: 'foyer.ressources.saisies',
+        cibleType: 'foyer_version',
+        cibleId: null,
+        acteurType: 'inconnu',
+        acteur: null,
+        le: LE.toISOString(),
+      },
+    ]);
   });
 });
