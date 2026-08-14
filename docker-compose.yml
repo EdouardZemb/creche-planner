@@ -392,9 +392,6 @@ services:
   # (Phase 13b). Découverte via le socket Docker (monté en lecture seule).
   promtail:
     <<: *durcissement
-    tmpfs:
-      # positions.yaml (docker/promtail-config.yaml) — reprise de lecture des logs.
-      - /tmp
     # Épinglé par digest (= v3.4.2) pour une pile reproductible (cf. P2-8).
     image: grafana/promtail@sha256:c6e9a987ca086cbfef945b8ebd708eb09f98b5e78bfb659e4e5a8b3bd604d11b
     command: ['-config.file=/etc/promtail/promtail-config.yaml']
@@ -402,6 +399,12 @@ services:
       - ./docker/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
       # Socket Docker en lecture seule → découverte + lecture des logs des conteneurs.
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Reprise de lecture (`positions.yaml`) : volume NOMMÉ, pas un tmpfs — la
+      # perdre fait re-tail depuis le début et DOUBLE dans Loki des lignes déjà
+      # ingérées. Une racine en lecture seule ne s'achète pas au prix de la
+      # durabilité (même arbitrage qu'`AM-83`, ici tranché dans l'autre sens
+      # parce qu'un volume suffit).
+      - promtail-positions:/positions
     depends_on:
       - loki
 
@@ -691,3 +694,4 @@ volumes:
   tempo-data:
   grafana-data:
   loki-data:
+  promtail-positions:

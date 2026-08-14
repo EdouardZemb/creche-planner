@@ -24,7 +24,13 @@
  * qu'elle lève :
  *
  * 1. `security_opt` contient `no-new-privileges:true` ;
- * 2. `cap_drop` contient `ALL` ;
+ * 2. `cap_drop` contient `ALL`, et le service n'est PAS en `privileged: true`
+ *    (CIS 5.4) — le mode privilégié rend tout ce que le `cap_drop` écrit juste
+ *    au-dessus venait de retirer, sans qu'aucune ligne de durcissement ne bouge ;
+ * 2bis. aucune entrée de `security_opt` ne **défait** un profil
+ *    (`seccomp:unconfined`, `apparmor:unconfined`, `label:disable`,
+ *    `no-new-privileges:false`) : Compose CONCATÈNE cette séquence, donc un
+ *    override peut désarmer le conteneur **sans** retirer la bonne entrée ;
  * 3. toute capacité **reprise** (`cap_add`) est déclarée ci-dessous avec son
  *    motif, service par service — reprendre `NET_RAW` « pour voir » ne passe pas ;
  * 4. la racine est en lecture seule (`read_only: true`), sauf exemption déclarée
@@ -165,6 +171,7 @@ function lire(relatif) {
  * @property {string[]} capDrop
  * @property {string[]} capAdd
  * @property {boolean | null} readOnly
+ * @property {boolean | null} privileged
  * @property {string[]} ancres  ancres reprises par `<<: *nom`
  */
 
@@ -175,8 +182,27 @@ function blocVide() {
     capDrop: [],
     capAdd: [],
     readOnly: null,
+    privileged: null,
     ancres: [],
   };
+}
+
+/**
+ * Entrées de `security_opt` qui **défont** une protection au lieu d'en poser
+ * une. Compose CONCATÈNE cette séquence : un override peut donc ajouter
+ * `seccomp:unconfined` **sans retirer** `no-new-privileges:true`, et une porte
+ * qui se contente de chercher la bonne entrée reste verte sur un conteneur
+ * désarmé.
+ *
+ * @param {string} entree
+ */
+function affaiblit(entree) {
+  const valeur = entree.toLowerCase();
+  return (
+    valeur.endsWith(':unconfined') ||
+    valeur === 'label:disable' ||
+    valeur === 'no-new-privileges:false'
+  );
 }
 
 /**
@@ -287,6 +313,9 @@ function analyser(contenu) {
       case 'read_only':
         courant.readOnly = valeur === 'true';
         break;
+      case 'privileged':
+        courant.privileged = valeur === 'true';
+        break;
       case '<<': {
         const nom = /^\*([a-zA-Z0-9_-]+)$/.exec(valeur);
         if (nom !== null) courant.ancres.push(nom[1]);
@@ -321,11 +350,13 @@ function resoudre(bloc, ancres) {
     resolu.capDrop.push(...heritee.capDrop);
     resolu.capAdd.push(...heritee.capAdd);
     if (heritee.readOnly !== null) resolu.readOnly = heritee.readOnly;
+    if (heritee.privileged !== null) resolu.privileged = heritee.privileged;
   }
   if (bloc.securityOpt.length > 0) resolu.securityOpt = [...bloc.securityOpt];
   if (bloc.capDrop.length > 0) resolu.capDrop = [...bloc.capDrop];
   if (bloc.capAdd.length > 0) resolu.capAdd = [...bloc.capAdd];
   if (bloc.readOnly !== null) resolu.readOnly = bloc.readOnly;
+  if (bloc.privileged !== null) resolu.privileged = bloc.privileged;
   return resolu;
 }
 
@@ -354,6 +385,7 @@ function postureDeLaPile(composes, contenus) {
       deja.capDrop.push(...resolu.capDrop);
       deja.capAdd.push(...resolu.capAdd);
       if (resolu.readOnly !== null) deja.readOnly = resolu.readOnly;
+      if (resolu.privileged !== null) deja.privileged = resolu.privileged;
     }
   }
   return effective;
@@ -394,6 +426,18 @@ function verifier(contenus) {
           `pile ${pile.nom}, service \`${service}\` : pas de \`cap_drop: [ALL]\` (CIS 5.3) — le noyau lui prête les ~14 capacités par défaut de Docker (dont NET_RAW). Reprendre l'ancre \`<<: *durcissement\` du compose de base.`,
         );
       }
+      if (posture.privileged === true) {
+        constats.push(
+          `pile ${pile.nom}, service \`${service}\` : \`privileged: true\` (CIS 5.4) — le mode privilégié REND toutes les capacités et désarme seccomp/AppArmor, quel que soit le \`cap_drop\` écrit à côté. Aucune exemption possible ici : ce qu'un conteneur privilégié demande se donne capacité par capacité.`,
+        );
+      }
+      for (const entree of new Set(posture.securityOpt)) {
+        if (affaiblit(entree)) {
+          constats.push(
+            `pile ${pile.nom}, service \`${service}\` : \`security_opt: ${entree}\` défait un profil de sécurité. Compose CONCATÈNE cette liste : l'entrée coexiste avec \`no-new-privileges:true\` sans l'annuler à la lecture, mais le conteneur, lui, tourne désarmé.`,
+          );
+        }
+      }
 
       const declarees =
         CAPACITES_REPRISES.find((c) => c.services.includes(service))
@@ -415,12 +459,12 @@ function verifier(contenus) {
           `pile ${pile.nom}, service \`${service}\` : racine inscriptible (CIS 5.12) sans exemption déclarée — poser \`read_only: true\` (au besoin avec un \`tmpfs:\` pour les écritures légitimes), ou déclarer l'exemption avec son motif dans \`RACINES_INSCRIPTIBLES\`.`,
         );
       }
+      // La péremption d'une exemption se juge **globalement**, plus bas : un
+      // service en lecture seule dans une pile et inscriptible dans une autre
+      // a besoin de son entrée. La signaler ici mettrait l'auteur devant un
+      // refus sans issue — ni garder ni retirer l'entrée ne ferait passer la
+      // porte (`LE-52` : un refus doit avoir un remède atteignable).
       if (posture.readOnly !== true) inscriptiblesVus.add(service);
-      if (posture.readOnly === true && exemption !== undefined) {
-        constats.push(
-          `\`${service}\` est en lecture seule dans la pile ${pile.nom} mais figure encore parmi les racines inscriptibles assumées : l'exemption est devenue fausse, la retirer du registre \`RACINES_INSCRIPTIBLES\`.`,
-        );
-      }
     }
   }
 
@@ -611,7 +655,46 @@ function autotest(contenus) {
         'exemption périmée',
       ),
     ),
-    attendu: "l'exemption est devenue fausse",
+    attendu: 'dont la racine est en lecture seule partout',
+  });
+
+  // (g) le mode privilégié, qui REND tout ce que `cap_drop` vient de retirer —
+  // sans qu'aucune des lignes de durcissement ne change.
+  sondes.push({
+    nom: 'mode privilégié qui rend toutes les capacités',
+    constats: verifier(
+      muter(
+        BASE,
+        (t) =>
+          t.replace(
+            new RegExp(`(\\n {2}${temoin}:\\r?\\n)`),
+            '$1    privileged: true\n',
+          ),
+        'mode privilégié',
+      ),
+    ),
+    attendu: 'privileged: true',
+  });
+
+  // (h) un override ajoute un profil désarmé. Compose CONCATÈNE `security_opt` :
+  // `no-new-privileges:true` reste présent, la ligne se lit comme durcie.
+  const temoinOverride = [
+    ...analyser(contenus['docker-compose.override.yml']).services.keys(),
+  ][0];
+  sondes.push({
+    nom: `profil de sécurité défait par un override (${temoinOverride})`,
+    constats: verifier(
+      muter(
+        'docker-compose.override.yml',
+        (t) =>
+          t.replace(
+            new RegExp(`(\\n {2}${temoinOverride}:\\r?\\n)`),
+            "$1    security_opt:\n      - 'seccomp:unconfined'\n",
+          ),
+        'profil désarmé',
+      ),
+    ),
+    attendu: 'défait un profil de sécurité',
   });
 
   let echecs = 0;

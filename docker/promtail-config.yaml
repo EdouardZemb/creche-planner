@@ -13,7 +13,14 @@ server:
   log_level: warn
 
 positions:
-  filename: /tmp/positions.yaml
+  # Volume NOMMÉ (`promtail-positions`), pas /tmp (AM-48, lot 8 des standards).
+  # Ce fichier est la reprise de lecture : perdu, Promtail re-tail depuis le début
+  # tous les conteneurs en marche et DOUBLE dans Loki des lignes déjà ingérées. Le
+  # durcissement du conteneur (`read_only`) exige que ce chemin soit inscriptible :
+  # un `tmpfs` l'aurait rendu volatile — c'est-à-dire aurait acheté la lecture
+  # seule au prix d'une régression de durabilité, exactement ce que le lot refuse
+  # pour `nats`, `prometheus` et `alertmanager` (`AM-83`).
+  filename: /positions/positions.yaml
 
 clients:
   - url: http://loki:3100/loki/api/v1/push

@@ -264,8 +264,10 @@ jobs:
       # se voit pas dans un diff et ne rougirait nulle part, alors qu'un conteneur
       # trop permissif démarre parfaitement. Toute capacité reprise et toute
       # racine inscriptible doivent porter un motif, et une entrée de registre
-      # devenue fausse est signalée dans l'autre sens. `--autotest` rejoue ses
-      # 6 sondes négatives.
+      # devenue fausse est signalée dans l'autre sens — de même qu'un
+      # `privileged: true` ou un `security_opt` qui défait un profil, deux façons
+      # de désarmer un conteneur sans toucher aux lignes de durcissement.
+      # `--autotest` rejoue ses 8 sondes négatives.
       - name: Durcissement des conteneurs — posture CIS complète (bloquant)
         run: |
           node scripts/verifier-conteneurs.mjs --autotest

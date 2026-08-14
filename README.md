@@ -242,7 +242,8 @@ régression silencieuse :
   `process.env` hors configuration, aucun réglage de compose inerte),
   `pnpm conteneurs` (chaque service des trois piles Compose tourne en
   `no-new-privileges` + `cap_drop: [ALL]`, racine en lecture seule sauf exemption
-  motivée, chaque capacité reprise nommée), `pnpm quarantaine` (le délai avant
+  motivée, chaque capacité reprise nommée, ni mode privilégié ni profil de
+  sécurité défait), `pnpm quarantaine` (le délai avant
   d'installer une version npm fraîchement publiée est déclaré là où il est effectivement lu,
   et accordé au _cooldown_ de Dependabot) et `pnpm empechements` ;
 - **dérive de contrats** : `pact-drift`, `pact-can-i-deploy`, types OpenAPI du
