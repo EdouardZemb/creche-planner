@@ -39,6 +39,7 @@ import { CreationFoyerUnique } from '../security/creation-foyer-unique.decorator
 import { FoyerScope } from '../security/foyer-scope.decorator.js';
 import type { RequeteIdentifiable } from '../security/identite.js';
 import { relayer } from './relais.js';
+import { RessourceCreee } from './ressource-creee.decorator.js';
 
 /**
  * Façade BFF `/api/v1/foyers` : agrège `svc-foyer` — plus, pour la seule route
@@ -83,6 +84,7 @@ export class FoyersController {
    */
   @Post()
   @CreationFoyerUnique()
+  @RessourceCreee((vue: DossierFoyerVue) => vue.foyer.id)
   creer(
     @Body() corps: unknown,
     @Req() req?: RequeteIdentifiable,
@@ -249,6 +251,7 @@ export class FoyersController {
   @Post(':id/enfants')
   @FoyerScope('param:id')
   @HttpCode(HttpStatus.CREATED)
+  @RessourceCreee((vue: EnfantVue) => vue.id)
   ajouterEnfant(
     @Param('id') id: string,
     @Body() corps: unknown,
@@ -300,6 +303,7 @@ export class FoyersController {
   @Post(':id/parents')
   @FoyerScope('param:id')
   @HttpCode(HttpStatus.CREATED)
+  @RessourceCreee((vue: ParentVue) => vue.id)
   ajouterParent(
     @Param('id') id: string,
     @Body() corps: unknown,

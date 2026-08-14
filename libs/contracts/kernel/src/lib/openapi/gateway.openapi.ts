@@ -25,6 +25,19 @@ const documentEcrit = {
         description: 'Jeton porteur (bearer) requis sur les routes protégées.',
       },
     },
+    headers: {
+      Location: {
+        description:
+          'URI de la ressource créée (RFC 9110 §10.2.2). **Référence relative** : ' +
+          'la passerelle est servie derrière un tunnel et ne connaît pas son ' +
+          'origine publique — le client résout la référence contre l’URL qu’il a ' +
+          'appelée. Absent des créations qui n’exposent aucune URI de ressource ' +
+          '(publications du référentiel, envoi d’un récapitulatif, avenant — cf. ' +
+          '`AM-39`).',
+        required: true,
+        schema: { type: 'string', format: 'uri-reference' },
+      },
+    },
     schemas: {
       FoyerVue: {
         type: 'object',
@@ -1254,6 +1267,7 @@ const documentEcrit = {
         responses: {
           '201': {
             description: 'Foyer créé avec ses enfants.',
+            headers: { Location: { $ref: '#/components/headers/Location' } },
             content: {
               'application/json': {
                 schema: {
@@ -1496,6 +1510,7 @@ const documentEcrit = {
         responses: {
           '201': {
             description: 'Enfant rattaché.',
+            headers: { Location: { $ref: '#/components/headers/Location' } },
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/EnfantVue' },
@@ -1641,6 +1656,7 @@ const documentEcrit = {
         responses: {
           '201': {
             description: 'Parent rattaché.',
+            headers: { Location: { $ref: '#/components/headers/Location' } },
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ParentVue' },
@@ -2255,6 +2271,7 @@ const documentEcrit = {
         responses: {
           '201': {
             description: 'Contrat créé.',
+            headers: { Location: { $ref: '#/components/headers/Location' } },
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/ContratVue' },
@@ -2790,6 +2807,7 @@ const documentEcrit = {
         responses: {
           '201': {
             description: 'Établissement créé.',
+            headers: { Location: { $ref: '#/components/headers/Location' } },
             content: {
               'application/json': {
                 schema: { $ref: '#/components/schemas/EtablissementFoyerVue' },

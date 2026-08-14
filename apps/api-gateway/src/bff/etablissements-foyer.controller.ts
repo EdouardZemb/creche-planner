@@ -21,6 +21,7 @@ import {
 } from './bff.dto.js';
 import { FoyerScope } from '../security/foyer-scope.decorator.js';
 import { relayer } from './relais.js';
+import { RessourceCreee } from './ressource-creee.decorator.js';
 
 /**
  * Façade BFF `/api/v1/foyers/:foyerId/etablissements` : relaie le CRUD des
@@ -47,6 +48,7 @@ export class EtablissementsFoyerController {
   @Post()
   @FoyerScope('param:foyerId')
   @HttpCode(HttpStatus.CREATED)
+  @RessourceCreee((vue: EtablissementVue) => vue.id)
   creer(
     @Param('foyerId') foyerId: string,
     @Body() corps: unknown,

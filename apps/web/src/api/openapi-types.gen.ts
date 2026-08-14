@@ -237,6 +237,7 @@ export interface paths {
                 /** @description Foyer créé avec ses enfants. */
                 201: {
                     headers: {
+                        Location: components["headers"]["Location"];
                         [name: string]: unknown;
                     };
                     content: {
@@ -536,6 +537,7 @@ export interface paths {
                 /** @description Enfant rattaché. */
                 201: {
                     headers: {
+                        Location: components["headers"]["Location"];
                         [name: string]: unknown;
                     };
                     content: {
@@ -708,6 +710,7 @@ export interface paths {
                 /** @description Parent rattaché. */
                 201: {
                     headers: {
+                        Location: components["headers"]["Location"];
                         [name: string]: unknown;
                     };
                     content: {
@@ -1594,6 +1597,7 @@ export interface paths {
                 /** @description Contrat créé. */
                 201: {
                     headers: {
+                        Location: components["headers"]["Location"];
                         [name: string]: unknown;
                     };
                     content: {
@@ -2205,6 +2209,7 @@ export interface paths {
                 /** @description Établissement créé. */
                 201: {
                     headers: {
+                        Location: components["headers"]["Location"];
                         [name: string]: unknown;
                     };
                     content: {
@@ -3043,7 +3048,10 @@ export interface components {
     responses: never;
     parameters: never;
     requestBodies: never;
-    headers: never;
+    headers: {
+        /** @description URI de la ressource créée (RFC 9110 §10.2.2). **Référence relative** : la passerelle est servie derrière un tunnel et ne connaît pas son origine publique — le client résout la référence contre l’URL qu’il a appelée. Absent des créations qui n’exposent aucune URI de ressource (publications du référentiel, envoi d’un récapitulatif, avenant — cf. `AM-39`). */
+        Location: string;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;

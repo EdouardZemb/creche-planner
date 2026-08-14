@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Logger,
   NotFoundException,
   Param,
@@ -200,8 +202,13 @@ export class MoiController {
    * comme lue (accusé de lecture). **Défense en profondeur** : le `parentId` est résolu
    * depuis l'identité et scope l'écriture côté service — un parent ne marque que **sa**
    * notification (**404** relayé si l'id est inconnu ou appartient à un autre parent).
+   *
+   * **200 explicite** (lot 7, `AM-39`) : un `@Post` sans `@HttpCode` répond 201
+   * chez Nest, ce que le contrat n'a jamais déclaré — et rien ici n'est créé, la
+   * route porte un accusé de lecture idempotent sur une notification existante.
    */
   @Post('notifications/:id/lu')
+  @HttpCode(HttpStatus.OK)
   @FoyerScope('identite')
   async marquerNotificationLue(
     @Req() req: RequeteIdentifiable,

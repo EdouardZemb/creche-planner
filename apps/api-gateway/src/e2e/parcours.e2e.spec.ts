@@ -166,6 +166,19 @@ function gererAval(req: IncomingMessage, res: ServerResponse): void {
       envoyer(200, COUT_MOIS_VUE);
       return;
     }
+    // Validation hebdomadaire — le seul `POST` du BFF qui **ne crée rien** et
+    // qu'on puisse joindre ici : il sert la preuve, sur le fil, que son statut
+    // de succès est bien 200 et non le 201 par défaut de Nest (lot 7).
+    if (methode === 'POST' && /^\/api\/validations\/[^/]+\/[^/]+$/.test(url)) {
+      const [, , , contratId, semaineIso] = url.split('/');
+      envoyer(200, {
+        contratId: decodeURIComponent(contratId ?? ''),
+        semaineIso: decodeURIComponent(semaineIso ?? ''),
+        statut: 'VALIDEE',
+        deltaModifs: null,
+      });
+      return;
+    }
     envoyer(500, { message: `aval non simulé : ${methode} ${url}` });
   });
 }
@@ -229,6 +242,7 @@ describe('E2E API · parcours « créer foyer + contrats → lire le coût »', 
         PLANIFICATION_URL: stubBase,
         TARIFICATION_URL: stubBase,
         REFERENTIEL_URL: stubBase,
+        NOTIFICATIONS_URL: stubBase,
         OTEL_SDK_DISABLED: 'true',
         ...extra,
       },
@@ -293,6 +307,14 @@ describe('E2E API · parcours « créer foyer + contrats → lire le coût »', 
     expect(corps.foyer.id).toBe(FOYER_ID);
     expect(corps.foyer.tranche).toBe(3);
     expect(corps.enfants.map((e) => e.prenom)).toEqual(['Mia', 'Zoé']);
+
+    // `Location` tel qu'il part vraiment (lot 7, `AM-39`). Aucune spec unitaire
+    // ne peut le prouver : l'en-tête est posé par un intercepteur global, sur
+    // l'objet réponse d'Express, à partir de l'URL *de la requête* — trois
+    // choses qu'un test nourri d'un corps écrit à la main ne traverse jamais
+    // (`LE-39`). La création du foyer est aussi le cas **atypique** : la réponse
+    // est un dossier, l'identifiant est sous `foyer.id` et non à la racine.
+    expect(reponse.headers.get('location')).toBe(`/api/v1/foyers/${FOYER_ID}`);
   });
 
   it('crée un contrat cantine ABCM pour Zoé', async (ctx) => {
@@ -316,6 +338,31 @@ describe('E2E API · parcours « créer foyer + contrats → lire le coût »', 
     const corps = (await reponse.json()) as { id: string; mode: string };
     expect(corps.id).toBe(CONTRAT_ID);
     expect(corps.mode).toBe('CANTINE');
+    expect(reponse.headers.get('location')).toBe(
+      `/api/v1/contrats/${CONTRAT_ID}`,
+    );
+  });
+
+  /**
+   * Le pendant négatif du test précédent, et la raison d'être du lot : un `POST`
+   * qui ne crée rien. Sans `@HttpCode`, Nest lui donnait 201 — le contrat en
+   * promettait 200 depuis toujours, et les trois copies (code, contrat, types
+   * web) ne pouvaient pas se contredire à voix haute. Le statut ne se constate
+   * que sur le fil : il n'apparaît ni dans le corps, ni dans le retour du
+   * handler.
+   */
+  it('répond 200 (et non 201) sur un POST qui ne crée rien, sans Location', async (ctx) => {
+    if (!gw) {
+      return ctx.skip();
+    }
+    const reponse = await fetch(
+      `${gw.base}/api/v1/notifications/validations/${CONTRAT_ID}/2026-W40`,
+      { method: 'POST' },
+    );
+    expect(reponse.status).toBe(200);
+    expect(reponse.headers.get('location')).toBeNull();
+    const corps = (await reponse.json()) as { statut: string };
+    expect(corps.statut).toBe('VALIDEE');
   });
 
   it('lit le coût consolidé du mois (CT-10 = 20288 c.)', async (ctx) => {

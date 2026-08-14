@@ -33,6 +33,7 @@ import {
 } from './bff.dto.js';
 import { FoyerScope } from '../security/foyer-scope.decorator.js';
 import { relayer } from './relais.js';
+import { RessourceCreee } from './ressource-creee.decorator.js';
 
 /**
  * Façade BFF `/api/v1/contrats` : relaie `svc-planification` (création de contrat
@@ -70,6 +71,7 @@ export class ContratsController {
   /** Crée un contrat de garde. */
   @Post()
   @FoyerScope('body:foyerId')
+  @RessourceCreee((vue: ContratVue) => vue.id)
   creer(@Body() corps: unknown): Promise<ContratVue> {
     const saisie = valider(creerContratSchema, corps);
     return relayer(() =>
@@ -99,6 +101,14 @@ export class ContratsController {
    * Crée un **avenant** : nouvelle version du contrat à date d'effet (SFD 30
    * lot 4, US-30-01). 201 ; 409 si une version existe déjà à cette date ; 400 si
    * la date précède le début du contrat.
+   *
+   * **Pas de `@RessourceCreee` ici** (lot 7, `AM-39`), et c'est un constat, pas
+   * un oubli : la réponse est le **contrat** mis à jour, pas la version créée.
+   * L'identifiant de la version ne quitte jamais `svc-planification` — le nommer
+   * demanderait un aller-retour de plus (`GET /contrats/:id/versions`) puis une
+   * *supposition* sur celle des lignes qui est la nouvelle. Un `Location` faux
+   * serait pire qu'absent : la RFC en fait l'URI de la ressource créée, et un
+   * client qui la suivrait tomberait sur le contrat.
    */
   @Post(':id/versions')
   @FoyerScope('contrat:id')

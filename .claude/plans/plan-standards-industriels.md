@@ -303,10 +303,30 @@ plus personne ne nomme est morte, et un report `différée` doit nommer une pist
 Consigné : `AM-45` ✅, `AM-76`/`AM-77` (extension aux deux autres services),
 `AM-78` (traversée passerelle), `LE-47`, `LE-48`.
 
-## Lot 7 — sémantique HTTP restante (`AM-39`, `AM-40`, `AM-41`)
+## Lot 7 — sémantique HTTP restante (`AM-39`, `AM-40`, `AM-41`) — ✅ livré 2026-08-14
 
-`Location` sur les 201, pagination (ou écart écrit), `ETag`/`If-Match` (ou renoncement
-écrit). À traiter en opportuniste quand un lot fonctionnel touche les routes concernées.
+L'énoncé prévoyait un traitement « opportuniste, quand un lot fonctionnel touche les routes
+concernées ». Il a été traité d'un bloc, parce que le périmètre s'est avéré **plus petit
+qu'annoncé sur deux des trois pistes et plus grand sur la troisième** :
+
+- **`AM-39` — outillée.** Le décompte d'entrée était faux : Nest pose un 201 **par défaut**
+  sur tout `@Post`, l'univers réel est donc les **treize `@Post` du BFF**, pas les trois
+  `@HttpCode(CREATED)` écrits. Deux d'entre eux répondaient 201 en promettant 200 au
+  contrat, sans rien créer. `Location` posé sur les **cinq** créations qui exposent une URI
+  (chemin **dérivé** de l'URL de requête, référence relative), cinq autres 201 laissées sans
+  `Location` avec leur raison — dont `POST /contrats/{id}/versions`, qui crée une version
+  mais rend le **contrat** : l'identifiant créé ne quitte jamais `svc-planification`.
+  Garde : `openapi.couverture.spec.ts` confronte le statut de succès dérivé des métadonnées
+  Nest et l'en-tête `Location` au contrat, dans les deux sens (3 sondes négatives jouées).
+- **`AM-40` et `AM-41` — écart et renoncement écrits**, [ADR-0008](../../docs/adr/0008-ecarts-semantique-http-pagination-et-concurrence.md).
+  Les déclencheurs de réouverture sont, pour deux d'entre eux, **mot pour mot les seuils de
+  l'ADR-0007** : ce qui ferait tomber l'exemption domestique est aussi ce qui ferait
+  apparaître des collections longues et des écrivains qui ne se parlent pas.
+  ⚠️ La prémisse d'`AM-41` ne tenait pas : `foyer_version` est un versionnement **temporel**
+  (une ligne par date d'effet), pas un numéro de révision — deux saisies à la même date
+  écrasent la même ligne. Et « en silence » est faux là où la perte coûte le plus.
+
+Consigné : `AM-39`/`AM-40`/`AM-41` ✅, `LE-49`, `AM-80`.
 
 ## Lot 8 — durcissements ops (`AM-47` ⏸, `AM-48`, `AM-50`)
 
