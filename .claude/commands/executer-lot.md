@@ -52,13 +52,28 @@ Suivre ce rituel dans l'ordre. Il encode les leçons payées par les lots préc�
   `nx run web:e2e-visuel` puis `node scripts/comparer-empreinte.mjs avant.json apres.json`.
 - Format : juger sur `git diff`, jamais sur `prettier --check` local (piège CRLF).
 
-## 6. Livrer
+## 6. Mettre le README à jour — avant d'ouvrir la PR
+
+Exigence PO du 2026-08-14 : **le README est à jour à chaque PR**. Il avait été retrouvé
+avec six chantiers de retard avant la release `0.16.0` — c'est le premier document que lit
+un arrivant, et le seul dont personne ne remarque le vieillissement.
+
+- Jouer `corepack pnpm@10.34.2 readme` : la porte **nomme** ce qui manque (porte de CI non
+  citée, ADR hors plage, lot livré non relaté, sous-dossier de `docs/` invisible). Elle ne
+  mord que si un fait **dérivable** a bougé : une PR qui n'en touche aucun n'a rien à écrire.
+- Ce que la porte ne sait pas voir se décide à la main, et c'est le vrai geste : le lot
+  a-t-il changé ce que le README **promet** ? Une capacité produit nouvelle, une commande de
+  tous les jours, une contrainte de démarrage — la table des chantiers et la section
+  « Démarrer » sont les deux endroits qui se périment en silence.
+- La porte ne juge pas la prose : citer `pnpm acteur` en le décrivant faux passe au vert.
+
+## 7. Livrer
 
 - Une PR par lot, commit conventionnel (sujet ≤ 100 caractères, commitlint).
 - La description de PR reprend l'énoncé du lot, les **écarts assumés** par rapport au plan,
   et les preuves (commandes jouées, chiffres avant/après).
 
-## 7. Capitaliser
+## 8. Capitaliser
 
 - **Pistes et leçons** trouvées en cours de lot → `/consigner` (registre doc 34, `AM-xx`/
   `LE-xx`/motifs) — plus jamais en prose dans `MEMORY.md` ; déclarer les identifiants

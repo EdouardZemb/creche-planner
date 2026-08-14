@@ -60,6 +60,7 @@ corepack pnpm empechements
 # contredisent leur source (version coupée, projets Nx, ports, chaîne d'outils).
 corepack pnpm liens
 corepack pnpm faits
+corepack pnpm readme         # fraîcheur du README : portes de CI, ADR, lots livrés, docs/
 corepack pnpm statuts        # statut daté en tête de chaque document de docs/
 corepack pnpm tracabilite    # exigences CT/UT ↔ tests, dans les deux sens
 
@@ -81,22 +82,23 @@ piège de la première liste (registre dans `scripts/verifier-pieges-doc.mjs`).
 
 **Neutralisés — ne plus les documenter, ne plus les contourner à la main :**
 
-| Piège                                                                                           | Ce qui le rend impossible                                                                                    |
-| ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Worktree « faux vert » (éditer le clone principal par accident), worktree sans `node_modules`   | `pnpm preflight` compare `git-dir` à `git-common-dir` et **nomme** le worktree courant                       |
-| Symlinks `workspace:*` cassés (`pnpm install --force` depuis PowerShell)                        | `pnpm preflight` vérifie chaque lien là où il vit : le `node_modules` de **chaque** projet, jamais la racine |
-| Shims `.bin` périmés après un `pnpm install`                                                    | `pnpm preflight` vérifie que chaque shim pointe une cible existante                                          |
-| Un process fantôme squatte un port de provider Pact (3995-3999)                                 | `pnpm preflight` refuse de conclure si un des 5 ports est tenu                                               |
-| pnpm global 8.x / Node hors `.nvmrc`                                                            | `pnpm preflight` compare au champ `packageManager` et à `.nvmrc`                                             |
-| `nx test web` ne type-checke pas                                                                | `test` porte `dependsOn: ["^build", "typecheck"]` (lot B2)                                                   |
-| Builder `contracts-kernel`/`shared-semaine` avant les tests, le type-check, l’e2e ou un `serve` | l’arête `^build` est portée par `test`, `typecheck`, `e2e`, `build`, `serve`, `dev` et `preview`             |
-| Course `dist/` entre `build` et `typecheck` (`ENOTEMPTY` puis cascade `TS6305`)                 | les `tsconfig.app.json` émettent dans `./out-tsc/app`, plus dans le `dist/` que webpack efface               |
-| Contexte Nx jamais contraint, miroir de vocabulaire divergent                                   | `pnpm frontieres` (cf. [CONVENTIONS.md §4](CONVENTIONS.md))                                                  |
-| Warnings ESLint qui remontent en silence                                                        | `lint-baseline.json` versionnée, step bloquant du job `ci`                                                   |
-| Lien interne mort (fichier déplacé, titre renommé — l'ancre suit le titre)                      | `pnpm liens` (cf. [doc 35](docs/35-politique-documentation.md))                                              |
-| Fait recopié qui dérive de sa source (version coupée, projets, ports, chaîne d'outils)          | `pnpm faits` (idem)                                                                                          |
-| Document sans statut ni date : « est-ce que ça vaut encore ? » sans réponse                     | `pnpm statuts` (idem)                                                                                        |
-| Exigence `CT`/`UT` sans test qui la nomme, ou test citant une exigence disparue                 | `pnpm tracabilite` (idem)                                                                                    |
+| Piège                                                                                           | Ce qui le rend impossible                                                                                                   |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Worktree « faux vert » (éditer le clone principal par accident), worktree sans `node_modules`   | `pnpm preflight` compare `git-dir` à `git-common-dir` et **nomme** le worktree courant                                      |
+| Symlinks `workspace:*` cassés (`pnpm install --force` depuis PowerShell)                        | `pnpm preflight` vérifie chaque lien là où il vit : le `node_modules` de **chaque** projet, jamais la racine                |
+| Shims `.bin` périmés après un `pnpm install`                                                    | `pnpm preflight` vérifie que chaque shim pointe une cible existante                                                         |
+| Un process fantôme squatte un port de provider Pact (3995-3999)                                 | `pnpm preflight` refuse de conclure si un des 5 ports est tenu                                                              |
+| pnpm global 8.x / Node hors `.nvmrc`                                                            | `pnpm preflight` compare au champ `packageManager` et à `.nvmrc`                                                            |
+| `nx test web` ne type-checke pas                                                                | `test` porte `dependsOn: ["^build", "typecheck"]` (lot B2)                                                                  |
+| Builder `contracts-kernel`/`shared-semaine` avant les tests, le type-check, l’e2e ou un `serve` | l’arête `^build` est portée par `test`, `typecheck`, `e2e`, `build`, `serve`, `dev` et `preview`                            |
+| Course `dist/` entre `build` et `typecheck` (`ENOTEMPTY` puis cascade `TS6305`)                 | les `tsconfig.app.json` émettent dans `./out-tsc/app`, plus dans le `dist/` que webpack efface                              |
+| Contexte Nx jamais contraint, miroir de vocabulaire divergent                                   | `pnpm frontieres` (cf. [CONVENTIONS.md §4](CONVENTIONS.md))                                                                 |
+| Warnings ESLint qui remontent en silence                                                        | `lint-baseline.json` versionnée, step bloquant du job `ci`                                                                  |
+| Lien interne mort (fichier déplacé, titre renommé — l'ancre suit le titre)                      | `pnpm liens` (cf. [doc 35](docs/35-politique-documentation.md))                                                             |
+| Fait recopié qui dérive de sa source (version coupée, projets, ports, chaîne d'outils)          | `pnpm faits` (idem)                                                                                                         |
+| README qui prend du retard sur le dépôt (porte de CI, ADR, lot livré, section de `docs/`)       | `pnpm readme` (idem) — il ne juge pas la prose, cf. son périmètre déclaré en [doc 34 §5](docs/34-registre-ameliorations.md) |
+| Document sans statut ni date : « est-ce que ça vaut encore ? » sans réponse                     | `pnpm statuts` (idem)                                                                                                       |
+| Exigence `CT`/`UT` sans test qui la nomme, ou test citant une exigence disparue                 | `pnpm tracabilite` (idem)                                                                                                   |
 
 > `pnpm preflight` **détecte et nomme**, il ne répare pas. Pour les trois
 > premières lignes, le remède est le même : relancer `corepack pnpm install`

@@ -8,6 +8,7 @@
 - [ ] Contrats **Pact** à jour si une interaction gateway ↔ service a changé.
 - [ ] Tout **parcours utilisateur modifié** est couvert/maj par un test E2E stack réelle (`*.stack.e2e.spec.ts`).
 - [ ] Documentation à jour si une règle métier ou une convention a changé (`docs/`).
+- [ ] **README** à jour : `pnpm readme` vert (il dérive de la CI, des ADR, des lots livrés et de `docs/`), **et** relecture à la main de ce qu'il promet — capacité produit, commande de tous les jours, prérequis — que la porte ne sait pas juger.
 - [ ] Pas de TODO non tracké ; questions `Q-xx` résolues ou explicitement reportées.
 - [ ] **Registre** ([doc 34](../docs/34-registre-ameliorations.md)) : pistes et leçons vues pendant ce lot consignées (`AM-xx`, `LE-xx`) — ou « néant », et pourquoi.
 - [ ] **Empêchements** ([doc 34 §6](../docs/34-registre-ameliorations.md#6-empêchements-doutillage--em-xx)) : toute limitation de l'atelier qui a fait livrer **moins bien** que le lot ne le demandait est consignée (`EM-xx`) — c'est **maintenant** ou jamais, une session ne survit pas au merge de sa PR. Filtre en §1.5 ; « néant » est une réponse.

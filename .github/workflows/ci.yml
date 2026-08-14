@@ -291,6 +291,20 @@ jobs:
           node scripts/verifier-faits-doc.mjs --autotest
           node scripts/verifier-faits-doc.mjs
 
+      # Exigence PO du 2026-08-14 : « à chaque PR le README est à jour ». La
+      # règle mécanique — « le diff doit toucher README.md » — serait du bruit
+      # (une PR Dependabot n'a rien à dire au README) ; celle-ci DÉRIVE la
+      # fraîcheur de faits que le dépôt produit lui-même : portes câblées dans
+      # ce workflow, ADR de `docs/adr/`, lots livrés du plan en cours,
+      # sous-dossiers de `docs/`. Elle a mordu à son premier run sur un README
+      # que `pnpm faits` déclarait vert (porte `pnpm acteur` du lot 6 et
+      # ADR-0008 du lot 7, l'un et l'autre absents). `--autotest` rejoue ses
+      # 7 sondes.
+      - name: Fraîcheur du README vs les faits du dépôt (bloquant)
+        run: |
+          node scripts/verifier-readme.mjs --autotest
+          node scripts/verifier-readme.mjs
+
       # Politique de documentation (doc 35 §4), volet « cycle de revue »
       # (ISO/IEC/IEEE 26511). Un document qui ne dit ni ce qu'il est, ni depuis
       # quand, ne répond pas à la seule question qu'on lui pose quand il est
