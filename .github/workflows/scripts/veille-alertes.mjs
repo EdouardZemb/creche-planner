@@ -63,17 +63,30 @@
  * rien pour l'usage visé. Et comme pour image-scan, ROUGE ici n'impacte AUCUN
  * build : rien ne dépend de ce workflow.
  *
- * ── JETON ───────────────────────────────────────────────────────────────────
- * `GITHUB_TOKEN` + `permissions: security-events: read` suffit pour le code
- * scanning. Pour `dependabot/alerts`, un 403 recouvre DEUX causes opposées, et
- * le message d'aide les distingue en lisant le corps de la réponse :
+ * ── JETON ET PAGINATION : UN RÉGLAGE PAR SOURCE ─────────────────────────────
+ * Les deux endpoints ne se ressemblent pas, et les traiter pareil a coûté deux
+ * pannes simultanées le 2026-08-14, le jour même où le PAT a permis d'aller plus
+ * loin que le 403 qui les masquait toutes les deux :
+ *
+ *   - `code-scanning/alerts` — jeton du RUN (`security-events: read`, déclaré par
+ *     le workflow) et pagination `page`. Lui envoyer le PAT la CASSE si celui-ci
+ *     est restreint aux alertes Dependabot (« Resource not accessible by personal
+ *     access token »). Le PAT n'existe que pour Dependabot : il reste chez elle ;
+ *   - `dependabot/alerts` — `ALERTS_TOKEN` s'il existe, et pagination au CURSEUR
+ *     (en-tête `Link`, `rel="next"`). Le paramètre `page` y est refusé net
+ *     (HTTP 400), ce qu'aucun run n'avait jamais pu constater : le 403 tombait
+ *     avant.
+ *
+ * Pour `dependabot/alerts`, un échec recouvre PLUSIEURS causes que le statut seul
+ * ne sépare pas ; le message d'aide lit donc le corps de la réponse :
  *   - « Dependabot alerts are disabled for this repository » → la fonctionnalité
  *     est éteinte. Aucun jeton n'y changera rien : l'activer dans Settings →
  *     Code security. C'est le cas observé le 2026-08-05 ;
- *   - tout autre 403 → couverture insuffisante du jeton par défaut : poser un
- *     secret `ALERTS_TOKEN` (PAT, scope `security_events`), prioritaire s'il existe.
+ *   - 400 « pagination » → défaut de CE script, pas des droits. Ne pas toucher au
+ *     secret ;
+ *   - 403 → couverture du jeton : poser (ou renouveler) `ALERTS_TOKEN`.
  * On ne DEVINE jamais : on signale — et on signale la BONNE marche à suivre,
- * sous peine d'envoyer fabriquer un PAT inutile.
+ * sous peine d'envoyer fabriquer ou renouveler un PAT inutilement.
  *
  * Zéro dépendance npm (Node pur, `fetch` natif).
  *
@@ -94,7 +107,6 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 
 const REPO = process.env.GITHUB_REPOSITORY ?? 'EdouardZemb/creche-planner';
-const TOKEN = process.env.ALERTS_TOKEN || process.env.GITHUB_TOKEN || '';
 // `ALERTES_DRY_RUN=dependabot-desactive` : seconde variante du jeu d'essai, qui
 // rejoue le 403 « alerts are disabled » observé le 2026-08-05 pour vérifier que
 // l'aide affichée pointe vers Settings et NON vers un PAT à fabriquer.
@@ -111,6 +123,9 @@ const DRY_RUN =
   CAS_DEPENDABOT_DESACTIVE ||
   CAS_PERIMETRE ||
   CAS_PERIMETRE_OUTILLAGE;
+// Sonde de PAGINATION : imprime l'URL de première requête de chaque source, puis
+// sort. Elle constate sur le VRAI chemin de construction d'URL, pas sur une copie.
+const CAS_PAGINATION = process.env.ALERTES_DRY_RUN === 'pagination';
 const LOCKFILE = process.env.ALERTES_LOCKFILE || 'pnpm-lock.yaml';
 /** Le PAT est-il posé ? Sert à nommer la cause d'un 403, pas à la deviner. */
 const PAT_POSE = Boolean(process.env.ALERTS_TOKEN);
@@ -127,24 +142,83 @@ const PAGES_MAX = 10;
 const PAR_PAGE = 100;
 
 /**
+ * Les DEUX sources ne se paginent PAS de la même façon, et ne s'authentifient
+ * pas avec le même jeton. Écrire une seule recette pour les deux a coûté deux
+ * pannes d'un coup, découvertes le 2026-08-14 quand le PAT a enfin permis
+ * d'aller plus loin que le 403 :
+ *
+ *   - `dependabot/alerts` REFUSE `page` (« Pagination using the `page`
+ *     parameter is not supported », HTTP 400) : elle se pagine au CURSEUR, via
+ *     l'en-tête `Link` (`rel="next"`). Le 403 masquait ce défaut depuis toujours ;
+ *   - `code-scanning/alerts` accepte `page`, et se lit très bien avec le
+ *     `GITHUB_TOKEN` du run (`security-events: read` est déclaré par le
+ *     workflow). Lui envoyer le PAT l'a CASSÉE : « Resource not accessible by
+ *     personal access token ». Le PAT n'existe que pour lever le 403 Dependabot ;
+ *     l'utiliser partout a élargi sa portée et abîmé une source qui allait bien.
+ *
+ * D'où : un jeton et un mode de pagination PAR SOURCE, déclarés ici.
+ */
+const SOURCES = {
+  codeScanning: {
+    titre: 'Code scanning (CodeQL)',
+    chemin: 'code-scanning/alerts',
+    pagination: /** @type {const} */ ('page'),
+    // Le jeton du run suffit et est le bon : la permission est déclarée dans
+    // le workflow, elle ne dépend pas d'un secret à renouveler.
+    jeton: () => process.env.GITHUB_TOKEN || '',
+    jetonNom: 'GITHUB_TOKEN',
+  },
+  dependabot: {
+    titre: 'Dependabot',
+    chemin: 'dependabot/alerts',
+    pagination: /** @type {const} */ ('curseur'),
+    // Seule source qui a besoin du PAT ; on retombe sur le jeton du run pour
+    // que le message d'erreur reste celui d'un 403 « couverture », pas d'un 401.
+    jeton: () => process.env.ALERTS_TOKEN || process.env.GITHUB_TOKEN || '',
+    jetonNom: PAT_POSE ? 'ALERTS_TOKEN' : 'GITHUB_TOKEN',
+  },
+};
+
+/** URL de la PREMIÈRE requête d'une source. Utilisée aussi par la sonde. */
+function premiereUrl(source) {
+  const base = `https://api.github.com/repos/${REPO}/${source.chemin}?state=open&per_page=${PAR_PAGE}`;
+  return source.pagination === 'page' ? `${base}&page=1` : base;
+}
+
+if (CAS_PAGINATION) {
+  for (const source of Object.values(SOURCES)) {
+    console.log(
+      `${source.titre} | pagination=${source.pagination} | jeton=${source.jetonNom} | ${premiereUrl(source)}`,
+    );
+  }
+  process.exit(0);
+}
+
+/** Extrait l'URL `rel="next"` d'un en-tête `Link`, ou `''`. */
+function lienSuivant(entete) {
+  const m = /<([^>]+)>;\s*rel="next"/.exec(String(entete ?? ''));
+  return m ? m[1] : '';
+}
+
+/**
  * Lit UNE source d'alertes, en distinguant les trois issues possibles.
  * Ne renvoie JAMAIS une liste vide pour masquer une erreur : `ok:false` est un
  * état à part entière, que l'appelant est obligé de traiter.
  *
- * @param {string} chemin sous-chemin d'API, ex. `code-scanning/alerts`
+ * @param {typeof SOURCES[keyof typeof SOURCES]} source
  * @returns {Promise<{ok: true, alertes: any[]} | {ok: false, statut: number|string, detail: string}>}
  */
-async function lireAlertes(chemin) {
+async function lireAlertes(source) {
   const alertes = [];
+  let url = premiereUrl(source);
 
-  for (let page = 1; page <= PAGES_MAX; page++) {
-    const url = `https://api.github.com/repos/${REPO}/${chemin}?state=open&per_page=${PAR_PAGE}&page=${page}`;
+  for (let requete = 1; requete <= PAGES_MAX && url; requete++) {
     let reponse;
 
     try {
       reponse = await fetch(url, {
         headers: {
-          authorization: `Bearer ${TOKEN}`,
+          authorization: `Bearer ${source.jeton()}`,
           accept: 'application/vnd.github+json',
           'x-github-api-version': '2022-11-28',
           'user-agent': 'creche-planner-veille-alertes',
@@ -177,15 +251,24 @@ async function lireAlertes(chemin) {
     }
 
     alertes.push(...lot);
-    if (lot.length < PAR_PAGE) return { ok: true, alertes };
+
+    if (source.pagination === 'curseur') {
+      // Le curseur fait autorité : une page pleine SANS `next` est la dernière.
+      url = lienSuivant(reponse.headers.get('link'));
+    } else {
+      if (lot.length < PAR_PAGE) return { ok: true, alertes };
+      url = `https://api.github.com/repos/${REPO}/${source.chemin}?state=open&per_page=${PAR_PAGE}&page=${requete + 1}`;
+    }
   }
+
+  if (!url) return { ok: true, alertes };
 
   // Plafond atteint : on a des alertes, mais peut-être pas TOUTES. Mieux vaut le
   // dire que de rendre un décompte faux.
   return {
     ok: false,
     statut: 'pagination',
-    detail: `plus de ${PAGES_MAX * PAR_PAGE} alertes ouvertes sur ${chemin} — décompte tronqué, à regarder à la main`,
+    detail: `plus de ${PAGES_MAX * PAR_PAGE} alertes ouvertes sur ${source.chemin} — décompte tronqué, à regarder à la main`,
   };
 }
 
@@ -539,8 +622,8 @@ const dire = (ligne) => {
 const sources = DRY_RUN
   ? jeuDEssai()
   : {
-      codeScanning: await lireAlertes('code-scanning/alerts'),
-      dependabot: await lireAlertes('dependabot/alerts'),
+      codeScanning: await lireAlertes(SOURCES.codeScanning),
+      dependabot: await lireAlertes(SOURCES.dependabot),
     };
 
 dire(`# Veille alertes de sécurité — ${REPO}`);
@@ -692,36 +775,60 @@ function rapporter(titre, resultat, severite, decrire, aide, perimetre = null) {
 }
 
 rapporter(
-  'Code scanning (CodeQL)',
+  SOURCES.codeScanning.titre,
   sources.codeScanning,
   severiteCodeScanning,
   (a) =>
     `${assainir(a?.rule?.id) || 'règle inconnue'} — ${assainir(a?.most_recent_instance?.location?.path) || 'emplacement inconnu'} ${refAlerte(a?.number, a?.html_url)}`,
-  'Le jeton du run a besoin de `security-events: read` (déclaré dans le workflow). ' +
+  'Cette source est lue avec le `GITHUB_TOKEN` du run, dont la permission ' +
+    '`security-events: read` est déclarée par le workflow — et **volontairement pas** avec ' +
+    "l'`ALERTS_TOKEN` : un PAT restreint aux alertes Dependabot s'y voit refuser l'accès " +
+    '(« Resource not accessible by personal access token », constaté le 2026-08-14). ' +
     'Si le code scanning est désactivé sur le dépôt, le réactiver dans Settings → Code security.',
 );
 
 rapporter(
-  'Dependabot',
+  SOURCES.dependabot.titre,
   sources.dependabot,
   severiteDependabot,
   (a) =>
     `${assainir(a?.dependency?.package?.name, 80) || 'paquet inconnu'} — ${assainir(a?.security_advisory?.summary) || 'sans résumé'} ${refAlerte(a?.number, a?.html_url)}`,
-  // Deux causes opposées derrière le même 403 : le corps de la réponse tranche.
-  // Test de PRÉSENCE seulement — la valeur elle-même n'est jamais rendue ici
-  // sans passer par `assainir()` (cf. rapporter()).
-  (resultat) =>
-    /dependabot alerts are disabled/i.test(String(resultat?.detail ?? ''))
-      ? 'Les alertes Dependabot sont **désactivées sur le dépôt** : aucun jeton ne ' +
+  // Plusieurs causes DISTINCTES, que le statut seul ne sépare pas : on lit le
+  // corps. Test de PRÉSENCE seulement — la valeur n'est jamais rendue ici sans
+  // passer par `assainir()` (cf. rapporter()).
+  (resultat) => {
+    const corps = String(resultat?.detail ?? '');
+    if (/dependabot alerts are disabled/i.test(corps)) {
+      return (
+        'Les alertes Dependabot sont **désactivées sur le dépôt** : aucun jeton ne ' +
         'lèvera ce 403. Les activer dans Settings → Code security → Dependabot alerts. ' +
         'Inutile de poser un `ALERTS_TOKEN` tant que la fonctionnalité est éteinte.'
-      : PAT_POSE
-        ? 'Un `ALERTS_TOKEN` **est posé** et le 403 persiste : le PAT est expiré, ' +
-          'révoqué, ou ne porte pas le scope `security_events`. Le renouveler.'
-        : '**`ALERTS_TOKEN` absent** — c’est la seule cause ici, et le remède tient ' +
-          'en un geste : créer un PAT au scope `security_events` et le poser en secret ' +
+      );
+    }
+    // 400 « page not supported » : ce n'est PAS un défaut de droits. Le dire,
+    // sinon on envoie renouveler un PAT parfaitement valide (constaté 2026-08-14).
+    if (resultat?.statut === 400 && /pagination/i.test(corps)) {
+      return (
+        "Ce **400 n'est pas un défaut de jeton** : `dependabot/alerts` refuse le " +
+        'paramètre `page` et se pagine au **curseur** (en-tête `Link`). Défaut de ce ' +
+        'script, à corriger ici — ne pas toucher au secret.'
+      );
+    }
+    if (resultat?.statut !== 403) {
+      return (
+        'Statut inattendu sur `dependabot/alerts` — lire le corps ci-dessus avant ' +
+        'de conclure quoi que ce soit sur le jeton.'
+      );
+    }
+    return PAT_POSE
+      ? 'Un `ALERTS_TOKEN` **est posé** et le 403 persiste : le PAT est expiré, révoqué, ' +
+          'ou ne porte pas le droit de lire les alertes Dependabot (PAT classique : scope ' +
+          '`security_events` ; PAT fine-grained : permission « Dependabot alerts » en lecture).'
+      : '**`ALERTS_TOKEN` absent** — c’est la seule cause ici, et le remède tient en un ' +
+          'geste : créer un PAT pouvant lire les alertes Dependabot et le poser en secret ' +
           'Actions `ALERTS_TOKEN`. Le `GITHUB_TOKEN` par défaut ne couvre pas ' +
-          '`dependabot/alerts`, et aucune permission de workflow ne l’y autorise.',
+          '`dependabot/alerts`, et aucune permission de workflow ne l’y autorise.';
+  },
   PERIMETRE_DEPENDABOT,
 );
 
