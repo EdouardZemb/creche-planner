@@ -13,7 +13,9 @@ function fakeContext(req: RequeteAssertable): ExecutionContext {
   return {
     switchToHttp: () => ({ getRequest: () => req }),
     getHandler: () => () => undefined,
-    getClass: () => class {},
+    // `Object` plutôt qu'un `class {}` littéral : le faux Reflector ne regarde ni
+    // l'un ni l'autre, et une classe vide coûte un avertissement au ratchet.
+    getClass: () => Object,
   } as unknown as ExecutionContext;
 }
 
