@@ -39,6 +39,19 @@ x-durcissement: &durcissement
     - ALL
   read_only: true
 
+# Même posture, racine INSCRIPTIBLE. Une seule exemption, et elle est mécanique :
+# un service qui reçoit un secret Compose de source `environment:` ne peut PAS
+# avoir de racine immuable — Compose matérialise ce secret-là par une COPIE dans
+# le conteneur (`docker cp`), et le démon refuse d'écrire dans une racine en
+# lecture seule (« container rootfs is marked read-only »). Le conteneur est
+# alors créé mais jamais démarré, et `up -d --wait` échoue. Cf. `verifier-conteneurs.mjs`.
+x-durcissement-inscriptible: &durcissement-inscriptible
+  security_opt:
+    - 'no-new-privileges:true'
+  cap_drop:
+    - ALL
+  read_only: false
+
 services:
   # --- Infrastructure ------------------------------------------------------
   postgres-referentiel:
@@ -253,7 +266,15 @@ services:
   # les groupe/déduplique et (une fois un receiver configuré) les notifie. Rend
   # OPÉRANT le pipeline d'alerte défini dans docker/prometheus/alerts.yml. UI :9093.
   alertmanager:
-    <<: *durcissement
+    # Racine INSCRIPTIBLE, et c'est mécanique, pas un renoncement : en production
+    # ce service reçoit le mot de passe SMTP par un secret Compose de source
+    # `environment:` (docker-compose.server.yml), que Compose matérialise en
+    # COPIANT le fichier dans le conteneur. Une racine en lecture seule fait
+    # refuser cette copie par le démon et le déploiement échoue — constaté en
+    # production le 2026-08-15, reproduit à la main
+    # (`docker cp` → « container rootfs is marked read-only »). La durabilité,
+    # elle, ne tient pas à `read_only` : c'est le volume nommé ci-dessous.
+    <<: *durcissement-inscriptible
     # Épinglé par digest (= v0.32.2) pour une pile reproductible (cf. P2-8).
     image: prom/alertmanager@sha256:b85533a2eb45865835315810315f6951331b2dbc8c93a6cf9a51e156a006a706
     command: ['--config.file=/etc/alertmanager/alertmanager.yml']

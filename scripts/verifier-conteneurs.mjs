@@ -133,19 +133,67 @@ const CAPACITES_REPRISES = [
 /**
  * Services dont la racine reste **inscriptible**, avec leur motif.
  *
- * La liste est VIDE depuis `AM-83` (2026-08-15) : les trois exemptions du lot 8
- * — magasin JetStream, base TSDB, silences d'Alertmanager — tenaient toutes au
- * même manque, un état sans volume nommé. Le volume posé, la racine immuable
- * devient possible : les trois services sont passés en `read_only` et vérifiés
- * sur la pile réelle, démarrage ET redémarrage ET recréation.
- *
- * Le mécanisme reste, la porte le sait vide : une exemption future s'écrit ici
- * avec son motif, et la vérification de péremption (§5/§6 plus bas) continue de
- * tourner dans les deux sens.
+ * `AM-83` (2026-08-15) a fait tomber les trois exemptions du lot 8 — magasin
+ * JetStream, base TSDB, silences d'Alertmanager — qui tenaient toutes au même
+ * manque : un état sans volume nommé. Le volume posé, la racine immuable
+ * devient possible… sauf pour `alertmanager`, et pour une raison qui n'a rien à
+ * voir avec la durabilité : il reçoit un **secret Compose**.
  *
  * @type {{ service: string, motif: string }[]}
  */
-const RACINES_INSCRIPTIBLES = [];
+const RACINES_INSCRIPTIBLES = [
+  {
+    service: 'alertmanager',
+    motif:
+      'reçoit en production un secret Compose de source `environment:` (mot de ' +
+      'passe SMTP). Compose matérialise CE type de secret par une COPIE dans le ' +
+      'conteneur, et le démon refuse la copie sur une racine en lecture seule ' +
+      '(« container rootfs is marked read-only ») : le conteneur est créé, jamais ' +
+      'démarré, et `up -d --wait` échoue. Constaté en production le 2026-08-15, ' +
+      'reproduit à la main. Un secret de source `file:` serait monté, pas copié — ' +
+      'mais il vivrait alors en clair sur le disque, ce que sops+age évite.',
+  },
+];
+
+/**
+ * Services qui reçoivent un secret Compose de source `environment:`, quelle que
+ * soit la pile. Dérivé des composes, jamais écrit à la main : c'est le couple
+ * (service qui déclare `secrets:`) × (secret de premier niveau dont la source
+ * est `environment:`).
+ *
+ * @param {Record<string, string>} contenus
+ * @returns {Set<string>}
+ */
+function servicesASecretCopie(contenus) {
+  /** @type {Set<string>} */
+  const services = new Set();
+  for (const [, texte] of Object.entries(contenus)) {
+    // Secrets de premier niveau dont la source est `environment:`.
+    const copies = new Set();
+    const blocSecrets = /\nsecrets:\r?\n([\s\S]*?)(?=\n[a-zA-Z]|$)/.exec(texte);
+    if (blocSecrets !== null) {
+      let nomCourant = null;
+      for (const ligne of blocSecrets[1].split(/\r?\n/)) {
+        const nom = /^ {2}([a-zA-Z0-9_.-]+):\s*$/.exec(ligne);
+        if (nom !== null) {
+          nomCourant = nom[1];
+          continue;
+        }
+        if (nomCourant !== null && /^ {4}environment:/.test(ligne)) {
+          copies.add(nomCourant);
+        }
+      }
+    }
+    if (copies.size === 0) continue;
+    // Services qui les consomment.
+    for (const [nom, bloc] of analyser(texte).services) {
+      for (const secret of bloc.secrets) {
+        if (copies.has(secret)) services.add(nom);
+      }
+    }
+  }
+  return services;
+}
 
 /** @param {string} relatif */
 function lire(relatif) {
@@ -163,6 +211,7 @@ function lire(relatif) {
  * @property {string[]} securityOpt
  * @property {string[]} capDrop
  * @property {string[]} capAdd
+ * @property {string[]} secrets  noms des secrets Compose consommés
  * @property {boolean | null} readOnly
  * @property {boolean | null} privileged
  * @property {string[]} ancres  ancres reprises par `<<: *nom`
@@ -174,6 +223,7 @@ function blocVide() {
     securityOpt: [],
     capDrop: [],
     capAdd: [],
+    secrets: [],
     readOnly: null,
     privileged: null,
     ancres: [],
@@ -234,7 +284,7 @@ function analyser(contenu) {
 
   let courant = /** @type {Bloc | null} */ (null);
   let dansServices = false;
-  /** @type {'securityOpt' | 'capDrop' | 'capAdd' | null} */
+  /** @type {'securityOpt' | 'capDrop' | 'capAdd' | 'secrets' | null} */
   let sequence = null;
   /** indentation des clés du bloc courant (2 pour une ancre, 4 pour un service) */
   let indentation = 2;
@@ -303,6 +353,10 @@ function analyser(contenu) {
         sequence = 'capAdd';
         courant.capAdd.push(...sequenceEnLigne(valeur));
         break;
+      case 'secrets':
+        sequence = 'secrets';
+        courant.secrets.push(...sequenceEnLigne(valeur));
+        break;
       case 'read_only':
         courant.readOnly = valeur === 'true';
         break;
@@ -342,12 +396,14 @@ function resoudre(bloc, ancres) {
     resolu.securityOpt.push(...heritee.securityOpt);
     resolu.capDrop.push(...heritee.capDrop);
     resolu.capAdd.push(...heritee.capAdd);
+    resolu.secrets.push(...heritee.secrets);
     if (heritee.readOnly !== null) resolu.readOnly = heritee.readOnly;
     if (heritee.privileged !== null) resolu.privileged = heritee.privileged;
   }
   if (bloc.securityOpt.length > 0) resolu.securityOpt = [...bloc.securityOpt];
   if (bloc.capDrop.length > 0) resolu.capDrop = [...bloc.capDrop];
   if (bloc.capAdd.length > 0) resolu.capAdd = [...bloc.capAdd];
+  if (bloc.secrets.length > 0) resolu.secrets = [...bloc.secrets];
   if (bloc.readOnly !== null) resolu.readOnly = bloc.readOnly;
   if (bloc.privileged !== null) resolu.privileged = bloc.privileged;
   return resolu;
@@ -377,6 +433,7 @@ function postureDeLaPile(composes, contenus) {
       deja.securityOpt.push(...resolu.securityOpt);
       deja.capDrop.push(...resolu.capDrop);
       deja.capAdd.push(...resolu.capAdd);
+      deja.secrets.push(...resolu.secrets);
       if (resolu.readOnly !== null) deja.readOnly = resolu.readOnly;
       if (resolu.privileged !== null) deja.privileged = resolu.privileged;
     }
@@ -397,6 +454,7 @@ function postureDeLaPile(composes, contenus) {
  */
 function verifier(contenus, registres = {}) {
   const capacitesReprises = registres.capacites ?? CAPACITES_REPRISES;
+  const aSecretCopie = servicesASecretCopie(contenus);
   const racinesInscriptibles = registres.inscriptibles ?? RACINES_INSCRIPTIBLES;
   /** @type {string[]} */
   const constats = [];
@@ -451,6 +509,12 @@ function verifier(contenus, registres = {}) {
           );
         }
         reprisesVues.add(`${service}/${capacite}`);
+      }
+
+      if (posture.readOnly === true && aSecretCopie.has(service)) {
+        constats.push(
+          `pile ${pile.nom}, service \`${service}\` : \`read_only: true\` alors qu'il reçoit un secret Compose de source \`environment:\`. Compose matérialise CE type de secret par une COPIE dans le conteneur, que le démon refuse sur une racine immuable (« container rootfs is marked read-only ») : le conteneur est créé, jamais démarré, et \`up -d --wait\` échoue — en PRODUCTION seulement, là où le secret est déclaré, donc hors de portée de toute pile de CI. Reprendre l'ancre \`<<: *durcissement-inscriptible\` avec son motif, ou passer le secret en source \`file:\` (monté, pas copié).`,
+        );
       }
 
       const exemption = racinesInscriptibles.find((e) => e.service === service);
@@ -654,6 +718,26 @@ function autotest(contenus) {
       ],
     }),
     attendu: 'dont la racine est en lecture seule partout',
+  });
+
+  // (f ter) le cas qui a cassé la PRODUCTION le 2026-08-15 : un service qui
+  // reçoit un secret Compose de source `environment:` passe en racine immuable.
+  // La copie du secret est refusée par le démon, le conteneur ne démarre jamais,
+  // et AUCUNE pile de CI ne peut le voir — le secret n'existe qu'en production.
+  sondes.push({
+    nom: 'racine immuable sur un service à secret copié (alertmanager)',
+    constats: verifier(
+      muter(
+        BASE,
+        (t) =>
+          t.replace(
+            /(\n {2}alertmanager:\r?\n(?: {4}#[^\n]*\r?\n)*) {4}<<: \*durcissement-inscriptible/,
+            '$1    <<: *durcissement',
+          ),
+        'secret copié en racine immuable',
+      ),
+    ),
+    attendu: 'secret Compose de source',
   });
 
   // (f bis) une exemption qui nomme un service qu'aucun compose ne définit.
