@@ -10,6 +10,7 @@ import {
   type ErreurChamp,
 } from '../utils/erreurs';
 import { EtatVide } from '../ui/EtatVide';
+import { ChargementPage } from '../ui/ChargementPage';
 import { Bouton } from '../ui/Bouton';
 import { ChampErreur } from '../ui/ChampErreur';
 import { ChampFormulaire } from '../ui/ChampFormulaire';
@@ -63,14 +64,47 @@ function defautEnfants(): EtatEnfant[] {
     ? [nouvelEnfant('Mia', '2024-12-08'), nouvelEnfant('Zoé', '2023-03-12')]
     : [nouvelEnfant()];
 }
-function defautParents(): EtatParent[] {
+/**
+ * WCAG 2.2 — SC 3.3.7 « Saisie redondante », A.
+ *
+ * `emailConnu` est l'adresse **vérifiée** de la personne qui remplit le
+ * formulaire (identité Cloudflare Access, `GET /api/v1/moi`). Le service la
+ * connaît déjà : la redemander est très exactement la saisie redondante que ce
+ * critère interdit. Et l'enjeu dépasse le confort — `moi.foyers` est résolu
+ * côté serveur en cherchant les lignes parent qui portent cette adresse : une
+ * ligne parent absente ou mal orthographiée fait créer un foyer dont son propre
+ * auteur n'est **pas** parent, donc qu'il ne retrouve pas en mode borné.
+ * Le champ reste modifiable (l'auteur peut inscrire l'autre parent).
+ *
+ * L'identité vérifiée **prime sur l'e-mail de démonstration** : elle n'est pas
+ * une donnée fictive, et c'est le seul agencement qui rende la règle observable
+ * hors d'un build de production — `DEMO` vaut vrai en test comme sous `vite
+ * serve`, donc un pré-remplissage réservé à `!DEMO` n'aurait été exercé par
+ * aucune suite du dépôt.
+ */
+function defautParents(emailConnu: string | null): EtatParent[] {
+  const email = emailConnu ?? (DEMO ? 'parent.demo@example.com' : '');
   return DEMO
-    ? [nouveauParent('parent.demo@example.com', 'Camille', 'Martin')]
-    : [nouveauParent()];
+    ? [nouveauParent(email, 'Camille', 'Martin')]
+    : [nouveauParent(email)];
 }
 
+/**
+ * Attend la résolution de l'identité avant de monter le formulaire : c'est elle
+ * qui pré-remplit la ligne parent (SC 3.3.7), et l'état de saisie s'initialise
+ * une seule fois, au montage. Monter le formulaire d'abord obligerait à écrire
+ * dans l'état depuis un effet — la valeur arriverait après une frappe possible.
+ */
 export function FoyerFormPage() {
   useTitrePage('Créer ma famille');
+  const moi = useMoi();
+  if (moi.loading) {
+    return <ChargementPage message="Chargement de votre session…" />;
+  }
+  return <FormulaireCreationFoyer />;
+}
+
+function FormulaireCreationFoyer() {
   const navigate = useNavigate();
   const idBase = useId();
   const moi = useMoi();
@@ -82,7 +116,9 @@ export function FoyerFormPage() {
     nbParts: DEFAUT_NB_PARTS,
   });
   const [enfants, setEnfants] = useState<EtatEnfant[]>(defautEnfants);
-  const [parents, setParents] = useState<EtatParent[]>(defautParents);
+  const [parents, setParents] = useState<EtatParent[]>(() =>
+    defautParents(moi.email),
+  );
   const [chargement, setChargement] = useState(false);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<ErreurChamp[]>([]);

@@ -385,6 +385,41 @@ describe('FoyerFormPage — accès self-service (P5, besoin B)', () => {
     ).toBeInTheDocument();
   });
 
+  it('WCAG 2.2 SC 3.3.7 : la ligne parent part pré-remplie de l’adresse vérifiée (pas de ressaisie)', async () => {
+    mockedApi.moi.mockResolvedValue({
+      email: 'camille@exemple.fr',
+      admin: true,
+      foyers: [],
+    });
+    render(
+      <MemoryRouter>
+        <MoiProvider>
+          <FoyerFormPage />
+        </MoiProvider>
+      </MemoryRouter>,
+    );
+
+    // L'adresse que le service connaît déjà (identité Cloudflare Access) est la
+    // valeur de départ du champ — et non l'e-mail de démonstration, qui ne sert
+    // qu'à défaut d'identité.
+    const champ = await screen.findByLabelText(/E-mail/i);
+    expect(champ).toHaveValue('camille@exemple.fr');
+  });
+
+  it('SC 3.3.7 : sans identité établie, le champ garde le repli du mode (aucune adresse inventée)', async () => {
+    mockedApi.moi.mockResolvedValue({ email: null, admin: true, foyers: [] });
+    render(
+      <MemoryRouter>
+        <MoiProvider>
+          <FoyerFormPage />
+        </MoiProvider>
+      </MemoryRouter>,
+    );
+
+    const champ = await screen.findByLabelText(/E-mail/i);
+    expect(champ).not.toHaveValue('camille@exemple.fr');
+  });
+
   it('non-admin AVEC un foyer : écran d’orientation vers l’édition (create-once)', async () => {
     mockedApi.moi.mockResolvedValue({
       email: 'parent@test.fr',
