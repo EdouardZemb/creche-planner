@@ -125,6 +125,15 @@
   épinglée du plugin), `AM-85` (le durcissement fait échouer la mise à jour des plugins
   embarqués de Grafana à chaque démarrage).
 
+- **2026-08-15 — TRAIN DE RELEASE `0.17.0` DÉPLOYÉ** (18e train, Deployment #5921012527) : lots
+  **6, 7 et 8** des standards enfin en production, plus `AM-82`/`AM-83`. Posture CIS **effective**
+  vérifiée après recréation. ⚠️ **Le déploiement a d'abord CASSÉ la prod (`LE-58`)** : Compose
+  matérialise un secret de source `environment:` par une **copie** dans le conteneur, refusée sur
+  une racine en lecture seule — `alertmanager`, et **seulement en production**. Le rollback
+  automatique rejoue le même compose : il a échoué de la même façon, les 3 tentatives du poller
+  ont été consommées, remise en marche à la main. Remède : exemption motivée + `pnpm conteneurs`
+  refuse ce couple (10 sondes). **Chrono INTERSERVICE démarré au 2026-08-15.**
+
 - **Une sonde `--autotest` qui ne mute rien accuse la porte** (lot 5) : une mutation
   écrite sur un `\n` littéral ne remplace RIEN dans un fichier CRLF (tout l'arbre de
   travail sous Windows), la porte lit le fichier intact et le verdict affiché dit « la
