@@ -177,10 +177,13 @@ services:
       GF_AUTH_DISABLE_LOGIN_FORM: 'false'
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PWD:?defini .env.server}
-      # Phase 4 — annotations de déploiement (DORA) : plugin Infinity + token de
-      # lecture consommé par le datasource « GitHub Deployments » (provisionné dans
+      # Phase 4 — annotations de déploiement (DORA) : token de lecture consommé
+      # par le datasource « GitHub Deployments » (provisionné dans
       # docker/grafana/provisioning/datasources/datasources.yaml).
-      GF_INSTALL_PLUGINS: yesoreyeram-infinity-datasource
+      # L'INSTALLATION du plugin Infinity, elle, est remontée dans le compose de
+      # BASE (`GF_PLUGINS_PREINSTALL`, version épinglée) : elle vivait ici, où
+      # aucune pile hors production ne l'exerçait, et la variable qui la portait
+      # est dépréciée et sans version (`AM-82`).
       GH_DEPLOYMENTS_TOKEN: ${GH_DEPLOYMENTS_TOKEN:-}
 
   # --- Services métier : secrets BDD + redémarrage ---------------------------

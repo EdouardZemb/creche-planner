@@ -107,6 +107,24 @@
   `AM-30` est rendue **visible**, pas fermée. Consigné : `AM-71`/`AM-72`,
   `LE-41`/`LE-42`/`LE-43`, `EM-12`.
 
+- **2026-08-15 — `AM-82` et `AM-83` soldées (décisions PO), hors lot.** Volumes nommés
+  pour `nats` (magasin JetStream, avec `-sd /data`), `prometheus` (TSDB) et
+  `alertmanager` (silences) ; les **trois exemptions de racine inscriptible tombent**,
+  29/29 services en `read_only`, `RACINES_INSCRIPTIBLES` est vide. Motif PO : la semaine
+  d'observation qui précède la bascule INTERSERVICE exige une TSDB qui survive aux
+  déploiements. Plugin Grafana Infinity installé par `GF_PLUGINS_PREINSTALL` dans le
+  compose de **base**, version épinglée sur celle de la production (`3.11.1`).
+  **Les deux énoncés du lot 8 étaient partiellement faux (`LE-56`)** : (a)
+  `GF_INSTALL_PLUGINS` n'est pas inerte sur Grafana 13 — le lot 8 avait lu le répertoire
+  de plugins **trop tôt**, l'installation est asynchrone (~9 s) — et la production avait
+  bien son plugin ; (b) Prometheus et Alertmanager avaient depuis toujours un volume
+  **anonyme** hérité de leur image (`VOLUME` du Dockerfile amont), qui survit à
+  `up -d --force-recreate` et se perd au premier `down`/`up` : leur exemption de
+  `read_only` était infondée. Vérifié sur la pile réelle en trois temps (démarrage,
+  redémarrage, recréation, `LE-53`). Ouvert : `AM-84` (personne ne surveille la version
+  épinglée du plugin), `AM-85` (le durcissement fait échouer la mise à jour des plugins
+  embarqués de Grafana à chaque démarrage).
+
 - **Une sonde `--autotest` qui ne mute rien accuse la porte** (lot 5) : une mutation
   écrite sur un `\n` littéral ne remplace RIEN dans un fichier CRLF (tout l'arbre de
   travail sous Windows), la porte lit le fichier intact et le verdict affiché dit « la

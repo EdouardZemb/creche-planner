@@ -337,8 +337,9 @@ avaient un énoncé qui **désignait le mauvais endroit**, chacun à sa façon.
   l'override de production comme le demandait le critère de sortie : les trois piles le
   fusionnent, donc la posture est la même partout **et** elle est exercée par `smoke-stack`
   et `e2e-stack` à chaque PR. Posée côté serveur, elle n'aurait été éprouvée qu'en
-  déployant. 29 services en `no-new-privileges` + `cap_drop: [ALL]`, 26 en `read_only`,
-  3 exemptions motivées (`AM-83` — les trois services d'infra sans volume nommé), 6 services
+  déployant. 29 services en `no-new-privileges` + `cap_drop: [ALL]`, 26 en `read_only`
+  à la livraison du lot puis **29 sur 29** (les 3 exemptions sont tombées avec `AM-83`,
+  le 2026-08-15, volume nommé posé), 6 services
   reprenant une capacité nommée. ⚠️ Le `user: 1000` que le `Dockerfile` et le doc 06
   annonçaient « porté par le compose serveur » n'a **jamais existé** : défense en profondeur
   écrite, absente — les deux mentions sont corrigées.
@@ -365,6 +366,21 @@ avaient un énoncé qui **désignait le mauvais endroit**, chacun à sa façon.
 **Trouvé en lisant les checks de la PR elle-même :** les trois jobs de pile étaient **`skipping`** — ils ne se déclenchent que si `nx affected` trouve un projet déployable touché, et un diff purement Compose n'en touche aucun. La pile n'était donc **jamais bootée par les PR qui changent la pile**, et le commentaire de `config-changes` décrivait ce trou mot pour mot depuis sa création (`LE-55`). Corrigé par un filtre de chemins `pile`.
 
 Consigné : `AM-48`/`AM-50` ✅, `AM-82`/`AM-83`, `LE-53` et `LE-55` (→ `MO-1`), `LE-54` (→ `MO-2`), `EM-14`.
+
+**Suite immédiate — `AM-82` et `AM-83` soldées le 2026-08-15 (décisions PO), hors lot.** Les
+trois états d'infrastructure ont leur volume nommé (`nats-data`, `prometheus-data`,
+`alertmanager-data`), et les **trois exemptions de racine inscriptible sont tombées** :
+29/29 services en lecture seule. Motif PO : la semaine d'observation qui précède la bascule
+INTERSERVICE exige une TSDB qui survive aux déploiements. Le plugin Grafana Infinity est
+installé par `GF_PLUGINS_PREINSTALL` **dans le compose de base**, version épinglée sur celle
+que la production porte (`3.11.1`). ⚠️ **Les deux énoncés étaient partiellement faux, et
+c'est le résultat principal** (`LE-56`) : `GF_INSTALL_PLUGINS` n'était pas inerte (le lot 8
+avait lu un répertoire de plugins **trop tôt** — l'installation est asynchrone) et la
+production avait bien son plugin ; côté volumes, Prometheus et Alertmanager avaient depuis
+toujours un volume **anonyme** hérité de leur image, ce qui rendait leur exemption de
+`read_only` infondée. Nouvelles pistes : `AM-84` (personne ne surveille la version épinglée
+du plugin), `AM-85` (le durcissement fait échouer la mise à jour des plugins embarqués de
+Grafana à chaque démarrage).
 
 ## Lot 9 — WCAG 2.2 (`AM-49`)
 

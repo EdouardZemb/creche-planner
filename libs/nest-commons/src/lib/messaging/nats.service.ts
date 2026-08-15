@@ -9,10 +9,30 @@ import {
   connect,
   headers,
   JSONCodec,
+  nanos,
   type JetStreamClient,
   type NatsConnection,
 } from 'nats';
 import { OPTIONS_NATS, type OptionsNats } from './nats.options.js';
+
+/**
+ * Borne d'âge des messages du stream, en nanosecondes (unité de JetStream).
+ *
+ * **30 jours, alignés sur T7** (doc 37 §3), la rétention de la table `outbox`
+ * qui est la source de ces messages : le transport ne doit pas survivre à ce
+ * qu'il transporte. Sans cette borne, la politique par défaut (`limits`) ne
+ * supprime **jamais** — l'acquittement d'un consommateur explicite n'efface
+ * rien. Tant que le magasin JetStream vivait dans la couche du conteneur, la
+ * recréation du conteneur faisait office de purge involontaire ; le volume
+ * nommé posé par `AM-83` retire ce hasard, il faut donc la borne réelle,
+ * sinon le stream croît jusqu'à ce que `publier()` échoue.
+ *
+ * Effet de bord assumé : un consommateur arrêté plus de 30 jours perd les
+ * messages qu'il n'a pas lus. C'est strictement mieux qu'avant, où le moindre
+ * déploiement les perdait tous — et l'`outbox` SQL, elle, reste la source de
+ * vérité rejouable pendant les mêmes 30 jours.
+ */
+const RETENTION_STREAM = nanos(30 * 24 * 60 * 60 * 1000);
 
 /**
  * Connexion NATS JetStream du service. Le démarrage ne bloque pas si le broker
@@ -58,11 +78,13 @@ export class NatsService implements OnModuleInit, OnApplicationShutdown {
   private async provisionnerStream(connection: NatsConnection): Promise<void> {
     const { stream, sujet } = this.options;
     const jsm = await connection.jetstreamManager();
+    const config = { subjects: [sujet], max_age: RETENTION_STREAM };
     try {
-      await jsm.streams.add({ name: stream, subjects: [sujet] });
+      await jsm.streams.add({ name: stream, ...config });
     } catch {
-      // Stream déjà présent : on s'assure que le sujet est couvert.
-      await jsm.streams.update(stream, { subjects: [sujet] });
+      // Stream déjà présent : on s'assure que le sujet est couvert ET que la
+      // borne d'âge est posée (un stream créé avant `AM-83` n'en a aucune).
+      await jsm.streams.update(stream, config);
     }
   }
 
