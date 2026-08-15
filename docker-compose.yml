@@ -259,8 +259,10 @@ services:
     command: ['--config.file=/etc/alertmanager/alertmanager.yml']
     volumes:
       - ./docker/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-      # Silences et journal de notifications (`--storage.path`, défaut
-      # `/alertmanager`) : volume NOMMÉ (`AM-83`). Un silence posé pendant une
+      # Silences et journal de notifications : volume NOMMÉ (`AM-83`). Le
+      # `command:` ne passe pas `--storage.path`, dont le défaut est le chemin
+      # RELATIF `data/` — mesuré : l'état atterrit dans `/alertmanager/data`,
+      # sous le point de montage, donc couvert. Un silence posé pendant une
       # astreinte doit survivre au déploiement qui suit — même raisonnement que
       # `promtail-positions`, et même mesure que pour la TSDB : l'anonyme hérité
       # de l'image ne suffit pas.
