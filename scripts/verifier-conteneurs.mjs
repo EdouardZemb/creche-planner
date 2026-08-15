@@ -61,6 +61,13 @@
  *    paquets installés et les secrets de build sont hors périmètre.
  *  - Elle ne juge pas si un motif est **bon**. « L'état vit dans la couche du
  *    conteneur » reste vrai le jour où un volume nommé le rendrait faux.
+ *  - Elle ne voit pas où atterrit une écriture légitime, et une racine en
+ *    lecture seule ne prouve donc RIEN sur la durabilité : l'image amont peut
+ *    déclarer un `VOLUME`, auquel cas Docker pose un volume **anonyme** qui
+ *    rend le service inscriptible sans qu'aucune ligne de compose le dise.
+ *    Mesuré (`AM-83`) : cet anonyme survit à `up -d --force-recreate`, et se
+ *    perd — en laissant un orphelin — au premier `down`/`up`. Un état qui doit
+ *    survivre s'écrit en volume **nommé**, ce qu'aucune porte ne sait exiger.
  *
  * ## Usage
  *   pnpm conteneurs              # vérifie (exit 1 si un constat)
@@ -124,35 +131,21 @@ const CAPACITES_REPRISES = [
 ];
 
 /**
- * Services dont la racine reste **inscriptible**, avec leur motif. Les trois
- * entrées ont la même racine : leur état vit dans la couche du conteneur, faute
- * de volume nommé. Un `tmpfs` les ferait démarrer en lecture seule, mais en
- * changeant la durabilité au redémarrage — ce n'est pas un durcissement, c'est
- * un effet de bord, et il est mis en file (`AM-83`).
+ * Services dont la racine reste **inscriptible**, avec leur motif.
+ *
+ * La liste est VIDE depuis `AM-83` (2026-08-15) : les trois exemptions du lot 8
+ * — magasin JetStream, base TSDB, silences d'Alertmanager — tenaient toutes au
+ * même manque, un état sans volume nommé. Le volume posé, la racine immuable
+ * devient possible : les trois services sont passés en `read_only` et vérifiés
+ * sur la pile réelle, démarrage ET redémarrage ET recréation.
+ *
+ * Le mécanisme reste, la porte le sait vide : une exemption future s'écrit ici
+ * avec son motif, et la vérification de péremption (§5/§6 plus bas) continue de
+ * tourner dans les deux sens.
+ *
+ * @type {{ service: string, motif: string }[]}
  */
-const RACINES_INSCRIPTIBLES = [
-  {
-    service: 'nats',
-    motif:
-      'sans `-sd`, JetStream pose son magasin dans /tmp/nats : en lecture seule ' +
-      'le serveur meurt au démarrage (« could not create storage directory »), ' +
-      "et un tmpfs viderait les flux de l'outbox à chaque redémarrage (AM-83).",
-  },
-  {
-    service: 'prometheus',
-    motif:
-      'la base TSDB (--storage.tsdb.path=/prometheus) est sans volume nommé : ' +
-      "elle vit dans la couche du conteneur, un tmpfs perdrait l'historique à " +
-      'chaque redémarrage en plus de chaque recréation (AM-83).',
-  },
-  {
-    service: 'alertmanager',
-    motif:
-      'silences et journal de notifications (/alertmanager) sont sans volume ' +
-      'nommé : un silence posé pendant une astreinte ne survivrait pas à un ' +
-      'tmpfs remis à zéro (AM-83).',
-  },
-];
+const RACINES_INSCRIPTIBLES = [];
 
 /** @param {string} relatif */
 function lire(relatif) {
@@ -393,9 +386,18 @@ function postureDeLaPile(composes, contenus) {
 
 /**
  * @param {Record<string, string>} contenus
+ * @param {object} [registres] registres INJECTABLES : une sonde négative doit
+ *   pouvoir abîmer le registre lui-même, pas seulement les composes — c'est le
+ *   seul moyen d'éprouver la péremption d'une exemption maintenant que la liste
+ *   des exemptions est VIDE (`AM-83`). Une sonde écrite sur `[0]` d'une liste
+ *   vide ne mordrait plus : elle planterait.
+ * @param {typeof CAPACITES_REPRISES} [registres.capacites]
+ * @param {typeof RACINES_INSCRIPTIBLES} [registres.inscriptibles]
  * @returns {string[]}
  */
-function verifier(contenus) {
+function verifier(contenus, registres = {}) {
+  const capacitesReprises = registres.capacites ?? CAPACITES_REPRISES;
+  const racinesInscriptibles = registres.inscriptibles ?? RACINES_INSCRIPTIBLES;
   /** @type {string[]} */
   const constats = [];
   /** services vus au moins une fois, toutes piles confondues */
@@ -440,7 +442,7 @@ function verifier(contenus) {
       }
 
       const declarees =
-        CAPACITES_REPRISES.find((c) => c.services.includes(service))
+        capacitesReprises.find((c) => c.services.includes(service))
           ?.capacites ?? [];
       for (const capacite of new Set(posture.capAdd)) {
         if (!declarees.includes(capacite)) {
@@ -451,9 +453,7 @@ function verifier(contenus) {
         reprisesVues.add(`${service}/${capacite}`);
       }
 
-      const exemption = RACINES_INSCRIPTIBLES.find(
-        (e) => e.service === service,
-      );
+      const exemption = racinesInscriptibles.find((e) => e.service === service);
       if (posture.readOnly !== true && exemption === undefined) {
         constats.push(
           `pile ${pile.nom}, service \`${service}\` : racine inscriptible (CIS 5.12) sans exemption déclarée — poser \`read_only: true\` (au besoin avec un \`tmpfs:\` pour les écritures légitimes), ou déclarer l'exemption avec son motif dans \`RACINES_INSCRIPTIBLES\`.`,
@@ -476,7 +476,7 @@ function verifier(contenus) {
   }
 
   // Péremption du registre, dans l'autre sens.
-  for (const entree of CAPACITES_REPRISES) {
+  for (const entree of capacitesReprises) {
     for (const service of entree.services) {
       if (!vus.has(service)) {
         constats.push(
@@ -493,7 +493,7 @@ function verifier(contenus) {
       }
     }
   }
-  for (const exemption of RACINES_INSCRIPTIBLES) {
+  for (const exemption of racinesInscriptibles) {
     if (!vus.has(exemption.service)) {
       constats.push(
         `le registre \`RACINES_INSCRIPTIBLES\` nomme \`${exemption.service}\`, qu'aucun compose ne définit : entrée périmée, la retirer.`,
@@ -638,24 +638,33 @@ function autotest(contenus) {
     attendu: 'production, service `caddy`',
   });
 
-  // (f) une exemption devenue fausse : le service durci reste au registre.
-  const inscriptible = RACINES_INSCRIPTIBLES[0].service;
+  // (f) une exemption devenue fausse : le service est en lecture seule partout,
+  // son entrée reste au registre. C'est le REGISTRE qu'on abîme ici, pas le
+  // compose — depuis `AM-83` la liste des exemptions est vide, et une sonde qui
+  // irait chercher `RACINES_INSCRIPTIBLES[0]` planterait au lieu de mordre.
+  // Le témoin est dérivé : le premier service durci du compose de base.
   sondes.push({
-    nom: `exemption périmée (${inscriptible})`,
-    constats: verifier(
-      muter(
-        BASE,
-        (t) =>
-          t.replace(
-            new RegExp(
-              `(\\n {2}${inscriptible}:\\r?\\n(?: {4}#[^\\n]*\\r?\\n)*) {4}<<: \\*durcissement-inscriptible`,
-            ),
-            '$1    <<: *durcissement',
-          ),
-        'exemption périmée',
-      ),
-    ),
+    nom: `exemption périmée (registre, témoin ${temoin})`,
+    constats: verifier(contenus, {
+      inscriptibles: [
+        {
+          service: temoin,
+          motif: 'exemption fabriquée par la sonde, sans objet dans le compose',
+        },
+      ],
+    }),
     attendu: 'dont la racine est en lecture seule partout',
+  });
+
+  // (f bis) une exemption qui nomme un service qu'aucun compose ne définit.
+  sondes.push({
+    nom: 'exemption nommant un service inexistant',
+    constats: verifier(contenus, {
+      inscriptibles: [
+        { service: 'service-disparu', motif: 'entrée que rien ne porte plus' },
+      ],
+    }),
+    attendu: '`service-disparu`',
   });
 
   // (g) le mode privilégié, qui REND tout ce que `cap_drop` vient de retirer —

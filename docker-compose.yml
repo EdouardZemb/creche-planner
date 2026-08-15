@@ -23,10 +23,12 @@ name: creche-planner
 #   - `read_only: true` (CIS 5.12) : système de fichiers racine immuable. Les
 #     écritures légitimes passent par un volume nommé ou un `tmpfs:` déclaré.
 #
-# Trois services gardent une racine inscriptible (`*durcissement-inscriptible`)
-# et le motif est écrit sur chacun : leur état vit dans la couche du conteneur,
-# faute de volume. Un `tmpfs` les ferait démarrer mais changerait la durabilité
-# au redémarrage — ce n'est pas un durcissement, c'est un effet de bord (`AM-83`).
+# Depuis `AM-83` (2026-08-15) il n'y a PLUS aucune exemption : les trois états
+# qui vivaient hors d'un volume — magasin JetStream, base TSDB, silences
+# d'Alertmanager — en ont un, nommé. C'était le même arbitrage dans les deux
+# sens : ce n'est pas la lecture seule qui manquait de durabilité, c'est
+# l'inverse — poser le volume rend la racine immuable POSSIBLE, et la porte
+# `pnpm conteneurs` le signale d'elle-même si une exemption redevient fausse.
 #
 # La porte `pnpm conteneurs` refuse tout service dont la posture n'est ni cette
 # ancre ni une exemption motivée, sur les QUATRE composes.
@@ -36,13 +38,6 @@ x-durcissement: &durcissement
   cap_drop:
     - ALL
   read_only: true
-
-x-durcissement-inscriptible: &durcissement-inscriptible
-  security_opt:
-    - 'no-new-privileges:true'
-  cap_drop:
-    - ALL
-  read_only: false
 
 services:
   # --- Infrastructure ------------------------------------------------------
@@ -187,15 +182,17 @@ services:
       retries: 10
 
   nats:
-    # Racine inscriptible ASSUMÉE : sans `-sd`, JetStream pose son magasin dans
-    # `/tmp/nats` (vérifié : `read_only` seul le fait mourir au démarrage sur
-    # « could not create storage directory »). Un `tmpfs` sur /tmp ferait
-    # démarrer le serveur mais viderait les flux à chaque REDÉMARRAGE, alors
-    # qu'ils y survivent aujourd'hui : ce serait changer la durabilité de
-    # l'outbox sous couvert de durcissement (`AM-83`).
-    <<: *durcissement-inscriptible
+    <<: *durcissement
     image: nats:2.10-alpine
-    command: ['-js', '-m', '8222']
+    # `-sd` (store_dir) désigne le magasin JetStream. SANS lui, il atterrit dans
+    # `/tmp/nats`, c'est-à-dire dans la COUCHE du conteneur : les flux de
+    # l'outbox étaient donc perdus à chaque recréation, donc à chaque
+    # déploiement — et `read_only` seul faisait mourir le serveur au démarrage
+    # (« could not create storage directory »). Le volume nommé règle les deux
+    # (`AM-83`) : l'état est durable ET la racine peut être immuable.
+    command: ['-js', '-sd', '/data', '-m', '8222']
+    volumes:
+      - nats-data:/data
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O- http://127.0.0.1:8222/healthz || exit 1']
       interval: 5s
@@ -223,11 +220,7 @@ services:
       - tempo-data:/var/tempo
 
   prometheus:
-    # Racine inscriptible ASSUMÉE : la base TSDB (`--storage.tsdb.path=/prometheus`)
-    # n'a pas de volume nommé, elle vit dans la couche du conteneur. Même
-    # arbitrage que `nats` — un tmpfs perdrait l'historique à chaque redémarrage
-    # en plus de le perdre à chaque recréation (`AM-83`).
-    <<: *durcissement-inscriptible
+    <<: *durcissement
     # P2-8 — épinglé par digest (= v3.12.0) pour une pile reproductible.
     image: prom/prometheus@sha256:69f5241418838263316593f7274a304b095c40bcf22e57272865da91bd60a8ac
     # Command par défaut de l'image + `--web.enable-remote-write-receiver` (Phase 13a) :
@@ -243,6 +236,13 @@ services:
       - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       # Règles d'alerte montées dans un sous-dossier dédié.
       - ./docker/prometheus:/etc/prometheus/alerts:ro
+      # Base TSDB : volume NOMMÉ (`AM-83`). L'image déclare `VOLUME /prometheus`,
+      # donc un volume ANONYME suffisait à écrire — mais un anonyme n'est
+      # rattaché que tant que le conteneur existe : mesuré, il survit à
+      # `up -d --force-recreate` et se perd (en laissant un orphelin) au premier
+      # `down`/`up`. La semaine d'observation qui précède la bascule
+      # INTERSERVICE a besoin d'une TSDB qui survive aux déploiements.
+      - prometheus-data:/prometheus
     depends_on:
       - otel-collector
       - nats-exporter
@@ -253,15 +253,18 @@ services:
   # les groupe/déduplique et (une fois un receiver configuré) les notifie. Rend
   # OPÉRANT le pipeline d'alerte défini dans docker/prometheus/alerts.yml. UI :9093.
   alertmanager:
-    # Racine inscriptible ASSUMÉE : silences et journal de notifications
-    # (`/alertmanager`) n'ont pas de volume nommé. Un silence posé pendant une
-    # astreinte ne survivrait pas à un tmpfs remis à zéro (`AM-83`).
-    <<: *durcissement-inscriptible
+    <<: *durcissement
     # Épinglé par digest (= v0.32.2) pour une pile reproductible (cf. P2-8).
     image: prom/alertmanager@sha256:b85533a2eb45865835315810315f6951331b2dbc8c93a6cf9a51e156a006a706
     command: ['--config.file=/etc/alertmanager/alertmanager.yml']
     volumes:
       - ./docker/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Silences et journal de notifications (`--storage.path`, défaut
+      # `/alertmanager`) : volume NOMMÉ (`AM-83`). Un silence posé pendant une
+      # astreinte doit survivre au déploiement qui suit — même raisonnement que
+      # `promtail-positions`, et même mesure que pour la TSDB : l'anonyme hérité
+      # de l'image ne suffit pas.
+      - alertmanager-data:/alertmanager
 
   # Exporte les métriques NATS/JetStream au format Prometheus.
   # Scrape l'API monitoring NATS (http://nats:8222) et expose :7777/metrics.
@@ -358,6 +361,35 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: 'true'
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+      # Plugin du datasource « GitHub Deployments » (annotations DORA, doc 26).
+      # `GF_PLUGINS_PREINSTALL` = section `[plugins] preinstall`, le mécanisme
+      # de Grafana 11.5+. Il REMPLACE `GF_INSTALL_PLUGINS`, qui vivait dans le
+      # seul compose de production. Ce que la mesure a démontré (`AM-82`, dont
+      # l'énoncé disait l'inverse) :
+      #   - l'ancienne variable n'est PAS inerte sur Grafana 13.0.2 — le serveur
+      #     la lit encore comme un alias déprécié et installe le plugin ; c'est
+      #     ce qui a mis Infinity dans le volume de production. Elle journalise
+      #     un WARN de dépréciation à chaque démarrage et disparaîtra ;
+      #   - elle n'accepte AUCUNE version : le plugin installé est celui du jour
+      #     où le volume `grafana-data` a été créé (3.11.1 en production, posé à
+      #     la phase 4), et une pile neuve prendrait la dernière publiée — une
+      #     majeure d'écart le jour où on restaure une sauvegarde.
+      #
+      # Posé ICI, dans le compose de BASE, et non dans celui de production seul :
+      # la pile locale est la SEULE que quiconque lève avec Grafana —
+      # `smoke-stack` et `e2e-stack` excluent délibérément les sidecars
+      # d'observabilité. Un réglage qui ne vit qu'en production ne se constate
+      # qu'en déployant (même raisonnement qu'`AM-48` au lot 8).
+      #
+      # Version ÉPINGLÉE, comme les images le sont par digest, et épinglée sur
+      # CELLE QUE LA PRODUCTION PORTE : ce commit écrit l'état réel, il ne le
+      # change pas. Une version épinglée n'est pas remise à jour au démarrage
+      # (`preinstall_auto_update` ne touche que les autres), donc un Grafana qui
+      # redémarre sans accès à grafana.com garde son plugin. L'installation est
+      # asynchrone : si le téléchargement échoue, Grafana démarre quand même —
+      # les annotations manquent, la supervision ne tombe pas. Personne ne
+      # surveille cette version (ni Dependabot ni la veille CVE) : `AM-84`.
+      GF_PLUGINS_PREINSTALL: yesoreyeram-infinity-datasource@3.11.1
     volumes:
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
       # Dashboards JSON provisionnés automatiquement au démarrage.
@@ -695,3 +727,11 @@ volumes:
   grafana-data:
   loki-data:
   promtail-positions:
+  # `AM-83` — les trois états qui n'avaient aucun volume nommé. Les deux
+  # derniers vivaient dans un volume ANONYME hérité de l'image (`VOLUME` du
+  # Dockerfile amont) : rattaché tant que le conteneur vit, orphelin dès qu'il
+  # est retiré. `nats-data` est le cas franc : rien du tout, l'état était dans
+  # la couche du conteneur.
+  nats-data:
+  prometheus-data:
+  alertmanager-data:
