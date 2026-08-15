@@ -337,21 +337,21 @@ jobs:
           node scripts/verifier-readme.mjs --autotest
           node scripts/verifier-readme.mjs
 
-      # Cible WCAG 2.2 AA (doc 11 §8, AM-49) — une cible d'accessibilite se
-      # perime sans rien casser : on l'avance dans la doc, l'outil qui la mesure
-      # reste ou il etait, et son verdict ne change pas d'un caractere. Mesure au
-      # lot 9 : les quatre tags d'origine de l'audit axe selectionnent 69 regles,
-      # et `target-size` (SC 2.5.8) n'en fait pas partie — cette regle est
-      # declaree `enabled: false` dans axe-core, seul le tag `wcag22aa` la met en
+      # Cible WCAG 2.2 AA (doc 11 §8, AM-49) — une cible d'accessibilité se
+      # périme sans rien casser : on l'avance dans la doc, l'outil qui la mesure
+      # reste où il était, et son verdict ne change pas d'un caractère. Mesuré au
+      # lot 9 : les quatre tags d'origine de l'audit axe sélectionnent 69 règles,
+      # et `target-size` (SC 2.5.8) n'en fait pas partie — cette règle est
+      # déclarée `enabled: false` dans axe-core, seul le tag `wcag22aa` la met en
       # route. Un audit vert ne disait donc RIEN de WCAG 2.2. Ce step exige que
-      # les neuf criteres ajoutes par 2.2 soient TOUS statues (identifiants
-      # releves DANS le document, pas cherches un a un), qu'un critere de la
-      # cible porte un verdict etaye, qu'une garde citee existe reellement dans
+      # les neuf critères ajoutés par 2.2 soient TOUS statués (identifiants
+      # relevés DANS le document, pas cherchés un à un), qu'un critère de la
+      # cible porte un verdict étayé, qu'une garde citée existe réellement dans
       # un test, que l'audit demande `wcag22aa` et exerce une largeur sous
-      # 768 px, et que le renoncement ecrit sur le SC 3.3.8 reste vrai (aucune
-      # etape d'authentification propre a l'app). `--autotest` rejoue ses
-      # 7 sondes negatives.
-      - name: Cible WCAG 2.2 AA — criteres statues et outil accorde (bloquant)
+      # 768 px, et que le renoncement écrit sur le SC 3.3.8 reste vrai (aucune
+      # étape d'authentification propre à l'app). `--autotest` rejoue ses
+      # 7 sondes négatives.
+      - name: Cible WCAG 2.2 AA — critères statués et outil accordé (bloquant)
         run: |
           node scripts/verifier-wcag.mjs --autotest
           node scripts/verifier-wcag.mjs

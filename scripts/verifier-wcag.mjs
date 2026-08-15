@@ -29,9 +29,10 @@
  *    tableau vers l'autre.
  * 3. Tout critère de niveau **A ou AA** est soit conforme/corrigé, soit
  *    explicitement **écarté par écrit** — un verdict vide est refusé.
- * 4. Toute **garde citée** (« Garde : `…` ») existe réellement : son libellé se
- *    retrouve dans un fichier de test de `apps/web`. Une garde renommée casse
- *    la porte au lieu de laisser une promesse morte.
+ * 4. Toute **garde citée** (« Garde(s) : `…` et `…` », toutes relevées, pas
+ *    seulement la première) existe réellement : son libellé se retrouve dans un
+ *    fichier de test de `apps/web`. Une garde renommée casse la porte au lieu
+ *    de laisser une promesse morte.
  * 5. L'audit `axe-core` demande bien le tag **`wcag22aa`** — c'est le lien entre
  *    la cible déclarée et ce que l'outil regarde, et c'est très exactement ce
  *    qui manquait.
@@ -123,7 +124,15 @@ function lire(relatif) {
  * @returns {{ id: string, verdict: string, corps: string }[]}
  */
 function critereStatues(doc) {
-  const section = doc.slice(doc.indexOf('## 8. Cible WCAG 2.2 AA'));
+  // Bornée au § 8 SEUL. Lire jusqu'à la fin du fichier ferait juger n'importe
+  // quel tableau ajouté plus bas : un « ## 9 » citant un critère de 2.1 en gras
+  // (`**1.4.3**`) suffirait à faire rougir la porte sur une addition sans
+  // rapport — vérifié, la porte sortait alors 1.
+  const debut = doc.indexOf('## 8. Cible WCAG 2.2 AA');
+  if (debut === -1) return [];
+  const suite = doc.slice(debut + 1);
+  const fin = suite.search(/\r?\n## /);
+  const section = fin === -1 ? suite : suite.slice(0, fin);
   /** @type {{ id: string, verdict: string, corps: string }[]} */
   const lignes = [];
   for (const ligne of section.split(/\r?\n/)) {
@@ -207,7 +216,7 @@ function verifier(contenus) {
   }
 
   // 4. Toute garde citée existe réellement dans un test de `apps/web`.
-  const gardes = [...doc.matchAll(/Garde\s*:\s*`([^`]+)`/g)].map((m) => m[1]);
+  const gardes = gardesCitees(doc);
   if (gardes.length === 0) {
     constats.push(
       `${DOC} § 8 : aucune garde n'est citée — un verdict outillé doit nommer le test qui le tient.`,
@@ -292,6 +301,48 @@ function fichiersSous(relatif, motif) {
 }
 
 /**
+ * Noms de gardes cités par le § 8, au singulier comme au pluriel.
+ *
+ * ⚠️ Une première version ne reconnaissait que « Garde : `…` » et n'en captait
+ * qu'une : écrire « Gardes : `A` et `B` » faisait tomber le compte de 3 à 2
+ * **sans aucun constat** — la porte censée empêcher les promesses mortes en
+ * perdait une en silence. On relève donc TOUS les noms entre accents graves de
+ * l'énoncé, jusqu'à la fin de la cellule.
+ *
+ * @param {string} doc
+ * @returns {string[]}
+ */
+function gardesCitees(doc) {
+  /** @type {string[]} */
+  const noms = [];
+  for (const enonce of doc.matchAll(
+    /Gardes?\s*:\s*((?:`[^`]+`(?:\s*(?:et|,)\s*)?)+)/g,
+  )) {
+    for (const nom of enonce[1].matchAll(/`([^`]+)`/g)) noms.push(nom[1]);
+  }
+  return noms;
+}
+
+/**
+ * Retire commentaires de ligne, commentaires de bloc et commentaires JSX.
+ *
+ * Approximation assumée (ce n'est pas un analyseur syntaxique) : une séquence
+ * `//` dans un littéral de chaîne — typiquement une URL — voit la fin de sa
+ * ligne effacée. C'est sans conséquence ici, les deux motifs recherchés étant
+ * des attributs JSX et un mot, jamais une URL. Le sens de l'erreur est le bon :
+ * on efface trop, donc on peut manquer un défaut ; on n'en invente jamais.
+ *
+ * @param {string} source
+ * @returns {string}
+ */
+function sansCommentaires(source) {
+  return source
+    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
+
+/**
  * Étapes d'authentification portées par l'application elle-même.
  *
  * On cherche dans le **code de production** seulement : un mock de test qui
@@ -329,10 +380,15 @@ function authentificationDansWeb() {
     const relatif = path
       .relative(RACINE, path.join(entree.parentPath, entree.name))
       .replace(/\\/g, '/');
-    if (/type=(["'])password\1/.test(source)) {
+    // Les COMMENTAIRES sont retirés avant l'examen : sans cela, un commentaire
+    // disant « aucun captcha ici » — ou ce fichier-ci cité en exemple — rendrait
+    // la porte rouge en affirmant l'exact contraire de la vérité. Une porte qui
+    // se trompe dans ce sens-là est pire qu'absente : elle accuse du code sain.
+    const code = sansCommentaires(source);
+    if (/type=(["'])password\1/.test(code)) {
       trouvailles.push(`${relatif} rend un champ de mot de passe`);
     }
-    if (/\bcaptcha\b/i.test(source)) {
+    if (/\bcaptcha\b/i.test(code)) {
       trouvailles.push(`${relatif} met en œuvre un captcha`);
     }
   }
@@ -491,7 +547,7 @@ function principal() {
 
   const statues = critereStatues(contenus[DOC]);
   const dansCible = CRITERES_22.filter((c) => c.niveau !== 'AAA').length;
-  const gardes = [...contenus[DOC].matchAll(/Garde\s*:\s*`([^`]+)`/g)].length;
+  const gardes = gardesCitees(contenus[DOC]).length;
   console.log(
     `Cible WCAG 2.2 AA : ${statues.length} critère(s) statué(s) dont ${dansCible} dans la cible (A/AA), ` +
       `${gardes} garde(s) citée(s) et retrouvée(s) dans les tests, audit axe taggé wcag22aa et joué aussi sous 768 px.`,

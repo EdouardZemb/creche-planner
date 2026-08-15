@@ -406,6 +406,29 @@ describe('FoyerFormPage — accès self-service (P5, besoin B)', () => {
     expect(champ).toHaveValue('camille@exemple.fr');
   });
 
+  it('SC 3.3.7 : un admin qui provisionne le foyer d’une AUTRE famille n’est pas pré-inscrit dedans', async () => {
+    // Garde-fou du pré-remplissage : la ligne parent pré-remplie est toujours
+    // non vide, donc toujours envoyée (seules les lignes entièrement vides sont
+    // filtrées). Pré-remplir ici attacherait l'admin comme parent du foyer
+    // d'autrui — accès `@FoyerScope` accordé et récap du mardi reçu, puisque
+    // `VALIDATION_HEBDO/EMAIL` est actif par défaut.
+    mockedApi.moi.mockResolvedValue({
+      email: 'admin@exemple.fr',
+      admin: true,
+      foyers: ['foyer-deja-a-moi'],
+    });
+    render(
+      <MemoryRouter>
+        <MoiProvider>
+          <FoyerFormPage />
+        </MoiProvider>
+      </MemoryRouter>,
+    );
+
+    const champ = await screen.findByLabelText(/E-mail/i);
+    expect(champ).not.toHaveValue('admin@exemple.fr');
+  });
+
   it('SC 3.3.7 : sans identité établie, le champ garde le repli du mode (aucune adresse inventée)', async () => {
     mockedApi.moi.mockResolvedValue({ email: null, admin: true, foyers: [] });
     render(

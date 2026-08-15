@@ -436,15 +436,22 @@ describe('App — coquille de navigation', () => {
     const dehors = document.createElement('button');
     dehors.textContent = 'Contrôle de la page';
     document.body.appendChild(dehors);
-    // `focus()` réel (l'événement `focusout` porte son `relatedTarget`) ; `act`
-    // ne fait que vider le rendu déclenché, il ne fabrique pas l'événement.
-    await act(async () => {
-      dehors.focus();
-    });
+    // Retrait en `finally` : sur échec, ce bouton survivrait au `cleanup` de
+    // RTL (il n'est pas dans le conteneur rendu) et polluerait les requêtes
+    // `screen` des tests suivants du fichier — un échec en cascaderait d'autres.
+    try {
+      // `focus()` réel (l'événement `focusout` porte son `relatedTarget`) ;
+      // `act` ne fait que vider le rendu déclenché, il ne fabrique pas
+      // l'événement.
+      await act(async () => {
+        dehors.focus();
+      });
 
-    expect(panneau).not.toHaveClass('ouvert');
-    expect(bouton).toHaveAttribute('aria-expanded', 'false');
-    dehors.remove();
+      expect(panneau).not.toHaveClass('ouvert');
+      expect(bouton).toHaveAttribute('aria-expanded', 'false');
+    } finally {
+      dehors.remove();
+    }
   });
 
   it('WCAG 2.2 SC 2.4.11 : Échap referme le panneau « Plus » et rend le focus à son bouton', async () => {

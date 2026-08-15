@@ -81,6 +81,18 @@ function defautEnfants(): EtatEnfant[] {
  * hors d'un build de production — `DEMO` vaut vrai en test comme sous `vite
  * serve`, donc un pré-remplissage réservé à `!DEMO` n'aurait été exercé par
  * aucune suite du dépôt.
+ *
+ * ⚠️ **`estMaPremiereFamille` n'est pas un raffinement, c'est la condition du
+ * critère.** La saisie redondante suppose que l'adresse redemandée soit celle de
+ * la personne **qui va être parent** du foyer créé. Or cet écran sert aussi au
+ * provisionnement : `moi.admin` est permissif tant que le gating `ADMIN_EMAILS`
+ * est inactif, donc « Nouvelle famille » est proposé à qui a déjà un foyer, pour
+ * en créer un à **une autre famille**. Une ligne parent pré-remplie y serait
+ * toujours non vide, donc toujours envoyée (le formulaire ne filtre que les
+ * lignes entièrement vides) : l'auteur deviendrait parent du foyer d'autrui —
+ * accès `@FoyerScope` accordé, et récap du mardi reçu, `VALIDATION_HEBDO/EMAIL`
+ * étant actif par défaut. On ne pré-remplit donc que la **première création**,
+ * celle où l'auteur est nécessairement le parent.
  */
 function defautParents(emailConnu: string | null): EtatParent[] {
   const email = emailConnu ?? (DEMO ? 'parent.demo@example.com' : '');
@@ -116,8 +128,11 @@ function FormulaireCreationFoyer() {
     nbParts: DEFAUT_NB_PARTS,
   });
   const [enfants, setEnfants] = useState<EtatEnfant[]>(defautEnfants);
+  // SC 3.3.7 : seule la PREMIÈRE création pré-remplit (cf. `defautParents`) —
+  // au-delà, cet écran sert à provisionner le foyer d'une autre famille.
+  const estMaPremiereFamille = moi.foyers.length === 0;
   const [parents, setParents] = useState<EtatParent[]>(() =>
-    defautParents(moi.email),
+    defautParents(estMaPremiereFamille ? moi.email : null),
   );
   const [chargement, setChargement] = useState(false);
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
