@@ -1,3 +1,7 @@
+## 0.17.0 (2026-08-15)
+
+This was a version bump only for svc-referentiel to align it with other projects, there were no code changes.
+
 ## 0.16.0 (2026-08-13)
 
 ### 🚀 Features

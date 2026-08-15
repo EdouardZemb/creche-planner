@@ -1,3 +1,15 @@
+## 0.17.0 (2026-08-15)
+
+### 🚀 Features
+
+- **http:** semantique HTTP restante — Location, statut de succes, ecarts ecrits (lot 7) ([#328](https://github.com/EdouardZemb/creche-planner/pull/328))
+- **audit:** piste d'audit acteur des mutations du dossier foyer (AM-45) ([#327](https://github.com/EdouardZemb/creche-planner/pull/327))
+
+### ❤️ Thank You
+
+- Claude Opus 5 (1M context)
+- Edouard Zemb @EdouardZemb
+
 ## 0.16.0 (2026-08-13)
 
 ### 🚀 Features
