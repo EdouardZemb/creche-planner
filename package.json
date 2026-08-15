@@ -24,6 +24,7 @@
     "liens": "node scripts/verifier-liens-doc.mjs",
     "faits": "node scripts/verifier-faits-doc.mjs",
     "readme": "node scripts/verifier-readme.mjs",
+    "wcag": "node scripts/verifier-wcag.mjs",
     "statuts": "node scripts/verifier-statut-doc.mjs",
     "tracabilite": "node scripts/verifier-tracabilite-doc.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",

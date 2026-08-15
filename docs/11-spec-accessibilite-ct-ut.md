@@ -1,11 +1,16 @@
 # 11 — Spécification : accessibilité AA & utilisabilité (audit CT-UT)
 
-> Statut : **À valider** · Version 0.1 · 2026-06-04
+> Statut : **À valider** · Version 0.2 · 2026-08-15
 > Décrit le _quoi_ et le _pourquoi_ des corrections d'**utilisabilité** et d'**accessibilité**
 > de `apps/web` issues d'un audit mené au prisme **ISTQB® CT-UT** (Certified Tester – Usability
 > Tester). Le _comment_ (lots, fichiers, prompts) est dans la [doc 12](12-plan-implementation-accessibilite.md).
 > Fait suite à la [doc 07](07-spec-ux-navigation.md) (Phase 10, livrée) : on **ferme les écarts
 > résiduels** pour atteindre un **WCAG 2.1 AA** crédible.
+>
+> **v0.2 (lot 9 des standards, `AM-49`) — la cible passe à WCAG 2.2 AA.** Les exigences
+> `UT-01`…`UT-10` ci-dessous sont inchangées : WCAG 2.2 est un **sur-ensemble** de 2.1, rien
+> n'y est retiré (à une exception près, cf. §8.3). Le §8 statue **critère par critère** les
+> neuf nouveautés de 2.2, mesurées contre le code réel.
 
 ## 1. Contexte & motivation
 
@@ -220,3 +225,62 @@ La revue statique ne tranche pas tout ; pour valider l'impact réel, appliquer :
 | Sév. 1 — saisie d'absences répétitive (jour par jour)    | UT-07       |
 | Sév. 0 — delta distingué surtout par la couleur          | UT-09       |
 | Bug fonctionnel — colonne ALSH écrit dans `cantine`      | UT-10       |
+
+## 8. Cible WCAG 2.2 AA — les neuf nouveautés, critère par critère
+
+> Ajouté au **lot 9** des standards industriels (`AM-49`, 2026-08-15). WCAG 2.2 ajoute neuf
+> critères à 2.1 ; six sont de niveau **A ou AA**, donc dans la cible, et trois sont **AAA**,
+> donc hors cible — ce qui ne dispense pas de le dire.
+>
+> **Chaque verdict ci-dessous a été mesuré, aucun n'est déduit de l'énoncé.** L'outil qui
+> aurait dû les voir ne les regardait pas : jusqu'à ce lot, l'audit `axe-core` ne demandait
+> que les tags `wcag2a`/`wcag2aa`/`wcag21a`/`wcag21aa` — 69 règles, **dont aucune de 2.2**.
+> `target-size`, seule règle 2.2 qu'axe sache exécuter, y est déclarée `enabled: false` et
+> n'est sélectionnée que par le tag `wcag22aa`. Un audit vert ne disait donc **rien** de 2.2.
+> Second angle mort : `playwright.config.ts` n'ayant qu'un projet `Desktop Chrome`, l'audit
+> n'avait **jamais** vu la présentation mobile — barre d'onglets fixe, feuille « Plus » et
+> modale en bottom-sheet n'existent que sous 768 px.
+
+### 8.1 Critères de niveau A et AA — dans la cible
+
+| Critère                                      | Niv. | Verdict                 | Constat mesuré et garde                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------------------- | ---- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **2.4.11** Focus non masqué (minimum)        | AA   | ❌ → ✅ **corrigé**     | **Échec réel.** Sous 768 px, `.nav-plus-panneau.ouvert` est une feuille `position: fixed` posée au-dessus du contenu, et c'est un _disclosure_ : ni piège de focus, ni `inert`. `Tab` depuis son dernier lien continuait **dans le contenu, sous la feuille**. Mesuré par parcours clavier réel (Pixel 5) sur 8 routes : **6 à 31 contrôles entièrement recouverts par écran**, dont « Créer ma famille », « Enregistrer » et « Supprimer le contrat ». Le panneau se referme désormais dès qu'un focus arrive hors de la nav, et sur `Échap`. **Sans panneau ouvert, le critère passait déjà** : `scroll-padding-bottom` couvre la barre d'onglets fixe, et le bandeau hors-ligne collant n'a produit **aucun** recouvrement (vérifié en contexte hors ligne réel). Garde : `SC 2.4.11 : sortir du panneau « Plus » au clavier` |
+| **2.5.7** Mouvements de glissement           | AA   | ✅ conforme             | **Aucune interaction de glissement n'existe.** FullCalendar est monté en `dateClick` seul — ni `selectable`, ni `editable`, ni `droppable` ; aucun `input[type="range"]` ; le seul `onMouseDown` du dépôt (`Modale`) ferme au clic sur le voile, ce n'est pas un glissement. Le critère est donc satisfait par **absence de la fonctionnalité**, pas par une alternative : c'est ce qui le rend fragile, et c'est pourquoi il est nommé ici plutôt que passé sous silence (cf. §8.4).                                                                                                                                                                                                                                                                                                                                            |
+| **2.5.8** Taille des cibles (minimum)        | AA   | ✅ conforme             | Tag `wcag22aa` ajouté : `target-size` s'exécute désormais sur **10 routes en desktop et 3 en mobile** → 0 violation. Vérifié au-delà de l'outil : les 8 cibles rendues sous 24 px (cases à cocher 13×13 en taille agent utilisateur, 20×20 dans `.case-cochable`, abréviations et liens en ligne) relèvent toutes de l'**exception d'espacement** — plus de 24 px entre centres, mesuré, la plus serrée à 50 px.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **3.2.6** Aide cohérente                     | A    | ✅ conforme             | Le mécanisme d'aide du produit est la page publique d'information sur les données (`/mentions`, doc 37 §5), atteignable de tout écran par `PiedPage`. Elle occupe **le même rang relatif partout** — dernier enfant de `<main id="contenu">` — par construction et non par discipline : l'en-tête de `PiedPage` démontre qu'elle ne peut être ni dans la `<nav>` (tout y est conditionnel) ni frère de `<main>` (elle passerait sous la barre fixe). Les infobulles de sigles (`<abbr>`, `UT-08`) sont du **contenu**, pas un mécanisme d'aide au sens de ce critère. Garde : `SC 3.2.6 : le mécanisme d’aide occupe le même rang relatif`                                                                                                                                                                                       |
+| **3.3.7** Saisie redondante                  | A    | ❌ → ✅ **corrigé**     | **Échec réel.** Le formulaire de création de foyer redemandait l'adresse **vérifiée** avec laquelle la personne venait de s'authentifier. L'enjeu dépasse le confort : `moi.foyers` est résolu côté serveur depuis les lignes parent portant cette adresse — une ligne absente ou mal orthographiée fait créer un foyer dont son auteur **n'est pas parent**, et qu'il ne retrouve donc pas en mode borné. La ligne part désormais pré-remplie de `moi.email`, champ modifiable (l'auteur peut y inscrire l'autre parent). Garde : `SC 3.3.7 : la ligne parent part pré-remplie`                                                                                                                                                                                                                                                 |
+| **3.3.8** Authentification accessible (min.) | AA   | ⚖️ **écarté par écrit** | `apps/web` **n'a aucune étape d'authentification** : aucun `type="password"`, aucun captcha, aucun test de fonction cognitive — vérifié par balayage de `apps/web/src`, et c'est cette absence que la porte `pnpm wcag` maintient. L'authentification est déléguée à **Cloudflare Access**, dont la page de connexion est un tiers hors du dépôt : ce code ne peut ni la tester ni la corriger. Le jour où une étape d'authentification entrerait dans l'application, ce renoncement deviendrait faux — et la porte le dira.                                                                                                                                                                                                                                                                                                     |
+
+### 8.2 Critères de niveau AAA — hors cible, écartés par écrit
+
+La cible du produit est **AA** (§5.1) : ces trois critères ne sont pas des écarts, ce sont des
+non-objectifs. Ils sont listés pour qu'aucun ne soit écarté par simple omission.
+
+| Critère                                       | Niv. | Motif de mise hors cible                                                                                                                                                                                                      |
+| --------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **2.4.12** Focus non masqué (amélioré)        | AAA  | Exige qu'**aucune partie** du focus ne soit recouverte, là où 2.4.11 tolère un recouvrement partiel. Hors cible AA. À noter : le correctif du 2.4.11 ci-dessus le satisfait probablement de fait — ce qui n'a pas été mesuré. |
+| **2.4.13** Apparence du focus                 | AAA  | Exige une zone d'indicateur de focus d'au moins 2 px d'épaisseur et un contraste de 3:1 avec l'état non focalisé. Hors cible AA ; le dépôt garde par ailleurs un `:focus-visible` explicite sur ses primitives.               |
+| **3.3.9** Authentification accessible (amél.) | AAA  | Retire les exceptions « reconnaissance d'objet » et « contenu personnel » du 3.3.8. Sans objet ici pour la même raison qu'en §8.1 : l'authentification vit hors du dépôt.                                                     |
+
+### 8.3 Ce que WCAG 2.2 retire
+
+**4.1.1 « Analyse syntaxique » est supprimé** de WCAG 2.2 — les analyseurs des navigateurs ont
+rendu le critère obsolète. Aucune exigence de ce document ne s'y appuyait, et les vérifications
+d'`id` uniques et de balisage bien formé restent couvertes par `axe-core` au titre de 1.3.1 et
+4.1.2, qui demeurent.
+
+### 8.4 Ce que cette cible ne couvre pas
+
+- **La passe audio humaine** (NVDA / VoiceOver) reste à faire, comme en 2.1 :
+  [doc 13 §9](13-validation-accessibilite-runtime.md#9-consignation-des-résultats). Le
+  scaffolding ARIA est vérifié, l'**écoute** ne l'est pas.
+- **Les critères 2.1 déjà tenus ne sont pas rejoués** : le passage de 2.1 à 2.2 n'invalide rien
+  de l'existant, WCAG 2.2 étant un sur-ensemble.
+- **Le SC 2.5.7 est tenu par absence** de tout geste de glissement. Introduire une réorganisation
+  par glisser-déposer (planning, liste de contrats) rouvrirait le critère — et **rien ne le
+  signalerait** : aucune porte du dépôt ne sait détecter l'apparition d'un geste de glissement.
+- **Le SC 3.3.8 dépend d'un tiers.** Ce qui est gardé ici est seulement que l'application ne
+  fasse pas naître sa **propre** étape d'authentification.
+- **Le SC 2.5.8 n'est mesuré qu'aux deux largeurs auditées** (1280 px et 393 px) et sur les
+  routes de l'audit : une cible qui rétrécit à une largeur intermédiaire échappe à la porte.
