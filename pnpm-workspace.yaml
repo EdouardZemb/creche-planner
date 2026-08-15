@@ -2,3 +2,42 @@ packages:
   - 'apps/*'
   - 'libs/*'
   - 'libs/*/*'
+
+# Quarantaine des publications npm (AM-50, lot 8 des standards) — 3 jours.
+#
+# Une version publiée sur npm est installable à la seconde où elle sort : c'est
+# la fenêtre qu'exploitent les compromissions de compte de mainteneur, qui sont
+# détectées et dépubliées en heures ou en jours. `minimumReleaseAge` (minutes)
+# fait attendre pnpm avant de RÉSOUDRE une version, dépendances transitives
+# comprises.
+#
+# POURQUOI ICI ET PAS DANS `.npmrc` (ce que demandait l'énoncé d'AM-50) : depuis
+# pnpm 10.16, les réglages propres à pnpm se lisent dans CE fichier. Posée dans
+# `.npmrc`, la ligne est ignorée SANS AUCUN MESSAGE — vérifié sur le pnpm du
+# dépôt : avec un délai de 350 jours en `.npmrc`, `pnpm install` résout
+# `typescript@5.9.3` (publié depuis 318 jours) ; la même ligne ici résout
+# `5.9.2`. La porte `pnpm quarantaine` interdit désormais ce placement inerte.
+#
+# CE QUE LE DÉLAI NE FAIT PAS, sur pnpm 10 (mesuré, pas supposé) :
+#   - il ne touche PAS `pnpm install --frozen-lockfile` : la CI, les images
+#     Docker et tout poste qui installe le lockfile en l'état sont inchangés,
+#     même quand le lockfile épingle une version publiée le jour même. La
+#     re-vérification des entrées du lockfile (`trustLockfile`) est une nouveauté
+#     de pnpm 11 ;
+#   - il n'ÉCHOUE jamais : `minimumReleaseAgeStrict` n'existe qu'en pnpm 11.
+#     Quand aucune version de la plage ne satisfait le délai, pnpm retombe
+#     silencieusement sur la plus récente. C'est donc une mesure d'HYGIÈNE, pas
+#     une garde : elle déplace une résolution, elle n'en refuse aucune.
+#
+# IMPACT SUR DEPENDABOT (instruit avant de poser, `AM-50`) : depuis le
+# 2026-07-14, Dependabot applique de lui-même un délai de 3 jours à ses PR de
+# mise à jour. La valeur ci-dessous est celle-là, écrite en clair dans
+# `.github/dependabot.yml` (`cooldown.default-days`) pour qu'elle ne dépende pas
+# d'un défaut de plateforme ; `pnpm quarantaine` garde les deux alignées. Un
+# délai PLUS LONG que le cooldown ferait diverger la plage du manifeste et la
+# version résolue sur les plages larges (`eslint: ^9`), au détriment de la mise
+# à jour proposée. Les correctifs de SÉCURITÉ de Dependabot ignorent le
+# cooldown, par conception : sur une plage large, la résolution pourrait alors
+# retenir une version antérieure au correctif — d'où l'échappatoire nominative
+# `minimumReleaseAgeExclude`, à poser le temps du correctif.
+minimumReleaseAge: 4320

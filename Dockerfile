@@ -83,10 +83,14 @@ ENV APP=$APP
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/apps/$APP/dist ./
 # Défense en profondeur : le runtime tourne sans root DANS l'image (uid/gid 1000
-# = user `node` de node:24-slim), en plus du `user: 1000` du compose serveur.
-# Rien n'exige root ici : les services écoutent sur 3000+, n'écrivent aucun
-# fichier (logs sur stdout, migrations lues depuis l'image) et /app copié par
-# root reste lisible en lecture seule.
+# = user `node` de node:24-slim). Rien n'exige root ici : les services écoutent
+# sur 3000+, n'écrivent aucun fichier (logs sur stdout, migrations lues depuis
+# l'image) et /app copié par root reste lisible en lecture seule — c'est
+# d'ailleurs pourquoi les composes peuvent les lancer en `read_only` (AM-48).
+# NB (corrigé au lot 8 des standards) : cette ligne annonçait « en plus du
+# `user: 1000` du compose serveur ». Ce `user:` n'a JAMAIS existé dans
+# docker-compose.server.yml — l'image est la seule à porter le non-root, et le
+# compose n'a rien à redire tant qu'elle le fait.
 USER 1000:1000
 # Sonde de vie embarquée (lot A6) : l'état de santé suit l'image même hors des
 # healthchecks Compose (docker run nu, staging). Compose la surcharge par service

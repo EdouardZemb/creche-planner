@@ -10,6 +10,16 @@ updates:
       interval: 'weekly'
       day: 'monday'
     open-pull-requests-limit: 10
+    # Quarantaine des publications npm (AM-50, lot 8 des standards) : Dependabot
+    # ne propose une version qu'après ce délai. La plateforme applique 3 jours
+    # par défaut depuis le 2026-07-14 ; on l'écrit en clair pour que la valeur
+    # ne dépende pas d'un défaut, et parce qu'elle doit rester ÉGALE au
+    # `minimumReleaseAge` de `pnpm-workspace.yaml` (4320 minutes) — sinon
+    # Dependabot proposerait une version que pnpm refuserait de résoudre sur les
+    # plages larges. La porte `pnpm quarantaine` tient l'égalité. Les mises à
+    # jour de SÉCURITÉ ignorent ce délai, par conception de Dependabot.
+    cooldown:
+      default-days: 3
     labels:
       - 'dependencies'
       - 'security'

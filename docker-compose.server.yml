@@ -32,6 +32,10 @@
 # (règles DOCKER-USER via ufw-docker) — voir la doc 24, étape pare-feu.
 # Seuls les ports du conteneur `caddy` (80/443) sont autorisés depuis le LAN.
 
+# Durcissement (AM-48) : les 25 services communs le tiennent du fichier de BASE
+# (ancre `x-durcissement`), qui est fusionné ici — rien à redire pour eux. Les
+# ancres YAML ne traversent PAS les fichiers : les deux services que seule la
+# prod lève (caddy, cloudflared) portent donc leur posture en clair ci-dessous.
 services:
   # --- Infrastructure : secrets + redémarrage automatique --------------------
   # Limites : ~25 Mio observés par base (petite volumétrie familiale) ; 512 Mio
@@ -395,6 +399,26 @@ services:
     # d'observabilité (P2-8). Mise à jour délibérée : re-résoudre le tag
     # (`docker buildx imagetools inspect caddy:2-alpine`) et remplacer le digest.
     image: caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    # Durcissement (AM-48) : Caddy tourne root pour se lier à 80/443 — c'est la
+    # SEULE capacité qu'il reprend. Racine en lecture seule : `/data` (certificats
+    # ACME) et `/config` (état autosave) sont des volumes nommés, /tmp un tmpfs.
+    # Effet de bord ASSUMÉ, mesuré sur la pile réelle : Caddy ne peut plus
+    # installer son autorité racine `tls internal` dans le magasin de confiance
+    # DU CONTENEUR (« failed to install root certificate », absent d'un témoin
+    # sans `read_only`). Sans conséquence ici — le certificat est bien émis et
+    # reste récupérable dans `/data/caddy/pki/authorities/local/root.crt`, chemin
+    # que documente la doc 24, et le seul amont de Caddy est `web:80`, en clair.
+    # Cela cesserait d'être vrai le jour où un amont servirait du TLS signé par
+    # cette autorité : il faudrait alors monter le magasin, pas retirer read_only.
+    security_opt:
+      - 'no-new-privileges:true'
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp
     restart: unless-stopped
     mem_limit: 128m
     cpus: 1
@@ -428,6 +452,14 @@ services:
   # cf. caddy ci-dessus pour la procédure de mise à jour délibérée.
   cloudflared:
     image: cloudflare/cloudflared@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
+    # Durcissement (AM-48) : client purement SORTANT (aucun port écouté, aucun
+    # fichier écrit — le jeton du tunnel vient de l'environnement), donc zéro
+    # capacité et racine en lecture seule.
+    security_opt:
+      - 'no-new-privileges:true'
+    cap_drop:
+      - ALL
+    read_only: true
     restart: unless-stopped
     mem_limit: 128m
     cpus: 0.5
