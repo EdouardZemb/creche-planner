@@ -99,6 +99,14 @@ export class FoyersController {
         nbParts: saisie.nbParts,
         enfants: saisie.enfants,
         parents: saisie.parents,
+        // Spread conditionnel (`exactOptionalPropertyTypes`) : jamais de clé à
+        // `undefined` sur le fil. Le relais est explicite champ par champ, c'est
+        // précisément ce qui avait fait oublier `dateEffet`/`motif` à la création
+        // alors que l'édition les porte.
+        ...(saisie.dateEffet !== undefined
+          ? { dateEffet: saisie.dateEffet }
+          : {}),
+        ...(saisie.motif !== undefined ? { motif: saisie.motif } : {}),
         ...(createurEmail !== undefined ? { createurEmail } : {}),
       }),
     );
