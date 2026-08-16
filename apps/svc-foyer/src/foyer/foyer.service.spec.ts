@@ -15,6 +15,7 @@ import {
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
   PREFERENCES_NOTIF_MODIFIEES_TYPE,
+  type FoyerMisAJourPayloadV3,
 } from '@creche-planner/contracts-foyer';
 import type { Acteur } from '@creche-planner/nest-commons';
 import { FoyerService } from './foyer.service.js';
@@ -552,15 +553,16 @@ describe('FoyerService.mettreAJour (versions à date d’effet)', () => {
     await service.mettreAJour(FOYER_ID, DTO_FOYER, ACTEUR);
 
     // Sans ce champ, la copie aval devrait re-dériver la suite — et deux
-    // dérivations finissent par diverger (c'est l'origine d'`AM-55`).
-    expect(insertValues).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: FOYER_MIS_A_JOUR_V3_TYPE,
-        payload: expect.objectContaining({
-          dateEffet: '2026-01-01',
-          dateFin: '2026-06-30',
-        }),
-      }),
+    // dérivations finissent par diverger (c'est l'origine d'`AM-55`). On lit le
+    // payload émis plutôt qu'un `objectContaining` imbriqué : la borne se vérifie
+    // sur la valeur, pas sur la présence de la clé.
+    const emis = insertValues.mock.calls
+      .map((appel) => appel[0] as { type?: unknown; payload?: unknown })
+      .filter((valeurs) => valeurs.type === FOYER_MIS_A_JOUR_V3_TYPE)
+      .map((valeurs) => valeurs.payload as FoyerMisAJourPayloadV3);
+
+    expect(emis.find((p) => p.dateEffet === '2026-01-01')?.dateFin).toBe(
+      '2026-06-30',
     );
   });
 
