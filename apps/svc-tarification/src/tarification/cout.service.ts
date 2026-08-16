@@ -48,6 +48,7 @@ import {
 } from '../fallback/referentiel.client.js';
 import {
   parsePrestationRm,
+  prestationEstVide,
   valoriserPrestation,
   type ContexteTarif,
   type FoyerCalcul,
@@ -261,26 +262,6 @@ export class CoutService {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  /**
-   * Mois sans aucune prestation : coût nul, sans résolution des ressources. Le
-   * consolidé d'une liste vide est le zéro du domaine — on ne le recopie pas ici.
-   */
-  private moisSansPrestation(
-    foyerId: string,
-    mois: string,
-    simule: boolean,
-  ): CoutMoisVue {
-    const consolide = consoliderCoutMoisFoyer([]);
-    return {
-      foyerId,
-      mois,
-      simule,
-      totalCentimes: consolide.total.centimes,
-      prestations: [],
-      lignes: this.serialiserLignes(consolide),
-    };
-  }
-
   /** Coût consolidé d'un foyer pour un mois (réel ou simulé). */
   async coutMois(
     foyerId: string,
@@ -323,28 +304,23 @@ export class CoutService {
     grilles: readonly GrilleTarifaireRow[],
     baremes: readonly BaremePsuRow[],
   ): Promise<CoutMoisVue> {
-    // Les prestations D'ABORD : un mois sans rien à valoriser n'a besoin d'aucune
-    // ressource, et n'a donc aucune raison d'échouer parce que l'historique du foyer
-    // ne remonte pas jusqu'à lui (un foyer créé en mars a un janvier légitimement
-    // vide). C'est ce qui rend le refus ci-dessous supportable.
+    // Les prestations D'ABORD, et les ressources seulement quand une quantité les
+    // rend nécessaires (cf. la boucle). L'amont rend **toujours** une prestation par
+    // contrat, à quantités nulles pour un mois hors période ou jamais saisi :
+    // exiger des ressources dès qu'une ligne existe ferait refuser janvier d'un
+    // foyer créé en mars, donc son année en cours entière.
     const projections = await this.assemblerPrestations(
       mois,
       simule,
       contrats,
       projetees,
     );
-    if (projections.length === 0) {
-      return this.moisSansPrestation(foyerId, mois, simule);
-    }
 
-    // Ressources résolues à la version applicable au 1er du mois (SFD 30, DV-03).
-    // Aucune version ne couvre le mois ⇒ on ne les **invente pas** : avant `AM-55`,
+    // Ressources applicables au 1er du mois (SFD 30, DV-03) ; `undefined` quand
+    // aucune version ne couvre le mois — on ne les **invente pas** : avant `AM-55`,
     // le calcul se rabattait sur la version la plus proche (ou sur la ligne
     // courante) et rendait un montant faux, plausible et muet.
     const donneesFoyer = this.resoudreFoyerAuMois(contexteFoyer, mois);
-    if (donneesFoyer === undefined) {
-      throw new RessourcesInconnuesException(foyerId, mois);
-    }
 
     // Résolution des paramètres tarifaires au 1er du mois (H7 : mensuel au 1er ;
     // les grilles ABCM changent à leur date d'effet, résolues au niveau du mois).
@@ -357,6 +333,20 @@ export class CoutService {
     for (const projection of projections) {
       if (MODES_ABCM_SET.has(projection.mode)) {
         auMoinsUnAbcm = true;
+      }
+      if (donneesFoyer === undefined) {
+        // Ressources inconnues pour ce mois : une quantité à valoriser est un
+        // refus, une prestation vide vaut zéro pour n'importe quelles ressources.
+        if (!prestationEstVide(projection.prestation)) {
+          throw new RessourcesInconnuesException(foyerId, mois);
+        }
+        prestations.push({
+          enfant: projection.enfant,
+          mode: projection.mode,
+          totalCentimes: 0,
+          lignes: [],
+        });
+        continue;
       }
       const { contexte, valideDu } = await this.resoudreContexteTarif(
         projection.mode,

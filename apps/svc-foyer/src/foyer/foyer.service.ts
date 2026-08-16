@@ -383,7 +383,18 @@ export class FoyerService {
     const domaine = this.versDomaine(dto);
     const dateEffet = dto.dateEffet ?? this.aujourdHui();
     const { ligne, tranche } = await this.db.transaction(async (tx) => {
-      const foyers = await tx.select().from(foyer).where(eq(foyer.id, id));
+      // `FOR UPDATE` sur la ligne foyer : elle sert de **verrou de l'historique**
+      // (`AM-55`). `materialiserFins` recalcule toutes les bornes depuis un
+      // instantané ; deux saisies concurrentes sur le même foyer les liraient
+      // toutes deux avant l'insert de l'autre et commiteraient des périodes qui se
+      // chevauchent — que `selectionnerVersionApplicable` masquerait ensuite en
+      // départageant par date d'effet, donc sans le moindre signal. Les deux
+      // transactions restent courtes et ne touchent qu'un foyer.
+      const foyers = await tx
+        .select()
+        .from(foyer)
+        .where(eq(foyer.id, id))
+        .for('update');
       if (!foyers[0]) {
         throw new NotFoundException(`foyer introuvable : ${id}`);
       }

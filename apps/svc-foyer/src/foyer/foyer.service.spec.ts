@@ -186,8 +186,14 @@ function fakeDbTransaction(
   };
   const from = (table: unknown) => {
     const rows = rowsPour(table);
+    // `.where(...)` est awaitable ET expose `.for('update')` : le verrou de
+    // l'historique (AM-55) est posé sur la ligne foyer, le double doit donc le
+    // porter — sans quoi il prouverait une chaîne d'appels qui n'existe plus.
+    const resultat = Object.assign(Promise.resolve(rows), {
+      for: () => Promise.resolve(rows),
+    });
     return Object.assign(Promise.resolve(rows), {
-      where: () => Promise.resolve(rows),
+      where: () => resultat,
     });
   };
   const tx = {
@@ -267,8 +273,14 @@ function fakeDbCreationRollback(): {
         : table === foyerVersion
           ? versionsAccum
           : [];
+    // `.where(...)` est awaitable ET expose `.for('update')` : le verrou de
+    // l'historique (AM-55) est posé sur la ligne foyer, le double doit donc le
+    // porter — sans quoi il prouverait une chaîne d'appels qui n'existe plus.
+    const resultat = Object.assign(Promise.resolve(rows), {
+      for: () => Promise.resolve(rows),
+    });
     return Object.assign(Promise.resolve(rows), {
-      where: () => Promise.resolve(rows),
+      where: () => resultat,
     });
   };
   const tx = {

@@ -90,6 +90,14 @@ export interface ConfigContratCreche {
    * mois de son début : zéro heure mensualisée, zéro heure réservée, partout
    * ailleurs. Le domaine ne générait pas « hors période » : il ne savait pas
    * représenter une période ouverte, et taisait tout le reste.
+   *
+   * ⚠️ **Ce que la période ouverte met en lumière, sans le créer (`AM-90`)** : la
+   * mensualité lissée est facturée sur **chaque** mois couvert, alors qu'elle lisse
+   * un volume annuel sur `nbMensualites` mois. Le modèle suppose donc que la période
+   * dure exactement ce nombre de mois — un contrat fermé de 12 mois à 7 mensualités
+   * sur-facture déjà, et un contrat ouvert le fait indéfiniment. Le domaine n'a
+   * aucune notion des mois **effectivement** facturés ; c'est un arbitrage produit,
+   * pas une correction de code, et il est ouvert au registre.
    */
   readonly valideAu?: string;
   /** Heures annuelles contractualisées (doc 02 §7). */

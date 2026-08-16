@@ -343,6 +343,87 @@ describe('CoutService — foyer versionné à date d’effet (DV-03, US-30-03)',
     });
 
     /**
+     * **Le cas que le repli produit RÉELLEMENT.** `svc-planification` ne rend jamais
+     * une liste vide : `prestationsMois` renvoie toujours **une** prestation par
+     * contrat, à quantités nulles pour un mois hors période ou jamais saisi. Un mois
+     * non couvert par une version arrivait donc ici avec une ligne, et une garde
+     * posée sur « aucune prestation » ne l'aurait jamais vu passer — janvier d'un
+     * foyer créé en mars aurait fait refuser toute l'année en cours.
+     */
+    it('prestation présente mais VIDE : zéro, même sans version couvrant le mois', async () => {
+      const service = new CoutService(
+        fakeDb({
+          foyers: [FOYER_ROW],
+          versions: [versionT3], // en vigueur depuis 2026 seulement
+          contrats: [contrat2023],
+          prestations: [],
+          grilles: [grilleCantine()],
+        }),
+        foyerClient('echec'),
+        // Le repli rend une cantine à ZÉRO jour — ce que fait le vrai service.
+        planificationClient([{ mode: 'CANTINE', nbJours: 0 }]),
+        referentielClient('echec'),
+        horlogeFigee('2026-08-16T00:00:00Z'),
+      );
+
+      const vue = await service.coutMois(FOYER_ID, '2023-10', false);
+
+      expect(vue.totalCentimes).toBe(0);
+      // La ligne reste présente (l'écran distingue « rien à facturer » de « aucun
+      // contrat »), elle ne coûte simplement rien.
+      expect(vue.prestations).toHaveLength(1);
+    });
+
+    it('prestation présente et NON vide : le refus tombe', async () => {
+      const service = new CoutService(
+        fakeDb({
+          foyers: [FOYER_ROW],
+          versions: [versionT3],
+          contrats: [contrat2023],
+          prestations: [],
+          grilles: [grilleCantine()],
+        }),
+        foyerClient('echec'),
+        planificationClient([{ mode: 'CANTINE', nbJours: 1 }]),
+        referentielClient('echec'),
+        horlogeFigee('2026-08-16T00:00:00Z'),
+      );
+
+      await expect(
+        service.coutMois(FOYER_ID, '2023-10', false),
+      ).rejects.toBeInstanceOf(RessourcesInconnuesException);
+    });
+
+    /**
+     * Foyer **sans historique projeté** (v1/v2, ou read model froid rattrapé par le
+     * repli REST) : la ligne « courante » ne porte aucune date. Elle vaut pour le
+     * mois courant — comportement inchangé de l'écran principal — et pour lui seul.
+     */
+    it('sans version projetée : le mois courant passe, un mois passé refuse', async () => {
+      const donnees = {
+        foyers: [FOYER_ROW],
+        versions: [],
+        contrats: [CONTRAT_ROW],
+        prestations: [PRESTATION_ROW], // 16 jours (fakeDb ignore le mois)
+        grilles: [grilleCantine()],
+      };
+      const service = new CoutService(
+        fakeDb(donnees),
+        foyerClient('echec'),
+        planificationClient('echec'),
+        referentielClient('echec'),
+        horlogeFigee('2026-10-15T00:00:00Z'),
+      );
+
+      const courant = await service.coutMois(FOYER_ID, '2026-10', false);
+      expect(courant.totalCentimes).toBe(20288);
+
+      await expect(
+        service.coutMois(FOYER_ID, '2026-09', false),
+      ).rejects.toBeInstanceOf(RessourcesInconnuesException);
+    });
+
+    /**
      * **Sonde de la fin matérialisée.** Les bornes lues sont celles **stockées**, pas
      * une suite re-dérivée : ici la version de 2026 est **close** au 2026-12-31 et sa
      * suivante a disparu de la table (historique purgé, borne T1 doc 37 §3). Une

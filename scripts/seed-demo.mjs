@@ -54,6 +54,14 @@ const VERIFIER = process.argv.includes('--verify');
 
 /** Foyer fiscal de démonstration. */
 const FOYER_DEFAUT = {
+  // Date d'effet des ressources, ALIGNÉE sur le début du plus ancien contrat
+  // (01/01/2026). Sans elle, la version serait datée du **jour du seed** et ne
+  // couvrirait aucun des mois de la démonstration : depuis `AM-55`, le calcul de
+  // coût refuse un mois qu'aucune version de ressources ne couvre, au lieu de le
+  // valoriser avec celles d'aujourd'hui. L'oracle (mars 2026 → 851,16 €) n'est
+  // donc calculable que si la famille a déclaré ses ressources dès janvier — ce
+  // qui est aussi le scénario réaliste.
+  dateEffet: '2026-01-01',
   // Ressources mensuelles retenues par la CAF (rappel de calcul des contrats crèche).
   ressourcesMensuelles: 6716.92,
   // Revenu fiscal de référence.
