@@ -64,6 +64,13 @@
       "when": 1786518214822,
       "tag": "0008_purge_bornes_temporelles",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786968060000,
+      "tag": "0009_fin_de_version",
+      "breakpoints": true
     }
   ]
 }

@@ -483,6 +483,15 @@ appliquée au boot (`MigrationService` + asset webpack).
   (politiques PSU/ABCM) puis **`consoliderCoutMoisFoyer`** ; `GET /api/couts/annuel?foyer&annee&simule`
   consolide sur l'année (transition crèche → école). Les **frais fixes ABCM** (cotisation + 1ʳᵉ
   inscription) sont rattachés à **septembre** (cohérent avec le domaine).
+- **Depuis le 2026-08-16 (lot 1 « le coût ne ment plus », `AM-55`), le calcul refuse plutôt que
+  d'inventer.** Les ressources d'un mois sont celles de la version qui le **couvre**, bornes
+  **stockées** (`foyer_version.date_fin`, `NULL` = version en vigueur) et non plus dérivées à la
+  lecture. Un mois qui porte des prestations sans qu'aucune version ne le couvre répond **422
+  `RESSOURCES_INCONNUES_AU_MOIS`**, et l'écran dit quoi enregistrer pour le réparer ; l'année
+  entière est refusée si un seul de ses mois est dans ce cas — un total dont un douzième est
+  inventé est un total faux. Un mois **sans prestation** vaut zéro sans exiger de ressources, si
+  bien qu'un foyer créé en cours d'année garde ses mois vides. Avant ce lot, l'année 2023 d'un
+  foyer connu depuis 2026 s'affichait **complète et plausible**, valorisée aux ressources de 2026.
 - **Contrat Pact** : consommateur `api-gateway` (`pacts/api-gateway-svc-tarification.json`, interaction
   « coût du mois », **octobre 2026**, cantine **CT-10 = 20 288 centimes**) ; provider `svc-tarification`
   vérifié (boot du bundle réel + base réelle via `TARIFICATION_DATABASE_URL`, `stateHandlers` qui

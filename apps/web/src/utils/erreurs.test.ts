@@ -43,6 +43,25 @@ describe('messageErreur', () => {
     );
   });
 
+  /**
+   * `AM-55` : le refus de calculer un mois sans ressources connues arrive en **422**.
+   * Sans lecture du code métier, il empruntait le message générique du statut —
+   * « vérifiez les champs marqués », sur un écran qui n'a pas de formulaire.
+   */
+  it('422 + RESSOURCES_INCONNUES_AU_MOIS → dit ce qui manque et comment le réparer', () => {
+    const message = messageErreur(
+      new ApiError(422, {
+        code: 'RESSOURCES_INCONNUES_AU_MOIS',
+        title: 'Unprocessable Content',
+      }),
+    );
+
+    expect(message).toMatch(/ressources déclarées/i);
+    expect(message).toMatch(/date d’effet/i);
+    // Et surtout : plus le message de validation de formulaire.
+    expect(message).not.toMatch(/champs marqués/i);
+  });
+
   it('TypeError (fetch réseau) → service indisponible', () => {
     expect(messageErreur(new TypeError('Failed to fetch'))).toMatch(
       /Service indisponible/i,

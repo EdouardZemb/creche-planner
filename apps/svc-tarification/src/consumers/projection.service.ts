@@ -255,6 +255,9 @@ export class ProjectionService {
           id: p.versionId,
           foyerId: p.foyerId,
           dateEffet: p.dateEffet,
+          // Champ absent = événement d'avant `AM-55` : `null` reproduit la dérivation
+          // d'alors (période ouverte, départagée par la date d'effet la plus récente).
+          dateFin: p.dateFin ?? null,
           ressourcesMensuellesCentimes: p.ressourcesMensuellesCentimes,
           rfrCentimes: p.rfrCentimes,
           tranche: p.tranche,
@@ -269,6 +272,7 @@ export class ProjectionService {
           set: {
             foyerId: p.foyerId,
             dateEffet: p.dateEffet,
+            dateFin: p.dateFin ?? null,
             ressourcesMensuellesCentimes: p.ressourcesMensuellesCentimes,
             rfrCentimes: p.rfrCentimes,
             tranche: p.tranche,

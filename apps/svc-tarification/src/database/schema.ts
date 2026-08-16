@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
   index,
@@ -78,6 +79,14 @@ export const foyerVersion = pgTable(
     foyerId: uuid('foyer_id').notNull(),
     /** Date d'effet ISO `YYYY-MM-DD`. */
     dateEffet: varchar('date_effet', { length: 10 }).notNull(),
+    /**
+     * **Fin** de la version, ISO `YYYY-MM-DD` **incluse** ; `NULL` = version **en
+     * vigueur**. Copie de `svc-foyer.foyer_version.date_fin` (`AM-55`). C'est la
+     * borne que le calcul du coût interroge : un mois qu'aucune période ne couvre
+     * n'a **pas** de ressources connues, et le service le dit au lieu de se rabattre
+     * sur celles d'aujourd'hui.
+     */
+    dateFin: varchar('date_fin', { length: 10 }),
     ressourcesMensuellesCentimes: integer('ressources_mensuelles_centimes')
       .notNull()
       .default(0),
@@ -94,6 +103,11 @@ export const foyerVersion = pgTable(
   },
   (table) => [
     unique('foyer_version_foyer_date_uq').on(table.foyerId, table.dateEffet),
+    // Borne de rétention T1 (doc 37 §3) sur la copie. Index partiel : une version
+    // en vigueur (`date_fin IS NULL`) n'est jamais purgée.
+    index('foyer_version_date_fin_idx')
+      .on(table.dateFin)
+      .where(sql`${table.dateFin} is not null`),
   ],
 );
 

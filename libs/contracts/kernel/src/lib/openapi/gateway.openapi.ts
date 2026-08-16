@@ -757,6 +757,7 @@ const documentEcrit = {
               'PARENT_PRINCIPAL_EXISTANT',
               'DERNIER_PARENT_ACTIF',
               'PERIODE_CHEVAUCHANTE',
+              'RESSOURCES_INCONNUES_AU_MOIS',
             ],
           },
           erreurs: {
@@ -2718,6 +2719,16 @@ const documentEcrit = {
               },
             },
           },
+          '422': {
+            description:
+              'Le mois porte des prestations à valoriser, mais aucune version ' +
+              'de ressources du foyer ne le couvre (code ' +
+              '`RESSOURCES_INCONNUES_AU_MOIS`). Le calcul REFUSE plutôt que de ' +
+              'se rabattre sur d’autres ressources : un montant faux et ' +
+              'plausible ne se distingue pas d’un montant juste. Se répare en ' +
+              'enregistrant des ressources à une date d’effet couvrant la ' +
+              'période, jamais en réessayant.',
+          },
         },
       },
     },
@@ -2752,6 +2763,15 @@ const documentEcrit = {
                 schema: { $ref: '#/components/schemas/CoutAnnuelVue' },
               },
             },
+          },
+          '422': {
+            description:
+              'Au moins un mois de l’année porte des prestations qu’aucune ' +
+              'version de ressources ne couvre (code ' +
+              '`RESSOURCES_INCONNUES_AU_MOIS`). L’année **entière** est ' +
+              'refusée : un total dont un douzième est inventé est un total ' +
+              'faux, et rien ne le signalerait dans la somme. Les mois sans ' +
+              'aucune prestation, eux, valent zéro sans exiger de ressources.',
           },
         },
       },

@@ -3,16 +3,20 @@ import {
   Injectable,
   Logger,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { and, eq, like } from 'drizzle-orm';
-import { MODES_ABCM } from '@creche-planner/contracts-kernel';
+import {
+  MODES_ABCM,
+  type CodeProbleme,
+} from '@creche-planner/contracts-kernel';
 import {
   AucuneVersionApplicableError,
   Money,
   depuisBornes,
-  depuisSuite,
   selectionnerVersionApplicable,
 } from '@creche-planner/shared-kernel';
+import { jourCourantParis } from '@creche-planner/shared-semaine';
 import {
   BaremeEffortPsu,
   CoutMois,
@@ -22,7 +26,7 @@ import {
   estPremiereAnneeAbcm,
   type ParametresGrilleAbcm,
 } from '@creche-planner/tarification-domain';
-import { DRIZZLE } from '@creche-planner/nest-commons';
+import { CLOCK, DRIZZLE, type Clock } from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   baremePsu,
@@ -166,6 +170,29 @@ export interface CoutAnnuelVue {
   readonly mois: readonly CoutMoisVue[];
 }
 
+/**
+ * **422 structuré** : le mois porte des prestations à valoriser, mais aucune version
+ * de ressources ne le couvre — le foyer n'a pas déclaré de ressources pour cette
+ * période, ou l'historique qui la portait a été purgé (borne T1, doc 37 §3).
+ *
+ * Le statut est **422 et non 503** : rien n'est indisponible, rien ne guérira en
+ * réessayant. Et il n'est pas 404 : le foyer et le mois existent, c'est le calcul qui
+ * n'a pas de fondement. Le corps porte le `code` métier que l'écran discrimine
+ * (`CODES_PROBLEME`, RFC 9457) — la passerelle le réémet tel quel via `relayer`, le
+ * `ProblemeFilter` le met en forme.
+ */
+export class RessourcesInconnuesException extends UnprocessableEntityException {
+  constructor(foyerId: string, mois: string) {
+    super({
+      statusCode: 422,
+      code: 'RESSOURCES_INCONNUES_AU_MOIS' satisfies CodeProbleme,
+      message:
+        `aucune version de ressources ne couvre ${mois} pour le foyer ${foyerId} : ` +
+        'le coût de ce mois ne peut pas être calculé',
+    });
+  }
+}
+
 /** Une prestation projetée du read model, prête à valoriser. */
 interface PrestationProjetee {
   readonly enfant: string;
@@ -231,7 +258,28 @@ export class CoutService {
     private readonly foyerClient: FoyerClient,
     private readonly planificationClient: PlanificationClient,
     private readonly referentielClient: ReferentielClient,
+    @Inject(CLOCK) private readonly clock: Clock,
   ) {}
+
+  /**
+   * Mois sans aucune prestation : coût nul, sans résolution des ressources. Le
+   * consolidé d'une liste vide est le zéro du domaine — on ne le recopie pas ici.
+   */
+  private moisSansPrestation(
+    foyerId: string,
+    mois: string,
+    simule: boolean,
+  ): CoutMoisVue {
+    const consolide = consoliderCoutMoisFoyer([]);
+    return {
+      foyerId,
+      mois,
+      simule,
+      totalCentimes: consolide.total.centimes,
+      prestations: [],
+      lignes: this.serialiserLignes(consolide),
+    };
+  }
 
   /** Coût consolidé d'un foyer pour un mois (réel ou simulé). */
   async coutMois(
@@ -275,14 +323,28 @@ export class CoutService {
     grilles: readonly GrilleTarifaireRow[],
     baremes: readonly BaremePsuRow[],
   ): Promise<CoutMoisVue> {
-    // Ressources résolues à la version applicable au 1er du mois (SFD 30, DV-03).
-    const donneesFoyer = this.resoudreFoyerAuMois(contexteFoyer, mois);
+    // Les prestations D'ABORD : un mois sans rien à valoriser n'a besoin d'aucune
+    // ressource, et n'a donc aucune raison d'échouer parce que l'historique du foyer
+    // ne remonte pas jusqu'à lui (un foyer créé en mars a un janvier légitimement
+    // vide). C'est ce qui rend le refus ci-dessous supportable.
     const projections = await this.assemblerPrestations(
       mois,
       simule,
       contrats,
       projetees,
     );
+    if (projections.length === 0) {
+      return this.moisSansPrestation(foyerId, mois, simule);
+    }
+
+    // Ressources résolues à la version applicable au 1er du mois (SFD 30, DV-03).
+    // Aucune version ne couvre le mois ⇒ on ne les **invente pas** : avant `AM-55`,
+    // le calcul se rabattait sur la version la plus proche (ou sur la ligne
+    // courante) et rendait un montant faux, plausible et muet.
+    const donneesFoyer = this.resoudreFoyerAuMois(contexteFoyer, mois);
+    if (donneesFoyer === undefined) {
+      throw new RessourcesInconnuesException(foyerId, mois);
+    }
 
     // Résolution des paramètres tarifaires au 1er du mois (H7 : mensuel au 1er ;
     // les grilles ABCM changent à leur date d'effet, résolues au niveau du mois).
@@ -469,43 +531,55 @@ export class CoutService {
   }
 
   /**
-   * Résout les ressources applicables **au 1er du mois** (H7). Sur un foyer versionné
-   * (v3), sélectionne la version couvrant le mois — une date antérieure à la plus
-   * ancienne version se **rabat** dessus (comportement mono-version pour le passé).
-   * Sinon retombe sur la ligne « courante » (v1/v2 ou repli) : mêmes ressources tous
-   * les mois, comportement **inchangé** pour un foyer non versionné.
+   * Résout les ressources applicables **au 1er du mois** (H7), ou `undefined` si
+   * **aucune version ne couvre ce mois** — cas qui n'existait pas avant `AM-55` :
+   * la fin d'une version étant dérivée à la lecture, la plus ancienne était étirée
+   * vers le passé et la plus récente vers l'avenir, si bien qu'il y avait *toujours*
+   * une réponse. C'est ce qui rendait le coût d'une année passée **faux et
+   * plausible** : 2023 était valorisé aux ressources de 2026, sans un log.
+   *
+   * Les bornes sont désormais celles **stockées** (`date_fin`, `null` = version en
+   * vigueur), plus une dérivation locale : deux consommateurs qui dérivent la même
+   * suite finissent par en dériver deux.
+   *
+   * Foyer sans historique projeté (v1/v2, ou read model froid rattrapé par le repli
+   * REST) : la ligne « courante » ne porte **aucune date**, elle décrit l'état
+   * d'aujourd'hui. On l'accepte donc pour le mois courant et les suivants —
+   * comportement inchangé de l'écran principal — et jamais pour un mois passé, dont
+   * elle ne dit rien.
    */
   private resoudreFoyerAuMois(
     contexte: FoyerContexte,
     mois: string,
-  ): FoyerCalcul {
+  ): FoyerCalcul | undefined {
     if (contexte.versions.length === 0) {
-      if (!contexte.courant) {
-        throw new ServiceUnavailableException(
-          `foyer indisponible pour le mois ${mois}`,
-        );
-      }
-      return contexte.courant;
+      return mois >= this.moisCourant() ? contexte.courant : undefined;
     }
-    const date = `${mois}-01`;
-    const triees = [...contexte.versions].sort((a, b) =>
-      a.dateEffet < b.dateEffet ? -1 : a.dateEffet > b.dateEffet ? 1 : 0,
-    );
-    const premiere = triees[0];
-    const v =
-      premiere && date < premiere.dateEffet
-        ? premiere
-        : selectionnerVersionApplicable(
-            depuisSuite(
-              triees.map((r) => ({ dateEffet: r.dateEffet, valeur: r })),
-            ),
-            date,
-          ).valeur;
+    const v = this.selectionner(
+      contexte.versions.map((r) => ({
+        valideDu: r.dateEffet,
+        valideAu: r.dateFin,
+        valeur: r,
+      })),
+      `${mois}-01`,
+    )?.valeur;
+    if (v === undefined) {
+      return undefined;
+    }
     return {
       ressourcesMensuellesCentimes: v.ressourcesMensuellesCentimes,
       nbEnfantsACharge: v.nbEnfantsACharge,
       tranche: v.tranche as 1 | 2 | 3,
     };
+  }
+
+  /**
+   * Mois courant ISO `YYYY-MM`, lu en **Europe/Paris** (convention métier du dépôt,
+   * `jourCourantParis`) depuis l'horloge injectée : en UTC, le 1er du mois entre
+   * minuit et 2 h passerait pour le mois précédent.
+   */
+  private moisCourant(): string {
+    return jourCourantParis(this.clock.maintenant()).slice(0, 7);
   }
 
   /** Identité des contrats du foyer (indépendante du mois). */

@@ -93,6 +93,27 @@ export const foyerMisAJourPayloadV3Schema = foyerMisAJourPayloadV2Schema.extend(
     dateEffet: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'date ISO YYYY-MM-DD attendue'),
+    /**
+     * **Fin** de la version, ISO `YYYY-MM-DD` **incluse** — veille de la date d'effet
+     * de la version suivante ; `null` = version **en vigueur** (aucune suivante).
+     *
+     * Matérialisée depuis le lot 1 « le coût ne ment plus » (`AM-55`) : elle était
+     * jusque-là **dérivée à la lecture** par chaque consommateur, ce qui rendait
+     * indiscernables « version encore en vigueur » et « version dont on ignore la
+     * suite » — l'aval valorisait alors un mois passé avec des ressources qui ne le
+     * couvraient pas, sans lever d'erreur.
+     *
+     * **Champ absent** = événement émis **avant** ce lot, encore en vol dans un
+     * outbox : le consommateur le projette en `null`, ce qui reproduit exactement la
+     * dérivation d'avant (la sélection à date départage deux périodes ouvertes par la
+     * date d'effet la plus récente). Le premier enregistrement de ressources ré-émet
+     * l'historique complet et rétablit les bornes.
+     */
+    dateFin: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'date ISO YYYY-MM-DD attendue')
+      .nullable()
+      .optional(),
   },
 );
 export type FoyerMisAJourPayloadV3 = z.infer<

@@ -131,6 +131,41 @@ describe('semaineTypeDepuisJson', () => {
 });
 
 describe('genererPrestationMois (crèche PSU)', () => {
+  /**
+   * **`AM-13` — le domaine savait filtrer une période, pas en représenter une
+   * ouverte.** `contrat.valide_au` est nullable (contrat sans terme) ; le mappeur
+   * repliait alors sur `valideDu`, donc sur une période d'**un seul jour**. Constat
+   * négatif mesuré avant correction sur un contrat au 2026-09-01 sans terme, mois
+   * d'octobre : `heuresMensualisees = 0` et `heuresReservees = 0` — le contrat
+   * cessait de facturer dès le mois suivant son début, sans erreur ni trace.
+   */
+  it('contrat sans terme (valideAu null) : facture les mois postérieurs au début', () => {
+    const prestations = genererPrestationMois(
+      contratCreche({ valideDu: '2026-09-01', valideAu: null }),
+      MOIS,
+      {},
+      [],
+    ) as PrestationsMoisCreche;
+
+    // 885,5 h / 7 mensualités = 126,5 h — la mensualité d'un contrat vivant.
+    expect(prestations.heuresMensualisees).toBe(126.5);
+    // 4 lundis × 8 h 30 = 34 h réservées en octobre.
+    expect(prestations.heuresReservees.enHeures()).toBe(34);
+  });
+
+  /** La borne haute, quand elle existe, garde son effet : rien après le terme. */
+  it('contrat terminé : le mois postérieur au terme reste à zéro', () => {
+    const prestations = genererPrestationMois(
+      contratCreche({ valideDu: '2026-01-01', valideAu: '2026-09-30' }),
+      MOIS,
+      {},
+      [],
+    ) as PrestationsMoisCreche;
+
+    expect(prestations.heuresMensualisees).toBe(0);
+    expect(prestations.heuresReservees.enHeures()).toBe(0);
+  });
+
   it('mappe la saisie complète : complément + jours sup cohérents, absences, jours non facturables', () => {
     const saisie: SaisiePlanningJson = {
       complementMinutes: 30,

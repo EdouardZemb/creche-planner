@@ -56,6 +56,16 @@ export const foyerVersion = pgTable(
       .references(() => foyer.id, { onDelete: 'cascade' }),
     /** Date d'effet ISO `YYYY-MM-DD` (granularité jour, H1). */
     dateEffet: date('date_effet').notNull(),
+    /**
+     * **Fin de la version**, ISO `YYYY-MM-DD` **incluse** : la veille de la date
+     * d'effet de la version suivante. `NULL` = version **en vigueur** (aucune
+     * suivante). Matérialisée (lot 1 « le coût ne ment plus », `AM-55`) alors qu'elle
+     * était dérivée à la lecture : sans elle, « en vigueur » et « suite inconnue » se
+     * confondent, et une borne de rétention posée sur `date_effet` emporte la version
+     * **encore applicable** d'un foyer inactif. Toujours recalculée par
+     * `materialiserFins`, dans la transaction qui touche l'historique.
+     */
+    dateFin: date('date_fin'),
     ressourcesMensuellesCentimes: bigint('ressources_mensuelles_centimes', {
       mode: 'number',
     }).notNull(),
@@ -74,6 +84,12 @@ export const foyerVersion = pgTable(
   },
   (table) => [
     unique('foyer_version_foyer_date_uq').on(table.foyerId, table.dateEffet),
+    // Borne de rétention T1 (doc 37 §3), ancrée sur la **fin** de version. Index
+    // partiel : une version en vigueur (`date_fin IS NULL`) n'est jamais purgée,
+    // elle n'a rien à faire dans l'index.
+    index('foyer_version_date_fin_idx')
+      .on(table.dateFin)
+      .where(sql`${table.dateFin} is not null`),
   ],
 );
 

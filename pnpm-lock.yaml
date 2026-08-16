@@ -675,6 +675,9 @@ importers:
       '@creche-planner/shared-kernel':
         specifier: workspace:*
         version: link:../../libs/shared-kernel
+      '@creche-planner/shared-semaine':
+        specifier: workspace:*
+        version: link:../../libs/shared/semaine
       '@creche-planner/tarification-domain':
         specifier: workspace:*
         version: link:../../libs/tarification/domain

@@ -69,6 +69,34 @@ describe('ContratCreche — construction (invariants)', () => {
     ).toThrow(PeriodeContratInvalideError);
   });
 
+  /**
+   * Contrat **sans terme** (`AM-13`) : `valideAu` absent est une période ouverte, pas
+   * une donnée manquante. Les deux cas d'un même invariant se testent, parce que le
+   * refus doit rester lisible quand il n'y a pas de fin à citer.
+   */
+  it('accepte une période ouverte (contrat sans terme)', () => {
+    const contrat = ContratCreche.creer({
+      valideDu: '2026-01-01',
+      heuresAnnuellesContractualisees: 885.5,
+      nbMensualites: 7,
+      semaineType: semaineMia(),
+    });
+
+    expect(contrat.couvreMois('2030-06')).toBe(true);
+    expect(contrat.couvreMois('2025-12')).toBe(false);
+  });
+
+  it('rejette un début non ISO même sans fin déclarée', () => {
+    expect(() =>
+      ContratCreche.creer({
+        valideDu: '01/01/2026',
+        heuresAnnuellesContractualisees: 885.5,
+        nbMensualites: 7,
+        semaineType: semaineMia(),
+      }),
+    ).toThrow(PeriodeContratInvalideError);
+  });
+
   it('rejette des heures annuelles négatives (INV-01)', () => {
     expect(() =>
       ContratCreche.creer({
