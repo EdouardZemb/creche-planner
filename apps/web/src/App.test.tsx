@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
@@ -142,6 +142,19 @@ const dossierFactice = {
 function rendre(url: string) {
   entrees = [url];
   return render(<App />);
+}
+
+/**
+ * Panneau du disclosure « Plus », résolu par son `aria-controls` — sans
+ * assertion non nulle (le ratchet ESLint compte chaque `!`), et en échouant
+ * clairement si le câblage ARIA disparaît.
+ */
+function panneauDe(bouton: HTMLElement): HTMLElement {
+  const id = bouton.getAttribute('aria-controls');
+  const panneau = id === null ? null : document.getElementById(id);
+  if (panneau === null)
+    throw new Error('aria-controls ne désigne aucun panneau');
+  return panneau;
 }
 
 describe('App — coquille de navigation', () => {
@@ -404,6 +417,57 @@ describe('App — coquille de navigation', () => {
     await screen.findByText('PAGE_CONTRATS');
     expect(bouton).toHaveAttribute('aria-expanded', 'false');
     expect(panneau).not.toHaveClass('ouvert');
+  });
+
+  it('WCAG 2.2 SC 2.4.11 : sortir du panneau « Plus » au clavier le referme (le focus suivant n’est pas masqué)', async () => {
+    const user = userEvent.setup();
+    rendre(`/foyers/${FOYER_ID}/planning`);
+    await screen.findByText('PAGE_PLANNING');
+
+    const bouton = screen.getByRole('button', { name: 'Plus' });
+    const panneau = panneauDe(bouton);
+    await user.click(bouton);
+    expect(panneau).toHaveClass('ouvert');
+
+    // Sous 768 px le panneau est une feuille FIXE au-dessus du contenu : tant
+    // qu'il reste ouvert, tout contrôle de la page qui prend le focus derrière
+    // lui est entièrement masqué (SC 2.4.11). Porter le focus hors de la nav
+    // doit donc le refermer AVANT que la cible ne devienne focalisée.
+    const dehors = document.createElement('button');
+    dehors.textContent = 'Contrôle de la page';
+    document.body.appendChild(dehors);
+    // Retrait en `finally` : sur échec, ce bouton survivrait au `cleanup` de
+    // RTL (il n'est pas dans le conteneur rendu) et polluerait les requêtes
+    // `screen` des tests suivants du fichier — un échec en cascaderait d'autres.
+    try {
+      // `focus()` réel (l'événement `focusout` porte son `relatedTarget`) ;
+      // `act` ne fait que vider le rendu déclenché, il ne fabrique pas
+      // l'événement.
+      await act(async () => {
+        dehors.focus();
+      });
+
+      expect(panneau).not.toHaveClass('ouvert');
+      expect(bouton).toHaveAttribute('aria-expanded', 'false');
+    } finally {
+      dehors.remove();
+    }
+  });
+
+  it('WCAG 2.2 SC 2.4.11 : Échap referme le panneau « Plus » et rend le focus à son bouton', async () => {
+    const user = userEvent.setup();
+    rendre(`/foyers/${FOYER_ID}/planning`);
+    await screen.findByText('PAGE_PLANNING');
+
+    const bouton = screen.getByRole('button', { name: 'Plus' });
+    const panneau = panneauDe(bouton);
+    await user.click(bouton);
+    expect(panneau).toHaveClass('ouvert');
+
+    await user.keyboard('{Escape}');
+    expect(panneau).not.toHaveClass('ouvert');
+    expect(bouton).toHaveAttribute('aria-expanded', 'false');
+    expect(bouton).toHaveFocus();
   });
 
   it('Nav : « Coûts annuels » garde son nom accessible malgré le libellé court d’onglet', async () => {

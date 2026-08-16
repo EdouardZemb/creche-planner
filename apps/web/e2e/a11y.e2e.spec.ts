@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Route } from '@playwright/test';
+import { test, expect, devices, type Page, type Route } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 // LOT 7 / spec 11 §6.3 : audit d'accessibilité automatisé (axe-core) sur l'app
@@ -27,8 +27,15 @@ const FOYER_ID = 'foyer-a11y';
 const ANNEE = new Date().getFullYear();
 const MOIS = `${ANNEE}-10`;
 
-// Tags WCAG visés : niveau A et AA, versions 2.0 et 2.1.
-const TAGS_WCAG_AA = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
+// Tags WCAG visés : niveau A et AA, versions 2.0, 2.1 **et 2.2** (lot 9).
+//
+// ⚠️ `wcag22aa` n'est PAS décoratif et son absence ne se voyait pas : c'est le
+// seul tag qui sélectionne `target-size` (SC 2.5.8), la seule règle 2.2 qu'axe
+// sache exécuter — et cette règle est déclarée `enabled: false` dans axe-core,
+// donc rien ne la fait tourner tant qu'un tag ne la nomme pas. Mesuré au lot 9 :
+// avec les quatre tags d'origine, axe sélectionnait 69 règles et `target-size`
+// n'en faisait pas partie. Un audit vert ne disait alors RIEN de WCAG 2.2.
+const TAGS_WCAG_AA = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 const dossier = {
   foyer: {
@@ -469,5 +476,134 @@ test.describe("Audit d'accessibilité automatisé (axe-core, WCAG 2.1 AA)", () =
     // Fermeture au clavier (Échap, héritée de Modale) → dialog démonté.
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
+  });
+});
+
+// --- Lot 9 : WCAG 2.2 sur la PRÉSENTATION MOBILE -----------------------------
+//
+// Le `playwright.config.ts` n'a qu'un projet, `Desktop Chrome` : jusqu'au lot 9,
+// l'audit axe n'avait donc **jamais** vu l'app telle que son utilisateur
+// principal la voit. Ce n'est pas un simple changement de largeur — sous 768 px,
+// trois structures n'existent QUE là : la barre d'onglets fixe du bas, la
+// feuille « Plus » posée au-dessus du contenu, et la modale en bottom-sheet.
+// Sur desktop, `display: contents` dissout les deux premières en simples liens
+// d'en-tête ; l'audit les voyait, mais jamais dans leur présentation réelle.
+//
+// `devices['Pixel 5']` porte un `defaultBrowserType` que Playwright REFUSE dans
+// un `describe` (« forces a new worker ») : on l'écarte et on garde le reste
+// (viewport, isMobile, hasTouch, deviceScaleFactor).
+const { defaultBrowserType: _navigateurIgnore, ...PIXEL_5 } =
+  devices['Pixel 5'];
+
+test.describe('Audit WCAG 2.2 AA — présentation mobile (< 768 px)', () => {
+  test.use(PIXEL_5);
+
+  test.beforeEach(async ({ page }) => {
+    await amorcerStockage(page);
+    await mockerBff(page);
+  });
+
+  test('planning (barre d’onglets fixe visible) — 0 violation AA', async ({
+    page,
+  }) => {
+    await page.goto(`/foyers/${FOYER_ID}/planning?mois=${MOIS}`);
+    await expect(
+      page.getByRole('heading', { name: /Planning mensuel/i }),
+    ).toBeVisible();
+    // La barre d'onglets n'existe qu'ici : c'est bien la présentation mobile.
+    await expect(page.locator('.nav-onglets')).toBeVisible();
+    const r = await auditer(page, 'mobile/planning');
+    expect(r.violations).toEqual([]);
+  });
+
+  test('formulaire foyer (cibles tactiles, SC 2.5.8) — 0 violation AA', async ({
+    page,
+  }) => {
+    await page.goto('/foyers/new');
+    await expect(
+      page.getByRole('heading', { name: /Créer ma famille/i }),
+    ).toBeVisible();
+    const r = await auditer(page, 'mobile/foyers-new');
+    expect(r.violations).toEqual([]);
+  });
+
+  test('panneau « Plus » ouvert — 0 violation AA', async ({ page }) => {
+    await page.goto(`/foyers/${FOYER_ID}/planning?mois=${MOIS}`);
+    await page.getByRole('button', { name: /Plus/ }).click();
+    await expect(page.locator('.nav-plus-panneau.ouvert')).toBeVisible();
+    const r = await auditer(page, 'mobile/panneau-plus');
+    expect(r.violations).toEqual([]);
+  });
+
+  test('SC 2.4.11 : sortir du panneau « Plus » au clavier ne laisse aucun focus sous la feuille', async ({
+    page,
+  }) => {
+    // Constat d'origine (lot 9) : le panneau est un disclosure — ni piège de
+    // focus, ni `inert`. `Tab` depuis son dernier lien continuait DANS le
+    // contenu, sous une feuille `position: fixed`. Mesuré alors : 6 à 31
+    // contrôles entièrement recouverts par écran, dont les actions primaires.
+    await page.goto(`/foyers/${FOYER_ID}/contrats`);
+    await expect(
+      page.getByRole('heading', { name: 'Contrats', exact: true }),
+    ).toBeVisible();
+
+    const panneau = page.locator('.nav-plus-panneau');
+    await page.getByRole('button', { name: /Plus/ }).click();
+    await expect(panneau).toHaveClass(/ouvert/);
+
+    // Traversée clavier réelle : on tabule jusqu'à ce que le focus quitte la
+    // nav, en vérifiant à CHAQUE arrêt qu'il n'est pas recouvert par la feuille.
+    for (let i = 0; i < 30; i++) {
+      await page.keyboard.press('Tab');
+      const verdict = await page.evaluate(() => {
+        const el = document.activeElement;
+        if (!(el instanceof HTMLElement)) return null;
+        const feuille = document.querySelector('.nav-plus-panneau.ouvert');
+        if (feuille === null || feuille.contains(el)) return null;
+        const f = feuille.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return null;
+        // « Entièrement masqué » au sens du SC 2.4.11 (minimum).
+        const masque =
+          r.top >= f.top &&
+          r.bottom <= f.bottom &&
+          r.left >= f.left &&
+          r.right <= f.right;
+        return masque
+          ? `${el.tagName} « ${(el.textContent ?? '').trim().slice(0, 40)} »`
+          : null;
+      });
+      expect(
+        verdict,
+        `focus entièrement masqué par la feuille « Plus » : ${verdict ?? ''}`,
+      ).toBeNull();
+    }
+  });
+
+  test('SC 3.2.6 : le mécanisme d’aide occupe le même rang relatif sur chaque page', async ({
+    page,
+  }) => {
+    // Aide au sens du SC 3.2.6 : la page publique d'information sur les données,
+    // qui porte la marche à suivre pour joindre le service. Elle est atteignable
+    // depuis tout écran par le pied de page — et doit y occuper le même rang.
+    for (const url of [
+      `/foyers/${FOYER_ID}/dashboard`,
+      `/foyers/${FOYER_ID}/contrats`,
+      '/mentions',
+    ]) {
+      await page.goto(url);
+      const rang = await page.evaluate(() => {
+        const pied = document.querySelector('main#contenu > .pied-page');
+        if (pied === null) return 'aucun pied de page dans <main>';
+        const parent = pied.parentElement;
+        if (parent === null) return 'pied sans parent';
+        return parent.lastElementChild === pied
+          ? 'dernier enfant de main'
+          : `rang ${Array.from(parent.children).indexOf(pied)} sur ${parent.children.length}`;
+      });
+      expect(rang, `rang du mécanisme d’aide sur ${url}`).toBe(
+        'dernier enfant de main',
+      );
+    }
   });
 });

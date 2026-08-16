@@ -382,7 +382,49 @@ toujours un volume **anonyme** hérité de leur image, ce qui rendait leur exemp
 du plugin), `AM-85` (le durcissement fait échouer la mise à jour des plugins embarqués de
 Grafana à chaque démarrage).
 
-## Lot 9 — WCAG 2.2 (`AM-49`)
+## Lot 9 — WCAG 2.2 (`AM-49`) — ✅ livré 2026-08-15
 
-Évaluation critère par critère des nouveautés 2.2, intégrée à la cible doc 11 ; à
-coupler avec les chantiers mobile en cours (`/upgrade-qualite-mobile`).
+Les neuf critères ajoutés par WCAG 2.2 sont statués un par un en
+[doc 11 §8](../../docs/11-spec-accessibilite-ct-ut.md) : six dans la cible (A/AA), trois
+AAA écartés par écrit. **Deux échecs réels, deux angles morts d'outillage** — et les deux
+angles morts sont le résultat principal, parce qu'ils rendaient les deux échecs invisibles.
+
+**L'outil ne regardait pas.** L'audit `axe-core` ne demandait que
+`wcag2a`/`wcag2aa`/`wcag21a`/`wcag21aa` : **69 règles, aucune de 2.2**. `target-size`
+(SC 2.5.8) est la seule règle 2.2 qu'axe sache exécuter, elle y est déclarée
+`enabled: false`, et **seul** le tag `wcag22aa` la met en route. Un audit vert ne disait
+donc rien de 2.2 — et rien dans son verdict ne le laissait deviner. Second angle mort :
+`playwright.config.ts` n'a qu'un projet `Desktop Chrome`, donc l'audit n'avait **jamais**
+vu la présentation mobile ; or la barre d'onglets fixe, la feuille « Plus » et la modale
+en bottom-sheet n'existent que sous 768 px (`display: contents` les dissout au-dessus).
+
+- **SC 2.4.11 « Focus non masqué (minimum) », AA — échec, corrigé.** Le panneau « Plus »
+  est un _disclosure_ posé en `position: fixed` au-dessus du contenu : ni piège de focus,
+  ni `inert`. `Tab` depuis son dernier lien continuait **dans le contenu, sous la feuille**.
+  Mesuré par parcours clavier réel (Pixel 5) sur 8 routes : **6 à 31 contrôles entièrement
+  recouverts par écran**, dont « Créer ma famille », « Enregistrer », « Supprimer le
+  contrat ». Le panneau se referme désormais dès qu'un focus arrive hors de la nav, et sur
+  `Échap`. **Sans panneau ouvert, le critère passait déjà** — `scroll-padding-bottom`
+  couvre la barre fixe, et le bandeau hors-ligne collant n'a produit **aucun** recouvrement.
+- **SC 3.3.7 « Saisie redondante », A — échec, corrigé.** Le formulaire de création
+  redemandait l'adresse **vérifiée** avec laquelle la personne venait de s'authentifier.
+  L'enjeu dépasse le confort : `moi.foyers` est résolu côté serveur depuis les lignes
+  parent portant cette adresse, donc une ligne absente ou mal orthographiée fait créer un
+  foyer dont son auteur **n'est pas parent** — et qu'il ne retrouve pas en mode borné.
+- **SC 2.5.8, 2.5.7 et 3.2.6 — conformes, et vérifiés plutôt que supposés.** 0 violation
+  `target-size` sur 10 routes desktop et 3 mobiles ; les 8 cibles rendues sous 24 px
+  relèvent toutes de l'exception d'espacement (plus de 24 px entre centres, la plus serrée
+  à 50 px). Aucun geste de glissement n'existe (FullCalendar en `dateClick` seul).
+  Le mécanisme d'aide (`/mentions` par `PiedPage`) occupe le même rang relatif partout.
+- **SC 3.3.8 — écarté par écrit.** L'application n'a **aucune** étape d'authentification :
+  tout est délégué à Cloudflare Access, hors dépôt. Ce que la porte garde est cette
+  absence — le jour où l'app fait naître son propre écran de connexion, le renoncement
+  devient faux et la CI le dit.
+
+Porte : **`pnpm wcag`** (7 sondes `--autotest` + une sonde réelle jouée à la main : un
+`input type="password"` posé dans `apps/web/src` fait refuser la porte, qui nomme le
+fichier). Périmètre déclaré au registre §5 — elle ne **mesure** aucun critère, c'est
+`e2e-web` qui le fait ; elle garde l'accord entre la cible écrite, les gardes citées et
+le périmètre de l'outil.
+
+Consigné : `AM-49` ✅, `AM-86`, `LE-59`, `EM-15`.

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { NavLink, useLocation, useMatch } from 'react-router-dom';
 import { PastilleAValider } from '../notifications/PastilleAValider';
 import { ClocheNotifications } from '../notifications/ClocheNotifications';
@@ -56,9 +56,52 @@ export function Entete() {
   const { pathname } = useLocation();
   const [plusOuvert, setPlusOuvert] = useState(false);
   const idPanneauPlus = useId();
+  const refBoutonPlus = useRef<HTMLButtonElement>(null);
+  const refNav = useRef<HTMLElement>(null);
   const fermerPlus = () => {
     setPlusOuvert(false);
   };
+
+  /**
+   * WCAG 2.2 — SC 2.4.11 « Focus non masqué (minimum) », AA.
+   *
+   * Sous 768 px, `.nav-plus-panneau.ouvert` est une **feuille fixe** posée
+   * au-dessus du contenu (`position: fixed`, z-index 40). Ce panneau est un
+   * _disclosure_ : il ne piège pas le focus et ne rend pas le reste inerte —
+   * donc `Tab` depuis son dernier lien continuait **dans le contenu, sous la
+   * feuille**. Mesuré au lot 9 sur les 8 routes auditées : 6 à 31 contrôles
+   * par écran entièrement recouverts, dont les actions primaires (« Créer ma
+   * famille », « Enregistrer », « Supprimer le contrat »).
+   *
+   * Le remède tient au fait que le panneau n'a **aucune raison de rester
+   * ouvert** quand le focus l'a quitté : on le referme, ce qui découvre la
+   * cible avant qu'elle ne reçoive le focus.
+   *
+   * Les écouteurs vivent sur le `document` plutôt que sur la `<nav>` : ce qu'on
+   * surveille est l'arrivée du focus **ailleurs**, pas son départ d'ici. Un
+   * `onBlur` de nav dirait la même chose de façon détournée — et `jsx-a11y`
+   * refuse à juste titre un gestionnaire clavier sur un repère non interactif.
+   */
+  useEffect(() => {
+    if (!plusOuvert) return;
+    const surFocusEntrant = (e: FocusEvent) => {
+      const cible = e.target;
+      if (cible instanceof Node && refNav.current?.contains(cible) !== true)
+        setPlusOuvert(false);
+    };
+    // Échap referme et rend le focus au bouton (motif disclosure APG).
+    const surClavier = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setPlusOuvert(false);
+      refBoutonPlus.current?.focus();
+    };
+    document.addEventListener('focusin', surFocusEntrant);
+    document.addEventListener('keydown', surClavier);
+    return () => {
+      document.removeEventListener('focusin', surFocusEntrant);
+      document.removeEventListener('keydown', surClavier);
+    };
+  }, [plusOuvert]);
   // Sur mobile, l'onglet « Plus » s'allume quand la page courante est l'une des
   // destinations rangées dans son panneau (au même titre qu'un NavLink actif) —
   // pages de gestion du foyer comme pages globales.
@@ -76,7 +119,7 @@ export function Entete() {
       <NavLink to="/" end className="marque">
         Crèche Planner
       </NavLink>
-      <nav aria-label="Navigation principale">
+      <nav aria-label="Navigation principale" ref={refNav}>
         {id && (
           <>
             {/* Destinations QUOTIDIENNES d'un parent : sur mobile, barre
@@ -114,6 +157,7 @@ export function Entete() {
               </NavLink>
               <button
                 type="button"
+                ref={refBoutonPlus}
                 className={
                   plusActif ? 'nav-plus-bouton actif' : 'nav-plus-bouton'
                 }
