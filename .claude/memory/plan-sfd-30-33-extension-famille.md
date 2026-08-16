@@ -1,6 +1,6 @@
 ---
 name: plan-sfd-30-33-extension-famille
-description: "4 SFD brouillons (docs 30→33) — versionnement dates d'effet, vacances scolaires, travail/CP/revenus parents, planning famille — décisions PO 2026-07-19 + audit abstractions P1→P6"
+description: "4 SFD (docs 30→33) — versionnement dates d'effet, vacances scolaires (VALIDÉE v1.0 le 2026-08-16, calendrier versionné, 5 lots), travail/CP/revenus parents, planning famille — décisions PO + audit abstractions P1→P6"
 metadata:
   node_type: memory
   type: project
@@ -22,10 +22,17 @@ metadata:
 **Révision complète des plans 2026-07-30/31** (workflow multi-agents : audit ancrages + croisement inter-plans + réécriture + QC) — les 3 plans 31/32/33 et `factures-reelles.md` (ex `streamed-juggling-pudding.md`, renommé) sont ré-ancrés sur le code réel post-plan-30 (main `9aee291`). Décisions inter-plans consignées DANS les fichiers :
 
 - **Ordre d'exécution : consolidation (R1 train n°16 + C0 + B2 + C5) → 31 → 32 → 33 → factures** ; exécution séquentielle obligatoire sur les surfaces partagées (`gateway.openapi.ts` + oracle « 38 routes » depuis C7, types générés, pacts, `services.json`, `TYPES_NOTIFICATION`).
-- **Lot 5 du plan 31 (alerte vacances) RETIRÉ** — absorbé par le plan 33 lot 5 (`CONFLITS_FAMILLE`/CF-03) ; retirer un type de `TYPES_NOTIFICATION` ≠ revert simple (5-6 points de contact : foyer-events, bff.dto, preferences.util, MonProfilPage, OpenAPI/types).
+- **Alerte vacances du plan 31 RETIRÉE** (elle portait le n° « lot 5 » avant le redécoupage du 2026-08-16, numéro désormais occupé par le lot web) — absorbée par le plan 33 lot 5 (`CONFLITS_FAMILLE`/CF-03) ; retirer un type de `TYPES_NOTIFICATION` ≠ revert simple (5-6 points de contact : foyer-events, bff.dto, preferences.util, MonProfilPage, OpenAPI/types).
 - **`joursFeries(annee, regime)` hissé en shared-kernel** (pas planification-domain : depConstraints Nx interdisent l'import depuis famille-domain) ; régimes FR/FR_ALSACE_MOSELLE, CH_BL ajouté par le 32.
 - **Plan 33 GELÉ** tant que 31 lots 1-3 et 32 lots 1-3 pas mergés ; son read-model `contrat_garde` refondu PAR VERSION (leçon #257, PK surrogate).
 - **32 lot 1 = checklist canonique « nouveau service » (12 items)**, réutilisée par factures ; réservation croisée ports/streams : svc-famille 3007/FAMILLE, svc-facturation 3003/FACTURATION.
 - **Factures réelles** : lot 0 PO bloquant (H1-H9 : OCR/PII, stockage justificatifs, EUR-only, garde alternée→svc-foyer, barème crédit d'impôt versionné via shared-kernel `versionnement.ts`) ; en DERNIER, au plus tôt après 32 lot 1 ; homonymie fiscale à clarifier PO (crédit d'impôt garde ≠ vue après-impôt du 32 lot 5).
 
-Reste : validation PO des SFD **et** des hypothèses des plans (notamment : service unique svc-famille, DV-04 réduit à la consolidation, calendrier non versionné-30 en v1, D6/D7 du 31 ajoutés à la révision). Lié : [[plan-fondations-backend]], [[feature-qualite-couts]], [[plan-consolidation-ui-qualite]].
+**SFD 31 VALIDÉE PO le 2026-08-16 — v1.0, avec UN amendement.** La première des quatre à sortir du brouillon.
+
+- **Amendement n°1 retenu : le calendrier EST versionné à date d'effet.** La D6 du plan (« calendrier non versionné-30 en v1 », protection du passé par avertissement d'incohérences) est **renversée** — RM-31-03 tient tel qu'écrit, un mois déjà facturé devient intouchable. ⚠️ Piège du chantier, écrit en D6 révisée : `versionnement.ts` versionne le temps **métier** et NE fournit PAS l'axe de connaissance ; les deux `UNIQUE` de la D2 deviennent faux (unicité **partielle**, parmi les lignes ouvertes) ; une génération qui résout sans `aLaDate` compile, passe la table de vérité et annule tout l'amendement en silence.
+- **Découpage 4 → 5 lots** : l'ancien lot 1 est scindé sur la couture domaine | persistance (1 = domaine versionné pur + fériés, 2 = schéma + API où le contrat se fige, 3 = import + écran, 4 = génération + reprise, 5 = web). Les anciens 2/3/4 ont donc glissé — attention en relisant d'anciennes notes.
+- **Écarts acceptés en l'état** : la reprise ne crée d'exceptions que sur la crèche ⇒ les fermetures **non fériées** (02–04/01, 15–17/05, 27–31/07) cesseront d'exclure cantine/péri/ALSH (écart voulu, à constater au déploiement) ; **US-31-05 reportée** au plan 33. Q-31-01 (calendrier réel de l'école bilingue vs zone B) reste ouverte, à vérifier à la rentrée.
+- **NE PAS DÉMARRER** : la séquence PO du 2026-08-16 place ce chantier après « Le coût ne ment plus » et la migration FullCalendar 7.
+
+Reste : validation PO des SFD **30, 32 et 33** (la 31 est faite) **et** des hypothèses de leurs plans (notamment : service unique svc-famille, DV-04 réduit à la consolidation). Lié : [[plan-fondations-backend]], [[feature-qualite-couts]], [[plan-consolidation-ui-qualite]].
