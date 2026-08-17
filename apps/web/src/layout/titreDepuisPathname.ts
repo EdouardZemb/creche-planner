@@ -1,3 +1,5 @@
+import { NOM_PRODUIT } from '../hooks/useTitrePage';
+
 /**
  * Titre dérivé du `pathname`, en miroir des `useTitrePage` déclarés par chaque page.
  * Sert UNIQUEMENT de **repli du `document.title`** tant qu'aucune page n'a posé son
@@ -25,6 +27,7 @@ export function titreDepuisPathname(pathname: string): string {
     if (segment === 'modifier') return 'Ma famille';
     return 'Coûts annuels';
   }
-  // Pages de récupération / 404 et redirection racine : annonce neutre.
-  return 'Martha';
+  // Pages de récupération / 404 et redirection racine : annonce neutre. `titreDocument`
+  // reconnaît ce cas et n'y appose PAS le suffixe (sinon « Martha — Martha »).
+  return NOM_PRODUIT;
 }

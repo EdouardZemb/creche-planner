@@ -87,7 +87,11 @@ LAN, dont le rollback repasse par le même `docker-compose`
   d'e-mail et le titre OpenAPI disent « Martha ».
 - `NOTIF_EMAIL_FROM` est renommé dans le gabarit et dans le défaut Compose. La valeur
   **réelle** de production vit dans `.env.server`, **hors dépôt** : tant qu'elle n'y est
-  pas reportée à la main, les mails partent encore de « Crèche Planner ».
+  pas reportée à la main, un établissement reçoit un message **expédié par « Crèche
+  Planner »** dont le corps dit « Martha » — deux noms sans rapport, chez le seul lecteur
+  qui ne peut pas les rapprocher. Le geste est **bloquant** et écrit comme tel dans le
+  [runbook de déploiement](../exploitation/runbook-deploiement.md) ; aucune porte ne le
+  couvre (`pnpm environnement` juge la **déclaration** de la variable, pas sa valeur).
 - Les tests qui affirmaient l'ancien nom (13 assertions, 8 fichiers) suivent, et une
   nouvelle spec tient l'arbitrage du mail au service : aucune occurrence de « Martha »
   sans son apposition, et pas de nom de produit dans l'objet.
