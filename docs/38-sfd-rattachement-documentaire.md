@@ -1,11 +1,40 @@
 # 38 — SFD Rattachement documentaire : la GED du foyer branchée sur l'app
 
-> Statut : **Brouillon — à valider PO** · Version 0.1 · 2026-08-17
+> Statut : **Brouillon — à valider PO** · Version 0.2 · 2026-08-17
 > Instruit la piste `AM-65` ([doc 34](34-registre-ameliorations.md)) et la décision laissée
 > ouverte par la note de vision (`.claude/plans/vision-plateforme-foyer-2026-08.md` §2 :
 > « probablement via l'API de la GED, décision à instruire le moment venu »).
 > **Rouvre `ADR-0007` et amende `ADR-0008`** — c'est le point dur de cette spécification, et il
 > est traité au §7, pas renvoyé à l'exécution.
+
+## 0. Amendement 1 — le transport (2026-08-17)
+
+La v0.1 posait une question décisive (`Q-38-03`) : accepter que les documents du foyer
+transitent **en clair au niveau du proxy Cloudflare**. Réponse du PO : _« dans le principe
+d'accord avec le clair, mais existe-t-il des solutions plus sécurisées ? »_ — avec mandat
+d'explorer, y compris de changer de GED si c'est elle qui bloque.
+
+**Ce n'est pas elle qui bloque, et la question était mal cadrée par ma v0.1.** L'étude complète
+est au §7.7. Ses trois résultats :
+
+1. **Le « clair au proxy » ne vient pas de Paperless, il vient du tunnel.** Cloudflare termine
+   TLS à son bord — c'est le mécanisme même du produit, pas un réglage. **Changer de GED n'y
+   change rien** : Docspell, Papra, Teedy ou Mayan transiteraient exactement pareil. Le choix de
+   GED et le choix de transport sont deux sujets **sans intersection**.
+2. **Il existe une solution plus sûre, et elle est déjà à moitié installée.** Le tailnet du foyer
+   existe, le serveur y annonce déjà la route du LAN, un téléphone y est déjà. Servir les routes
+   documentaires par un **second bord Tailscale** met le contenu hors de portée de Cloudflare —
+   sans renoncer au « depuis n'importe où », puisqu'un tailnet marche partout.
+3. **L'étude a trouvé autre chose, plus urgent que ce chantier** : le porte d'entrée LAN de
+   l'application **contourne l'authentification** (elle est entièrement portée par Cloudflare
+   Access), et l'ouverture de la route de sous-réseau Tailscale du 2026-08-16 a transformé cette
+   porte de « depuis la maison » en « depuis n'importe où pour un membre du tailnet ». Consigné
+   en `AM-94` — **antérieur et indépendant** de cette SFD.
+
+**Ce que l'amendement change dans cette spécification** : `RM-38-02` est réécrite (deux bords, et
+lequel sert quoi), `Q-38-03` est **tranchée**, et le §10 en tire les conséquences. Le reste — les
+réouvertures d'ADR, la version d'API, le filtre de foyer — est **inchangé** : il ne dépendait pas
+du transport.
 
 ## 1. Contexte & problème
 
@@ -167,9 +196,25 @@ qui le documentent, et j'en rattache un.
 
 - **RM-38-01 — Paperless reste l'unique coffre.** Aucun octet de document n'est écrit par
   creche-planner, nulle part. Ce qui est stocké ici est une **référence** et son contexte métier.
-- **RM-38-02 — Aucune exposition directe du coffre.** Paperless n'est joignable ni depuis
-  Internet, ni depuis le navigateur du parent : le seul chemin est
-  `navigateur → tunnel → passerelle → Paperless`, sur un lien réseau serveur-à-serveur (§7.3).
+- **RM-38-02 — Aucune exposition directe du coffre, et un seul bord pour les documents.**
+  Paperless n'est joignable ni depuis Internet, ni depuis le navigateur du parent : le chemin est
+  `navigateur → passerelle → Paperless`, sur un lien réseau serveur-à-serveur (§7.3).
+  **Amendée le 2026-08-17 (§7.7)** : la passerelle a **deux bords**, et ils ne servent pas la même
+  chose.
+  - **Bord public** (tunnel Cloudflare, identité par JWT Access) : toute l'application, **sauf**
+    le documentaire. Une route documentaire y répond **404**.
+  - **Bord tailnet** (Tailscale Serve, identité par en-tête vérifié) : les routes documentaires
+    — dépôt, recherche, aperçu, téléchargement — **et leurs métadonnées** (titre, type, date).
+
+  La partition est une **règle gardée**, pas une convention : une route documentaire servie par le
+  bord public doit faire échouer la CI. Conséquence assumée : hors tailnet, la partie
+  documentaire est **absente et annoncée comme telle**, jamais en erreur.
+
+- **RM-38-09 — Un en-tête d'identité n'est digne de foi que si le service est injoignable
+  autrement.** L'identité tailnet n'est acceptée que sur le chemin qui la produit ; la même
+  requête, avec le même en-tête, présentée par une autre route, est **refusée**. C'est la sonde
+  négative du bord tailnet, et la seule chose qui distingue cette identité d'un en-tête que
+  n'importe qui peut écrire.
 - **RM-38-03 — Version d'API épinglée et vérifiée.** Chaque appel porte
   `Accept: application/json; version=9`, et la réponse est confrontée à son en-tête
   `X-Api-Version`. Un écart **arrête le service au démarrage** au lieu de dégrader (§7.4).
@@ -346,10 +391,15 @@ Quatre points à trancher :
 tiers qui voit le plus : la terminaison TLS a lieu chez lui, donc **tout le trafic applicatif en
 clair**. Faire transiter les documents du foyer par la passerelle les fait donc transiter **en
 clair au niveau de son proxy**. Aujourd'hui Cloudflare voit des prénoms, des plannings et des
-revenus ; demain il verrait des bulletins de paie et des avis d'imposition. **C'est la
-conséquence la plus lourde de ce chantier, et elle est structurelle** : elle ne dépend d'aucun
-choix d'implémentation, seulement de la décision d'intégrer. La ligne « Ce qu'il voit » de
-Cloudflare devra être réécrite en même temps que `T10`.
+revenus ; demain il verrait des bulletins de paie et des avis d'imposition.
+
+⚠️ **Amendé le 2026-08-17 (§7.7).** La v0.1 écrivait ici que cette conséquence était
+« structurelle, indépendante de tout choix d'implémentation ». **C'était faux, et c'est
+l'erreur que l'amendement corrige** : elle ne dépendait pas du choix de GED — sur ce point la
+v0.1 avait raison — mais elle dépendait entièrement du **bord** qui sert la route. Servir le
+documentaire par un second bord tailnet la fait disparaître. Ce qui subsiste, et qui doit être
+écrit tel quel dans `T10` et dans la ligne Cloudflare du §2 : le bord public apprend **qu'il
+existe des justificatifs**, jamais ce qu'ils sont.
 
 ### 7.6 Le relais ne doit rien perdre en silence — `MO-1` / `LE-48`
 
@@ -369,6 +419,167 @@ Trois exigences, à tenir dès le premier lot :
    dérive, il ne s'écrit pas de la même main que l'observé) ;
 3. la sonde négative du lot est explicite : **retirer un champ de la fixture doit faire échouer**
    la garde. Une garde qui reste verte ne garde rien.
+
+### 7.7 Le transport — étude d'architecture (amendement 1)
+
+#### D'abord : ce qui est en cause, et ce qui ne l'est pas
+
+Cloudflare Tunnel fonctionne en **terminant TLS au bord de Cloudflare**, puis en ré-chiffrant
+vers le serveur. Ce n'est ni un défaut de configuration ni une option : c'est ce qui permet à
+Cloudflare de faire ce qu'on lui demande — filtrer, authentifier (Access), protéger. Un proxy qui
+authentifie une requête HTTP doit la lire.
+
+Trois conséquences qu'il faut poser avant de comparer quoi que ce soit :
+
+- **La GED n'y est pour rien.** Aucun choix de GED ne change ce qui se passe au bord du tunnel.
+- **Le chiffrement au repos n'y est pour rien non plus.** Il protège un disque volé, pas un
+  proxy qui lit un flux déchiffré.
+- **Cloudflare voit déjà tout le reste** (doc 37 §2 : prénoms, plannings, revenus, e-mails). La
+  question n'est donc pas « ouvre-t-on une brèche », mais « **augmente-t-on la sensibilité de ce
+  qui y passe** ». Un bulletin de paie ou un avis d'imposition, oui, franchement.
+
+#### (a) Faire passer les documents par le tailnet
+
+Le foyer a déjà un tailnet : le serveur y est, il **annonce déjà la route `192.168.1.0/24`**
+(approuvée le 2026-08-16), un téléphone y est déjà, et le serveur porte déjà un point d'entrée
+TLS **interne** (Caddy, `tls internal`) qui ne passe par aucun tiers. Ajouter la seconde
+personne, c'est **un appareil de plus dans le tailnet** — pas une infrastructure de plus.
+
+Un tailnet n'est pas « la maison » : c'est un réseau chiffré de bout en bout entre appareils, qui
+marche depuis n'importe où. Le « depuis n'importe où » du chantier est donc **préservé**.
+
+| Variante                                                                                                                                                 | Effort     | Valeur                                                                                                              | Limite                                                                                                                                                                          |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **a1 — second bord Tailscale devant la passerelle**, les routes documentaires servies **uniquement** par lui ; le reste de l'app continue par Cloudflare | Moyen      | **Zéro octet de document au bord de Cloudflare**, tout en gardant l'app publique et son écran unique                | Deux bords à tenir ; identité à résoudre sur le second (voir ci-dessous) ; hors tailnet, la partie documentaire est **absente** — il faut que l'écran le dise, pas qu'il plante |
+| **a2 — toute l'app par le tailnet**, Cloudflare abandonné                                                                                                | Faible     | Le plus simple à décrire                                                                                            | ⛔ **Supprime l'authentification** : elle est entièrement portée par Cloudflare Access (voir `AM-94`). Ce serait un recul de sécurité, pas un progrès                           |
+| **a3 — variante minimale** : Paperless joint **directement** par le tailnet pour déposer et consulter ; l'app ne fait que le **lot 4** (rattachement)    | **Faible** | Aucun octet, **et aucun développement de dépôt ni de recherche** — c'est la position d'origine de la note de vision | Deux applications à ouvrir, comme aujourd'hui ; et les **titres** de documents transitent quand même si l'app les affiche (voir « la fuite qui reste »)                         |
+
+**Le point technique qui décide entre a1 et a2** : l'identité. L'application n'a **aucune
+authentification propre** — elle lit un JWT signé par Cloudflare Access (`Cf-Access-Jwt-Assertion`,
+validé contre le JWKS du team domain). Une requête qui n'arrive pas par Cloudflare arrive donc
+**sans personne**. C'est pourquoi a2 est écartée.
+
+a1 le résout proprement : **Tailscale Serve ajoute un en-tête d'identité vérifiée**
+(`Tailscale-User-Login`, l'adresse e-mail du membre du tailnet) aux requêtes qu'il relaie. La
+passerelle gagnerait donc une **seconde source d'identité**, symétrique de la première : un bord
+public qui présente un JWT Cloudflare, un bord tailnet qui présente une identité Tailscale. La
+piste d'audit continue de nommer une personne des deux côtés.
+
+⚠️ **Et c'est là qu'est le piège, documenté par Tailscale lui-même** : un en-tête d'identité est
+trivialement falsifiable par quiconque peut joindre le service **sans passer par Serve**. La règle
+est donc absolue — le service qui accepte `Tailscale-User-Login` ne doit être **joignable que par
+Serve**, jamais par une autre route. C'est exactement la même faute que l'échappatoire
+`X-Dev-User-Email` que le dépôt s'interdit déjà en production. Sonde négative obligatoire : la
+même requête, avec le même en-tête, envoyée hors du chemin Serve, doit être **refusée**.
+
+⚠️ **Détail d'exploitation déjà connu** : `paperless-caddy` occupe `0.0.0.0:443`, donc aussi le
+`:443` de l'adresse tailnet — Tailscale Serve ne peut pas s'y poser. Le remède est un **nœud
+Tailscale dédié** à creche-planner (conteneur compagnon, adresse et nom MagicDNS propres), ce qui
+est de toute façon la forme la plus propre : les deux produits gardent des bords distincts.
+
+#### (b) Chiffrement de bout en bout (côté client)
+
+Chiffrer dans le navigateur avant l'envoi mettrait le contenu hors de portée de tout le monde —
+Cloudflare, le serveur, et la GED elle-même.
+
+**Et c'est précisément pourquoi ça ne marche pas ici** : une GED qui reçoit un chiffré ne peut ni
+l'OCRiser, ni l'indexer, ni le chercher. Or l'OCR et la recherche plein texte **sont** la valeur
+de Paperless — c'est ce qui distingue une GED d'un dossier de fichiers. Le chiffrement de bout en
+bout ne rend pas le chantier moins pratique : il **le supprime**.
+
+Les variantes hybrides ne sauvent pas grand-chose et il faut le dire franchement : chiffrer le
+fichier et laisser l'index en clair, c'est laisser en clair le texte **intégral** du document —
+la partie la plus révélatrice. Chiffrer l'index aussi, c'est renoncer à la recherche. Faire l'OCR
+dans le navigateur donnerait un texte de qualité très inférieure, sur téléphone, pour un index
+qu'il faudrait ensuite chiffrer.
+
+**Écarté** — non par difficulté, mais parce que ce serait incompatible avec l'objet du chantier.
+
+#### (c) Chiffrement au repos
+
+État réel, sans supposer :
+
+- **Les sauvegardes sont déjà chiffrées** (`age`) avant de partir hors-site : Google Drive ne
+  voit rien en clair (doc 37 §2 et T6). C'est acquis, et c'est le seul endroit où le chiffrement
+  au repos protégeait vraiment quelque chose — un tiers.
+- **Paperless ne chiffre pas ses documents**, et ce n'est pas un oubli : le projet a **retiré**
+  cette fonction, au motif que la phrase de passe vivait sur la même machine que les documents et
+  que le **texte intégral restait en clair dans la base**. La 3.0 en supprime jusqu'à la
+  possibilité de déchiffrer les anciens.
+- **Le chiffrement du disque du serveur** est le seul qui aurait un sens ici, et il protège
+  contre **un seul scénario** : quelqu'un repart avec la machine ou le disque. Il ne protège rien
+  contre un proxy qui lit un flux, ni contre un accès au serveur allumé.
+
+**Conclusion** : utile, mais **hors sujet** pour la question posée. À traiter comme un sujet
+d'exploitation séparé, pas comme une réponse au transport.
+
+#### (d) Une autre GED offrirait-elle un vrai chiffrement ?
+
+Examiné uniquement sous cet angle — il n'est pas question de refaire le choix de GED :
+
+| GED               | Chiffrement                                                                                                                    | Verdict pour la question posée                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| **Paperless-ngx** | Aucun — **retiré** du projet, avec sa raison                                                                                   | —                                                                                                               |
+| **Docspell**      | **Au repos, réel** (décision d'architecture dédiée) — mais sa propre doc précise que les **métadonnées ne sont pas chiffrées** | Ne change rien au transit                                                                                       |
+| **Papra**         | **Au repos, réel** (AES-256-GCM, rotation de clé de chiffrement)                                                               | Ne change rien au transit ; et bien plus jeune que Paperless, pour une instance déjà en service et déjà peuplée |
+| **Teedy, Mayan**  | Rien de comparable côté chiffrement                                                                                            | —                                                                                                               |
+
+**Aucune ne répond à la question.** Toutes chiffrent (au mieux) **au repos**, c'est-à-dire le
+scénario (c) — et toutes avec la même limite structurelle : sur un serveur auto-hébergé, la clé
+vit à côté des données. C'est mot pour mot le raisonnement par lequel Paperless a retiré la
+sienne.
+
+**Recommandation : ne pas changer de GED.** Migrer coûterait une instance en service, une reprise
+de données, une nouvelle chaîne de sauvegarde et une nouvelle surface à durcir — pour une
+propriété qui ne traite pas le problème.
+
+#### (e) Se passer de Cloudflare : TLS de bout en bout par ouverture de port
+
+Publier le port du Caddy du serveur donnerait un TLS non interrompu, du navigateur jusqu'à la
+maison. Ce qu'on perd est plus lourd que ce qu'on gagne :
+
+- **l'authentification disparaît** avec Cloudflare Access (même problème qu'en a2) ;
+- l'application devient **exposée sur Internet**, sans le filtrage qui la couvre aujourd'hui ;
+- il faut un certificat public, donc un nom public et une exposition assumée ;
+- et la connexion domestique devient une cible directe.
+
+Les équivalents auto-hébergés du tunnel (Pangolin, NetBird, Headscale…) sont des **VPN**, donc
+des variantes de (a) — avec, en plus, un serveur à opérer. Pour deux personnes qui ont déjà un
+tailnet, ce serait remplacer une chose qui marche par la même chose, en plus coûteux.
+
+**Écarté.**
+
+#### Recommandation pour ce foyer
+
+**a1 en cible, a3 comme repli assumé si l'effort du second bord n'est pas jugé rentable.**
+
+Ce qui fait pencher pour a1 dans **ce** cas précis : deux utilisateurs, tous deux équipables de
+Tailscale, un tailnet déjà en service, un serveur qui y annonce déjà sa route, et un point
+d'entrée TLS interne déjà en place. La brique manquante est un **nœud Tailscale dédié à
+creche-planner** et une **seconde source d'identité** dans la passerelle. C'est du travail borné,
+et il rend vrai quelque chose de simple : **aucun document du foyer n'est lisible par un tiers,
+nulle part sur son trajet.**
+
+Ce que a1 impose, et qui doit être accepté avec lui :
+
+1. **Les routes documentaires n'existent pas sur le bord public.** Elles répondent 404 par
+   Cloudflare. Ce n'est pas une dégradation à gérer, c'est une **partition** — et elle se garde
+   par une porte (une route documentaire servie par le bord public doit faire échouer la CI).
+2. **Hors tailnet, la partie documentaire est absente, et l'écran le dit.** « Vos justificatifs
+   sont visibles depuis les appareils du foyer » — pas une erreur, pas un chargement infini.
+3. **La seconde personne doit rejoindre le tailnet.** C'est le seul geste utilisateur du
+   dispositif, et il est aussi le prérequis de a3.
+
+#### La fuite qui reste, et qu'il faut décider
+
+Même en a1, une chose transite par le bord public : **le fait qu'un document existe**, et ce que
+l'app en dit — titre, type, date — si elle les affiche à côté d'un contrat ou d'un mois.
+Un titre est parfois plus révélateur que le fichier.
+
+**Position retenue** : les **métadonnées documentaires suivent les documents** — elles vivent sur
+le bord tailnet. Le bord public n'affiche qu'un **compte neutre** (« 3 justificatifs — visibles
+depuis les appareils du foyer »), qui garde le lot 4 utile publiquement sans rien dire de ce que
+les documents sont.
 
 ## 8. Prérequis et point de décision : la version de Paperless
 
@@ -412,10 +623,17 @@ implique de connaître :
   « oui » impose la position (a) ; « non » permet la position (b).
 - **Q-38-02** — L'effacement d'un foyer doit-il emporter ses documents du coffre ? (§7.5, option
   proposée : **non**, seuls les rattachements partent.)
-- **Q-38-03** — Faire transiter les documents du foyer en clair au niveau du proxy Cloudflare
-  est-il accepté ? (§7.5 dernier paragraphe.) Si non, la seule autre voie connue est un accès
-  réservé au réseau local ou au tailnet — ce qui retire au chantier son intérêt principal
-  (déposer depuis n'importe où).
+- ~~**Q-38-03** — Faire transiter les documents du foyer en clair au niveau du proxy Cloudflare
+  est-il accepté ?~~ → **tranchée le 2026-08-17 (§7.7)**. L'accord de principe du PO est acquis,
+  mais l'étude a montré qu'on peut faire mieux **sans rien perdre** : les documents et leurs
+  métadonnées passent par un **second bord Tailscale**, le bord public ne voit qu'un compte
+  neutre. La prémisse de la question était fausse — « réservé au tailnet » n'est pas « réservé à
+  la maison » : un tailnet marche depuis n'importe où. Reste à confirmer par le PO le seul geste
+  utilisateur que cela suppose : **la seconde personne rejoint le tailnet** (`Q-38-07`).
+- **Q-38-07** — Le repli **a3** (Paperless joint directement par le tailnet pour déposer et
+  consulter ; l'app ne fait que le rattachement) est-il préféré à **a1** (second bord devant
+  l'app) ? a3 coûte presque rien à développer et protège autant ; a1 garde un écran unique. Les
+  deux exigent le même prérequis utilisateur, et a1 peut se livrer **après** a3.
 - **Q-38-04** — Ordre de la valeur : dépôt/recherche d'abord, ou lien d'abord ? (§2.1 ;
   recommandation : dépôt/recherche, à condition que le lot 3 reste engagé.)
 - **Q-38-05** — Quelle taille maximale de dépôt ? Elle contraint le corps accepté par la
@@ -431,6 +649,13 @@ implique de connaître :
   amendement à `ADR-0008` §1 (§7.2), et l'entrée `T10` à la doc 37 (§7.5).
 - Un geste d'exploitation irréversible en pratique : le lien réseau entre deux piles jusqu'ici
   isolées (§7.3).
-- Un changement de nature du risque : les documents les plus sensibles du foyer transitent par la
-  passerelle, donc par le tiers le plus exposé du registre (§7.5).
+- ~~Un changement de nature du risque : les documents les plus sensibles du foyer transitent par
+  la passerelle, donc par le tiers le plus exposé du registre.~~ → **levé par l'amendement 1**
+  (§7.7) : les documents et leurs métadonnées ne passent plus par le bord public. Ce qui reste au
+  registre est un fait plus modeste, à écrire tel quel dans la ligne `T10` : le bord public voit
+  **qu'il existe des justificatifs**, pas ce qu'ils sont.
+- **Un second bord à opérer** : un nœud Tailscale dédié à creche-planner, une seconde source
+  d'identité dans la passerelle, et une partition de routes gardée par la CI (`RM-38-02`).
+- **Un geste utilisateur** : la seconde personne rejoint le tailnet. C'est le prérequis de toutes
+  les variantes retenues, et le seul.
 - Aucun octet de document stocké par creche-planner, dans aucune version (`RM-38-01`).
