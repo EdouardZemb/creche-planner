@@ -267,9 +267,10 @@ services:
   #   - le transport réutilise le MÊME mot de passe d'application Gmail qu'Alertmanager
   #     (ALERTMANAGER_SMTP_PASSWORD) — mappé sur SMTP_PASSWORD, jamais dupliqué en clair.
   # Le lien « valider » des mails pointe vers l'origine PUBLIQUE, qui n'est pas
-  # forcément SERVER_ORIGIN : ce dernier est l'origine **LAN** (liste blanche CORS
-  # ci-dessous, et URL des portes santé/seed/perf de scripts/deploy.mjs, qui doit
-  # rester joignable sans passer par Cloudflare Access). Un parent, lui, ouvre le
+  # forcément SERVER_ORIGIN : ce dernier n'est que l'origine **CLIENT** attendue
+  # (liste blanche CORS ci-dessous). Il ne dit PLUS où sondent les portes
+  # santé/seed/perf de scripts/deploy.mjs — depuis `AM-94` elles passent par le
+  # port de sonde loopback publié plus bas. Un parent, lui, ouvre le
   # lien depuis son téléphone hors-LAN : il lui faut un domaine public à certificat
   # valide. D'où le découplage : NOTIF_APP_URL / NOTIF_PUBLIC_API_URL priment si
   # définis dans .env.server, sinon repli sur SERVER_ORIGIN (compat historique).
@@ -326,17 +327,28 @@ services:
       # donc `[client, caddy]` avec nginx pour pair TCP, soit DEUX sauts à ignorer.
       # Surcharge le `1` du fichier de base, qui ne décrit pas cette pile.
       #
-      # PÉRIMÈTRE — pour le trafic entrant par le tunnel Cloudflare, le pair de Caddy
-      # est `cloudflared` et le Caddyfile ne déclare pas de `trusted_proxies` : la
-      # clé retombe alors sur une adresse unique pour tout l'extérieur. Le débit reste
-      # borné, mais par tunnel et non par client — c'est le trafic LAN direct que ce
-      # réglage sépare réellement. Fermer ce point demande `trusted_proxies` côté
-      # Caddy, à vérifier sur la pile réelle (hors d'atteinte d'une session distante).
+      # PÉRIMÈTRE — le trafic PUBLIC n'emprunte pas Caddy du tout : l'ingress du
+      # tunnel vise `http://web:80` en direct (vérifié dans les logs de
+      # `cloudflared` le 2026-08-17), soit client → cloudflared → nginx → gateway.
+      # La chaîne décrite au-dessus (avec Caddy) est celle de la porte LOCALE, qui
+      # depuis `AM-94` ne s'ouvre plus que sur la loopback. Ce `2` reste donc la
+      # valeur juste en nombre de sauts, mais la clé de débit retombe sur une
+      # adresse unique pour tout l'extérieur tant que le proxy de tête ne déclare
+      # pas de `trusted_proxies` (`AM-32`) : le débit est borné par tunnel, pas par
+      # client — à vérifier sur la pile réelle.
       RATE_LIMIT_PROXY_HOPS: '2'
-      # Auth par jeton : VOLONTAIREMENT non défini. La gateway n'est pas joignable
-      # depuis le LAN (reverse-proxy + pare-feu) ; un token côté SPA fuiterait dans
-      # le bundle JS sans gain réseau. Décommenter SEULEMENT si la gateway devait
-      # un jour être exposée directement (et alors injecter le header côté nginx).
+      # Auth par jeton : VOLONTAIREMENT non défini. Un token côté SPA fuiterait dans
+      # le bundle JS sans gain réseau, la gateway n'étant pas joignable directement.
+      #
+      # ⚠️ CE MOTIF A DÉJÀ ÉTÉ FAUX. Il disait « pas joignable depuis le LAN
+      # (reverse-proxy + pare-feu) » : le reverse-proxy (Caddy) relayait justement
+      # l'application au LAN sans identité, et le pare-feu ne filtre pas le tailnet
+      # (`AM-94`, mesuré le 2026-08-17 — 200 sur `/api/v1/foyers` sans JWT). Ce qui
+      # rend le motif vrai aujourd'hui est ÉCRIT ET GARDÉ : plus aucun port de cette
+      # pile n'est publié hors `127.0.0.1` (ports de `web` et de `caddy` ci-dessous,
+      # porte `pnpm conteneurs`). Le seul chemin entrant est le tunnel Cloudflare,
+      # authentifié par Access. Décommenter SEULEMENT si la gateway devait un jour
+      # être exposée directement (et alors injecter le header côté nginx).
       # GATEWAY_TOKEN: ${GATEWAY_TOKEN}
       #
       # Échappatoire EXPLICITE du garde-fou de démarrage (AQ-01, doc 27) : les
@@ -392,10 +404,25 @@ services:
     # nginx statique : ~9 Mio observés.
     mem_limit: 64m
     cpus: 0.5
-    # NB : le mapping 4200 du base subsiste (merge Compose) mais est BLOQUÉ au LAN
-    # par le pare-feu. Caddy joint `web` par le réseau Docker interne (web:80).
+    ports:
+      # SEULE exposition de la pile de production, et LOOPBACK UNIQUEMENT :
+      # `127.0.0.1:` ⇒ injoignable depuis le LAN ET depuis le tailnet (le pare-feu
+      # de l'hôte ne filtre pas `tailscale0`, seule la politique ACL le fait —
+      # c'est ce qui a rendu `AM-94` mondial). Le port n'existe que pour la porte 3
+      # de `deploy.mjs` (santé/seed/perf), qui tourne SUR l'hôte.
+      #
+      # Elle joignait l'application par l'origine LAN de Caddy (`SERVER_ORIGIN`,
+      # `https://<ip>:8443`) : chemin supprimé par `AM-94`, Caddy ne publiant plus
+      # que sur la loopback lui aussi. On publie `web` (nginx) plutôt que
+      # `api-gateway` pour que la sonde traverse la MÊME chaîne qu'avant — nginx et
+      # son proxy `/api` compris —, TLS en moins. Calque du staging, qui publie
+      # déjà `127.0.0.1:4210:80` et `127.0.0.1:3110:3000`.
+      #
+      # ⚠️ `deploy.mjs` DÉRIVE ce port de CE fichier (`portSondeLoopback()`) : il
+      # n'est écrit qu'ici. La porte `pnpm conteneurs` exige qu'il existe.
+      - '127.0.0.1:4220:80'
 
-  # --- Reverse-proxy TLS : SEUL point d'entrée du LAN ------------------------
+  # --- Reverse-proxy TLS : porte LOCALE (loopback), plus le LAN --------------
   caddy:
     # Épinglé par digest de liste (= v2.11.4-alpine, image en marche prod
     # 2026-07-29) pour une pile reproductible — même politique que les images
@@ -436,11 +463,28 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     ports:
-      # Ports publiés configurables (défaut 80/443). Sur un serveur où 443 est déjà
-      # occupé par un autre reverse-proxy, surcharger dans .env.server :
-      #   CADDY_HTTP_PORT=8080  /  CADDY_HTTPS_PORT=8443
-      - '${CADDY_HTTP_PORT:-80}:80'
-      - '${CADDY_HTTPS_PORT:-443}:443'
+      # LOOPBACK UNIQUEMENT (`AM-94`, mesuré le 2026-08-17). Ce mapping était publié
+      # sur `0.0.0.0`, et Caddy relaie vers `web:80` SANS passer par Cloudflare : une
+      # requête arrivait donc à la gateway SANS identité (le seul bord authentifiant
+      # est le JWT Cloudflare Access, cf. `identite.guard.ts`). Mesure du 2026-08-17,
+      # depuis le tailnet, sans JWT, sur une route sans `@FoyerScope` :
+      # `GET https://<ip>:8443/api/v1/foyers` → **200 et le RFR des deux foyers**.
+      # `FOYER_AUTHZ_ENFORCE=1` ne rattrapait rien (pas de `@FoyerScope` sur cette
+      # route). L'approbation de la route de sous-réseau Tailscale le 2026-08-16
+      # avait fait de cette porte « maison » une porte joignable de partout.
+      #
+      # Conséquence ASSUMÉE : l'application n'est PLUS joignable depuis le LAN. Le
+      # chemin public (tunnel Cloudflare → `web:80`, authentifié par Access) est
+      # intact — il ne passe pas par Caddy. Pour un accès local, tunneler le port de
+      # sonde, PAS celui-ci : `ssh -L 4220:127.0.0.1:4220 …` puis
+      # http://127.0.0.1:4220 (comme le staging le documente pour 4210). Tunneler
+      # 8443 ne servirait à rien : le Caddyfile n'a qu'un site NOMMÉ par
+      # `SERVER_DOMAIN`, un `Host: 127.0.0.1` n'y correspond à aucun site.
+      # Ports configurables (défaut 80/443) : surcharger CADDY_HTTP_PORT /
+      # CADDY_HTTPS_PORT dans .env.server ; la loopback, elle, n'est pas négociable
+      # (porte `pnpm conteneurs`, qui refuse tout port non loopback en prod).
+      - '127.0.0.1:${CADDY_HTTP_PORT:-80}:80'
+      - '127.0.0.1:${CADDY_HTTPS_PORT:-443}:443'
     depends_on:
       api-gateway:
         condition: service_started

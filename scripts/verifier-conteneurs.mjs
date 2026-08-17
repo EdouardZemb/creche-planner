@@ -43,6 +43,25 @@
  *    en lecture seule, est signalée ;
  * 6. une capacité déclarée que plus aucun compose ne reprend est signalée.
  *
+ * Et, depuis `AM-94` (2026-08-17), sur l'**exposition réseau** des deux piles
+ * hébergées — production et staging, celles qui tournent sur une machine
+ * joignable, LAN et tailnet compris :
+ *
+ * 7. tout port publié y est borné à la **loopback** (`127.0.0.1:` / `[::1]:`).
+ *    Omettre l'IP hôte n'est pas neutre : Compose publie alors sur `0.0.0.0`
+ *    ET `::`, donc au LAN et au tailnet — que le pare-feu de l'hôte ne filtre
+ *    pas. Or ces piles n'ont **aucun bord authentifiant à elles** : le seul est
+ *    le JWT Cloudflare Access, qu'un accès direct ne traverse pas. C'est
+ *    exactement ce qui a rendu le dossier des foyers lisible sans identité
+ *    depuis le tailnet (mesuré le 2026-08-17). La pile dev/CI est HORS de cette
+ *    règle : elle ne tourne que sur un poste, et publie en clair par dessein ;
+ * 8. chaque pile publie **au moins un** port — sans quoi la règle 7 serait
+ *    verte par vacuité, et la pile n'aurait plus de sonde de déploiement ;
+ * 9. la production publie un port loopback sur `web` ou `api-gateway` : la
+ *    porte 3 de `scripts/deploy.mjs` (santé/seed/perf) **en dérive** son URL.
+ *    Retirer ce port ne casse rien en CI, et fait échouer le déploiement
+ *    suivant — le repli (`SERVER_ORIGIN`, l'origine LAN) n'existe plus.
+ *
  * ## Ce que la porte NE garantit **pas**
  *
  *  - Elle ne prouve pas que la pile **démarre** ainsi durcie : seuls les jobs
@@ -68,6 +87,23 @@
  *    Mesuré (`AM-83`) : cet anonyme survit à `up -d --force-recreate`, et se
  *    perd — en laissant un orphelin — au premier `down`/`up`. Un état qui doit
  *    survivre s'écrit en volume **nommé**, ce qu'aucune porte ne sait exiger.
+ *  - Sur l'exposition (règles 7-9), elle ne juge pas la commande RÉELLEMENT
+ *    tapée. Le clone du serveur porte aussi `docker-compose.override.yml`, que
+ *    Compose charge **tout seul** quand aucun `-f` n'est passé : un
+ *    `docker compose up -d` nu y republierait bases, observabilité, gateway et
+ *    `web` sur `0.0.0.0` — soit pire qu'`AM-94`, et sans qu'aucune ligne de la
+ *    pile de production ait changé. `deploy.mjs` nomme toujours ses deux
+ *    fichiers ; le geste manuel n'est gardé par rien (`AM-97`).
+ *  - Elle ne juge que le **texte des composes du dépôt**. Elle ne mesure RIEN sur la machine : un conteneur déjà en marche
+ *    garde les bindings de sa création jusqu'au prochain `up -d`, un
+ *    `docker run -p` à la main lui échappe, et une autre pile du serveur
+ *    (Paperless, médias…) est hors périmètre. La sonde côté machine est
+ *    `scripts/verify-exposure.sh`, à lancer depuis un AUTRE poste du LAN.
+ *  - Elle ne dit rien du **pare-feu** ni des ACL Tailscale, ni de ce que
+ *    Cloudflare Access authentifie en amont du tunnel : « loopback » ne veut
+ *    pas dire « authentifié », seulement « pas joignable par le réseau ». Ce que
+ *    le chemin public authentifie vit dans le tableau de bord Zero Trust, hors
+ *    dépôt — aucune porte de ce dépôt ne peut le vérifier.
  *
  * ## Usage
  *   pnpm conteneurs              # vérifie (exit 1 si un constat)
@@ -95,8 +131,17 @@ const BASE = 'docker-compose.yml';
  */
 const PILES = [
   { nom: 'dev/CI', composes: [BASE, 'docker-compose.override.yml'] },
-  { nom: 'production', composes: [BASE, 'docker-compose.server.yml'] },
-  { nom: 'staging', composes: [BASE, 'docker-compose.staging.yml'] },
+  {
+    nom: 'production',
+    composes: [BASE, 'docker-compose.server.yml'],
+    expositionLoopback: true,
+    sondeDeploiement: ['web', 'api-gateway'],
+  },
+  {
+    nom: 'staging',
+    composes: [BASE, 'docker-compose.staging.yml'],
+    expositionLoopback: true,
+  },
 ];
 
 /**
@@ -126,7 +171,8 @@ const CAPACITES_REPRISES = [
     capacites: ['NET_BIND_SERVICE'],
     motif:
       'Caddy est le seul processus de la pile à se lier à des ports privilégiés ' +
-      '(80 et 443, publiés vers le LAN).',
+      '(80 et 443 dans le conteneur ; publiés sur la LOOPBACK de l’hôte seulement ' +
+      'depuis `AM-94`).',
   },
 ];
 
@@ -212,6 +258,7 @@ function lire(relatif) {
  * @property {string[]} capDrop
  * @property {string[]} capAdd
  * @property {string[]} secrets  noms des secrets Compose consommés
+ * @property {string[]} ports  mappings publiés, tels qu'écrits (`'127.0.0.1:80:80'`)
  * @property {boolean | null} readOnly
  * @property {boolean | null} privileged
  * @property {string[]} ancres  ancres reprises par `<<: *nom`
@@ -224,10 +271,25 @@ function blocVide() {
     capDrop: [],
     capAdd: [],
     secrets: [],
+    ports: [],
     readOnly: null,
     privileged: null,
     ancres: [],
   };
+}
+
+/**
+ * Un mapping publié est-il **borné à la loopback** ?
+ *
+ * Compose publie sur `0.0.0.0` (+ `::`) dès que l'IP hôte est omise : la forme
+ * courte `'8443:443'` ouvre le port à TOUTES les interfaces — LAN **et**
+ * `tailscale0`, que le pare-feu de l'hôte ne filtre pas (`AM-94`). Seul un
+ * préfixe d'IP loopback explicite borne la publication à la machine.
+ *
+ * @param {string} mapping mapping tel qu'écrit dans le compose
+ */
+function borneALaLoopback(mapping) {
+  return /^(127\.0\.0\.1|\[::1\]):/.test(mapping.trim());
 }
 
 /**
@@ -284,7 +346,7 @@ function analyser(contenu) {
 
   let courant = /** @type {Bloc | null} */ (null);
   let dansServices = false;
-  /** @type {'securityOpt' | 'capDrop' | 'capAdd' | 'secrets' | null} */
+  /** @type {'securityOpt' | 'capDrop' | 'capAdd' | 'secrets' | 'ports' | null} */
   let sequence = null;
   /** indentation des clés du bloc courant (2 pour une ancre, 4 pour un service) */
   let indentation = 2;
@@ -357,6 +419,10 @@ function analyser(contenu) {
         sequence = 'secrets';
         courant.secrets.push(...sequenceEnLigne(valeur));
         break;
+      case 'ports':
+        sequence = 'ports';
+        courant.ports.push(...sequenceEnLigne(valeur));
+        break;
       case 'read_only':
         courant.readOnly = valeur === 'true';
         break;
@@ -397,6 +463,7 @@ function resoudre(bloc, ancres) {
     resolu.capDrop.push(...heritee.capDrop);
     resolu.capAdd.push(...heritee.capAdd);
     resolu.secrets.push(...heritee.secrets);
+    resolu.ports.push(...heritee.ports);
     if (heritee.readOnly !== null) resolu.readOnly = heritee.readOnly;
     if (heritee.privileged !== null) resolu.privileged = heritee.privileged;
   }
@@ -404,6 +471,7 @@ function resoudre(bloc, ancres) {
   if (bloc.capDrop.length > 0) resolu.capDrop = [...bloc.capDrop];
   if (bloc.capAdd.length > 0) resolu.capAdd = [...bloc.capAdd];
   if (bloc.secrets.length > 0) resolu.secrets = [...bloc.secrets];
+  if (bloc.ports.length > 0) resolu.ports = [...bloc.ports];
   if (bloc.readOnly !== null) resolu.readOnly = bloc.readOnly;
   if (bloc.privileged !== null) resolu.privileged = bloc.privileged;
   return resolu;
@@ -434,6 +502,7 @@ function postureDeLaPile(composes, contenus) {
       deja.capDrop.push(...resolu.capDrop);
       deja.capAdd.push(...resolu.capAdd);
       deja.secrets.push(...resolu.secrets);
+      deja.ports.push(...resolu.ports);
       if (resolu.readOnly !== null) deja.readOnly = resolu.readOnly;
       if (resolu.privileged !== null) deja.privileged = resolu.privileged;
     }
@@ -460,12 +529,16 @@ function verifier(contenus, registres = {}) {
   const constats = [];
   /** services vus au moins une fois, toutes piles confondues */
   const vus = new Set();
+  /** mappings publiés lus, toutes piles confondues (garde anti-balayage à vide) */
+  let portsLus = 0;
   /** capacités effectivement reprises, pour la péremption du registre */
   const reprisesVues = new Set();
   /** services effectivement inscriptibles, idem */
   const inscriptiblesVus = new Set();
 
   for (const pile of PILES) {
+    /** ports publiés de CETTE pile : service → mappings, pour les règles 7-9 */
+    const publiesDeLaPile = new Map();
     const effective = postureDeLaPile(pile.composes, contenus);
     if (effective.size === 0) {
       constats.push(
@@ -475,6 +548,19 @@ function verifier(contenus, registres = {}) {
     }
     for (const [service, posture] of effective) {
       vus.add(service);
+
+      if (posture.ports.length > 0) {
+        publiesDeLaPile.set(service, posture.ports);
+        portsLus += posture.ports.length;
+      }
+      if (pile.expositionLoopback === true) {
+        for (const mapping of posture.ports) {
+          if (borneALaLoopback(mapping)) continue;
+          constats.push(
+            `pile ${pile.nom}, service \`${service}\` : port publié \`${mapping}\` sans IP hôte loopback — Compose l'ouvre alors sur TOUTES les interfaces (\`0.0.0.0\` ET \`::\`), donc au LAN et au tailnet, que le pare-feu de l'hôte ne filtre PAS. Cette pile n'a aucun bord authentifiant à elle : le seul est le JWT Cloudflare Access, qu'un accès direct ne traverse pas (\`AM-94\`, mesuré le 2026-08-17 : 200 et le RFR des foyers sur \`/api/v1/foyers\` sans JWT). Préfixer par \`127.0.0.1:\`, et pour un accès distant passer par un tunnel SSH ou par l'URL publique.`,
+          );
+        }
+      }
 
       if (!posture.securityOpt.includes('no-new-privileges:true')) {
         constats.push(
@@ -530,6 +616,35 @@ function verifier(contenus, registres = {}) {
       // porte (`LE-52` : un refus doit avoir un remède atteignable).
       if (posture.readOnly !== true) inscriptiblesVus.add(service);
     }
+
+    if (publiesDeLaPile.size === 0) {
+      constats.push(
+        `pile ${pile.nom} : aucun port publié lu — une pile sans port publié n'a plus de sonde de déploiement locale, et surtout : un balayage qui ne trouve rien ÉCHOUE ici (la règle « loopback seulement » serait verte par vacuité).`,
+      );
+    }
+
+    // La porte 3 de `deploy.mjs` (santé/seed/perf) DÉRIVE son URL du port
+    // loopback publié par la pile de production (`portSondeLoopback()`). Retirer
+    // ce port ne casserait rien de visible en CI : le déploiement suivant
+    // retomberait sur `SERVER_ORIGIN` — l'origine LAN, plus jamais joignable
+    // depuis qu'`AM-94` a fermé Caddy — et échouerait en porte 3, puis en
+    // rollback. C'est donc ici que ça doit rougir.
+    if (Array.isArray(pile.sondeDeploiement)) {
+      const porteuse = pile.sondeDeploiement.find((service) =>
+        (publiesDeLaPile.get(service) ?? []).some(borneALaLoopback),
+      );
+      if (porteuse === undefined) {
+        constats.push(
+          `pile ${pile.nom} : aucun port loopback publié sur ${pile.sondeDeploiement.map((s) => `\`${s}\``).join(' ni ')} — la porte 3 de \`scripts/deploy.mjs\` en dérive son URL de sonde (santé/seed/perf) et n'aurait plus de chemin vers l'application : elle retomberait sur \`SERVER_ORIGIN\`, l'origine LAN que ce même correctif a rendue injoignable.`,
+        );
+      }
+    }
+  }
+
+  if (portsLus === 0) {
+    constats.push(
+      "aucun mapping de port lu dans les composes : l'analyse des `ports:` ne mord plus (indentation ou forme changée ?).",
+    );
   }
 
   if (vus.size === 0) {
@@ -790,6 +905,71 @@ function autotest(contenus) {
     attendu: 'défait un profil de sécurité',
   });
 
+  // (i) LE cas d'`AM-94` : un port de production perd son préfixe loopback. Le
+  // conteneur démarre parfaitement, la pile est « verte », et l'application est
+  // servie au LAN et au tailnet sans identité.
+  sondes.push({
+    nom: 'port de production republié hors loopback (caddy)',
+    constats: verifier(
+      muter(
+        'docker-compose.server.yml',
+        (t) =>
+          t.replace(
+            /- '127\.0\.0\.1:\$\{CADDY_HTTPS_PORT:-443\}:443'/,
+            "- '${CADDY_HTTPS_PORT:-443}:443'",
+          ),
+        'port prod hors loopback',
+      ),
+    ),
+    attendu: 'sans IP hôte loopback',
+  });
+
+  // (i bis) même mutation, mais écrite en `0.0.0.0:` explicite — la forme que
+  // personne ne relit comme une ouverture.
+  sondes.push({
+    nom: 'port de production publié en 0.0.0.0 explicite (caddy)',
+    constats: verifier(
+      muter(
+        'docker-compose.server.yml',
+        (t) =>
+          t.replace(
+            /- '127\.0\.0\.1:(\$\{CADDY_HTTPS_PORT:-443\}:443)'/,
+            "- '0.0.0.0:$1'",
+          ),
+        'port prod en 0.0.0.0',
+      ),
+    ),
+    attendu: 'sans IP hôte loopback',
+  });
+
+  // (j) le port de sonde de la porte 3 disparaît : rien ne casse en CI, le
+  // déploiement suivant échoue en porte 3 puis en rollback.
+  sondes.push({
+    nom: 'production sans port de sonde pour la porte 3 (web)',
+    constats: verifier(
+      muter(
+        'docker-compose.server.yml',
+        (t) => t.replace(/\n {6}- '127\.0\.0\.1:4220:80'/, ''),
+        'sonde de déploiement retirée',
+      ),
+    ),
+    attendu: 'la porte 3 de `scripts/deploy.mjs`',
+  });
+
+  // (k) l'analyse des `ports:` cesse de mordre (indentation changée) : la règle
+  // « loopback seulement » serait alors verte par vacuité, sur les trois piles.
+  sondes.push({
+    nom: 'analyse des ports à vide (indentation changée)',
+    constats: verifier(
+      muter(
+        'docker-compose.override.yml',
+        (t) => t.replace(/^ {4}ports:$/gm, '    ports :'),
+        'ports illisibles',
+      ),
+    ),
+    attendu: 'aucun port publié lu',
+  });
+
   let echecs = 0;
   for (const sonde of sondes) {
     const mord = sonde.constats.some((c) => c.includes(sonde.attendu));
@@ -830,9 +1010,13 @@ function principal() {
   }
 
   const services = new Set();
+  /** ports publiés des piles hébergées (prod + staging), tous en loopback ici. */
+  let portsHeberges = 0;
   for (const pile of PILES) {
-    for (const nom of postureDeLaPile(pile.composes, contenus).keys()) {
+    for (const [nom, posture] of postureDeLaPile(pile.composes, contenus)) {
       services.add(nom);
+      if (pile.expositionLoopback === true)
+        portsHeberges += posture.ports.length;
     }
   }
   console.log(
@@ -840,7 +1024,8 @@ function principal() {
       `tous en no-new-privileges + cap_drop ALL ; ` +
       `${services.size - RACINES_INSCRIPTIBLES.length} en racine lecture seule, ` +
       `${RACINES_INSCRIPTIBLES.length} exemption(s) motivée(s), ` +
-      `${CAPACITES_REPRISES.reduce((n, c) => n + c.services.length, 0)} service(s) reprenant une capacité déclarée.`,
+      `${CAPACITES_REPRISES.reduce((n, c) => n + c.services.length, 0)} service(s) reprenant une capacité déclarée ; ` +
+      `${portsHeberges} port(s) publié(s) sur les piles hébergées, tous bornés à la loopback.`,
   );
   return 0;
 }

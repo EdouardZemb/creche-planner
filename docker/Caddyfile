@@ -1,6 +1,13 @@
 # Reverse-proxy TLS du déploiement serveur (profil prod uniquement).
-# Sert d'unique point d'entrée du LAN : termine TLS et relaie vers le front `web`
-# (qui sert la SPA et proxifie /api vers la gateway sur le réseau Docker interne).
+# Termine TLS et relaie vers le front `web` (qui sert la SPA et proxifie /api vers
+# la gateway sur le réseau Docker interne).
+#
+# ⚠️ PORTÉE depuis `AM-94` (2026-08-17) : ce n'est PLUS un point d'entrée du LAN.
+# `docker-compose.server.yml` publie les ports de Caddy sur `127.0.0.1` seulement,
+# parce que ce chemin ne passe pas par Cloudflare Access et arrivait donc à la
+# gateway SANS identité (mesuré : 200 sur `/api/v1/foyers` sans JWT, depuis le
+# tailnet). Le chemin public est le tunnel Cloudflare → `web:80`, qui n'emprunte
+# pas Caddy. Restent : un accès local sur l'hôte, ou par tunnel SSH.
 #
 # TLS « internal » : Caddy agit comme autorité de certification LOCALE et émet un
 # certificat pour le serveur. Adapté à un LAN sans DNS public ni Let's Encrypt.
