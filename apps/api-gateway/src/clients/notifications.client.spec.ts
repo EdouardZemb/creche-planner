@@ -230,17 +230,22 @@ describe('NotificationsClient (gateway→svc-notifications)', () => {
       // arrive à l'écran sous forme d'`Error('HTTP 422')` : `relayer` n'a plus que le
       // statut, et le parent lit « Données invalides : vérifiez les champs marqués » —
       // pour un refus qui ne vient d'aucune saisie et que réessayer ne réparera pas.
+      // `Promise.resolve` plutôt qu'`async () =>` : le ratchet ESLint est à un cran de
+      // sa borne, et un `async` sans `await` coûte un `require-await` par fonction.
       vi.stubGlobal(
         'fetch',
-        vi.fn(async () => ({
-          ok: false,
-          status: 422,
-          json: async () => ({
-            statusCode: 422,
-            code: 'SEMAINE_HORS_FENETRE_ENVOI',
-            message: 'la semaine 2019-W01 est révolue depuis 380 semaines',
+        vi.fn(() =>
+          Promise.resolve({
+            ok: false,
+            status: 422,
+            json: () =>
+              Promise.resolve({
+                statusCode: 422,
+                code: 'SEMAINE_HORS_FENETRE_ENVOI',
+                message: 'la semaine 2019-W01 est révolue depuis 380 semaines',
+              }),
           }),
-        })),
+        ),
       );
 
       await expect(
