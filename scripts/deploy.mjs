@@ -55,12 +55,41 @@ const ENVIRONMENT = process.env.DEPLOY_ENVIRONMENT ?? 'production';
 const ENVIRONMENT_URL =
   process.env.DEPLOY_ENVIRONMENT_URL ?? 'https://creche.testlens.dev';
 const IMAGE_TAG = process.env.IMAGE_TAG ?? 'main';
-// Porte 3 (santé/seed/perf) — où joindre la gateway. En prod « ports non publiés »
-// (#31, doc 24 §6), api-gateway n'expose AUCUN port hôte : on passe par Caddy (CA
-// interne) via l'origine LAN. On dérive donc l'URL de SERVER_ORIGIN à défaut d'un
-// GATEWAY_URL explicite ; en dev (override = ports publiés) on garde localhost:3000.
+// Fichiers compose + env-file (override par-dessus la base). PROD par défaut ;
+// le STAGING (Phase 8) surcharge via .env.staging :
+//   DEPLOY_COMPOSE_FILES="docker-compose.yml docker-compose.staging.yml"
+//   DEPLOY_ENV_FILE=.env.staging
+// Déclarés ICI (avant la porte 3) parce que l'URL de sonde en DÉRIVE.
+const ENV_FILE = process.env.DEPLOY_ENV_FILE ?? '.env.server';
+const COMPOSE_FILES = (
+  process.env.DEPLOY_COMPOSE_FILES ??
+  'docker-compose.yml docker-compose.server.yml'
+)
+  .trim()
+  .split(/\s+/)
+  .filter(Boolean);
+const COMPOSE = [
+  '--env-file',
+  ENV_FILE,
+  ...COMPOSE_FILES.flatMap((f) => ['-f', f]),
+];
+// Porte 3 (santé/seed/perf) — où joindre l'application. En prod « ports non
+// publiés » (#31, doc 24 §6), aucun service applicatif n'expose de port hôte…
+// SAUF, depuis `AM-94` (2026-08-17), un port de sonde publié sur la LOOPBACK.
+// On le DÉRIVE du compose de la pile (jamais écrit deux fois) : c'est la seule
+// voie locale depuis que Caddy ne publie plus rien au LAN.
+//
+// Historique du repli : la sonde passait par l'origine LAN de Caddy
+// (`SERVER_ORIGIN` = https://<ip>:8443). Ce chemin arrivait à la gateway SANS
+// identité, il a été fermé ; `SERVER_ORIGIN` reste l'origine CLIENT (liste
+// blanche CORS, liens des e-mails), il ne dit plus où sonder. Ordre :
+//   1. GATEWAY_URL explicite (le staging le pose dans .env.staging) ;
+//   2. le port loopback publié par la pile (prod : `web`, cf. compose) ;
+//   3. SERVER_ORIGIN, puis localhost:3000 (dev : ports publiés en clair).
+const PORT_SONDE = portSondeLoopback(COMPOSE_FILES);
 const GATEWAY_URL =
   process.env.GATEWAY_URL ||
+  (PORT_SONDE === null ? '' : `http://127.0.0.1:${PORT_SONDE}`) ||
   process.env.SERVER_ORIGIN ||
   'http://localhost:3000';
 const SEED_BASE_URL = process.env.SEED_BASE_URL || `${GATEWAY_URL}/api/v1`;
@@ -98,23 +127,6 @@ const ROLLBACK_ENABLED = process.env.ROLLBACK !== '0';
 // p3-seed | p3-perf) pour exercer le rollback (utile en DORA_DRY_RUN=1).
 const FAKE_FAIL = process.env.DEPLOY_FAKE_FAIL || '';
 
-// Fichiers compose + env-file (override par-dessus la base). PROD par défaut ;
-// le STAGING (Phase 8) surcharge via .env.staging :
-//   DEPLOY_COMPOSE_FILES="docker-compose.yml docker-compose.staging.yml"
-//   DEPLOY_ENV_FILE=.env.staging
-const ENV_FILE = process.env.DEPLOY_ENV_FILE ?? '.env.server';
-const COMPOSE_FILES = (
-  process.env.DEPLOY_COMPOSE_FILES ??
-  'docker-compose.yml docker-compose.server.yml'
-)
-  .trim()
-  .split(/\s+/)
-  .filter(Boolean);
-const COMPOSE = [
-  '--env-file',
-  ENV_FILE,
-  ...COMPOSE_FILES.flatMap((f) => ['-f', f]),
-];
 // Sous-ensemble de services passé à `up -d --wait` (Porte 2 ET rollback). VIDE en
 // prod (= pile entière). Le STAGING ne lève que les services applicatifs (leurs
 // depends_on tirent l'infra), pas l'observabilité lourde :
@@ -158,6 +170,44 @@ for (const s of UP_SERVICES) {
 const GATEWAY_IMAGE = `${REGISTRE}/api-gateway:${IMAGE_TAG}`;
 
 // --- Utilitaires ------------------------------------------------------------
+
+/**
+ * Port hôte LOOPBACK par lequel la porte 3 joint l'application, DÉRIVÉ des
+ * composes de la pile — le port n'est écrit qu'une fois, dans le compose.
+ *
+ * Cherche, dans l'ordre des services `web` puis `api-gateway`, un mapping court
+ * `- '127.0.0.1:<hôte>:<conteneur>'`. `web` d'abord : la sonde traverse alors
+ * nginx et son proxy `/api`, soit la même chaîne que l'ancien chemin par Caddy.
+ * Aucune dépendance YAML (ce script tourne sur le serveur, avant tout install) :
+ * l'analyse est textuelle, comme celle de `scripts/verifier-conteneurs.mjs`.
+ *
+ * Rend `null` si aucune pile ne publie de port loopback (pile dev : ports en
+ * clair ⇒ repli sur SERVER_ORIGIN/localhost). Une lecture en échec ne bloque
+ * pas : c'est la porte 3 elle-même qui refusera si l'URL n'est pas joignable.
+ *
+ * @param {string[]} fichiers composes de la pile, dans l'ordre du merge
+ * @returns {number | null}
+ */
+function portSondeLoopback(fichiers) {
+  for (const service of ['web', 'api-gateway']) {
+    for (const fichier of fichiers) {
+      let contenu;
+      try {
+        contenu = readFileSync(join(RACINE, fichier), 'utf8');
+      } catch {
+        continue;
+      }
+      // Bloc du service : de `  <service>:` à la prochaine clé de même niveau.
+      const bloc = new RegExp(
+        `\\n {2}${service}:\\r?\\n([\\s\\S]*?)(?=\\n {2}[a-zA-Z0-9_.-]+:|\\n[a-zA-Z]|$)`,
+      ).exec(contenu);
+      if (bloc === null) continue;
+      const mapping = /- '127\.0\.0\.1:(\d+):\d+'/.exec(bloc[1]);
+      if (mapping !== null) return Number(mapping[1]);
+    }
+  }
+  return null;
+}
 
 /** Exécute une commande (stdio hérité). Retourne le code de sortie. */
 function run(cmd, args, opts = {}) {
@@ -579,8 +629,16 @@ async function main() {
       "Porte 2 : `up -d --wait` a échoué (un conteneur n'est pas sain).",
     );
 
-  // Porte 3 — vérification post-déploiement (shift-right).
-  console.log(`\n▶ Porte 3 — santé gateway (${GATEWAY_URL}/api/health)`);
+  // Porte 3 — vérification post-déploiement (shift-right). D'où vient l'URL est
+  // dit à voix haute : c'est la question qu'on s'est posée en fermant `AM-94`.
+  console.log(
+    `\n▶ Porte 3 — santé gateway (${GATEWAY_URL}/api/health)` +
+      (process.env.GATEWAY_URL
+        ? ' [GATEWAY_URL explicite]'
+        : PORT_SONDE !== null
+          ? ` [port de sonde loopback dérivé du compose : ${PORT_SONDE}]`
+          : ' [repli SERVER_ORIGIN / localhost]'),
+  );
   if (porteEchoue('p3-health', verifierSante()))
     await echouer('Porte 3 : la santé gateway ne répond pas 200.');
 

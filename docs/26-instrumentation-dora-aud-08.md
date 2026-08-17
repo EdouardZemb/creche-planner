@@ -104,29 +104,42 @@ Deux artefacts, deux responsabilités :
 
 **Entrées** (variables d'environnement, lues depuis `.env.server` / l'invocation) :
 
-| Variable                     | Rôle                                                                                                   | Défaut                                                              |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| `GH_DEPLOYMENTS_TOKEN`       | PAT **fine-grained**, scope **Deployments: Read and write** sur le seul dépôt                          | _(requis ; sinon mode record-skip)_                                 |
-| `GITHUB_REPOSITORY`          | `owner/repo` ciblé par l'API                                                                           | `EdouardZemb/creche-planner`                                        |
-| `DEPLOY_REF`                 | SHA (ou tag) **déployé** = `ref` du Deployment (clé du _lead time_)                                    | label `…image.revision` de l'image gateway tirée, sinon `IMAGE_TAG` |
-| `IMAGE_TAG`                  | Tag d'image tiré (déjà utilisé par le compose, AUD-05)                                                 | `main`                                                              |
-| `DEPLOY_ENVIRONMENT`         | Nom d'environnement GitHub                                                                             | `production`                                                        |
-| `DEPLOY_ENVIRONMENT_URL`     | URL publique consignée sur le statut                                                                   | `https://creche.testlens.dev`                                       |
-| `DEPLOY_VERIFY_COSIGN`       | Vérifier la signature cosign (AUD-07) de TOUTES les images avant `up` (`0` pour désactiver — à éviter) | _on_                                                                |
-| `DEPLOY_SKIP_SEED` / `_PERF` | Sauter le seed / le smoke perf (porte 3)                                                               | _off_                                                               |
-| `GATEWAY_URL`                | Où la porte 3 (santé/seed/perf) joint la gateway                                                       | `SERVER_ORIGIN`, sinon `http://localhost:3000`                      |
-| `SEED_BASE_URL`              | Base API transmise au seed (porte 3)                                                                   | `${GATEWAY_URL}/api/v1`                                             |
-| `DEPLOY_CA_CERT`             | CA à faire confiance pour le TLS « internal » de Caddy (HTTPS)                                         | `NODE_EXTRA_CA_CERTS`, sinon `./caddy-root.crt` s'il existe         |
-| `DORA_DRY_RUN`               | N'appeler ni Docker ni l'API (validation locale du flux)                                               | _off_                                                               |
+| Variable                     | Rôle                                                                                                   | Défaut                                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `GH_DEPLOYMENTS_TOKEN`       | PAT **fine-grained**, scope **Deployments: Read and write** sur le seul dépôt                          | _(requis ; sinon mode record-skip)_                                                                       |
+| `GITHUB_REPOSITORY`          | `owner/repo` ciblé par l'API                                                                           | `EdouardZemb/creche-planner`                                                                              |
+| `DEPLOY_REF`                 | SHA (ou tag) **déployé** = `ref` du Deployment (clé du _lead time_)                                    | label `…image.revision` de l'image gateway tirée, sinon `IMAGE_TAG`                                       |
+| `IMAGE_TAG`                  | Tag d'image tiré (déjà utilisé par le compose, AUD-05)                                                 | `main`                                                                                                    |
+| `DEPLOY_ENVIRONMENT`         | Nom d'environnement GitHub                                                                             | `production`                                                                                              |
+| `DEPLOY_ENVIRONMENT_URL`     | URL publique consignée sur le statut                                                                   | `https://creche.testlens.dev`                                                                             |
+| `DEPLOY_VERIFY_COSIGN`       | Vérifier la signature cosign (AUD-07) de TOUTES les images avant `up` (`0` pour désactiver — à éviter) | _on_                                                                                                      |
+| `DEPLOY_SKIP_SEED` / `_PERF` | Sauter le seed / le smoke perf (porte 3)                                                               | _off_                                                                                                     |
+| `GATEWAY_URL`                | Où la porte 3 (santé/seed/perf) joint l'application                                                    | port **loopback** publié par la pile (prod : `web`), sinon `SERVER_ORIGIN`, sinon `http://localhost:3000` |
+| `SEED_BASE_URL`              | Base API transmise au seed (porte 3)                                                                   | `${GATEWAY_URL}/api/v1`                                                                                   |
+| `DEPLOY_CA_CERT`             | CA à faire confiance pour le TLS « internal » de Caddy (HTTPS)                                         | `NODE_EXTRA_CA_CERTS`, sinon `./caddy-root.crt` s'il existe                                               |
+| `DORA_DRY_RUN`               | N'appeler ni Docker ni l'API (validation locale du flux)                                               | _off_                                                                                                     |
 
-> **Topologie « ports non publiés » (#31, doc 24 §6).** Depuis que la prod ne
-> publie plus aucun port hôte d'`api-gateway`, la porte 3 ne peut plus viser
-> `localhost:3000`. `deploy.mjs` **dérive** donc l'endpoint de `SERVER_ORIGIN`
-> (origine LAN derrière Caddy, ex. `https://192.0.2.10:8443`), `SEED_BASE_URL`
-> de `GATEWAY_URL`, et fait confiance au CA racine Caddy exporté en `./caddy-root.crt`
-> (`curl --cacert` pour la santé, `NODE_EXTRA_CA_CERTS` pour seed/perf) — **jamais**
-> `-k`. En dev (override = ports publiés, pas de `SERVER_ORIGIN` ni de `caddy-root.crt`),
-> le comportement historique (`localhost:3000`, HTTP) est inchangé.
+> **Topologie « ports non publiés » (#31, doc 24 §6), révisée par `AM-94`
+> (2026-08-17).** La prod ne publie aucun port hôte d'`api-gateway` : la porte 3
+> ne peut pas viser `localhost:3000`. Elle visait donc `SERVER_ORIGIN` — l'origine
+> LAN derrière Caddy (`https://192.0.2.10:8443`). **Ce chemin n'existe plus** :
+> il servait l'application au LAN et au tailnet **sans identité** (Caddy relaie
+> vers `web:80` sans passer par Cloudflare Access), et les ports de Caddy sont
+> désormais bornés à `127.0.0.1`.
+>
+> `deploy.mjs` **dérive** maintenant son endpoint du **port loopback publié par
+> le compose de la pile** — en prod `127.0.0.1:4220` sur `web`, donc la même
+> chaîne qu'avant (nginx + proxy `/api`), en HTTP local et sans TLS à valider.
+> `SEED_BASE_URL` dérive de `GATEWAY_URL`, comme avant. `SERVER_ORIGIN` ne sert
+> plus qu'à ce qu'il décrit vraiment : l'origine **client** (liste blanche CORS,
+> repli des liens d'e-mail). En dev (override = ports publiés en clair), le
+> comportement historique (`localhost:3000`, HTTP) est inchangé.
+>
+> Le port de sonde est écrit **une seule fois**, dans le compose : `deploy.mjs`
+> l'y lit (`portSondeLoopback()`) et la porte `pnpm conteneurs` exige qu'il
+> existe (règle 9). Le CA racine Caddy (`./caddy-root.crt`, `curl --cacert` /
+> `NODE_EXTRA_CA_CERTS`, **jamais** `-k`) reste utile si `GATEWAY_URL` est forcé
+> sur une URL HTTPS.
 
 **Déroulé** (chaque porte est **bloquante** ; un échec poste `failure` puis sort ≠ 0) :
 
