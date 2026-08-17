@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "creche-postgres",
-  "title": "Creche Planner — Bases Postgres",
+  "title": "Martha — Bases Postgres",
   "description": "Santé des 4 bases Postgres (referentiel, foyer, planification, tarification) via postgres-exporter (Phase 13c) : disponibilité, connexions, transactions, latence, cache, deadlocks, taille.",
   "tags": ["creche-planner", "postgres", "database"],
   "timezone": "browser",

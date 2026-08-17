@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect } from 'react';
 
-const SUFFIXE = ' — Crèche Planner';
+const SUFFIXE = ' — Martha';
 
 /** Intitulé complet de l'onglet (`document.title`) pour un titre de page donné. */
 export function titreDocument(titre: string): string {
@@ -30,7 +30,7 @@ const DEFAUT: ContexteTitrePage = {
 export const TitrePageContext = createContext<ContexteTitrePage>(DEFAUT);
 
 /**
- * Pose `document.title` à « <titre> — Crèche Planner » le temps où le composant est
+ * Pose `document.title` à « <titre> — Martha » le temps où le composant est
  * monté, ET publie `<titre>` (sans le suffixe) dans le contexte de titre pour que
  * `Coquille` l'annonce. Restaure le titre d'onglet précédent au démontage.
  */

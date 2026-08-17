@@ -7,7 +7,7 @@ describe('useTitrePage', () => {
     renderHook(() => {
       useTitrePage('Planning');
     });
-    expect(document.title).toBe('Planning — Crèche Planner');
+    expect(document.title).toBe('Planning — Martha');
   });
 
   it('restaure le titre précédent au démontage', () => {
@@ -15,7 +15,7 @@ describe('useTitrePage', () => {
     const { unmount } = renderHook(() => {
       useTitrePage('Contrats');
     });
-    expect(document.title).toBe('Contrats — Crèche Planner');
+    expect(document.title).toBe('Contrats — Martha');
     unmount();
     expect(document.title).toBe('Initial');
   });

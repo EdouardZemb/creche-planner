@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "creche-jetstream-nats",
-  "title": "Creche Planner — JetStream NATS",
+  "title": "Martha — JetStream NATS",
   "description": "Métriques JetStream scraped via nats-exporter (prometheus-nats-exporter). Consumer lag des durables tarification-foyer, tarification-referentiel, tarification-planification. Nécessite que nats-exporter soit démarré (voir docker-compose.yml).",
   "tags": ["creche-planner", "nats", "jetstream", "lag"],
   "timezone": "browser",

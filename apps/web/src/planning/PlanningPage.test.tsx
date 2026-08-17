@@ -201,7 +201,7 @@ describe('PlanningPage', () => {
     renderPage();
 
     await screen.findByText(/Planning mensuel/i);
-    expect(document.title).toBe('Planning — Crèche Planner');
+    expect(document.title).toBe('Planning — Martha');
   });
 
   it('affiche le calendrier quand un contrat CRECHE_PSU est stocke', async () => {

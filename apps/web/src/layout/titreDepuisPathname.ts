@@ -26,5 +26,5 @@ export function titreDepuisPathname(pathname: string): string {
     return 'Coûts annuels';
   }
   // Pages de récupération / 404 et redirection racine : annonce neutre.
-  return 'Crèche Planner';
+  return 'Martha';
 }

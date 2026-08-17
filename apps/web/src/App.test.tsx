@@ -235,7 +235,7 @@ describe('App — coquille de navigation', () => {
     expect(lienPlanning).toHaveClass('active');
 
     // La marque n'est pas active sur une sous-page (NavLink end).
-    const marque = screen.getByRole('link', { name: 'Crèche Planner' });
+    const marque = screen.getByRole('link', { name: 'Martha' });
     expect(marque).not.toHaveAttribute('aria-current');
   });
 
@@ -370,7 +370,7 @@ describe('App — coquille de navigation', () => {
       expect(region).toHaveTextContent('Famille introuvable');
     });
     // document.title et annonce concordent.
-    expect(document.title).toBe('Famille introuvable — Crèche Planner');
+    expect(document.title).toBe('Famille introuvable — Martha');
   });
 
   it('UT-02 CA3 : le lien d’évitement « Aller au contenu » cible toujours #contenu', () => {

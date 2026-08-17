@@ -157,7 +157,7 @@ export function recapMardi(params: RecapMardiParams): MessageRendu {
   // geste offert au parent et n'est ni déplacé ni remplacé (l'en-tête one-click
   // `List-Unsubscribe` est posé séparément par le scheduler et n'est pas concerné).
   const phraseMentions =
-    'Crèche Planner est un outil familial, édité par la famille elle-même : vous recevez ce rappel en tant que parent du foyer.';
+    'Martha est un outil familial, édité par la famille elle-même : vous recevez ce rappel en tant que parent du foyer.';
   const mentions = {
     html: `<p style="color:#666;font-size:0.85em">${phraseMentions} <a href="${echapper(lienMentions)}">Informations sur vos données</a>.</p>`,
     text: `${phraseMentions}\nInformations sur vos données : ${lienMentions}`,
@@ -168,7 +168,7 @@ export function recapMardi(params: RecapMardiParams): MessageRendu {
     `<p>${phraseHtml}</p>`,
     `<p><a href="${lienHtml}">${texteLien}</a></p>`,
     ...preavis.map((p) => `<p>${echapper(p)}</p>`),
-    '<p>— Crèche Planner</p>',
+    '<p>— Martha</p>',
     ...(pieds ? [pieds.html] : []),
     mentions.html,
   ].join('\n');
@@ -181,7 +181,7 @@ export function recapMardi(params: RecapMardiParams): MessageRendu {
     `${texteLien} : ${lienApp}`,
     ...(preavis.length > 0 ? ['', ...preavis] : []),
     '',
-    '— Crèche Planner',
+    '— Martha',
     ...(pieds ? ['', pieds.text] : []),
     '',
     mentions.text,

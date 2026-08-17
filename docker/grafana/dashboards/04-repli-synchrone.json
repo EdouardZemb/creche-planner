@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "creche-repli-synchrone",
-  "title": "Creche Planner — Repli synchrone tarif→planif (DEC-05)",
+  "title": "Martha — Repli synchrone tarif→planif (DEC-05)",
   "description": "Observabilité du couplage runtime résiduel ASSUMÉ (ADR-0004) : svc-tarification interroge svc-planification en HTTP synchrone quand le read model est froid. Métrique applicative tarification_repli_planification_total (OTel → collecteur → Prometheus). Objectif : vérifier que ce repli reste EXCEPTIONNEL. Nécessite le pipeline métriques OTel câblé (voir observabilite.md).",
   "tags": ["creche-planner", "decouplage", "repli", "couplage", "dec-05"],
   "timezone": "browser",

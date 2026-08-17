@@ -69,8 +69,8 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Crèche Planner',
-        short_name: 'Crèche',
+        name: 'Martha',
+        short_name: 'Martha',
         description:
           'Planifier la garde des enfants et lire le coût mensuel consolidé.',
         theme_color: '#1d4ed8',

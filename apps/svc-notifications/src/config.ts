@@ -152,8 +152,12 @@ export const CHAMPS_ENV = {
   SMTP_PORT: champEnv.port(587),
   SMTP_USER: champEnv.texte(''),
   SMTP_PASSWORD: champEnv.secretAvecRepli(''),
+  // Le nom d'affichage porte sa fonction (« — planning de garde ») parce que le même
+  // expéditeur sert les DEUX publics : le parent, qui connaît « Martha », et l'agent
+  // d'établissement, pour qui un prénom seul dans une boîte de réception ne dit rien
+  // — ou pire, se lit comme une personne (ADR-0009).
   NOTIF_EMAIL_FROM: champEnv.texte(
-    'Crèche Planner <ne-pas-repondre@example.org>',
+    'Martha — planning de garde <ne-pas-repondre@example.org>',
   ),
   NOTIF_EMAIL_PARENT: champEnv.texte('edouard.zemb@gmail.com'),
   // Garde-fou : dry-run par défaut, levé seulement par un `false` explicite.

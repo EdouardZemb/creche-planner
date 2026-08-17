@@ -295,7 +295,7 @@ services:
       # de passe est celui d'Alertmanager (app password Gmail), non redupliqué.
       SMTP_USER: ${NOTIF_SMTP_USER:-}
       SMTP_PASSWORD: ${ALERTMANAGER_SMTP_PASSWORD:-}
-      NOTIF_EMAIL_FROM: ${NOTIF_EMAIL_FROM:-Crèche Planner <edouard.zemb@gmail.com>}
+      NOTIF_EMAIL_FROM: ${NOTIF_EMAIL_FROM:-Martha — planning de garde <edouard.zemb@gmail.com>}
       NOTIF_EMAIL_PARENT: ${NOTIF_EMAIL_PARENT:-edouard.zemb@gmail.com}
       # GARDE-FOU : dry-run par défaut. Passer NOTIF_EMAIL_DRY_RUN=false dans .env.server
       # SEULEMENT quand l'envoi réel au service est validé bout-en-bout.

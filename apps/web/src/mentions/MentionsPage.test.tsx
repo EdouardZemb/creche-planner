@@ -23,9 +23,7 @@ describe('MentionsPage', () => {
         name: 'Informations sur vos données',
       }),
     ).toBeInTheDocument();
-    expect(document.title).toBe(
-      'Informations sur vos données — Crèche Planner',
-    );
+    expect(document.title).toBe('Informations sur vos données — Martha');
   });
 
   it('énonce les catégories de données conservées', () => {

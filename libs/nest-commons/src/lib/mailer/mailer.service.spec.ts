@@ -39,7 +39,7 @@ function options(partiel: Partial<OptionsMailer> = {}): OptionsMailer {
     port: 587,
     user: 'expediteur@test',
     passwordProvider: () => 'secret',
-    from: 'Crèche Planner <expediteur@test>',
+    from: 'Martha <expediteur@test>',
     dryRun: false,
     allowlist: [],
     ...partiel,
@@ -147,7 +147,7 @@ describe('MailerService', () => {
 
     expect(sendMail).toHaveBeenCalledTimes(1);
     expect(sendMail).toHaveBeenCalledWith({
-      from: 'Crèche Planner <expediteur@test>',
+      from: 'Martha <expediteur@test>',
       to: 'parent@test',
       subject: 'Valider la semaine 2026-W27',
       html: '<p>bonjour</p>',
@@ -169,7 +169,7 @@ describe('MailerService', () => {
     await service.envoyer({ ...MESSAGE, headers });
 
     expect(sendMail).toHaveBeenCalledWith({
-      from: 'Crèche Planner <expediteur@test>',
+      from: 'Martha <expediteur@test>',
       to: 'parent@test',
       subject: 'Valider la semaine 2026-W27',
       html: '<p>bonjour</p>',

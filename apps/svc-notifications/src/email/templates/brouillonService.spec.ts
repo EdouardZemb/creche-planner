@@ -193,4 +193,29 @@ describe('brouillonServiceAgrege', () => {
       `Informations sur les données enregistrées : ${LIEN_MENTIONS}`,
     );
   });
+
+  it('ne nomme jamais le produit sans dire ce que c’est, et garde un objet fonctionnel', () => {
+    const message = brouillonServiceAgrege(BASE);
+
+    // Arbitrage du renommage « Martha » (2026-08-17, ADR-0009). Le destinataire de ce
+    // message est le SEUL à n'avoir aucun contexte : pas de compte, jamais ouvert
+    // l'application. Un prénom seul s'y lit comme une personne — donc partout où le
+    // nom paraît, il est suivi de ce qu'il désigne.
+    for (const rendu of [message.html, message.text]) {
+      expect(rendu).toContain(
+        "Martha, l'application de planning de la famille",
+      );
+      expect(rendu).toContain("Martha, l'outil familial");
+      // Sonde négative : aucune occurrence de « Martha » sans son apposition.
+      expect(rendu.match(/Martha/g)).toHaveLength(
+        rendu.match(/Martha, l'(application de planning|outil familial)/g)
+          ?.length,
+      );
+    }
+
+    // L'objet reste fonctionnel et SANS nom de produit : c'est lui, et non l'expéditeur,
+    // qui dit à l'agent de quoi il retourne quand il trie sa boîte de réception.
+    expect(message.subject).toContain('Plannings modifiés');
+    expect(message.subject).not.toContain('Martha');
+  });
 });

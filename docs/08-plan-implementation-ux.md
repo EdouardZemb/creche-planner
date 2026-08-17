@@ -96,7 +96,7 @@
    `StatutSauvegarde`, `Spinner`. Tests d'accessibilité (focus, Échap, rôles).
 4. **Centralisation** : `LIBELLES_MODE` accentué unique ; `couleurs.ts` exposant la couleur
    par mode via `getComputedStyle(--token)` (FullCalendar reçoit du JS) ; `formaterDateFr`.
-5. **Hook** `useTitrePage(titre)` (effet + suffixe « — Crèche Planner »).
+5. **Hook** `useTitrePage(titre)` (effet + suffixe « — Martha »).
 
 **DoD spécifique** : primitives testées (rôles ARIA, focus-trap de `Modale`, fermeture Échap).
 Ne **branche** encore rien dans les pages (c'est le rôle des lots 2→6).
