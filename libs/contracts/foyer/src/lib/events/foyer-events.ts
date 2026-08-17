@@ -361,3 +361,30 @@ export const preferencesNotifModifieesEventSchema = integrationEventSchema(
 export type PreferencesNotifModifieesEvent = z.infer<
   typeof preferencesNotifModifieesEventSchema
 >;
+
+/**
+ * **Inventaire** des types d'événement du contexte Foyer — donc des sujets NATS
+ * du stream `FOYER` : le sujet d'un message **est** son `type` (`OutboxRelay`
+ * publie sur `evt.type`). C'est la seule liste exhaustive de ce qu'un
+ * consommateur durable de `FOYER` peut recevoir.
+ *
+ * Sert à borner un abonnement (`filter_subjects`, `AM-53`) et surtout à **prouver
+ * qu'aucun type publié n'est reçu sans être traité** : sans cette liste, un type
+ * ajouté ici et oublié dans un `typesGeres` serait simplement filtré — jamais
+ * livré, jamais projeté, sans un rebut pour le dire.
+ *
+ * Porte : `pnpm abonnements` échoue si un `_TYPE` de ce fichier n'y figure pas.
+ */
+export const TYPES_EVENEMENTS_FOYER: readonly string[] = [
+  FOYER_MIS_A_JOUR_TYPE,
+  FOYER_MIS_A_JOUR_V2_TYPE,
+  FOYER_MIS_A_JOUR_V3_TYPE,
+  FOYER_SUPPRIME_TYPE,
+  ENFANT_AJOUTE_TYPE,
+  ENFANT_MODIFIE_TYPE,
+  ENFANT_RETIRE_TYPE,
+  PARENT_AJOUTE_TYPE,
+  PARENT_MODIFIE_TYPE,
+  PARENT_RETIRE_TYPE,
+  PREFERENCES_NOTIF_MODIFIEES_TYPE,
+];

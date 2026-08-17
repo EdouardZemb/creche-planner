@@ -36,11 +36,44 @@ export interface Abonnement {
 }
 
 /**
- * Port implémenté par le `ProjectionService` de chaque service. La seule chose
- * que le consommateur mutualisé exige d'une projection.
+ * Port implémenté par le `ProjectionService` de chaque service. Le consommateur
+ * mutualisé exige deux choses d'une projection : traiter un message, et **dire ce
+ * qu'elle traite**.
  */
 export interface ProjectionPort {
   traiter(stream: string, donnees: unknown): Promise<ResultatTraitement>;
+  /**
+   * Types d'événement que cette projection applique — donc les sujets NATS que
+   * ses consommateurs durables doivent recevoir, et **eux seuls** (`AM-53`).
+   *
+   * Un durable sans filtre reçoit tout son stream : chaque type non géré retombe
+   * dans le `default` du `switch`, ce qui vaut `IGNORE_TYPE_INCONNU`, donc une
+   * ligne `dead_letter` **avec le payload en clair** — revenus et adresses
+   * e-mail compris. Ce n'est pas une trace utile : c'est une copie que personne
+   * ne lit, d'un événement qui n'a jamais été destiné à ce service.
+   *
+   * La liste est la **source** du filtre, pas son miroir : le test
+   * `projection.types-geres.spec.ts` de chaque service exécute la projection sur
+   * l'inventaire complet de ses streams amont et exige l'équivalence exacte avec
+   * cette liste, dans les deux sens.
+   */
+  readonly typesGeres: readonly string[];
+}
+
+/**
+ * Sujets d'un stream que la projection traite, dérivés de `typesGeres`. Le sujet
+ * d'un message **est** son `type` (`OutboxRelay` publie sur `evt.type`), et le
+ * premier segment du type nomme son contexte — donc son stream (`foyer.…` →
+ * `FOYER`). Le rapprochement n'a pas d'autre table : c'est la convention de
+ * nommage des contrats, tenue par `pnpm abonnements`.
+ */
+export function sujetsDuStream(
+  typesGeres: readonly string[],
+  stream: string,
+): readonly string[] {
+  return typesGeres.filter(
+    (type) => type.split('.')[0]?.toUpperCase() === stream.toUpperCase(),
+  );
 }
 
 /** Jeton d'injection du `ProjectionPort` (fourni par chaque service). */

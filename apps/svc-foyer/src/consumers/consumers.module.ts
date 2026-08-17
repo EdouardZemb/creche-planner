@@ -4,7 +4,7 @@ import * as schema from '../database/schema.js';
 import { ProjectionService } from './projection.service.js';
 
 /** Streams amont consommés par Foyer, et leur consommateur durable. */
-const ABONNEMENTS: readonly Abonnement[] = [
+export const ABONNEMENTS: readonly Abonnement[] = [
   { stream: 'REFERENTIEL', durable: 'foyer-referentiel' },
 ];
 

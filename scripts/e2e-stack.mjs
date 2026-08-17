@@ -10,6 +10,9 @@
  *      ET garde les coûts (échoue si la projection ne reproduit pas les montants).
  *   3. `pnpm exec playwright test -c apps/web/playwright.stack.config.ts` — joue les
  *      parcours contre la vraie UI servie par Docker.
+ *   4. `node scripts/relever-rebuts.mjs` (+ sa sonde) — relève `dead_letter` sur les
+ *      quatre bases après le cycle de vie complet de foyer (critère de sortie
+ *      d'`AM-53`). Ne tourne que si les parcours sont passés.
  *
  * Teardown : `docker compose down -v` dans un `finally`, SAUF si KEEP_STACK est défini
  * (debug : on garde la pile et l'état debout pour inspecter).
@@ -106,6 +109,22 @@ async function main() {
       ['exec', 'playwright', 'test', '-c', 'playwright.stack.config.ts'],
       DIR_WEB,
     );
+
+    // 4. Relevé `dead_letter` — le critère de sortie d'`AM-53`, jugé APRÈS le cycle
+    //    de vie complet de foyer que jouent les parcours (création, parents,
+    //    contrats, planning, effacement). La sonde suit le relevé, jamais l'inverse :
+    //    elle insère une ligne pour prouver que le relevé la voit, puis la retire.
+    //    Ne s'exécute que si les parcours sont passés — sur une pile à moitié jouée,
+    //    « aucun rebut » ne prouverait rien.
+    if (codePlaywright === 0) {
+      await etape('Relevé des rebuts de consommation (dead_letter)', 'node', [
+        'scripts/relever-rebuts.mjs',
+      ]);
+      await etape('Sonde négative du relevé des rebuts', 'node', [
+        'scripts/relever-rebuts.mjs',
+        '--sonde',
+      ]);
+    }
   } finally {
     // Teardown systématique, sauf debug explicite (KEEP_STACK).
     if (process.env.KEEP_STACK) {

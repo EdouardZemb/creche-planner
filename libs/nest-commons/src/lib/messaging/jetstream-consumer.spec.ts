@@ -48,16 +48,36 @@ function fauxIterateur(messages: JsMsg[]): ConsumerMessages {
   } as unknown as ConsumerMessages;
 }
 
-/** NATS factice : connexion + jetstream renvoyant l'itérable fourni. */
-function fauxNats(messages: ConsumerMessages): {
+/**
+ * NATS factice : connexion + jetstream renvoyant l'itérable fourni. `addEchoue`
+ * simule le cas de production d'`AM-53` : un durable **déjà en place** avec une
+ * autre config (celle d'avant le filtre), qui fait échouer `consumers.add` et exige
+ * un `consumers.update`.
+ */
+function fauxNats(
+  messages: ConsumerMessages,
+  options: { addEchoue?: boolean; updateEchoue?: boolean } = {},
+): {
   nats: NatsService;
   consumersAdd: ReturnType<typeof vi.fn>;
+  consumersUpdate: ReturnType<typeof vi.fn>;
 } {
-  const consumersAdd = vi.fn(() => Promise.resolve());
+  const consumersAdd = vi.fn(() =>
+    options.addEchoue === true
+      ? Promise.reject(new Error('consumer already exists'))
+      : Promise.resolve(),
+  );
+  const consumersUpdate = vi.fn(() =>
+    options.updateEchoue === true
+      ? Promise.reject(new Error('update refusé'))
+      : Promise.resolve(),
+  );
   const nats = {
     getConnection: () => ({
       jetstreamManager: () =>
-        Promise.resolve({ consumers: { add: consumersAdd } }),
+        Promise.resolve({
+          consumers: { add: consumersAdd, update: consumersUpdate },
+        }),
     }),
     getJetStream: () => ({
       consumers: {
@@ -66,7 +86,7 @@ function fauxNats(messages: ConsumerMessages): {
       },
     }),
   } as unknown as NatsService;
-  return { nats, consumersAdd };
+  return { nats, consumersAdd, consumersUpdate };
 }
 
 /** NATS factice « pas encore connecté » (binding impossible). */
@@ -77,13 +97,17 @@ function fauxNatsDeconnecte(): NatsService {
   } as unknown as NatsService;
 }
 
-/** Projection factice renvoyant les résultats fournis, dans l'ordre. */
+/**
+ * Projection factice renvoyant les résultats fournis, dans l'ordre. `typesGeres`
+ * porte par défaut le seul sujet du stream `FOYER` de `OPTIONS` : c'est lui qui
+ * devient le `filter_subjects` du durable.
+ */
 function fauxProjection(...resultats: ResultatTraitement[]): ProjectionPort {
   const traiter = vi.fn();
   for (const r of resultats) {
     traiter.mockResolvedValueOnce(r);
   }
-  return { traiter };
+  return { traiter, typesGeres: [SUJET] };
 }
 
 /** DeadLetterService factice espionnable. */
@@ -136,6 +160,10 @@ describe('JetStreamConsumer (mutualisé)', () => {
       'FOYER',
       expect.objectContaining({ durable_name: 'test-foyer' }),
     );
+    // Le durable est borné à ce que la projection traite (`AM-53`).
+    expect(consumersAdd.mock.calls[0]?.[1]).toMatchObject({
+      filter_subjects: [SUJET],
+    });
     expect(projection.traiter).toHaveBeenCalledTimes(2);
     expect(traite.ack).toHaveBeenCalledTimes(1);
     expect(enEchec.ack).not.toHaveBeenCalled();
@@ -299,5 +327,79 @@ describe('JetStreamConsumer (mutualisé)', () => {
     await consommateur.onApplicationShutdown();
 
     expect(iterateur.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * `AM-53` — le filtre n'a de valeur que s'il **atteint** un durable déjà créé. En
+ * production les sept durables existent depuis la mise en service, sans filtre : un
+ * `consumers.add` y échoue, et le `catch` muet d'avant réutilisait le consommateur
+ * tel quel. Le correctif aurait alors été vert en CI — où les durables naissent
+ * avec le bon filtre — et sans effet sur la seule base qui accumule.
+ */
+describe('JetStreamConsumer — pose du filtre (AM-53)', () => {
+  it('durable déjà en place : met à jour son filtre au lieu de le réutiliser tel quel', async () => {
+    const message = fauxMessage({ id: 'h', type: SUJET });
+    const { nats, consumersAdd, consumersUpdate } = fauxNats(
+      fauxIterateur([message]),
+      { addEchoue: true },
+    );
+    const projection = fauxProjection('TRAITE');
+    const consommateur = construire(nats, projection, fauxDeadLetter());
+
+    consommateur.onApplicationBootstrap();
+    await vi.waitFor(() => {
+      expect(consumersUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    expect(consumersAdd).toHaveBeenCalledTimes(1);
+    expect(consumersUpdate).toHaveBeenCalledWith(
+      'FOYER',
+      'test-foyer',
+      expect.objectContaining({ filter_subjects: [SUJET] }),
+    );
+
+    await consommateur.onApplicationShutdown();
+  });
+
+  it('update refusé : ne consomme pas sans filtre, et réessaie', async () => {
+    vi.useFakeTimers();
+    const message = fauxMessage({ id: 'i', type: SUJET });
+    const { nats, consumersUpdate } = fauxNats(fauxIterateur([message]), {
+      addEchoue: true,
+      updateEchoue: true,
+    });
+    // Espion gardé en local : `expect(projection.traiter)` détacherait la méthode
+    // de son objet (`unbound-method`, règle à sa borne de ratchet).
+    const traiter = vi.fn(() => Promise.resolve<ResultatTraitement>('TRAITE'));
+    const projection: ProjectionPort = { traiter, typesGeres: [SUJET] };
+    const consommateur = construire(nats, projection, fauxDeadLetter());
+
+    consommateur.onApplicationBootstrap();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Un filtre qu'on n'a pas su poser ne se solde pas par une consommation
+    // non filtrée : rien n'est traité, et la liaison est reprogrammée.
+    expect(traiter).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(consumersUpdate.mock.calls.length).toBeGreaterThan(1);
+
+    await consommateur.onApplicationShutdown();
+  });
+
+  it('abonnement sans aucun sujet géré : refuse de démarrer', () => {
+    const { nats } = fauxNats(fauxIterateur([]));
+    const projection: ProjectionPort = {
+      traiter: vi.fn(),
+      // Rien sur le stream `FOYER` de `OPTIONS` : le filtre serait vide, ce qui
+      // vaut « tout le stream » côté JetStream — le défaut qu'`AM-53` ferme.
+      typesGeres: ['planification.ContratCree.v1'],
+    };
+    const consommateur = construire(nats, projection, fauxDeadLetter());
+
+    expect(() => {
+      consommateur.onApplicationBootstrap();
+    }).toThrow(/test-foyer@FOYER/);
   });
 });

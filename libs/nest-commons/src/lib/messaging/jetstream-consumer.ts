@@ -16,6 +16,7 @@ import {
 import { NatsService } from './nats.service.js';
 import {
   PROJECTION_PORT,
+  sujetsDuStream,
   type ProjectionPort,
   type RaisonRejet,
 } from './consumer.types.js';
@@ -56,7 +57,15 @@ const decodeurTexte = new TextDecoder();
  * tente de **lier les consommateurs durables** ; chaque message est projeté via le
  * `ProjectionPort` du service.
  *
- * **Aucun message ne disparaît en silence** : illisible (`PARSE_KO`), enveloppe
+ * Chaque durable est **borné à ce que la projection traite** (`filter_subjects`
+ * dérivé de `ProjectionPort.typesGeres`, `AM-53`) : un événement qui ne concerne
+ * pas ce service ne lui est pas livré, donc n'en laisse aucune copie. Avant cette
+ * borne, il retombait dans le `default` du `switch` et son payload — revenus,
+ * adresses e-mail — s'écrivait en clair dans `dead_letter` ; `TYPE_INCONNU` est
+ * désormais un **incident** (contrat amont enrichi sans consommateur mis à jour),
+ * pas le régime normal, et l'alerte `ConsumerRejetsDetectes` ne l'exclut plus.
+ *
+ * **Aucun message reçu ne disparaît en silence** : illisible (`PARSE_KO`), enveloppe
  * sans `type` (`ENVELOPPE_INVALIDE`), type non géré (`TYPE_INCONNU`) ou livraisons
  * épuisées (`MAX_LIVRAISONS`) laissent une ligne `dead_letter` + un compteur, puis
  * le message est acquitté (ou terminé) pour ne pas bloquer le stream. Une erreur
@@ -83,7 +92,33 @@ export class JetStreamConsumer
   ) {}
 
   onApplicationBootstrap(): void {
+    this.verifierAbonnements();
     void this.lierTous();
+  }
+
+  /**
+   * Refuse de démarrer si un abonnement ne porte **aucun** sujet géré.
+   *
+   * C'est la garde qui rend `AM-53` tenable : un `filter_subjects` vide ne vaut
+   * pas « rien » côté JetStream, il vaut **tout le stream** — précisément le
+   * défaut qu'on ferme. Le cas n'arrive que par erreur de câblage (abonnement à
+   * un stream dont la projection ne traite rien, ou faute de casse sur le nom du
+   * stream), et il est déjà interdit statiquement par `pnpm abonnements` ; l'échec
+   * au boot est le filet, pour que la faute ne puisse pas se rattraper en
+   * silence à l'exécution.
+   */
+  private verifierAbonnements(): void {
+    const vides = this.options.abonnements
+      .filter(
+        ({ stream }) =>
+          sujetsDuStream(this.projection.typesGeres, stream).length === 0,
+      )
+      .map(({ durable, stream }) => `${durable}@${stream}`);
+    if (vides.length > 0) {
+      throw new Error(
+        `Abonnement sans sujet géré : ${vides.join(', ')} — un filtre vide vaudrait « tout le stream » (AM-53).`,
+      );
+    }
   }
 
   /** Tente de lier les consommateurs non encore liés ; reprogramme si besoin. */
@@ -133,19 +168,32 @@ export class JetStreamConsumer
       throw new Error('NATS non connecté');
     }
     const jsm = await connexion.jetstreamManager();
+    // Champs **modifiables** d'un durable déjà en place (`ConsumerUpdateConfig`) :
+    // `filter_subjects` en fait partie depuis NATS 2.10 (image `nats:2.10-alpine`).
+    // `max_deliver`/`backoff` bornent les re-livraisons d'un message génuinement
+    // inapplicable (anti-livelock).
+    const modifiables = {
+      max_deliver: MAX_LIVRAISONS,
+      backoff: BACKOFF_NANOS,
+      filter_subjects: [...sujetsDuStream(this.projection.typesGeres, stream)],
+    };
     try {
       // `add` est idempotent côté serveur tant que la config demandée est
-      // compatible : un consommateur déjà présent avec la même config est
-      // renvoyé tel quel. `max_deliver`/`backoff` bornent les re-livraisons d'un
-      // message génuinement inapplicable (anti-livelock).
+      // identique : un consommateur déjà présent est renvoyé tel quel.
       await jsm.consumers.add(stream, {
         durable_name: durable,
         ack_policy: AckPolicy.Explicit,
-        max_deliver: MAX_LIVRAISONS,
-        backoff: BACKOFF_NANOS,
+        ...modifiables,
       });
     } catch {
-      // Consommateur déjà présent (config compatible) : on le réutilise tel quel.
+      // Consommateur déjà présent avec une **autre** config — le cas de tout
+      // durable créé avant `AM-53`, qui n'a aucun filtre. L'ancien `catch` muet le
+      // réutilisait tel quel : le filtre n'aurait jamais été posé en production et
+      // le correctif aurait été un no-op invisible, vert en CI (où les durables
+      // naissent avec le bon filtre) et sans effet sur la seule base qui accumule.
+      // On met donc à jour, et un échec ici remonte au réessai de `lierTous`
+      // plutôt que de se perdre.
+      await jsm.consumers.update(stream, durable, modifiables);
     }
     const consommateur: Consumer = await js.consumers.get(stream, durable);
     const messages = await consommateur.consume();

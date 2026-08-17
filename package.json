@@ -19,6 +19,7 @@
     "problemes": "node scripts/verifier-problemes.mjs",
     "environnement": "node scripts/verifier-environnement.mjs",
     "conteneurs": "node scripts/verifier-conteneurs.mjs",
+    "abonnements": "node scripts/verifier-abonnements.mjs",
     "quarantaine": "node scripts/verifier-quarantaine.mjs",
     "empechements": "node scripts/verifier-empechements.mjs",
     "liens": "node scripts/verifier-liens-doc.mjs",

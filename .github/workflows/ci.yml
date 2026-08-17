@@ -287,6 +287,22 @@ jobs:
           node scripts/verifier-quarantaine.mjs --autotest
           node scripts/verifier-quarantaine.mjs
 
+      # Abonnements JetStream (`AM-53`). Les sept consommateurs durables sont
+      # désormais bornés à ce que leur projection traite (`filter_subjects` dérivé
+      # de `typesGeres`) : un événement qui ne les concerne pas ne leur est plus
+      # livré, donc n'écrit plus son payload en clair dans `dead_letter`. Ce gain
+      # crée le risque inverse, et c'est lui que ce step couvre : un type ajouté aux
+      # contrats et oublié dans l'inventaire de son contexte ne serait plus livré à
+      # PERSONNE — et, contrairement au régime d'avant, sans un rebut pour le dire.
+      # L'équivalence `typesGeres` ⟷ `switch` est prouvée ailleurs, en exécutant les
+      # projections (`projection.types-geres.spec.ts` des 4 services) ; l'effet réel
+      # est jugé par le relevé `dead_letter` de `e2e-stack`. `--autotest` rejoue ses
+      # 2 sondes négatives.
+      - name: Abonnements JetStream — inventaire des événements complet (bloquant)
+        run: |
+          node scripts/verifier-abonnements.mjs --autotest
+          node scripts/verifier-abonnements.mjs
+
       # Empêchements d'outillage (doc 34 §6) — la liste « Encore réels » de
       # CONTRIBUTING tenait déjà l'inventaire des frictions d'atelier, mais
       # comme une FATALITÉ : aucune n'avait de remède planifié ni de critère de

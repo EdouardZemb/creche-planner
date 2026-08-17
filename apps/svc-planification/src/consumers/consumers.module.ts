@@ -4,7 +4,7 @@ import * as schema from '../database/schema.js';
 import { ProjectionService } from './projection.service.js';
 
 /** Streams amont consommés par Planification, et leur consommateur durable. */
-const ABONNEMENTS: readonly Abonnement[] = [
+export const ABONNEMENTS: readonly Abonnement[] = [
   // Enfants du foyer : rafraîchit la dénormalisation `contrat.enfant` (prénom)
   // quand un enfant est renommé (`foyer.EnfantModifie.v1`).
   { stream: 'FOYER', durable: 'planification-foyer' },

@@ -4,7 +4,7 @@ import * as schema from '../database/schema.js';
 import { ProjectionService } from './projection.service.js';
 
 /** Streams amont consommés par Notifications, et leur consommateur durable. */
-const ABONNEMENTS: readonly Abonnement[] = [
+export const ABONNEMENTS: readonly Abonnement[] = [
   { stream: 'PLANIFICATION', durable: 'notifications-planification' },
   // Parents du foyer : projette `foyer_parent`/préférences pour router le récap.
   { stream: 'FOYER', durable: 'notifications-foyer' },

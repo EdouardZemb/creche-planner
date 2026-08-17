@@ -62,6 +62,28 @@ type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 export class ProjectionService {
   private readonly logger = new Logger(ProjectionService.name);
 
+  /**
+   * Types traités — source du `filter_subjects` des durables (`AM-53`). Toute
+   * entrée du `switch` ci-dessous s'y déclare, et rien d'autre : l'équivalence est
+   * prouvée dans les deux sens par `projection.types-geres.spec.ts`.
+   */
+  readonly typesGeres: readonly string[] = [
+    FOYER_MIS_A_JOUR_TYPE,
+    FOYER_MIS_A_JOUR_V2_TYPE,
+    FOYER_MIS_A_JOUR_V3_TYPE,
+    FOYER_SUPPRIME_TYPE,
+    ENFANT_AJOUTE_TYPE,
+    GRILLE_PUBLIEE_TYPE,
+    GRILLE_PUBLIEE_V2_TYPE,
+    BAREME_PSU_PUBLIE_TYPE,
+    CONTRAT_CREE_TYPE,
+    CONTRAT_CREE_V2_TYPE,
+    CONTRAT_MODIFIE_TYPE,
+    CONTRAT_MODIFIE_V2_TYPE,
+    CONTRAT_SUPPRIME_TYPE,
+    PLANNING_MODIFIE_TYPE,
+  ];
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly planificationClient: PlanificationClient,

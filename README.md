@@ -164,6 +164,7 @@ corepack pnpm frontieres     # frontières Nx & vocabulaire partagé
 corepack pnpm pieges         # pièges morts recopiés dans un plan ou une doc
 corepack pnpm registre       # registre d'améliorations : formes, preuves, compteurs
 corepack pnpm environnement  # inventaire des variables d'environnement lues
+corepack pnpm abonnements    # abonnements JetStream bornés à ce qu'ils traitent
 
 # Front web en dev (Vite, HMR) — proxifie /api vers la gateway :3000
 corepack pnpm nx serve web   # http://localhost:4200
@@ -255,7 +256,11 @@ régression silencieuse :
   `pnpm conteneurs` (chaque service des trois piles Compose tourne en
   `no-new-privileges` + `cap_drop: [ALL]`, racine en lecture seule sauf exemption
   motivée, chaque capacité reprise nommée, ni mode privilégié ni profil de
-  sécurité défait), `pnpm quarantaine` (le délai avant
+  sécurité défait), `pnpm abonnements` (chaque contexte de contrats publie
+  l'inventaire des événements qu'il déclare, et chaque consommateur durable
+  JetStream est borné aux sujets que sa projection traite — un événement qui ne
+  concerne pas un service ne lui est plus livré, donc n'y laisse plus de payload
+  en clair), `pnpm quarantaine` (le délai avant
   d'installer une version npm fraîchement publiée est déclaré là où il est effectivement lu,
   et accordé au _cooldown_ de Dependabot), `pnpm wcag` (les neuf critères ajoutés
   par **WCAG 2.2** sont tous statués en [doc 11](docs/11-spec-accessibilite-ct-ut.md) §8,
