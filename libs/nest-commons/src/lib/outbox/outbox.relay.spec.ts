@@ -35,6 +35,7 @@ function fakeBuilder(resultat: readonly unknown[]): Record<string, unknown> {
   b['where'] = self;
   b['orderBy'] = self;
   b['limit'] = self;
+  b['offset'] = self;
   b['set'] = self;
   b['then'] = (
     onF: (v: readonly unknown[]) => unknown,
@@ -59,6 +60,8 @@ function evenement(
 
 interface OptionsDb {
   readonly evenements?: readonly unknown[];
+  /** Pages successives du drain (`offset`), quand le test en exerce plusieurs. */
+  readonly pages?: readonly (readonly unknown[])[];
   readonly backlog?: number;
   /** `null` = file vide (`min()` sur zéro ligne rend `NULL`). */
   readonly ageSecondes?: number | null;
@@ -74,12 +77,18 @@ function fakeDb(opts: OptionsDb = {}): PostgresJsDatabase {
   const evenements = opts.evenements ?? [];
   const backlog = opts.backlog ?? 0;
   const ageSecondes = opts.ageSecondes ?? null;
+  let pageLue = 0;
   return {
     select: vi.fn((arg?: unknown) => {
       if (opts.selectThrows) {
         throw new Error('base indisponible');
       }
       if (arg === undefined) {
+        if (opts.pages !== undefined) {
+          const page = opts.pages[pageLue] ?? [];
+          pageLue += 1;
+          return fakeBuilder(page);
+        }
         return fakeBuilder(evenements);
       }
       const projection = arg as Record<string, unknown>;
@@ -470,6 +479,58 @@ describe('OutboxRelay — isolation par événement (AM-61)', () => {
 
     const idsTentes = publier.mock.calls.map((appel) => appel[1] as string);
     expect(idsTentes).toEqual(['sans-foyer-ko', 'suivant']);
+  });
+
+  it("un foyer bloqué qui remplit la fenêtre n'arrête pas les autres", async () => {
+    // Page 1 : 50 lignes du même foyer, tête refusée → tout est différé, rien de
+    // publié. Sans échappée, la fenêtre resterait éternellement occupée par ce
+    // foyer et *aucun* autre n'avancerait — le blocage de tête d'avant `AM-61`,
+    // ressuscité par l'ordre par foyer.
+    const pageBloquee = Array.from({ length: 50 }, (_, i) =>
+      evenement(i === 0 ? 'tete-ko' : `bloque-${String(i)}`, {
+        type: 'foyer.ParentModifie.v1',
+        payload: { foyerId: FOYER },
+      }),
+    );
+    const publier = publierSauf(['tete-ko']);
+    const relay = new OutboxRelay(
+      fakeDb({
+        pages: [
+          pageBloquee,
+          [
+            evenement('voisin', {
+              type: 'foyer.FoyerSupprime.v1',
+              payload: { foyerId: AUTRE_FOYER, parentIds: [] },
+            }),
+          ],
+        ],
+      }),
+      fakeNats({ publier }),
+      options,
+    );
+
+    await relay.drainer();
+
+    const idsTentes = publier.mock.calls.map((appel) => appel[1] as string);
+    expect(idsTentes).toEqual(['tete-ko', 'voisin']);
+  });
+
+  it('ne lit pas de page suivante quand la première a publié', async () => {
+    const publier = publierSauf([]);
+    const pagePleine = Array.from({ length: 50 }, (_, i) =>
+      evenement(`ok-${String(i)}`),
+    );
+    const relay = new OutboxRelay(
+      fakeDb({ pages: [pagePleine, [evenement('page-2')]] }),
+      fakeNats({ publier }),
+      options,
+    );
+
+    await relay.drainer();
+
+    const idsTentes = publier.mock.calls.map((appel) => appel[1] as string);
+    expect(idsTentes).toHaveLength(50);
+    expect(idsTentes).not.toContain('page-2');
   });
 
   it('un select qui lève reste un échec de cycle, sans attribut de type', async () => {

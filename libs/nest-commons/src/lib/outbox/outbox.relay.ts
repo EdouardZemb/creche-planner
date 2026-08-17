@@ -16,6 +16,24 @@ const INTERVALLE_MS = 2000;
 const TAILLE_LOT = 50;
 
 /**
+ * Nombre maximal de pages lues par cycle. Une seule suffit au régime nominal : on
+ * n'en lit une autre que lorsqu'une page entière a été **différée** parce que ses
+ * foyers attendaient (cf. `drainer`). Sans cette échappée, un foyer bloqué qui
+ * porte à lui seul les 50 plus vieilles lignes arrêterait *tous* les autres — le
+ * blocage de tête qu'`AM-61` retire, ressuscité par l'ordre par foyer.
+ */
+const PAGES_MAX = 4;
+
+/** Ligne d'`outbox` telle que le relais la lit (`select()` sans projection). */
+interface LigneOutbox {
+  readonly id: string;
+  readonly type: string;
+  readonly occurredAt: Date;
+  readonly traceId: string;
+  readonly payload: unknown;
+}
+
+/**
  * Instruments OTel du relais outbox, exportés en Prometheus (le label `service.name`
  * est ajouté par le collector, `resource_to_telemetry_conversion`). Si aucun
  * `MeterProvider` n'est enregistré, l'API OTel est un no-op silencieux (sûr, sans
@@ -176,70 +194,37 @@ export class OutboxRelay
     this.enCours = true;
     const { table, source } = this.options;
     try {
-      const enAttente = await this.db
-        .select()
-        .from(table)
-        .where(isNull(table.publishedAt))
-        .orderBy(asc(table.occurredAt))
-        .limit(TAILLE_LOT);
-
       // Foyers dont l'ordre est rompu **dans ce cycle** : une fois qu'un de leurs
       // événements a échoué, les suivants du même foyer attendent leur tour.
       const foyersEnAttente = new Set<string>();
 
-      for (const evt of enAttente) {
-        // Isolation **par événement** (`AM-61`) : un refus durable — sujet hors des
-        // `subjects` du stream, payload au-delà de `max_payload`, ligne corrompue —
-        // ne fige plus la file. Le `try` enveloppait la boucle entière et la tête
-        // de file est resélectionnée à chaque cycle (`order by occurred_at`) : un
-        // seul message inapplicable arrêtait *toute* la propagation, sans limite de
-        // durée et sans que rien ne date le blocage.
-        //
-        // Mais l'isolation seule **réordonne**, et ce n'est pas neutre : laisser un
-        // `foyer.FoyerSupprime.v1` dépasser un `foyer.Parent*.v1` en échec fait
-        // effacer le foyer chez les consommateurs, **puis** ré-insérer l'adresse
-        // e-mail du parent quand l'événement en retard finit par passer. Les gardes
-        // de monotonie `occurred_at` ne protègent que des lignes qui existent
-        // encore, et `processed_event` ne dit rien d'une **première** livraison
-        // tardive : l'effacement serait défait, sans foyer pour le redéclencher.
-        // L'ordre est donc tenu **par foyer**, et l'isolation ne joue qu'entre
-        // foyers distincts (et pour les événements sans foyer identifiable).
-        const foyerId = this.foyerDe(evt.payload);
-        if (foyerId !== null && foyersEnAttente.has(foyerId)) {
-          this.logger.debug(
-            `Publication différée ${evt.type} (${evt.id}) : un événement plus ancien du même foyer attend`,
-          );
-          continue;
+      for (let page = 0; page < PAGES_MAX; page += 1) {
+        const enAttente = await this.db
+          .select()
+          .from(table)
+          .where(isNull(table.publishedAt))
+          .orderBy(asc(table.occurredAt))
+          .limit(TAILLE_LOT)
+          .offset(page * TAILLE_LOT);
+        if (enAttente.length === 0) {
+          break;
         }
-        try {
-          const enveloppe = {
-            id: evt.id,
-            type: evt.type,
-            source,
-            version: 1,
-            occurredAt: evt.occurredAt.toISOString(),
-            traceId: evt.traceId,
-            payload: evt.payload,
-          };
-          await this.nats.publier(evt.type, evt.id, enveloppe);
-          await this.db
-            .update(table)
-            .set({ publishedAt: new Date() })
-            .where(eq(table.id, evt.id));
-          this.logger.log(`Événement publié ${evt.type} (${evt.id})`);
-        } catch (erreur) {
-          // L'événement reste `published_at IS NULL` : il sera retenté au prochain
-          // tick, indéfiniment. Ce n'est donc pas une perte, mais ce n'est pas
-          // gratuit non plus — c'est `outbox_attente_age_secondes` qui borne le
-          // silence, en datant la plus vieille ligne non publiée.
-          if (foyerId !== null) {
-            foyersEnAttente.add(foyerId);
-          }
-          compteurEchecs.add(1, { type: evt.type });
-          this.logger.warn(
-            `Publication refusée ${evt.type} (${evt.id}) : ${(erreur as Error).message} — les autres foyers continuent`,
-          );
+        const publiees = await this.publierLot(
+          enAttente,
+          source,
+          foyersEnAttente,
+        );
+        // On ne regarde la page suivante que si celle-ci n'a **rien** publié : c'est
+        // le seul cas où un foyer bloqué peut monopoliser la fenêtre et arrêter
+        // *tous* les autres — l'ordre par foyer ne doit pas ressusciter le blocage
+        // de tête qu'`AM-61` retire. Et c'est aussi le seul cas où l'`offset` reste
+        // exact, l'ensemble `published_at IS NULL` étant alors inchangé.
+        if (publiees > 0 || enAttente.length < TAILLE_LOT) {
+          break;
         }
+        this.logger.debug(
+          `Page ${String(page)} entièrement différée (foyers en attente) — lecture de la suivante`,
+        );
       }
     } catch (erreur) {
       // Le **cycle** a échoué avant même de lire un lot (base indisponible) : rien
@@ -251,6 +236,76 @@ export class OutboxRelay
     } finally {
       this.enCours = false;
     }
+  }
+
+  /**
+   * Publie une page d'événements en attente et rend le nombre de publications
+   * réussies. `foyersEnAttente` est porté par le cycle entier, pas par la page :
+   * un foyer bloqué le reste jusqu'au prochain tick.
+   */
+  private async publierLot(
+    enAttente: readonly LigneOutbox[],
+    source: string,
+    foyersEnAttente: Set<string>,
+  ): Promise<number> {
+    const { table } = this.options;
+    let publiees = 0;
+    for (const evt of enAttente) {
+      // Isolation **par événement** (`AM-61`) : un refus durable — sujet hors des
+      // `subjects` du stream, payload au-delà de `max_payload`, ligne corrompue —
+      // ne fige plus la file. Le `try` enveloppait la boucle entière et la tête
+      // de file est resélectionnée à chaque cycle (`order by occurred_at`) : un
+      // seul message inapplicable arrêtait *toute* la propagation, sans limite de
+      // durée et sans que rien ne date le blocage.
+      //
+      // Mais l'isolation seule **réordonne**, et ce n'est pas neutre : laisser un
+      // `foyer.FoyerSupprime.v1` dépasser un `foyer.Parent*.v1` en échec fait
+      // effacer le foyer chez les consommateurs, **puis** ré-insérer l'adresse
+      // e-mail du parent quand l'événement en retard finit par passer. Les gardes
+      // de monotonie `occurred_at` ne protègent que des lignes qui existent
+      // encore, et `processed_event` ne dit rien d'une **première** livraison
+      // tardive : l'effacement serait défait, sans foyer pour le redéclencher.
+      // L'ordre est donc tenu **par foyer**, et l'isolation ne joue qu'entre
+      // foyers distincts (et pour les événements sans foyer identifiable).
+      const foyerId = this.foyerDe(evt.payload);
+      if (foyerId !== null && foyersEnAttente.has(foyerId)) {
+        this.logger.debug(
+          `Publication différée ${evt.type} (${evt.id}) : un événement plus ancien du même foyer attend`,
+        );
+        continue;
+      }
+      try {
+        const enveloppe = {
+          id: evt.id,
+          type: evt.type,
+          source,
+          version: 1,
+          occurredAt: evt.occurredAt.toISOString(),
+          traceId: evt.traceId,
+          payload: evt.payload,
+        };
+        await this.nats.publier(evt.type, evt.id, enveloppe);
+        await this.db
+          .update(table)
+          .set({ publishedAt: new Date() })
+          .where(eq(table.id, evt.id));
+        publiees += 1;
+        this.logger.log(`Événement publié ${evt.type} (${evt.id})`);
+      } catch (erreur) {
+        // L'événement reste `published_at IS NULL` : il sera retenté au prochain
+        // tick, indéfiniment. Ce n'est donc pas une perte, mais ce n'est pas
+        // gratuit non plus — c'est `outbox_attente_age_secondes` qui borne le
+        // silence, en datant la plus vieille ligne non publiée.
+        if (foyerId !== null) {
+          foyersEnAttente.add(foyerId);
+        }
+        compteurEchecs.add(1, { type: evt.type });
+        this.logger.warn(
+          `Publication refusée ${evt.type} (${evt.id}) : ${(erreur as Error).message} — les autres foyers continuent`,
+        );
+      }
+    }
+    return publiees;
   }
 
   onApplicationShutdown(): void {
