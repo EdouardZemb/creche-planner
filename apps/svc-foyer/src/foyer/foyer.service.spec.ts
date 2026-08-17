@@ -170,6 +170,10 @@ function fakeDbTransaction(
     return Object.assign(promesse, {
       returning: () => Promise.resolve([valeurs]),
       onConflictDoUpdate: () => Promise.resolve(),
+      // Matérialisation du consentement à l'inscription (`AM-57`) : la vraie clause
+      // préserve une ligne existante (un désabonnement antérieur, sur réactivation).
+      // Ici, comme les `insert` sont seulement journalisés, il n'y a rien à préserver.
+      onConflictDoNothing: () => Promise.resolve(),
     });
   });
   const updateSet = vi.fn(() => ({
@@ -264,6 +268,8 @@ function fakeDbCreationRollback(): {
     }
     return Object.assign(Promise.resolve(), {
       returning: () => Promise.resolve([valeurs]),
+      // Consentement matérialisé à l'inscription (`AM-57`).
+      onConflictDoNothing: () => Promise.resolve(),
     });
   });
   const from = (table: unknown) => {
@@ -388,7 +394,9 @@ describe('FoyerService.creer (dossier atomique : enfants + parents + créateur)'
 
     expect(transaction).toHaveBeenCalledTimes(1);
     // Tous les événements dans la même transaction, dans l'ordre du dossier :
-    // FoyerMisAJour, EnfantAjoute, puis 2×ParentAjoute (saisi + créateur).
+    // FoyerMisAJour, EnfantAjoute, puis pour chaque parent (saisi puis créateur) son
+    // ParentAjoute **suivi de son consentement matérialisé** (`AM-57`) — un parent ne
+    // peut pas entrer dans le foyer sans que son consentement soit écrit et diffusé.
     const typesOutbox = insertValues.mock.calls
       .map((c) => (c[0] as { type?: unknown }).type)
       .filter((t): t is string => typeof t === 'string');
@@ -396,7 +404,9 @@ describe('FoyerService.creer (dossier atomique : enfants + parents + créateur)'
       FOYER_MIS_A_JOUR_V3_TYPE,
       ENFANT_AJOUTE_TYPE,
       PARENT_AJOUTE_TYPE,
+      PREFERENCES_NOTIF_MODIFIEES_TYPE,
       PARENT_AJOUTE_TYPE,
+      PREFERENCES_NOTIF_MODIFIEES_TYPE,
     ]);
     expect(dossier.foyer.tranche).toBe(3);
     // Enfant : prénom normalisé par le domaine (trim).
@@ -1170,6 +1180,9 @@ function fakeDbParentTx(
         erreur
           ? Promise.reject(erreur)
           : Promise.resolve([ligneParent(valeurs as Partial<ParentRow>)]),
+      // Consentement matérialisé à l'inscription (`AM-57`) : sur une réactivation, la
+      // vraie clause préserve un désabonnement antérieur.
+      onConflictDoNothing: () => Promise.resolve(),
     });
   });
   const updateSet = vi.fn(() => ({
@@ -1724,8 +1737,11 @@ function fakeDbPreferencesLecture(options: {
   return { select } as unknown as Database;
 }
 
-describe('FoyerService.lirePreferences (défauts fusionnés)', () => {
-  it('renvoie la matrice par défaut (VALIDATION_HEBDO e-mail + in-app actifs) sans ligne stockée', async () => {
+describe('FoyerService.lirePreferences (matrice projetée sur les lignes)', () => {
+  it('rend la matrice ENTIÈRE, une combinaison sans ligne étant SANS consentement', async () => {
+    // `AM-57` : sans ligne, plus de repli sur la valeur d'inscription. L'écran montre
+    // donc la combinaison inactive — ce que le routage en fait réellement. En
+    // production l'état ne survient pas : la matrice est matérialisée à l'inscription.
     const db = fakeDbPreferencesLecture({
       parent: { id: PARENT_ID, foyerId: FOYER_ID },
       rows: [],
@@ -1737,21 +1753,21 @@ describe('FoyerService.lirePreferences (défauts fusionnés)', () => {
       {
         typeNotification: 'VALIDATION_HEBDO',
         canal: 'EMAIL',
-        actif: true,
+        actif: false,
         consentementAt: null,
         desabonneAt: null,
       },
       {
         typeNotification: 'VALIDATION_HEBDO',
         canal: 'IN_APP',
-        actif: true,
+        actif: false,
         consentementAt: null,
         desabonneAt: null,
       },
     ]);
   });
 
-  it('surcharge le défaut par le choix explicite stocké (e-mail coupé, désabo tracé)', async () => {
+  it('rend le choix stocké de chaque combinaison (e-mail coupé, désabo tracé)', async () => {
     const db = fakeDbPreferencesLecture({
       parent: { id: PARENT_ID, foyerId: FOYER_ID },
       rows: [
@@ -1760,6 +1776,7 @@ describe('FoyerService.lirePreferences (défauts fusionnés)', () => {
           actif: false,
           desabonneAt: new Date('2026-07-01T09:00:00Z'),
         }),
+        lignePref({ id: 'pref-inapp', canal: 'IN_APP', actif: true }),
       ],
     });
     const service = new FoyerService(db, new JournalAuditService());
@@ -1770,7 +1787,7 @@ describe('FoyerService.lirePreferences (défauts fusionnés)', () => {
       actif: false,
       desabonneAt: '2026-07-01T09:00:00.000Z',
     });
-    // L'in-app non stocké retombe sur le défaut actif.
+    // L'in-app, lui, porte bien son consentement : couper un canal n'en coupe qu'un.
     expect(prefs[1]).toMatchObject({ canal: 'IN_APP', actif: true });
   });
 

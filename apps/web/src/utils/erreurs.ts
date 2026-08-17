@@ -28,6 +28,17 @@ const MESSAGES_PAR_CODE: Readonly<Record<string, string>> = {
     'Cette période n’a pas de ressources déclarées : le coût ne peut pas être ' +
     'calculé sans inventer un montant. Enregistrez vos ressources avec une date ' +
     'd’effet couvrant cette période depuis « Ma famille ».',
+  // `AM-58` : la semaine est révolue depuis trop longtemps pour qu'un récapitulatif
+  // parte encore vers la crèche. Le message dit que ce n'est ni une panne ni une
+  // saisie à corriger — réessayer ne changera rien — et ce qu'il reste à faire.
+  SEMAINE_HORS_FENETRE_ENVOI:
+    'Cette semaine est passée depuis trop longtemps : le récapitulatif ne peut ' +
+    'plus être envoyé à la crèche. Prévenez-la directement si c’est encore utile.',
+  // `AM-58` : rien à transmettre. Sans ce message, le parent recevrait « Données
+  // invalides » pour un refus qui ne vient d'aucune saisie.
+  RECAP_SANS_MODIFICATION:
+    'Aucune modification validée à transmettre pour cette semaine : il n’y a rien ' +
+    'à envoyer à la crèche.',
 };
 
 /** Convertit une erreur (ApiError ou Error) en message utilisateur en français. */

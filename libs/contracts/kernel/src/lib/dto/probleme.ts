@@ -34,6 +34,10 @@ export const CODES_PROBLEME = {
   PERIODE_CHEVAUCHANTE: 'la période chevauche une version existante',
   RESSOURCES_INCONNUES_AU_MOIS:
     'aucune version de ressources ne couvre ce mois — le coût ne peut pas être calculé',
+  SEMAINE_HORS_FENETRE_ENVOI:
+    'la semaine est trop ancienne pour qu’un récapitulatif parte vers l’établissement',
+  RECAP_SANS_MODIFICATION:
+    'aucune modification à transmettre : le récapitulatif n’a rien à dire',
 } as const;
 
 /** Code métier d'un problème, tel que le front peut le discriminer. */

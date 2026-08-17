@@ -62,6 +62,35 @@ describe('messageErreur', () => {
     expect(message).not.toMatch(/champs marqués/i);
   });
 
+  /**
+   * `AM-58` : deux refus d'envoi vers une **vraie crèche**. Le parent doit lire ce
+   * qui s'est passé et comprendre qu'il n'y a rien à corriger dans un formulaire —
+   * réessayer ne changera rien.
+   */
+  it('422 + SEMAINE_HORS_FENETRE_ENVOI → dit que la semaine est trop ancienne', () => {
+    const message = messageErreur(
+      new ApiError(422, {
+        code: 'SEMAINE_HORS_FENETRE_ENVOI',
+        title: 'Unprocessable Content',
+      }),
+    );
+
+    expect(message).toMatch(/trop longtemps/i);
+    expect(message).not.toMatch(/champs marqués/i);
+  });
+
+  it('422 + RECAP_SANS_MODIFICATION → dit qu’il n’y a rien à transmettre', () => {
+    const message = messageErreur(
+      new ApiError(422, {
+        code: 'RECAP_SANS_MODIFICATION',
+        title: 'Unprocessable Content',
+      }),
+    );
+
+    expect(message).toMatch(/aucune modification/i);
+    expect(message).not.toMatch(/champs marqués/i);
+  });
+
   it('TypeError (fetch réseau) → service indisponible', () => {
     expect(messageErreur(new TypeError('Failed to fetch'))).toMatch(
       /Service indisponible/i,

@@ -1,6 +1,6 @@
 ---
 name: chantier-cout-ne-ment-plus
-description: "Chantier « Le coût ne ment plus » (validé PO 2026-08-16) — lot 1 « la fin d'une version existe » (AM-55, AM-13) MERGÉ le 2026-08-17 (PR #336, squash c1086f7), NON DÉPLOYÉ ; reste AM-88 (purge T1) et AM-90 (mensualité crèche), deux arbitrages PO"
+description: 'Chantier « Le coût ne ment plus » (validé PO 2026-08-16) — lot 1 (AM-55, AM-13) MERGÉ le 2026-08-17 (c1086f7), NON DÉPLOYÉ ; lot 2 (AM-58, AM-57) écrit le 2026-08-17, PR ouverte non mergée ; restent AM-88, AM-90 et AM-98, trois arbitrages PO'
 metadata:
   node_type: memory
   type: project
@@ -87,24 +87,59 @@ jour, qui passe INV-01. Un contrat crèche sans terme facturait **0 h** dès le 
 suivant son début. **Un domaine qui refuse de représenter un cas force l'appelant à
 mentir, et le mensonge est plus discret que le refus** (`LE-63`).
 
-## Lot 2 — envois bornés + consentement explicite (`AM-58`, `AM-57`) — À FAIRE
+## Lot 2 — envois bornés + consentement explicite (`AM-58`, `AM-57`) — PR OUVERTE
 
 Même famille de défauts que le lot 1, **transposée aux notifications** : un état est
-déduit d'une absence, et rien ne borne ce que l'absence autorise.
+déduit d'une absence, et rien ne borne ce que l'absence autorise. **Écrit le
+2026-08-17**, branche `feat/cout-lot2-envois-consentement`, PR verte non mergée.
 
-- **`AM-58` (P1)** — rien côté serveur n'empêche de ré-adresser un récapitulatif à
-  une crèche pour une semaine **arbitrairement ancienne**. `POST /envois/etablissement`
-  ne valide `semaineIso` qu'en forme (`z.string().min(1)` au BFF, plus strict côté
-  service), et le front réarme son bouton à chaque montage — le « déjà envoyé » vit
-  dans un état local. La **seule** chose qui empêche un second courriel réel est la
-  ligne `envoi_etablissement`, ce qui a contraint le lot 2b à **anonymiser** cette
-  table au lieu de la purger. ⚠️ Le destinataire est une **vraie crèche**
-  (`jaudrey@cscpapin.asso.fr`) et l'envoi réel est **actif en prod**.
-- **`AM-57` (P1)** — le consentement se déduit d'une **absence de ligne** :
-  `preferences.util.ts` retombe sur `actif` par défaut, `destinataires.service.ts`
-  garde le destinataire tant que la préférence n'est pas explicitement `false`.
-  Supprimer une ligne `actif = false` **réabonne** le parent — exactement la
-  population que la borne T3bis visait.
+### Le constat négatif a trouvé un troisième défaut, plus grave que l'énoncé
 
-Les deux verrouillent `AM-36` (4 durées non outillées) au même titre qu'`AM-55` :
-c'est la raison de les traiter ensemble.
+L'énoncé annonçait la borne temporelle. Reproduit avant d'écrire une ligne, il tenait —
+un `POST` sur `2019-W01` sollicitait bien le mailer vers `jaudrey@cscpapin.asso.fr`. Mais
+la même sonde a montré qu'un récap **sans aucun enfant concerné** partait tout autant, et
+disait à la crèche « Aucune modification déclarée sur cette semaine ». C'est le défaut le
+plus atteignable des deux : le front filtre (`concernes.length > 0`), donc la règle
+_paraissait_ implémentée — personne ne l'avait écrite côté serveur (`LE-71`).
+
+### Ce que le lot pose
+
+- **`AM-58`** — deux gardes serveur **avant** toute écriture et toute sollicitation du
+  transport : semaine révolue de plus de `NOTIF_ENVOI_RETARD_MAX_SEMAINES` (défaut **4**,
+  422 `SEMAINE_HORS_FENETRE_ENVOI`) et récap sans modification (422
+  `RECAP_SANS_MODIFICATION`). Le **futur n'est pas borné** — le planning se saisit des
+  mois à l'avance. Front : le bouton s'arme sur l'état **persisté** (`lireSuiviEnvois`).
+- **`AM-57`** — le consentement est **écrit**, plus déduit. La matrice §5.1 est
+  matérialisée à l'inscription (`source_dernier = 'DEFAUT'`), diffusée par
+  `PreferencesNotifModifiees`, back-fillée (`svc-foyer/0008`, `svc-notifications/0020`) ;
+  `preferencesEffectives` (ex-`fusionnerDefauts`) et `DestinatairesService` exigent une
+  ligne **explicitement active**. ⚠️ `onConflictDoNothing` sur la **réactivation** d'un
+  parent : sans lui, revenir dans un foyer réabonnerait un désabonné — le défaut fermé,
+  réintroduit par le chemin d'à côté.
+
+### Pièges que ce lot a payés
+
+- ⚠️ **Une règle relative à « maintenant » date rétroactivement tous les jeux figés**
+  (`LE-70`). `envoi.service.spec.ts` visait `2026-W27` avec `horlogeSysteme` : il aurait
+  rougi **à partir du 3 août 2026** sans qu'aucune ligne de production ait bougé. Le pact
+  `api-gateway ↔ svc-notifications` fige `2026-W10` **dans le fichier de contrat**, donc
+  aucune horloge de test ne le sauve : la vérification provider relève la borne par env.
+- ⚠️ **Aucun contrôle du dépôt n'exécute une migration de back-fill sur des données**
+  (`EM-16`). `e2e-stack`/`smoke-stack` migrent une base **vierge** : les deux `INSERT …
+SELECT` de ce lot y traitent zéro ligne. Vérification manuelle impossible : **Docker
+  Desktop refuse de démarrer** sur le poste (« Docker Desktop is unable to start »).
+- ⚠️ La porte `pnpm environnement` (peu connue) refuse une variable déclarée par un
+  service qu'aucun compose ne pose : le défaut de code doit être **assumé par écrit**
+  dans `DEFAUTS_DE_CODE_ASSUMES` (`scripts/verifier-environnement.mjs`).
+- ⚠️ `svc-notifications` ne dépendait pas de `@creche-planner/contracts-kernel` : émettre
+  un code métier `satisfies CodeProbleme` a demandé la dépendance workspace + un
+  `pnpm install` (3 lignes de lock).
+
+### Ce qui reste
+
+- **`AM-98`** — la borne T3ter (préférences) reste sans durée, mais le motif a changé :
+  ce n'est plus un défaut de code, c'est un arbitrage PO. La trace du désabonnement est
+  **aussi la preuve** qu'on a cessé d'écrire à quelqu'un.
+- **`EM-16`** — le harnais qui prouverait un back-fill sur des données.
+- Les deux arbitrages du lot 1 (`AM-88` purge T1, `AM-90` mensualité crèche) sont
+  intacts.

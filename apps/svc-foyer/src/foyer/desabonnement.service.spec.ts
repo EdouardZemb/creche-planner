@@ -228,12 +228,17 @@ describe('DesabonnementService.consommer', () => {
   });
 
   it('cas nominal : coupe l’e-mail, marque le jeton utilisé et émet l’événement', async () => {
-    // Aucune préférence stockée ⇒ défauts (e-mail + in-app actifs) : couper
-    // l'e-mail laisse l'in-app ⇒ autorisé.
+    // Consentement **matérialisé** à l'inscription (`AM-57`) : les deux canaux ont
+    // leur ligne. Couper l'e-mail laisse l'in-app ⇒ autorisé. Le jeu de données ne
+    // pouvait plus être « aucune ligne stockée » : depuis ce lot, une absence ne vaut
+    // plus consentement, et un parent sans ligne serait déjà injoignable.
     const { db, inserts, updates } = fakeDb({
       tokenRows: [ligneToken({ canal: 'EMAIL' })],
       parentRows: [{ foyerId: FOYER_ID }],
-      prefRows: [],
+      prefRows: [
+        lignePref({ id: 'p-email', canal: 'EMAIL', sourceDernier: 'DEFAUT' }),
+        lignePref({ id: 'p-inapp', canal: 'IN_APP', sourceDernier: 'DEFAUT' }),
+      ],
     });
     const service = new DesabonnementService(db, OPTIONS);
     const token = signerJeton({ jti: JTI, exp: EXP_FUTUR }, SECRET);

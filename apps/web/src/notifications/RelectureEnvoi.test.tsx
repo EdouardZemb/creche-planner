@@ -13,6 +13,7 @@ vi.mock('../api/client', () => ({
     lireSemaineBesoins: vi.fn(),
     lireBrouillonEtablissement: vi.fn(),
     envoyerRecapEtablissement: vi.fn(),
+    lireSuiviEnvois: vi.fn(),
   },
   ApiError: class ApiError extends Error {},
 }));
@@ -127,6 +128,13 @@ function mockBrouillons(
 describe('RelectureEnvoi (agrégé par établissement)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // État persisté des envois de la semaine (`AM-58`) : rien d'envoyé par défaut.
+    vi.mocked(api.lireSuiviEnvois).mockResolvedValue({
+      foyerId: FOYER_ID,
+      semaineIso: SEMAINE,
+      rappel: null,
+      etablissements: [],
+    });
   });
 
   it('n’affiche un bloc que pour les établissements concernés', async () => {
@@ -400,6 +408,124 @@ describe('RelectureEnvoi (agrégé par établissement)', () => {
     });
     expect(bouton).not.toBeDisabled();
     expect(bouton).toHaveTextContent(/Réessayer l'envoi/);
+  });
+
+  it('SONDE — un récap DÉJÀ envoyé revient « Envoyé ✓ » et le bouton reste inactif', async () => {
+    // `AM-58` : le « déjà envoyé » ne vivait que dans l'état React, remis à neuf à
+    // chaque montage — recharger la page réarmait un envoi vers une VRAIE crèche. Le
+    // bouton s'arme désormais sur l'état persisté (`envoi_etablissement`).
+    mockBrouillons();
+    vi.mocked(api.lireSuiviEnvois).mockResolvedValue({
+      foyerId: FOYER_ID,
+      semaineIso: SEMAINE,
+      rappel: null,
+      etablissements: [
+        {
+          etablissementId: CRECHE_ID,
+          statut: 'ENVOYE',
+          envoyeLe: '2026-06-30T08:00:00.000Z',
+          erreur: null,
+          destinataire: 'contact-creche@example.org',
+        },
+      ],
+    });
+
+    renderRelecture();
+
+    const bouton = await screen.findByRole('button', { name: /Envoy/ });
+    expect(bouton).toHaveTextContent('Envoyé ✓');
+    expect(bouton).toBeDisabled();
+  });
+
+  it('SONDE — changer de semaine sans démonter la section ne garde pas l’état de la précédente', async () => {
+    // `EncartValidation` fait passer `aEnvoyer` d'une semaine à la suivante sans
+    // démonter `RelectureEnvoi` : sans clé portant la semaine, React réutiliserait
+    // l'instance de la même crèche, et le bouton resterait « Envoyé ✓ » sur une
+    // semaine JAMAIS transmise (ou se réarmerait sur une semaine déjà partie).
+    mockBrouillons();
+    vi.mocked(api.lireSuiviEnvois).mockImplementation((_foyerId, semaineIso) =>
+      Promise.resolve({
+        foyerId: FOYER_ID,
+        semaineIso,
+        rappel: null,
+        etablissements:
+          semaineIso === SEMAINE
+            ? [
+                {
+                  etablissementId: CRECHE_ID,
+                  statut: 'ENVOYE' as const,
+                  envoyeLe: '2026-06-30T08:00:00.000Z',
+                  erreur: null,
+                  destinataire: 'contact-creche@example.org',
+                },
+              ]
+            : [],
+      }),
+    );
+
+    const vue = render(
+      <MemoryRouter>
+        <RelectureEnvoi foyerId={FOYER_ID} semaineIso={SEMAINE} />
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByRole('button', { name: /Envoy/ }),
+    ).toHaveTextContent('Envoyé ✓');
+
+    // La semaine suivante n'a rien envoyé : le bouton doit être armé à nouveau.
+    vue.rerender(
+      <MemoryRouter>
+        <RelectureEnvoi foyerId={FOYER_ID} semaineIso="2026-W28" />
+      </MemoryRouter>,
+    );
+
+    // L'`aria-label` du bouton ne change pas avec son état : on attend donc que le
+    // bouton lui-même redevienne actif, pas qu'un libellé apparaisse.
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', {
+          name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
+        }),
+      ).toBeEnabled();
+    });
+  });
+
+  it('un envoi en ÉCHEC laisse le bouton armé (l’état persisté n’est pas un succès)', async () => {
+    mockBrouillons();
+    vi.mocked(api.lireSuiviEnvois).mockResolvedValue({
+      foyerId: FOYER_ID,
+      semaineIso: SEMAINE,
+      rappel: null,
+      etablissements: [
+        {
+          etablissementId: CRECHE_ID,
+          statut: 'ECHEC',
+          envoyeLe: null,
+          erreur: 'SMTP indisponible',
+          destinataire: 'contact-creche@example.org',
+        },
+      ],
+    });
+
+    renderRelecture();
+
+    const bouton = await screen.findByRole('button', {
+      name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
+    });
+    expect(bouton).toBeEnabled();
+  });
+
+  it('suivi des envois indisponible : la relecture reste utilisable (bloc secondaire)', async () => {
+    mockBrouillons();
+    vi.mocked(api.lireSuiviEnvois).mockRejectedValue(new Error('502'));
+
+    renderRelecture();
+
+    expect(
+      await screen.findByRole('button', {
+        name: /Envoyer le récapitulatif à Crèche Les Hirondelles/,
+      }),
+    ).toBeEnabled();
   });
 
   it('un résultat EN_COURS n’est pas présenté comme un succès (réessayer possible)', async () => {

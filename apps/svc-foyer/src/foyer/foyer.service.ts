@@ -73,7 +73,8 @@ import type {
   ModifierParentDto,
 } from './foyer.dto.js';
 import {
-  fusionnerDefauts,
+  materialiserConsentementParDefaut,
+  preferencesEffectives,
   payloadPreferences,
   typeServiceInjoignable,
   type PreferenceVue,
@@ -346,6 +347,8 @@ export class FoyerService {
           await tx
             .insert(outbox)
             .values(this.evenementParentEtat(PARENT_AJOUTE_TYPE, ligne));
+          // Le consentement aux notifications s'écrit ici, avec le parent (`AM-57`).
+          await this.materialiserConsentement(tx, foyerId, ligne.id);
           parents.push(this.versParentVue(ligne));
         }
         // Une seule ligne d'audit pour la création : le dossier initial est une
@@ -801,6 +804,10 @@ export class FoyerService {
         await tx
           .insert(outbox)
           .values(this.evenementParentEtat(PARENT_AJOUTE_TYPE, ligneParent));
+        // Consentement matérialisé (`AM-57`). Sur une **réactivation**, les lignes
+        // existent déjà : `onConflictDoNothing` préserve un désabonnement antérieur —
+        // revenir dans un foyer ne vaut pas ré-abonnement.
+        await this.materialiserConsentement(tx, foyerId, ligneParent.id);
         // Réactivation comprise : dans les deux cas un accès au foyer s'ouvre pour
         // une personne, et c'est l'événement que la piste doit garder.
         await this.audit.consigner(tx, {
@@ -952,7 +959,7 @@ export class FoyerService {
       .select()
       .from(preferenceNotification)
       .where(eq(preferenceNotification.parentId, parentId));
-    return fusionnerDefauts(rows);
+    return preferencesEffectives(rows);
   }
 
   /**
@@ -1012,7 +1019,7 @@ export class FoyerService {
         .select()
         .from(preferenceNotification)
         .where(eq(preferenceNotification.parentId, parentId));
-      const effectives = fusionnerDefauts(rows);
+      const effectives = preferencesEffectives(rows);
       const typeFautif = typeServiceInjoignable(effectives);
       if (typeFautif) {
         throw new BadRequestException(
@@ -1233,6 +1240,61 @@ export class FoyerService {
    * Ligne d'outbox `ParentAjoute`/`ParentModifie` à partir de l'état projeté du
    * parent (état complet : le consommateur projette sans relire la source).
    */
+  /**
+   * **Matérialise le consentement** d'un parent qui entre dans le foyer (`AM-57`) :
+   * insère la matrice §5.1 (`source_dernier = 'DEFAUT'`) **en `onConflictDoNothing`**,
+   * puis émet l'état complet en `PreferencesNotifModifiees`. Le tout **dans la
+   * transaction** qui crée le parent : un parent sans ligne de consentement ne peut
+   * pas exister, et c'est ce qui autorise la lecture à ne plus inventer de
+   * consentement pour une combinaison absente.
+   *
+   * `onConflictDoNothing` n'est pas une précaution de style : sur la **réactivation**
+   * d'un parent inactif, les lignes sont déjà là et peuvent porter un désabonnement.
+   * Les écraser ré-abonnerait quelqu'un qui s'était retiré — le défaut même que ce lot
+   * ferme, réintroduit par le chemin d'à côté.
+   *
+   * L'événement est émis **même quand rien n'a été inséré** : il porte l'état complet
+   * relu en base, donc le désabonnement s'il existe. C'est lui qui alimente le read
+   * model de `svc-notifications` — lequel n'a ainsi aucune matrice par défaut à
+   * recopier, il ne stocke que ce que la source a déclaré.
+   */
+  private async materialiserConsentement(
+    tx: DbTransaction,
+    foyerId: string,
+    parentId: string,
+  ): Promise<void> {
+    const maintenant = new Date();
+    for (const ligne of materialiserConsentementParDefaut(
+      parentId,
+      maintenant,
+    )) {
+      await tx
+        .insert(preferenceNotification)
+        .values({ id: randomUUID(), ...ligne })
+        .onConflictDoNothing({
+          target: [
+            preferenceNotification.parentId,
+            preferenceNotification.typeNotification,
+            preferenceNotification.canal,
+          ],
+        });
+    }
+    const rows = await tx
+      .select()
+      .from(preferenceNotification)
+      .where(eq(preferenceNotification.parentId, parentId));
+    await tx.insert(outbox).values({
+      id: randomUUID(),
+      type: PREFERENCES_NOTIF_MODIFIEES_TYPE,
+      payload: payloadPreferences(
+        foyerId,
+        parentId,
+        preferencesEffectives(rows),
+      ),
+      traceId: traceIdCourant(),
+    });
+  }
+
   private evenementParentEtat(
     type: string,
     ligne: ParentRow,

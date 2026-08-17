@@ -758,6 +758,8 @@ const documentEcrit = {
               'DERNIER_PARENT_ACTIF',
               'PERIODE_CHEVAUCHANTE',
               'RESSOURCES_INCONNUES_AU_MOIS',
+              'SEMAINE_HORS_FENETRE_ENVOI',
+              'RECAP_SANS_MODIFICATION',
             ],
           },
           erreurs: {
@@ -2173,7 +2175,12 @@ const documentEcrit = {
         description:
           'Action sortante RÉELLE (après relecture), idempotente sur ' +
           '`(foyer, semaine, établissement)`. `sujet`/`corps` portent le texte ' +
-          'édité par le parent : les deux ensemble ou aucun des deux (400 sinon).',
+          'édité par le parent : les deux ensemble ou aucun des deux (400 sinon). ' +
+          'Deux gardes serveur précèdent toute sollicitation du transport : la ' +
+          'semaine ne peut pas être révolue de plus de 4 semaines, et le récap doit ' +
+          'porter au moins une modification validée à transmettre (422 dans les ' +
+          'deux cas). Le destinataire est un tiers réel : un envoi refusé ne ' +
+          'réserve aucune ligne et n’expédie aucun courriel.',
         requestBody: {
           required: true,
           content: {
@@ -2206,6 +2213,15 @@ const documentEcrit = {
           '400': {
             description:
               'Corps invalide, ou `sujet`/`corps` fournis l’un sans l’autre.',
+          },
+          '422': {
+            description:
+              'La semaine est révolue depuis plus de 4 semaines (code ' +
+              '`SEMAINE_HORS_FENETRE_ENVOI`), ou le récapitulatif ne porte aucune ' +
+              'modification validée à transmettre (code `RECAP_SANS_MODIFICATION`). ' +
+              'Ni 400 (la requête est bien formée) ni 404 (les ressources ' +
+              'existent) : c’est l’action qui n’a pas lieu d’être, et réessayer ne ' +
+              'changera rien.',
           },
         },
       },

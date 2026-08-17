@@ -224,6 +224,38 @@ describe('NotificationsClient (gateway→svc-notifications)', () => {
     });
   });
 
+  describe('envoyerRecapEtablissement (AM-58 : le 422 structuré traverse)', () => {
+    it('422 métier → propage le CORPS amont (code lisible), pas « HTTP 422 »', async () => {
+      // `capturerCorpsErreur` est **opt-in par client** (`AM-69`). Sans elle, le refus
+      // arrive à l'écran sous forme d'`Error('HTTP 422')` : `relayer` n'a plus que le
+      // statut, et le parent lit « Données invalides : vérifiez les champs marqués » —
+      // pour un refus qui ne vient d'aucune saisie et que réessayer ne réparera pas.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: false,
+          status: 422,
+          json: async () => ({
+            statusCode: 422,
+            code: 'SEMAINE_HORS_FENETRE_ENVOI',
+            message: 'la semaine 2019-W01 est révolue depuis 380 semaines',
+          }),
+        })),
+      );
+
+      await expect(
+        new NotificationsClient().envoyerRecapEtablissement(
+          'f-1',
+          '2019-W01',
+          'e-1',
+        ),
+      ).rejects.toMatchObject({
+        status: 422,
+        corps: { code: 'SEMAINE_HORS_FENETRE_ENVOI' },
+      });
+    });
+  });
+
   describe('moisCommuniques (SFD 30, US-30-05)', () => {
     it('succès → renvoie les mois communiqués, bornes du/au en query', async () => {
       const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>

@@ -224,6 +224,14 @@ export class NotificationsClient {
     corps?: unknown;
     schema: ZodType<T>;
     options?: OptionsResilience;
+    /**
+     * Remonte le **corps** de l'erreur amont jusqu'à `relayer` (`AM-69` : la capture
+     * est **opt-in par client**). Sans elle, `appelHttpResilient` ne lève qu'un
+     * `Error('HTTP 422')` : le `code` métier est perdu en route et l'écran retombe sur
+     * le message générique du statut — exactement ce que le code du service a pris
+     * soin d'éviter en distinguant ses refus.
+     */
+    capturerCorpsErreur?: boolean;
   }): Promise<T> {
     return appelResilient({
       service: 'svc-notifications',
@@ -234,6 +242,9 @@ export class NotificationsClient {
       url: `${loadConfig().notificationsUrl}${config.chemin}`,
       corps: config.corps,
       schema: config.schema,
+      ...(config.capturerCorpsErreur === true
+        ? { capturerCorpsErreur: true }
+        : {}),
     });
   }
 
@@ -384,6 +395,11 @@ export class NotificationsClient {
       chemin: '/api/envois/etablissement',
       corps: { foyerId, semaineIso, etablissementId, ...corpsEdite },
       schema: envoiEtablissementResultatSchema,
+      // Le service refuse en **422 structuré** (`AM-58`) : semaine hors fenêtre, ou
+      // récap sans modification à transmettre. Ces deux refus n'appellent pas la même
+      // phrase à l'écran, et aucun des deux n'est une saisie à corriger — il faut donc
+      // que le `code` traverse la passerelle.
+      capturerCorpsErreur: true,
     });
   }
 }
