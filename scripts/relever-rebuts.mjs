@@ -239,11 +239,63 @@ async function sonde() {
   }
 }
 
+/** Marge après drainage, le temps que les consommateurs projettent le dernier lot. */
+const REPOS_APRES_DRAINAGE_MS = 3_000;
+
+/**
+ * Attend que les `outbox` des services relevés soient drainées, puis laisse aux
+ * consommateurs le temps de projeter le dernier lot.
+ *
+ * Sans cette attente, « aucun rebut » peut vouloir dire « rien n'est encore
+ * arrivé » : le relais publie toutes les 2 s et les projections sont asynchrones,
+ * alors que le relevé suit immédiatement le dernier parcours Playwright. Un relevé
+ * prématuré est **vert à tort**, et une projection en vol au moment du relevé le
+ * rendrait rouge par intermittence.
+ *
+ * La borne est courte à dessein : au tick de 2 s, une file qui n'est pas drainée en
+ * 30 s ne l'est pas parce qu'elle est lente. Le dépassement est **dit**, pas avalé —
+ * le relevé continue, et son message accompagne le verdict.
+ *
+ * Limite assumée : l'`outbox` de `svc-referentiel` n'est pas attendue (il n'a pas
+ * de `dead_letter`, donc pas de contexte à relever). Ses événements partent au
+ * seed, bien avant les parcours.
+ */
+async function attendreDrainage(limiteMs = 30_000) {
+  const debut = process.hrtime.bigint();
+  const ecoule = () => Number(process.hrtime.bigint() - debut) / 1e6;
+  for (;;) {
+    let enVol = 0;
+    for (const { contexte, conteneur } of contextes()) {
+      const [n] = await psql(
+        conteneur,
+        contexte,
+        'select count(*) from outbox where published_at is null',
+      );
+      enVol += Number(n ?? '0');
+    }
+    if (enVol === 0) {
+      console.log(`  (outbox drainées après ${Math.round(ecoule())} ms)`);
+      await new Promise((resoudre) =>
+        setTimeout(resoudre, REPOS_APRES_DRAINAGE_MS),
+      );
+      return;
+    }
+    if (ecoule() > limiteMs) {
+      console.log(
+        `  ⚠️ ${enVol} événement(s) encore non publié(s) après ${limiteMs} ms — le relevé ci-dessous est pris sur une file en vol`,
+      );
+      return;
+    }
+    await new Promise((resoudre) => setTimeout(resoudre, 1_000));
+  }
+}
+
 async function principal() {
   if (process.argv.includes('--sonde')) {
     return sonde();
   }
   console.log('Relevé des rebuts de consommation (dead_letter) :');
+  await attendreDrainage();
   const constats = juger(await relever());
   if (constats.length > 0) {
     console.error(`\nRebuts de consommation — ${constats.length} constat(s) :`);

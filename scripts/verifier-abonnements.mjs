@@ -347,7 +347,14 @@ function autotest(sources) {
   const retire = /** @type {string} */ (ctx.inventaire[0]);
   const mutees1 = new Map(sources);
   const source1 = /** @type {string} */ (sources.get(ctx.fichier));
-  const ampute = source1.replace(new RegExp(`^\\s*${retire},\\n`, 'm'), '');
+  // `\r?\n` et non `\n` : sous Windows (`core.autocrlf=true`, et `*.ts` n'est pas
+  // épinglé dans `.gitattributes`), la source est en CRLF — une expression qui
+  // n'attend qu'un LF ne remplacerait rien, et la sonde échouerait sur un arbre
+  // sain en faisant croire que la porte ne mord plus. Même famille que `LE-30`.
+  const ampute = source1.replace(
+    new RegExp(`^[^\\S\\r\\n]*${retire},\\r?\\n`, 'm'),
+    '',
+  );
   if (ampute === source1) {
     console.error(
       `Sonde impossible : ${retire} introuvable dans l'inventaire de ${ctx.fichier}.`,

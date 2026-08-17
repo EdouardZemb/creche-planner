@@ -91,6 +91,32 @@ export class OutboxRelay
   };
 
   /**
+   * Foyer porté par un payload d'événement, ou `null` s'il n'en nomme aucun.
+   *
+   * Sert **uniquement** à tenir l'ordre de publication par foyer (cf. `drainer`).
+   * `foyerId` est le seul dénominateur commun des événements qui touchent des
+   * données personnelles — `Parent*`, `FoyerMisAJour`, `FoyerSupprime`, `Contrat*`
+   * le portent tous. Les autres (`referentiel.*`, `PlanningModifie`,
+   * `SemaineValidee`) n'en ont pas : ils ne partagent aucun agrégat avec un
+   * effacement de foyer, et restent donc pleinement isolés.
+   *
+   * Limite assumée : deux événements du **même** foyer dont l'un ne nomme pas le
+   * foyer ne sont pas ordonnés entre eux. Aucun couple de ce genre n'existe
+   * aujourd'hui côté données personnelles.
+   */
+  private foyerDe(payload: unknown): string | null {
+    if (
+      typeof payload === 'object' &&
+      payload !== null &&
+      'foyerId' in payload &&
+      typeof payload.foyerId === 'string'
+    ) {
+      return payload.foyerId;
+    }
+    return null;
+  }
+
+  /**
    * Callback de la jauge `outbox_attente_age_secondes`. Même contrat que
    * `observerBacklog` : best effort, une base indisponible ne fait pas tomber
    * l'export.
@@ -157,6 +183,10 @@ export class OutboxRelay
         .orderBy(asc(table.occurredAt))
         .limit(TAILLE_LOT);
 
+      // Foyers dont l'ordre est rompu **dans ce cycle** : une fois qu'un de leurs
+      // événements a échoué, les suivants du même foyer attendent leur tour.
+      const foyersEnAttente = new Set<string>();
+
       for (const evt of enAttente) {
         // Isolation **par événement** (`AM-61`) : un refus durable — sujet hors des
         // `subjects` du stream, payload au-delà de `max_payload`, ligne corrompue —
@@ -164,6 +194,23 @@ export class OutboxRelay
         // de file est resélectionnée à chaque cycle (`order by occurred_at`) : un
         // seul message inapplicable arrêtait *toute* la propagation, sans limite de
         // durée et sans que rien ne date le blocage.
+        //
+        // Mais l'isolation seule **réordonne**, et ce n'est pas neutre : laisser un
+        // `foyer.FoyerSupprime.v1` dépasser un `foyer.Parent*.v1` en échec fait
+        // effacer le foyer chez les consommateurs, **puis** ré-insérer l'adresse
+        // e-mail du parent quand l'événement en retard finit par passer. Les gardes
+        // de monotonie `occurred_at` ne protègent que des lignes qui existent
+        // encore, et `processed_event` ne dit rien d'une **première** livraison
+        // tardive : l'effacement serait défait, sans foyer pour le redéclencher.
+        // L'ordre est donc tenu **par foyer**, et l'isolation ne joue qu'entre
+        // foyers distincts (et pour les événements sans foyer identifiable).
+        const foyerId = this.foyerDe(evt.payload);
+        if (foyerId !== null && foyersEnAttente.has(foyerId)) {
+          this.logger.debug(
+            `Publication différée ${evt.type} (${evt.id}) : un événement plus ancien du même foyer attend`,
+          );
+          continue;
+        }
         try {
           const enveloppe = {
             id: evt.id,
@@ -185,9 +232,12 @@ export class OutboxRelay
           // tick, indéfiniment. Ce n'est donc pas une perte, mais ce n'est pas
           // gratuit non plus — c'est `outbox_attente_age_secondes` qui borne le
           // silence, en datant la plus vieille ligne non publiée.
+          if (foyerId !== null) {
+            foyersEnAttente.add(foyerId);
+          }
           compteurEchecs.add(1, { type: evt.type });
           this.logger.warn(
-            `Publication refusée ${evt.type} (${evt.id}) : ${(erreur as Error).message} — les suivants continuent`,
+            `Publication refusée ${evt.type} (${evt.id}) : ${(erreur as Error).message} — les autres foyers continuent`,
           );
         }
       }

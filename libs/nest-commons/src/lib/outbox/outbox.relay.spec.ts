@@ -44,13 +44,16 @@ function fakeBuilder(resultat: readonly unknown[]): Record<string, unknown> {
 }
 
 /** Événement outbox minimal (ce que `drainer()` lit et publie). */
-function evenement(id: string): Record<string, unknown> {
+function evenement(
+  id: string,
+  extra: { type?: string; payload?: unknown } = {},
+): Record<string, unknown> {
   return {
     id,
-    type: 'test.Event.v1',
+    type: extra.type ?? 'test.Event.v1',
     occurredAt: new Date('2026-07-17T08:00:00Z'),
     traceId: 'trace-1',
-    payload: { foo: 'bar' },
+    payload: extra.payload ?? { foo: 'bar' },
   };
 }
 
@@ -387,6 +390,86 @@ describe('OutboxRelay — isolation par événement (AM-61)', () => {
       (appel) => appel[1] === 'e-2',
     ).length;
     expect(publiesE2).toBe(3);
+  });
+
+  /**
+   * L'isolation seule **réordonne**, et le réordonnancement n'est pas neutre : un
+   * effacement de foyer qui dépasse un `Parent*` en échec fait effacer chez les
+   * consommateurs puis **ré-insérer** l'adresse e-mail quand le retardataire passe.
+   * Les gardes `occurred_at` ne protègent que des lignes encore présentes, et
+   * `processed_event` ne dit rien d'une **première** livraison tardive. L'ordre est
+   * donc tenu par foyer.
+   */
+  const FOYER = '11111111-1111-4111-8111-111111111111';
+  const AUTRE_FOYER = '22222222-2222-4222-8222-222222222222';
+
+  it('un effacement ne dépasse pas un événement en échec du même foyer', async () => {
+    const publier = publierSauf(['parent-ko']);
+    const relay = new OutboxRelay(
+      fakeDb({
+        evenements: [
+          evenement('parent-ko', {
+            type: 'foyer.ParentModifie.v1',
+            payload: { foyerId: FOYER, email: 'parent@example.test' },
+          }),
+          evenement('effacement', {
+            type: 'foyer.FoyerSupprime.v1',
+            payload: { foyerId: FOYER, parentIds: [] },
+          }),
+        ],
+      }),
+      fakeNats({ publier }),
+      options,
+    );
+
+    await relay.drainer();
+
+    const idsTentes = publier.mock.calls.map((appel) => appel[1] as string);
+    expect(idsTentes).toEqual(['parent-ko']);
+  });
+
+  it('un autre foyer avance malgré l’échec du premier', async () => {
+    const publier = publierSauf(['parent-ko']);
+    const relay = new OutboxRelay(
+      fakeDb({
+        evenements: [
+          evenement('parent-ko', {
+            type: 'foyer.ParentModifie.v1',
+            payload: { foyerId: FOYER },
+          }),
+          evenement('voisin', {
+            type: 'foyer.FoyerSupprime.v1',
+            payload: { foyerId: AUTRE_FOYER, parentIds: [] },
+          }),
+        ],
+      }),
+      fakeNats({ publier }),
+      options,
+    );
+
+    await relay.drainer();
+
+    const idsTentes = publier.mock.calls.map((appel) => appel[1] as string);
+    expect(idsTentes).toEqual(['parent-ko', 'voisin']);
+  });
+
+  it('un événement sans foyer identifiable reste pleinement isolé', async () => {
+    const publier = publierSauf(['sans-foyer-ko']);
+    const relay = new OutboxRelay(
+      fakeDb({
+        evenements: [
+          evenement('sans-foyer-ko', { type: 'referentiel.GrillePubliee.v2' }),
+          evenement('suivant', { type: 'referentiel.BaremePsuPublie.v1' }),
+        ],
+      }),
+      fakeNats({ publier }),
+      options,
+    );
+
+    await relay.drainer();
+
+    const idsTentes = publier.mock.calls.map((appel) => appel[1] as string);
+    expect(idsTentes).toEqual(['sans-foyer-ko', 'suivant']);
   });
 
   it('un select qui lève reste un échec de cycle, sans attribut de type', async () => {

@@ -358,6 +358,12 @@ describe('JetStreamConsumer — pose du filtre (AM-53)', () => {
       'test-foyer',
       expect.objectContaining({ filter_subjects: [SUJET] }),
     );
+    // `consumers.update` de nats.js fusionne la config en place (`Object.assign`) :
+    // sans cet écrasement, un `filter_subject` singulier déjà posé partirait avec
+    // le pluriel, et le serveur refuserait les deux comme exclusifs.
+    expect(consumersUpdate.mock.calls[0]?.[2]).toMatchObject({
+      filter_subject: '',
+    });
 
     await consommateur.onApplicationShutdown();
   });

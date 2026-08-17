@@ -176,6 +176,15 @@ export class JetStreamConsumer
       max_deliver: MAX_LIVRAISONS,
       backoff: BACKOFF_NANOS,
       filter_subjects: [...sujetsDuStream(this.projection.typesGeres, stream)],
+      // `filter_subject` (singulier) et `filter_subjects` sont **exclusifs** côté
+      // serveur, et `consumers.update` de nats.js est un
+      // `Object.assign(config_en_place, demandé)` : un singulier déjà posé
+      // survivrait à la mise à jour et la ferait refuser. On l'écrase donc par la
+      // chaîne vide, que le serveur lit comme « aucun filtre singulier » — le
+      // contrôle d'exclusivité ne porte que sur un `filter_subject` **non vide**.
+      // (`undefined` serait plus explicite mais `exactOptionalPropertyTypes`
+      // l'interdit sur une propriété déclarée `string`.)
+      filter_subject: '',
     };
     try {
       // `add` est idempotent côté serveur tant que la config demandée est
@@ -185,7 +194,7 @@ export class JetStreamConsumer
         ack_policy: AckPolicy.Explicit,
         ...modifiables,
       });
-    } catch {
+    } catch (erreur) {
       // Consommateur déjà présent avec une **autre** config — le cas de tout
       // durable créé avant `AM-53`, qui n'a aucun filtre. L'ancien `catch` muet le
       // réutilisait tel quel : le filtre n'aurait jamais été posé en production et
@@ -193,6 +202,14 @@ export class JetStreamConsumer
       // naissent avec le bon filtre) et sans effet sur la seule base qui accumule.
       // On met donc à jour, et un échec ici remonte au réessai de `lierTous`
       // plutôt que de se perdre.
+      //
+      // La cause du refus d'`add` est journalisée : sans elle, une course au
+      // démarrage (« stream not found », NATS prêt mais stream pas encore
+      // provisionné) se raconterait à l'exploitant comme un problème de
+      // consommateur.
+      this.logger.debug(
+        `Création de ${durable}@${stream} refusée (${(erreur as Error).message}) — mise à jour du durable en place`,
+      );
       await jsm.consumers.update(stream, durable, modifiables);
     }
     const consommateur: Consumer = await js.consumers.get(stream, durable);
