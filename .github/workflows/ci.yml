@@ -690,11 +690,20 @@ jobs:
       - name: Amorçage (seed de référence, sans garde des coûts)
         run: node scripts/seed-demo.mjs
 
+      # `--retry-all-errors` (comme le smoke de santé ci-dessus) : le seed écrit dans
+      # svc-foyer, et le coût se lit dans le READ MODEL de svc-tarification, alimenté
+      # par `FoyerMisAJour.v3` via l'outbox et NATS. Entre les deux il y a une
+      # cohérence à retardement, que ce `curl` interrogeait à la milliseconde près.
+      # Depuis le lot 1 (`AM-55`), un foyer non encore projeté ne rend plus un montant
+      # plausible mais un **422** — et `--retry` seul ne rejoue PAS un 4xx : la course
+      # est devenue un rouge franc, observé une fois sur deux. Dix essais espacés de
+      # 3 s tolèrent le retard sans rien masquer : un 422 réel échoue toujours, trente
+      # secondes plus tard.
       - name: Appel fonctionnel (GET /api/v1/couts)
         run: |
           FOYER=$(node -e "process.stdout.write(require('./scripts/.seed-demo-state.json').foyerId)")
           echo "Foyer amorcé : $FOYER"
-          curl --fail --retry 10 --retry-delay 3 "http://localhost:3000/api/v1/couts?foyer=$FOYER&mois=2026-03"
+          curl --fail --retry 10 --retry-delay 3 --retry-all-errors "http://localhost:3000/api/v1/couts?foyer=$FOYER&mois=2026-03"
 
       # P2-6 (doc 18 §8 / doc 23) — SMOKE PERF. La pile est déjà montée et amorcée :
       # on mesure la latence de l'agrégation annuelle (route la plus coûteuse, 12 mois)

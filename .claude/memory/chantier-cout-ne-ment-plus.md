@@ -130,6 +130,11 @@ _paraissait_ implémentée — personne ne l'avait écrite côté serveur (`LE-7
   retirait. Rendu **409 au lieu de 204**, vu par la seule CI (le pact provider exige un
   Postgres). L'inventaire fait pour la borne temporelle n'avait pas été refait pour la
   fermeture du filtre de consentement.
+- ⚠️ **Le smoke `GET /api/v1/couts` était une course, et le 422 du lot 1 l'a rendue
+  visible** (`LE-74`) : le seed écrit dans svc-foyer, le coût se lit dans le read model
+  de svc-tarification, et `curl --fail --retry` ne rejoue **pas** un 4xx. Rouge une fois
+  sur deux, vert au simple re-run. Corrigé par `--retry-all-errors`, comme le smoke de
+  santé deux lignes plus haut.
 - ⚠️ **Aucun contrôle du dépôt n'exécute une migration de back-fill sur des données**
   (`EM-16`). `e2e-stack`/`smoke-stack` migrent une base **vierge** : les deux `INSERT …
 SELECT` de ce lot y traitent zéro ligne. Vérification manuelle impossible : **Docker
