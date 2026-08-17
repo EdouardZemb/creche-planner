@@ -253,11 +253,16 @@ export const parent = pgTable(
  * **Préférence de notification** d'un parent : une ligne par triplet
  * `(parent, type, canal)` (cf. `.claude/plans/parent-profil-notifications.md`
  * §3.1). Table dédiée (pas des colonnes sur `parent`) : cardinalité type×canal
- * variable et extensible sans migration à chaque nouveau type. **L'absence de
- * ligne = valeur par défaut applicative** (on ne matérialise qu'un choix
- * explicite) ⇒ migration purement additive, aucun back-fill. `consentement_at`
- * (opt-in) / `desabonne_at` (opt-out) tracent le consentement RGPD ;
- * `source_dernier` note l'origine du dernier changement (écran / lien désabo).
+ * variable et extensible sans migration à chaque nouveau type.
+ *
+ * ⚠️ **Une ligne existe pour chaque combinaison de la matrice §5.1, dès
+ * l'inscription du parent** (`AM-57`, back-fill `0008`). L'absence de ligne valait
+ * jusque-là le défaut applicatif — le consentement se déduisait donc d'une
+ * **absence**, et supprimer une ligne `actif = false` réabonnait le parent. Elle
+ * signifie désormais **aucun consentement enregistré**, et aucun envoi ne s'appuie
+ * dessus. `consentement_at` (opt-in) / `desabonne_at` (opt-out) tracent le
+ * consentement RGPD ; `source_dernier` note l'origine du dernier changement —
+ * `DEFAUT` (hérité de l'inscription), `ECRAN`, `LIEN_DESABO`.
  */
 export const preferenceNotification = pgTable(
   'preference_notification',

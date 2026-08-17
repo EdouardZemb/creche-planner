@@ -1616,6 +1616,16 @@ fichier généré au commit ; (c) le surrogate`can-i-deploy.mjs`(ADR-0005) tient
     (`destinataire`/`sujet`/`corps`), statut `EN_COURS|ENVOYE|DRY_RUN|ECHEC`. Idempotence via slot
     `onConflictDoNothing` (un second clic ne ré-émet pas). Drizzle-kit nécessitant un TTY pour arbitrer
     drop-vs-rename, la migration a été **scindée en deux passes non ambiguës** (drop puis create).
+  - **Depuis le 2026-08-17 (lot 2 « le coût ne ment plus », `AM-58`), deux gardes serveur précèdent
+    l'envoi** — le destinataire est une **vraie crèche** et l'envoi réel est actif en production. La
+    semaine ne peut pas être révolue de plus de **4 semaines** (`NOTIF_ENVOI_RETARD_MAX_SEMAINES`,
+    422 `SEMAINE_HORS_FENETRE_ENVOI`), et le récapitulatif doit porter **au moins une modification
+    validée** (422 `RECAP_SANS_MODIFICATION`) : un refus ne réserve aucune ligne et ne sollicite pas
+    le transport. Le futur, lui, n'est pas borné (le planning se saisit des mois à l'avance). Côté
+    écran, le bouton s'arme sur l'**état persisté** (`lireSuiviEnvois`) : un récap déjà parti reste
+    « Envoyé ✓ » après rechargement, là où le « déjà envoyé » ne vivait que dans l'état React.
+    Avant ce lot, un `POST` sur n'importe quelle `(foyer, semaine, établissement)` expédiait à la
+    crèche un courriel disant « aucune modification déclarée sur cette semaine ».
   - **Template pur** `brouillonServiceAgrege` (ex-`brouillonService`, **étendu multi-enfant**) : un bloc par
     enfant + ses jours modifiés, sujet `Plannings modifiés — semaine YYYY-Www`, échappement HTML conservé.
   - **Service** `EnvoiService.brouillon(foyer, semaine, cle)` / `envoyer(...)` : résout l'établissement (404 si
@@ -2032,6 +2042,17 @@ Décisions d'archi figées dans [ADR-0006](adr/0006-preferences-notification-et-
 préférences dans **svc-foyer** (agrégat parent) → projection NATS vers svc-notifications ⇒ **zéro
 nouveau Pact** (`can-i-deploy` inchangé) ; jeton de désabonnement **en table** (one-shot, auditable).
 Invariant de service : `VALIDATION_HEBDO` **jamais coupée totalement** (≥ 1 canal actif).
+
+**Depuis le 2026-08-17 (lot 2 « le coût ne ment plus », `AM-57`), le consentement est écrit, plus
+déduit.** La matrice `type × canal` est **matérialisée en base à l'inscription** du parent
+(`source_dernier = 'DEFAUT'`, consentement hérité du défaut applicatif et non d'un geste), diffusée
+par `PreferencesNotifModifiees` jusqu'au read model d'envoi, et back-fillée pour les parents
+antérieurs (`svc-foyer/0008`, `svc-notifications/0020`). La résolution des destinataires exige
+désormais une ligne **explicitement active** : une ligne absente n'est plus « défaut applicatif »
+mais « aucun consentement enregistré ». Avant ce lot, **supprimer** la ligne d'un parent désabonné
+le réabonnait — sans trace, et sur exactement la population qu'une borne de rétention visait
+(T3bis/T3ter, [doc 37](37-registre-des-traitements.md)). Sur une **réactivation** de parent, les
+lignes existantes sont préservées : revenir dans un foyer ne vaut pas ré-abonnement.
 
 ### 26.1 Découpage livré (7 PR phasées, CI verte à chaque étape)
 

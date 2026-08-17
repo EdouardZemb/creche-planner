@@ -90,6 +90,7 @@
   },
   "dependencies": {
     "@creche-planner/contracts-foyer": "workspace:*",
+    "@creche-planner/contracts-kernel": "workspace:*",
     "@creche-planner/contracts-notifications": "workspace:*",
     "@creche-planner/contracts-planification": "workspace:*",
     "@creche-planner/shared-kernel": "workspace:*",

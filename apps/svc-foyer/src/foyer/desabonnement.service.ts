@@ -22,7 +22,7 @@ import {
 } from '../database/schema.js';
 import { signerJeton, verifierJeton } from './desabonnement.jeton.js';
 import {
-  fusionnerDefauts,
+  preferencesEffectives,
   payloadPreferences,
   typeServiceInjoignable,
 } from './preferences.util.js';
@@ -154,7 +154,7 @@ export class DesabonnementService {
         .select()
         .from(preferenceNotification)
         .where(eq(preferenceNotification.parentId, row.parentId));
-      const simule = fusionnerDefauts(prefRows).map((p) =>
+      const simule = preferencesEffectives(prefRows).map((p) =>
         p.typeNotification === row.typeNotification && p.canal === row.canal
           ? { ...p, actif: false }
           : p,
@@ -213,7 +213,7 @@ export class DesabonnementService {
         });
 
       // Événement d'état complet (les consommateurs projettent sans relire).
-      const effectives = fusionnerDefauts(
+      const effectives = preferencesEffectives(
         await tx
           .select()
           .from(preferenceNotification)

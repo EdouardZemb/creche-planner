@@ -74,6 +74,11 @@ export interface ServiceConfig {
   readonly schedulerHeure: number;
   /** Test uniquement (`NOTIF_SCHEDULER_FORCER=1`) : ignore la fenêtre du mardi. */
   readonly schedulerForcer: boolean;
+  /**
+   * Retard maximal (en semaines) d'un récapitulatif adressé à un établissement
+   * (`AM-58`) : au-delà, l'envoi est refusé en 422 sans solliciter le transport.
+   */
+  readonly envoiRetardMaxSemaines: number;
   readonly email: EmailConfig;
   /** Assertion d'identité inter-services (secret + enforce) — fondations lot 3. */
   readonly assertion: ConfigAssertion;
@@ -148,6 +153,16 @@ export const CHAMPS_ENV = {
   NOTIF_UNSUBSCRIBE_MAILTO: champEnv.texte(''),
   NOTIF_SCHEDULER_HEURE: champEnv.entier({ defaut: 8, min: 0, max: 23 }),
   NOTIF_SCHEDULER_FORCER: champEnv.bascule(),
+  // Borne temporelle de l'envoi d'un récap à un établissement (`AM-58`) : retard
+  // maximal, en semaines, entre la semaine visée et la semaine courante. Réglable
+  // parce que c'est une **politique produit** (« à partir de quand écrire à la
+  // crèche n'a plus de sens ? ») et non une constante technique ; `0` interdit tout
+  // envoi rétroactif. La vérification pact la relève pour rejouer son jeu figé.
+  NOTIF_ENVOI_RETARD_MAX_SEMAINES: champEnv.entier({
+    defaut: 4,
+    min: 0,
+    max: 520,
+  }),
   SMTP_HOST: champEnv.texte('smtp.gmail.com'),
   SMTP_PORT: champEnv.port(587),
   SMTP_USER: champEnv.texte(''),
@@ -225,6 +240,7 @@ export function loadConfig(
     unsubscribeMailto: valeurs.NOTIF_UNSUBSCRIBE_MAILTO,
     schedulerHeure: valeurs.NOTIF_SCHEDULER_HEURE,
     schedulerForcer: valeurs.NOTIF_SCHEDULER_FORCER,
+    envoiRetardMaxSemaines: valeurs.NOTIF_ENVOI_RETARD_MAX_SEMAINES,
     email: {
       host: valeurs.SMTP_HOST,
       port: valeurs.SMTP_PORT,

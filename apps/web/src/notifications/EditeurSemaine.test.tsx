@@ -16,6 +16,7 @@ vi.mock('../api/client', () => ({
     validerSemaine: vi.fn(),
     lireBrouillonEtablissement: vi.fn(),
     envoyerRecapEtablissement: vi.fn(),
+    lireSuiviEnvois: vi.fn(),
   },
   ApiError: class ApiError extends Error {},
 }));
@@ -134,6 +135,13 @@ describe('EditeurSemaine', () => {
       (_foyerId, _semaineIso, etablissementId) =>
         Promise.resolve(brouillonPour(etablissementId)),
     );
+    // État persisté des envois de la semaine (`AM-58`) : rien d'envoyé par défaut.
+    vi.mocked(api.lireSuiviEnvois).mockResolvedValue({
+      foyerId: 'foyer-1',
+      semaineIso: '2026-W27',
+      rappel: null,
+      etablissements: [],
+    });
   });
 
   function rendre() {

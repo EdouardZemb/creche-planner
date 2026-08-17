@@ -106,12 +106,20 @@ function BlocEnvoiEtablissement({
   jours,
   contrats,
   brouillon,
+  dejaEnvoye,
 }: {
   foyerId: string;
   semaineIso: string;
   jours: readonly string[];
   contrats: readonly ContratBesoinsSemaine[];
   brouillon: BrouillonEtablissement;
+  /**
+   * État **persisté** de l'envoi de ce récap (`envoi_etablissement`), lu au chargement
+   * de la section. Le bouton s'arme dessus au lieu de repartir de zéro : le « déjà
+   * envoyé » ne vivait que dans l'état React, remis à neuf à chaque montage — recharger
+   * la page réarmait donc un envoi vers une **vraie crèche** (`AM-58`).
+   */
+  dejaEnvoye: boolean;
 }) {
   const [confirmer, setConfirmer] = useState(false);
   const [enCours, setEnCours] = useState(false);
@@ -119,7 +127,13 @@ function BlocEnvoiEtablissement({
     type: 'succes' | 'erreur';
     texte: string;
   } | null>(null);
-  const [envoye, setEnvoye] = useState(false);
+  // `envoyeLocal` ne retient QUE l'envoi abouti dans cette session d'écran ; l'état
+  // affiché est sa **disjonction** avec l'état persisté. Initialiser `useState` avec
+  // `dejaEnvoye` ne suffisait pas : le suivi arrive de façon asynchrone, si bien qu'au
+  // premier rendu il vaut toujours `false` — et qu'au changement de semaine il porte
+  // encore la valeur de la semaine précédente. Une valeur initiale ne se corrige jamais.
+  const [envoyeLocal, setEnvoyeLocal] = useState(false);
+  const envoye = envoyeLocal || dejaEnvoye;
 
   // Brouillon pré-rempli : la SEMAINE COMPLÈTE (7 jours) de chaque enfant
   // concerné, bien formulée. Le parent part de ce texte et peut tout réécrire —
@@ -169,7 +183,7 @@ function BlocEnvoiEtablissement({
       // Un statut ECHEC — ou EN_COURS (envoi concurrent en vol renvoyé par la reprise) —
       // laissait le bouton verrouillé sur « Envoyé » alors que rien n'était (encore)
       // parti : on ne fige l'état qu'après un envoi réellement abouti.
-      setEnvoye(abouti);
+      setEnvoyeLocal(abouti);
     } catch (err) {
       setMessage({ type: 'erreur', texte: messageErreur(err) });
     } finally {
@@ -344,6 +358,10 @@ function CarteNonRoutable({
  * **mail unique** après confirmation explicite ; un établissement **non joignable** (sans
  * e-mail) est signalé en avertissement — jamais écarté silencieusement, jamais envoyé à
  * vide. Un bandeau « Mode test » avertit quand l'envoi serait neutralisé (dry-run).
+ *
+ * Les boutons s'arment sur l'**état persisté** des envois de la semaine
+ * (`lireSuiviEnvois`, `AM-58`) : un récap déjà parti reste « Envoyé ✓ » après un
+ * rechargement, au lieu de se réarmer comme si rien n'avait eu lieu.
  */
 export function RelectureEnvoi({
   foyerId,
@@ -357,6 +375,19 @@ export function RelectureEnvoi({
       const semaine = await api.lireSemaineBesoins(foyerId, semaineIso, {
         signal,
       });
+      // État **persisté** des envois de la semaine (`AM-58`) : c'est lui qui arme les
+      // boutons, et non l'état React vierge de chaque montage. Bloc secondaire — un
+      // suivi indisponible ne doit pas priver le parent de la relecture ; on retombe
+      // alors sur « rien d'envoyé », et le serveur reste de toute façon le juge (il
+      // rend l'envoi déjà journalisé sans ré-émettre de mail).
+      const suivi = await api
+        .lireSuiviEnvois(foyerId, semaineIso, { signal })
+        .catch(() => null);
+      const envoyes = new Set(
+        (suivi?.etablissements ?? [])
+          .filter((e) => e.statut === 'ENVOYE' || e.statut === 'DRY_RUN')
+          .map((e) => e.etablissementId),
+      );
       // Un brouillon par établissement concerné, routé par son `id`. `allSettled` :
       // une erreur réseau/404 (établissement inconnu) sur l'un n'empêche pas de relire
       // les autres. Un établissement sans e-mail ne 404 **plus** : il revient
@@ -379,6 +410,7 @@ export function RelectureEnvoi({
       return {
         jours: semaine.jours,
         contrats: semaine.contrats,
+        envoyes,
         brouillons: brouillons.flatMap((r) =>
           r.status === 'fulfilled' ? [r.value] : [],
         ),
@@ -433,16 +465,23 @@ export function RelectureEnvoi({
       {concernes.map((brouillon) =>
         brouillon.routable ? (
           <BlocEnvoiEtablissement
-            key={brouillon.etablissementId}
+            /* La clé porte la **semaine** en plus de l'établissement : `EncartValidation`
+               fait passer `aEnvoyer` d'une semaine à la suivante sans démonter cette
+               section, et React réutiliserait alors l'instance de la même crèche — avec
+               l'état d'envoi, l'objet et le message de la semaine PRÉCÉDENTE. Le bouton
+               resterait « Envoyé ✓ » sur une semaine jamais transmise, ou se réarmerait
+               sur une semaine déjà partie vers une vraie crèche. */
+            key={`${semaineIso}|${brouillon.etablissementId}`}
             foyerId={foyerId}
             semaineIso={semaineIso}
             jours={data?.jours ?? []}
             contrats={data?.contrats ?? []}
             brouillon={brouillon}
+            dejaEnvoye={data?.envoyes.has(brouillon.etablissementId) ?? false}
           />
         ) : (
           <CarteNonRoutable
-            key={brouillon.etablissementId}
+            key={`${semaineIso}|${brouillon.etablissementId}`}
             foyerId={foyerId}
             brouillon={brouillon}
           />

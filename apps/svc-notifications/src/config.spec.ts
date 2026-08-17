@@ -113,6 +113,22 @@ describe('loadConfig (svc-notifications)', () => {
     expect(loadConfig({ NOTIF_SCHEDULER_HEURE: '0' }).schedulerHeure).toBe(0);
   });
 
+  it('borne l’envoi à 4 semaines par défaut et refuse une borne impossible', () => {
+    // `AM-58` : le défaut EST la politique de production (aucun compose ne pose la
+    // variable — c'est déclaré dans `DEFAUTS_DE_CODE_ASSUMES`). S'il dérivait sans
+    // qu'on le voie, la garde qui protège une vraie crèche changerait en silence.
+    expect(loadConfig({}).envoiRetardMaxSemaines).toBe(4);
+    expect(
+      loadConfig({ NOTIF_ENVOI_RETARD_MAX_SEMAINES: '0' })
+        .envoiRetardMaxSemaines,
+    ).toBe(0);
+    for (const valeur of ['-1', 'quatre', '521']) {
+      expect(() =>
+        loadConfig({ NOTIF_ENVOI_RETARD_MAX_SEMAINES: valeur }),
+      ).toThrow(/NOTIF_ENVOI_RETARD_MAX_SEMAINES/u);
+    }
+  });
+
   it('nomme la variable fautive sans citer le secret qu’elle porte', () => {
     // Le champ éprouvé ici est `DATABASE_URL` : il **peut** échouer (schéma d'URL
     // borné) ET sa valeur porte un mot de passe. Une assertion sur `SMTP_PASSWORD`

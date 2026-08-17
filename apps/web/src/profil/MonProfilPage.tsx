@@ -24,9 +24,10 @@ import { useMonProfil } from './useMonProfil';
 //
 // On n'expose que les types **préférençables par le parent**. `RECAP_SERVICE`
 // (sortant vers l'établissement) part quoi qu'il arrive et n'est donc pas
-// présenté ici (cf. plan §5.1). L'absence de ligne côté API = défaut applicatif
-// « tout actif » (§5.1) : on initialise à `true` puis on écrase avec l'état
-// effectif renvoyé par `GET /moi/profil`.
+// présenté ici (cf. plan §5.1). L'API rend la matrice **entière** — une ligne est
+// matérialisée pour chaque combinaison dès l'inscription du parent (`AM-57`) : cet
+// écran affiche donc l'état effectif renvoyé par `GET /moi/profil`, et n'invente
+// aucun consentement pour une combinaison qu'il ne recevrait pas.
 
 interface CanalMeta {
   readonly canal: CanalNotification;
@@ -73,9 +74,11 @@ function libelleAnnonce(canal: CanalNotification, actif: boolean): string {
 }
 
 /**
- * État affiché des cases : défaut applicatif « tout actif » pour les combos du
- * catalogue, écrasé par les préférences effectives renvoyées par l'API (on
- * n'écrase que les combos affichés, les autres types sont ignorés).
+ * État affiché des cases : les combinaisons du catalogue, renseignées par les
+ * préférences **effectives** renvoyées par l'API (on n'écrase que les combos
+ * affichés, les autres types sont ignorés). Une combinaison que l'API ne
+ * renverrait pas s'affiche **inactive** — sur cet écran comme côté serveur, une
+ * absence ne vaut pas consentement (`AM-57`).
  */
 function construireEtat(
   prefs: readonly PreferenceVue[],
@@ -83,7 +86,7 @@ function construireEtat(
   const etat: Record<string, boolean> = {};
   for (const t of TYPES) {
     for (const c of CANAUX) {
-      etat[cle(t.type, c.canal)] = true;
+      etat[cle(t.type, c.canal)] = false;
     }
   }
   for (const p of prefs) {

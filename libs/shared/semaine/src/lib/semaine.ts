@@ -88,6 +88,24 @@ export function moisDeLaSemaine(semaineIso: string): string[] {
 }
 
 /**
+ * Nombre de semaines **signé** de `de` vers `vers` : positif si `vers` est
+ * postérieure, négatif si elle est antérieure, `0` pour la même semaine.
+ *
+ * L'écart se mesure entre les deux **lundis** — jamais entre les numéros de
+ * semaine, qui ne se soustraient pas d'une année sur l'autre (`2026-W01` suit
+ * `2025-W52`, et une année ISO compte 52 **ou 53** semaines). Arithmétique UTC sur
+ * des dates calendaires : aucun décalage d'heure d'été ne peut décaler le quotient
+ * (les lundis sont à minuit UTC), d'où l'arrondi de sécurité.
+ */
+export function ecartEnSemaines(de: string, vers: string): number {
+  const lundi = (semaine: string): number => {
+    const { annee, semaine: numero } = parseSemaineIso(semaine);
+    return lundiUtc(annee, numero).getTime();
+  };
+  return Math.round((lundi(vers) - lundi(de)) / (7 * 86_400_000));
+}
+
+/**
  * Semaine ISO (`YYYY-Www`) **contenant** une date calendaire `YYYY-MM-DD`. L'année
  * ISO est celle du **jeudi** de la semaine (règle ISO 8601 : une semaine appartient
  * à l'année de son jeudi). Inverse de `joursDeLaSemaine`. Utile au déclencheur du

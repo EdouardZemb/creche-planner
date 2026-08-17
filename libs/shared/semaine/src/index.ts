@@ -4,6 +4,7 @@ export {
   joursDeLaSemaine,
   moisDeLaSemaine,
   semaineIsoDeDate,
+  ecartEnSemaines,
   type SemaineIso,
 } from './lib/semaine.js';
 export {

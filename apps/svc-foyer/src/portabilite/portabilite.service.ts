@@ -12,7 +12,7 @@ import {
   parent,
   preferenceNotification,
 } from '../database/schema.js';
-import { fusionnerDefauts } from '../foyer/preferences.util.js';
+import { preferencesEffectives } from '../foyer/preferences.util.js';
 
 /** Situation financière courante du foyer (`foyer`). */
 export interface ExportSituationCourante {
@@ -131,12 +131,13 @@ export interface ExportFoyerVue {
  *
  * Deux écarts assumés, qui ne s'improvisent pas :
  *
- * 1. **Les préférences sont exportées EFFECTIVES, pas telles qu'en base.** Dans
- *    `preference_notification`, l'absence de ligne **vaut consentement** (défaut
- *    applicatif, doc 37 T3ter) : exporter les seules lignes stockées livrerait
- *    les **écarts au défaut** en les présentant comme l'état complet, c'est-à-dire
- *    une donnée fausse. On réutilise `fusionnerDefauts`, la primitive qui sert
- *    déjà l'écran « Mon profil ».
+ * 1. **Les préférences sont exportées EFFECTIVES, pas telles qu'en base.** La
+ *    matrice §5.1 décrit ce que le parent peut régler ; une combinaison sans ligne
+ *    n'a **aucun consentement enregistré** (`AM-57`) et s'exporte donc inactive.
+ *    Exporter les seules lignes stockées livrerait les combinaisons **renseignées**
+ *    en les présentant comme l'état complet, c'est-à-dire une donnée fausse. On
+ *    réutilise `preferencesEffectives`, la primitive qui sert déjà l'écran
+ *    « Mon profil ».
  * 2. **Le `jti` d'un jeton de désabonnement n'est pas exporté.** Ce jeton est une
  *    capacité : il désabonne sans authentification. Un jeton encore valide
  *    recopié dans un fichier téléchargé, conservé ou transmis, resterait
@@ -251,9 +252,9 @@ export class PortabiliteService {
   }
 
   /**
-   * Préférences **effectives** par parent : `fusionnerDefauts` applique le défaut
-   * applicatif aux lignes stockées, parent par parent (le défaut n'a de sens que
-   * rapporté à un parent).
+   * Préférences **effectives** par parent : `preferencesEffectives` projette la
+   * matrice §5.1 sur les lignes stockées, parent par parent (une combinaison n'a de
+   * sens que rapportée à un parent).
    */
   private async lirePreferences(
     parentIds: readonly string[],
@@ -266,7 +267,7 @@ export class PortabiliteService {
       .from(preferenceNotification)
       .where(inArray(preferenceNotification.parentId, [...parentIds]));
     return parentIds.flatMap((parentId) =>
-      fusionnerDefauts(lignes.filter((l) => l.parentId === parentId)).map(
+      preferencesEffectives(lignes.filter((l) => l.parentId === parentId)).map(
         (pref) => ({
           parentId,
           typeNotification: pref.typeNotification,

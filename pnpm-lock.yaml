@@ -381,6 +381,9 @@ importers:
       '@creche-planner/contracts-foyer':
         specifier: workspace:*
         version: link:../../libs/contracts/foyer
+      '@creche-planner/contracts-kernel':
+        specifier: workspace:*
+        version: link:../../libs/contracts/kernel
       '@creche-planner/contracts-notifications':
         specifier: workspace:*
         version: link:../../libs/contracts/notifications

@@ -5,7 +5,6 @@ import { EnvoiService } from './envoi.service.js';
 import { envoiEtablissementSchema } from './envoi.dto.js';
 import type { EtablissementProjeteService } from '../etablissement/etablissement-projete.service.js';
 import {
-  horlogeSysteme,
   type Clock,
   type MailerService,
   type ResultatEnvoi,
@@ -266,15 +265,27 @@ function fakeMailer(resultat: ResultatEnvoi | Error): {
 }
 
 /**
- * Construit le service en injectant une horloge (défaut : `horlogeSysteme`). Les cas de
- * **reprise** (âge d'une ligne `EN_COURS` bloquée) passent une horloge figée à un instant
- * précis pour contrôler le franchissement du seuil `DELAI_REPRISE_EN_COURS_MS`.
+ * Instant par défaut des tests : le **mardi de `SEMAINE`** (`2026-W27`). Il était
+ * `horlogeSysteme` : ces tests dépendaient donc de la date du jour, et la borne
+ * temporelle d'`AM-58` les aurait tous fait rougir dès que `2026-W27` s'éloignait de
+ * plus de quatre semaines — c'est-à-dire à partir du 3 août 2026, sans qu'aucune ligne
+ * de production ait bougé. Même famille que le `stateHandler` du pact et le
+ * `seed-demo.mjs` du lot 1 : **un jeu de test qui passe parce que la date du jour le
+ * veut bien**.
+ */
+const MAINTENANT = '2026-06-30T09:00:00.000Z';
+
+/**
+ * Construit le service en injectant une horloge (défaut : `MAINTENANT`, dans la semaine
+ * visée par les tests). Les cas de **reprise** (âge d'une ligne `EN_COURS` bloquée)
+ * passent une horloge figée à un instant précis pour contrôler le franchissement du
+ * seuil `DELAI_REPRISE_EN_COURS_MS`.
  */
 function creerService(
   db: Database,
   etablissements: EtablissementProjeteService,
   mailer: MailerService,
-  clock: Clock = horlogeSysteme,
+  clock: Clock = clockFige(MAINTENANT),
 ): EnvoiService {
   return new EnvoiService(db, etablissements, mailer, clock);
 }
@@ -793,6 +804,154 @@ describe('envoiEtablissementSchema (objet + corps optionnels, rétro-compatible)
         corps: 'x'.repeat(20001),
       }).success,
     ).toBe(false);
+  });
+});
+
+/**
+ * **Gardes serveur de l'envoi** (`AM-58`, lot 2 « le coût ne ment plus »). Le
+ * destinataire est une **vraie crèche** et l'envoi réel est actif en production : la
+ * sonde de chacun de ces cas est donc « le mailer n'a **pas** été sollicité », pas
+ * seulement « la réponse est un 422 ». On vérifie aussi qu'aucune ligne
+ * `envoi_etablissement` n'est réservée — sans quoi le refus laisserait derrière lui le
+ * verrou qui a contraint la borne T3bis à anonymiser cette table au lieu de la purger.
+ */
+describe('EnvoiService.envoyer — gardes serveur (AM-58)', () => {
+  it('semaine révolue depuis plus de 4 semaines : refus 422, mailer JAMAIS sollicité', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
+    // 2026-W27 vue depuis le 2026-08-17 : cinq semaines de retard.
+    const service = creerService(
+      db,
+      etablissements,
+      mailer,
+      clockFige('2026-08-17T09:00:00.000Z'),
+    );
+
+    await expect(
+      service.envoyer(FOYER_ID, SEMAINE, ETAB_ID),
+    ).rejects.toMatchObject({
+      status: 422,
+      response: { code: 'SEMAINE_HORS_FENETRE_ENVOI' },
+    });
+    expect(mock).not.toHaveBeenCalled();
+    // Aucun slot réservé : le refus ne laisse pas de ligne derrière lui.
+    expect(stores.get(envoiEtablissement)).toHaveLength(0);
+  });
+
+  it('semaine révolue de 4 semaines pile : encore dans la fenêtre, l’envoi part', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
+    // 2026-W31 : exactement 4 semaines après 2026-W27 — la borne est inclusive, une
+    // validation tardive ou un retour de congés reste servi.
+    const service = creerService(
+      db,
+      etablissements,
+      mailer,
+      clockFige('2026-07-28T09:00:00.000Z'),
+    );
+
+    const resultat = await service.envoyer(FOYER_ID, SEMAINE, ETAB_ID);
+
+    expect(mock).toHaveBeenCalledTimes(1);
+    expect(resultat.statut).toBe('DRY_RUN');
+  });
+
+  it('semaine à venir : jamais bornée (le planning se saisit des mois à l’avance)', async () => {
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
+    const service = creerService(
+      db,
+      etablissements,
+      mailer,
+      clockFige('2026-01-06T09:00:00.000Z'),
+    );
+
+    await expect(
+      service.envoyer(FOYER_ID, SEMAINE, ETAB_ID),
+    ).resolves.toMatchObject({ statut: 'DRY_RUN' });
+    expect(mock).toHaveBeenCalledTimes(1);
+  });
+
+  it('aucune modification à transmettre : refus 422, mailer JAMAIS sollicité', async () => {
+    // Aucun contrat, aucune semaine validée : c'est le cas qu'un `POST` forgé atteint
+    // le plus facilement — le front ne propose pas le bouton, mais rien ne l'exigeait.
+    const { db, stores } = fakeBase();
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: false });
+    const service = creerService(db, etablissements, mailer);
+
+    await expect(
+      service.envoyer(FOYER_ID, SEMAINE, ETAB_ID),
+    ).rejects.toMatchObject({
+      status: 422,
+      response: { code: 'RECAP_SANS_MODIFICATION' },
+    });
+    expect(mock).not.toHaveBeenCalled();
+    expect(stores.get(envoiEtablissement)).toHaveLength(0);
+  });
+
+  it('semaine validée SANS modification (delta vide) : refus — la garde porte sur la matière, pas sur les lignes', async () => {
+    // `LE-65` du lot 1 : une garde posée sur « aucune ligne » ne voit rien quand
+    // l'amont en rend toujours une. Ici la notification EXISTE, elle ne porte
+    // simplement aucun jour modifié — et c'est bien un récap vide.
+    const { db, stores } = fakeBase();
+    seedContrat(stores, {
+      id: CONTRAT_LEA,
+      enfant: 'Léa',
+      delta: { jours: [] },
+    });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: false });
+    const service = creerService(db, etablissements, mailer);
+
+    await expect(
+      service.envoyer(FOYER_ID, SEMAINE, ETAB_ID),
+    ).rejects.toMatchObject({
+      response: { code: 'RECAP_SANS_MODIFICATION' },
+    });
+    expect(mock).not.toHaveBeenCalled();
+  });
+
+  it('le refus « rien à transmettre » précède celui de la crèche injoignable', async () => {
+    // Deux refus possibles : on nomme le bon. Quand il n'y a rien à dire, l'absence
+    // d'adresse n'est pas le problème du parent.
+    const { db } = fakeBase();
+    const { service: etablissements } = fakeEtablissements(ETAB_SANS_EMAIL);
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: false });
+    const service = creerService(db, etablissements, mailer);
+
+    await expect(
+      service.envoyer(FOYER_ID, SEMAINE, ETAB_ID),
+    ).rejects.toMatchObject({
+      response: { code: 'RECAP_SANS_MODIFICATION' },
+    });
+    expect(mock).not.toHaveBeenCalled();
+  });
+
+  it('le brouillon, LECTURE SEULE, reste consultable hors fenêtre', async () => {
+    // La borne interdit l'action sortante, pas la relecture : un parent doit pouvoir
+    // comprendre ce qui n'est plus envoyable.
+    const { db, stores } = fakeBase();
+    seedContrat(stores, { id: CONTRAT_LEA, enfant: 'Léa' });
+    const { service: etablissements } = fakeEtablissements();
+    const { mailer, mock } = fakeMailer({ messageId: null, dryRun: true });
+    const service = creerService(
+      db,
+      etablissements,
+      mailer,
+      clockFige('2027-01-05T09:00:00.000Z'),
+    );
+
+    const brouillon = await service.brouillon(FOYER_ID, SEMAINE, ETAB_ID);
+
+    expect(brouillon.enfants).toHaveLength(1);
+    expect(mock).not.toHaveBeenCalled();
   });
 });
 

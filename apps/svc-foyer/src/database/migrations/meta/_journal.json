@@ -57,6 +57,13 @@
       "when": 1786968000000,
       "tag": "0007_fin_de_version",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787040000000,
+      "tag": "0008_consentement_materialise",
+      "breakpoints": true
     }
   ]
 }

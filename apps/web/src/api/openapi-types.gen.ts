@@ -1489,7 +1489,7 @@ export interface paths {
         put?: never;
         /**
          * Envoyer le récap agrégé à un établissement
-         * @description Action sortante RÉELLE (après relecture), idempotente sur `(foyer, semaine, établissement)`. `sujet`/`corps` portent le texte édité par le parent : les deux ensemble ou aucun des deux (400 sinon).
+         * @description Action sortante RÉELLE (après relecture), idempotente sur `(foyer, semaine, établissement)`. `sujet`/`corps` portent le texte édité par le parent : les deux ensemble ou aucun des deux (400 sinon). Deux gardes serveur précèdent toute sollicitation du transport : la semaine ne peut pas être révolue de plus de 4 semaines, et le récap doit porter au moins une modification validée à transmettre (422 dans les deux cas). Le destinataire est un tiers réel : un envoi refusé ne réserve aucune ligne et n’expédie aucun courriel.
          */
         post: {
             parameters: {
@@ -1523,6 +1523,15 @@ export interface paths {
                 };
                 /** @description Corps invalide, ou `sujet`/`corps` fournis l’un sans l’autre. */
                 400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
+                };
+                /** @description La semaine est révolue depuis plus de 4 semaines (code `SEMAINE_HORS_FENETRE_ENVOI`), ou le récapitulatif ne porte aucune modification validée à transmettre (code `RECAP_SANS_MODIFICATION`). Ni 400 (la requête est bien formée) ni 404 (les ressources existent) : c’est l’action qui n’a pas lieu d’être, et réessayer ne changera rien. */
+                422: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2907,7 +2916,7 @@ export interface components {
              * @description Code métier distinguant la CAUSE d’un statut qui, seul, n’en dit rien — trois 409 différents ne se traitent pas de la même façon à l’écran. Absent quand le statut se suffit.
              * @enum {string}
              */
-            code?: "EMAIL_DEJA_UTILISE" | "PARENT_PRINCIPAL_EXISTANT" | "DERNIER_PARENT_ACTIF" | "PERIODE_CHEVAUCHANTE" | "RESSOURCES_INCONNUES_AU_MOIS";
+            code?: "EMAIL_DEJA_UTILISE" | "PARENT_PRINCIPAL_EXISTANT" | "DERNIER_PARENT_ACTIF" | "PERIODE_CHEVAUCHANTE" | "RESSOURCES_INCONNUES_AU_MOIS" | "SEMAINE_HORS_FENETRE_ENVOI" | "RECAP_SANS_MODIFICATION";
             /** @description Détail par champ d’une erreur de validation. Absent hors validation. */
             erreurs?: {
                 champ: string;

@@ -395,10 +395,12 @@ export class ProjectionService {
    * du parent (même patron que `ParentAjoute`/`ParentModifie` : le consommateur projette
    * sans relire la source). On **remplace** l'ensemble des lignes du parent dans la
    * même transaction — `delete` de toutes ses préférences puis upsert de chaque ligne de
-   * l'event — de sorte qu'une préférence **remise au défaut** côté svc-foyer (ligne
-   * retirée de l'event) disparaisse aussi ici. On ne projette que `actif` (le routage
-   * n'a besoin de rien d'autre) ; l'absence de ligne vaut le défaut applicatif (actif).
-   * Idempotent via `processed_event`.
+   * l'event — de sorte qu'une combinaison retirée de l'event disparaisse aussi ici. On ne
+   * projette que `actif` (le routage n'a besoin de rien d'autre) ; depuis `AM-57`,
+   * **l'absence de ligne ne vaut plus consentement** — elle écarte le destinataire
+   * (`DestinatairesService`). C'est le même événement, émis dès l'inscription du parent,
+   * qui pose son consentement initial : ce service n'a aucune matrice par défaut à
+   * connaître. Idempotent via `processed_event`.
    */
   private async appliquerPreferencesNotif(
     stream: string,

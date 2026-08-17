@@ -210,6 +210,15 @@ const DEFAUTS_DE_CODE_ASSUMES = [
       'réglage de déploiement.',
   },
   {
+    variable: 'NOTIF_ENVOI_RETARD_MAX_SEMAINES',
+    app: 'svc-notifications',
+    motif:
+      '4 semaines (AM-58) : au-delà, un récapitulatif adressé à une crèche décrit ' +
+      "une semaine déjà vécue. C'est un choix produit — la borne vit avec la règle " +
+      'quelle sert, pas avec la pile qui la déploie ; le réglage existe pour que la ' +
+      'vérification pact puisse rejouer son jeu figé.',
+  },
+  {
     variable: 'NOTIF_SCHEDULER_FORCER',
     app: 'svc-notifications',
     motif:

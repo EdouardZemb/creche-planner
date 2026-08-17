@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import {
@@ -14,6 +15,12 @@ import {
   MailerService,
   partitionnerParAllowlist,
 } from '@creche-planner/nest-commons';
+import type { CodeProbleme } from '@creche-planner/contracts-kernel';
+import {
+  ecartEnSemaines,
+  jourCourantParis,
+  semaineIsoDeDate,
+} from '@creche-planner/shared-semaine';
 import type { Database } from '../database/database.types.js';
 import {
   contrat,
@@ -50,6 +57,76 @@ import type {
  * plus un doublon » déjà documentée côté récap (`schema.ts`, `envoi_recap_parent`).
  */
 const DELAI_REPRISE_EN_COURS_MS = 2 * 60_000;
+
+/**
+ * **Retard maximal toléré** (en semaines) entre la semaine visée par un récapitulatif
+ * et la semaine courante, au-delà duquel l'envoi est **refusé** (`AM-58`). Valeur
+ * lue dans la configuration (`NOTIF_ENVOI_RETARD_MAX_SEMAINES`, défaut **4**) : c'est
+ * une politique produit, pas une constante technique.
+ *
+ * Un récap au service annonce des changements **à venir** : le cas nominal est la
+ * semaine N+1, validée le mardi de la semaine N. Quatre semaines couvrent largement
+ * ce qui peut légitimement retarder l'envoi — une validation tardive, un retour de
+ * congés, une reprise après un `ECHEC` de transport, une crèche dont l'adresse
+ * manquait au moment du clic. Au-delà, l'information est périmée pour son
+ * destinataire : la semaine est vécue, et écrire à une crèche pour lui décrire un
+ * planning d'il y a deux mois n'est plus un service rendu, c'est du bruit — voire un
+ * rejeu accidentel.
+ *
+ * Le **futur n'est pas borné** : le planning se saisit des mois à l'avance et rien ne
+ * distingue une semaine lointaine légitime d'une faute de frappe. C'est le second
+ * verrou — un récap **sans aucune modification à transmettre** — qui l'arrête, et il
+ * porte sur la **matière** du mail plutôt que sur sa date.
+ */
+
+/**
+ * **422 structuré** : la semaine visée est trop ancienne (`AM-58`). Le statut n'est ni
+ * 400 (la requête est bien formée : `semaineIso` est une semaine ISO valide) ni 404
+ * (le foyer, la semaine et l'établissement existent) — c'est l'**action** qui n'a plus
+ * de sens à cette date. Rien ne guérira en réessayant : le refus est définitif pour
+ * cette semaine, et il le dit.
+ */
+export class SemaineHorsFenetreEnvoiException extends UnprocessableEntityException {
+  constructor(
+    semaineIso: string,
+    semaineCourante: string,
+    retard: number,
+    retardMax: number,
+  ) {
+    super({
+      statusCode: 422,
+      code: 'SEMAINE_HORS_FENETRE_ENVOI' satisfies CodeProbleme,
+      message:
+        `la semaine ${semaineIso} est révolue depuis ${String(retard)} semaines ` +
+        `(semaine courante ${semaineCourante}) : au-delà de ${String(retardMax)}, ` +
+        "le récapitulatif n'est plus adressé à l'établissement",
+    });
+  }
+}
+
+/**
+ * **422 structuré** : le récapitulatif ne porte **aucune modification** à transmettre
+ * (`AM-58`). Sans ce verrou, un appel sur une `(foyer, semaine, établissement)`
+ * quelconque expédiait à une **vraie crèche** un courriel disant « aucune modification
+ * déclarée sur cette semaine » — un mail que personne n'a voulu, dont le seul effet
+ * durable était la ligne `envoi_etablissement` qui l'empêchait de repartir.
+ *
+ * La garde porte sur la **matière** du récap (au moins un enfant dont la semaine est
+ * `VALIDEE_AVEC_MODIFS` avec un delta non vide), jamais sur la seule présence de
+ * lignes en base : c'est la leçon `LE-65` du lot 1 — une garde posée sur « aucune
+ * ligne » ne voit rien quand l'amont en rend toujours une.
+ */
+export class RecapSansModificationException extends UnprocessableEntityException {
+  constructor(semaineIso: string, etablissementId: string) {
+    super({
+      statusCode: 422,
+      code: 'RECAP_SANS_MODIFICATION' satisfies CodeProbleme,
+      message:
+        `aucune modification validée à transmettre pour la semaine ${semaineIso} ` +
+        `à l'établissement ${etablissementId} : le récapitulatif ne part pas`,
+    });
+  }
+}
 
 /** Brouillon agrégé construit côté service (corps figé + métadonnées de résolution). */
 interface BrouillonConstruit {
@@ -131,10 +208,14 @@ export class EnvoiService {
   }
 
   /**
-   * Envoie réellement (après relecture) le récap agrégé au service. Réserve d'abord le
-   * slot `envoi_etablissement` (idempotence via la clé d'unicité) : si la ligne existe
-   * déjà, renvoie l'envoi journalisé sans rien ré-émettre. Sinon sollicite le mailer et
-   * fige l'issue.
+   * Envoie réellement (après relecture) le récap agrégé au service. **Deux gardes
+   * serveur** précèdent toute écriture et toute sollicitation du mailer (`AM-58`) :
+   * la semaine ne doit pas être révolue de plus de `NOTIF_ENVOI_RETARD_MAX_SEMAINES`
+   * (défaut 4), et le récap
+   * doit porter **au moins une modification** à transmettre. Réserve ensuite le slot
+   * `envoi_etablissement` (idempotence via la clé d'unicité) : si la ligne existe déjà,
+   * renvoie l'envoi journalisé sans rien ré-émettre. Sinon sollicite le mailer et fige
+   * l'issue.
    *
    * `corpsEdite` (optionnel) : quand le parent a relu/édité le brouillon dans l'app, il
    * fournit l'objet + le corps en **texte brut**. Ils sont alors envoyés/journalisés tels
@@ -148,7 +229,23 @@ export class EnvoiService {
     etablissementId: string,
     corpsEdite?: { sujet: string; corps: string },
   ): Promise<EnvoiEtablissementResultat> {
+    // Borne temporelle serveur (`AM-58`), AVANT toute lecture : jusqu'ici, `semaineIso`
+    // n'était validée qu'en **forme** (une semaine ISO bien formée suffisait), et le
+    // « déjà envoyé » ne vivait que dans l'état React du front — remis à zéro à chaque
+    // montage. Rien n'empêchait donc de ré-adresser un récapitulatif à une **vraie
+    // crèche** pour une semaine arbitrairement ancienne : la seule chose qui retenait
+    // un second courriel était la ligne `envoi_etablissement`, ce qui a contraint la
+    // borne de rétention T3bis à **anonymiser** cette table au lieu de la purger.
+    this.gardeFenetreTemporelle(semaineIso);
+
     const b = await this.construire(foyerId, semaineIso, etablissementId);
+
+    // Second verrou, indépendant de la date : on n'écrit pas à une crèche pour ne rien
+    // lui dire. Il est placé **avant** le contrôle de routabilité : quand il n'y a rien
+    // à transmettre, l'absence d'adresse n'est plus le sujet.
+    if (b.enfants.length === 0) {
+      throw new RecapSansModificationException(semaineIso, etablissementId);
+    }
 
     // Ceinture et bretelles côté serveur : un brouillon non routable (crèche sans e-mail
     // ou archivée) est refusé **avant** toute réservation de slot ou sollicitation du
@@ -214,6 +311,33 @@ export class EnvoiService {
 
     // Slot réservé par CET appel : on sollicite le transport et on fige l'issue.
     return this.executerEnvoi(id, bEffectif);
+  }
+
+  /**
+   * Refuse une semaine trop ancienne (`RETARD_MAX_SEMAINES`). La semaine courante est
+   * lue sur l'**horloge injectée** puis normalisée en **Europe/Paris** — même convention
+   * que le déclencheur du mardi (`scheduler.hebdo.ts`) : à minuit, l'heure UTC désigne
+   * encore la veille en France, et un récap ne doit pas basculer hors fenêtre une heure
+   * avant tout le monde. L'écart se mesure de lundi à lundi (`ecartEnSemaines`), jamais
+   * sur les numéros de semaine — `2026-W01` suit `2025-W52`.
+   */
+  private gardeFenetreTemporelle(semaineIso: string): void {
+    const retardMax = loadConfig().envoiRetardMaxSemaines;
+    const semaineCourante = semaineIsoDeDate(
+      jourCourantParis(this.clock.maintenant()),
+    );
+    const retard = ecartEnSemaines(semaineIso, semaineCourante);
+    if (retard > retardMax) {
+      this.logger.warn(
+        `Envoi refusé : semaine ${semaineIso} révolue depuis ${String(retard)} semaines (courante ${semaineCourante})`,
+      );
+      throw new SemaineHorsFenetreEnvoiException(
+        semaineIso,
+        semaineCourante,
+        retard,
+        retardMax,
+      );
+    }
   }
 
   /**

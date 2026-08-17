@@ -138,6 +138,14 @@ describe('Pact provider · svc-notifications honore le contrat api-gateway', () 
         // pas les interactions du pact. L'assertion machine du requestFilter passe la
         // vérification d'identité ET bypasse le scoping par ressource → aucune 401/403.
         INTERSERVICE_AUTHZ_ENFORCE: '1',
+        // Borne temporelle de l'envoi (`AM-58`) **relevée** pour cette vérification :
+        // le pact fige `SEMAINE = 2026-W10`, qui vieillit à chaque jour qui passe. Le
+        // laisser à sa valeur de production ferait rougir la vérification à une date
+        // prévisible, sans qu'aucune ligne du contrat ait bougé — la famille de
+        // défauts que le lot 1 a payée deux fois (`stateHandler` tarification,
+        // `seed-demo.mjs`). Ce que le pact contracte est la **forme sur le fil** ; la
+        // borne, elle, est prouvée par `envoi.service.spec.ts`, mailer à l'appui.
+        NOTIF_ENVOI_RETARD_MAX_SEMAINES: '520',
       },
       stdio: 'inherit',
     });

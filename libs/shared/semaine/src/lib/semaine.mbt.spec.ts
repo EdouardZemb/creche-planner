@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import {
+  ecartEnSemaines,
   estSemaineIso,
   joursDeLaSemaine,
   moisDeLaSemaine,
@@ -135,6 +136,64 @@ describe('MBT semaine ISO ↔ mois / jours', () => {
 
     it('semaineIsoDeDate lève sur une date invalide', () => {
       expect(() => semaineIsoDeDate('pas-une-date')).toThrow();
+    });
+  });
+
+  // --- Écart en semaines (borne d'envoi, AM-58) -----------------------------
+  describe('ecartEnSemaines', () => {
+    it('mesure un écart signé, nul sur la même semaine', () => {
+      expect(ecartEnSemaines('2026-W27', '2026-W31')).toBe(4);
+      expect(ecartEnSemaines('2026-W31', '2026-W27')).toBe(-4);
+      expect(ecartEnSemaines('2026-W27', '2026-W27')).toBe(0);
+    });
+
+    it('franchit les frontières d’année, y compris une année ISO de 53 semaines', () => {
+      // Le piège que la soustraction de numéros de semaine ne voit pas : 2026-W01
+      // suit immédiatement 2025-W52, et 2020 comptait 53 semaines ISO.
+      expect(ecartEnSemaines('2025-W52', '2026-W01')).toBe(1);
+      expect(ecartEnSemaines('2020-W53', '2021-W01')).toBe(1);
+      expect(ecartEnSemaines('2020-W52', '2021-W01')).toBe(2);
+    });
+
+    it('reste entier malgré les changements d’heure (propriété)', () => {
+      // Toute la fenêtre couvre plusieurs passages d'heure d'été : un écart
+      // fractionnaire ferait basculer la borne d'envoi une semaine trop tôt.
+      fc.assert(
+        fc.property(dateArb, dateArb, (a, b) => {
+          const ecart = ecartEnSemaines(
+            semaineIsoDeDate(a),
+            semaineIsoDeDate(b),
+          );
+          return Number.isInteger(ecart);
+        }),
+      );
+    });
+
+    it('est antisymétrique et additif (propriété)', () => {
+      fc.assert(
+        fc.property(dateArb, dateArb, (a, b) => {
+          const sa = semaineIsoDeDate(a);
+          const sb = semaineIsoDeDate(b);
+          return ecartEnSemaines(sa, sb) === -ecartEnSemaines(sb, sa);
+        }),
+      );
+    });
+
+    it('compte les jours d’écart divisés par sept (oracle croisé)', () => {
+      fc.assert(
+        fc.property(dateArb, dateArb, (a, b) => {
+          const lundiA = joursDeLaSemaine(semaineIsoDeDate(a))[0] ?? '';
+          const lundiB = joursDeLaSemaine(semaineIsoDeDate(b))[0] ?? '';
+          const jours =
+            (Date.parse(`${lundiB}T00:00:00.000Z`) -
+              Date.parse(`${lundiA}T00:00:00.000Z`)) /
+            86_400_000;
+          return (
+            ecartEnSemaines(semaineIsoDeDate(a), semaineIsoDeDate(b)) ===
+            jours / 7
+          );
+        }),
+      );
     });
   });
 });

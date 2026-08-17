@@ -260,7 +260,12 @@ describe('PortabiliteService (svc-foyer)', () => {
   // Le piège du lot : dans `preference_notification`, l'ABSENCE de ligne vaut
   // consentement. Exporter les seules lignes stockées livrerait les écarts au
   // défaut en les présentant comme l'état complet — donc une donnée fausse.
-  it('exporte les préférences EFFECTIVES : un parent sans ligne stockée sort avec ses défauts', async () => {
+  it('exporte les préférences EFFECTIVES : la matrice complète, une combinaison sans ligne étant INACTIVE', async () => {
+    // `AM-57` : l'export sort les deux combinaisons de la matrice §5.1 — sinon il
+    // livrerait les seules combinaisons renseignées en les présentant comme l'état
+    // complet. Une combinaison **sans ligne** n'a aucun consentement enregistré et
+    // s'exporte donc inactive : c'est ce que le service en fait, dire l'inverse dans
+    // un document remis au parent serait faux.
     const { db } = fakeDbLecture(...reponses([ligneParent()], []));
     const service = new PortabiliteService(db);
 
@@ -271,7 +276,7 @@ describe('PortabiliteService (svc-foyer)', () => {
         parentId: PARENT_ID,
         typeNotification: 'VALIDATION_HEBDO',
         canal: 'EMAIL',
-        actif: true,
+        actif: false,
         consentementLe: null,
         desabonneLe: null,
       },
@@ -279,7 +284,7 @@ describe('PortabiliteService (svc-foyer)', () => {
         parentId: PARENT_ID,
         typeNotification: 'VALIDATION_HEBDO',
         canal: 'IN_APP',
-        actif: true,
+        actif: false,
         consentementLe: null,
         desabonneLe: null,
       },
