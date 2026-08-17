@@ -1,26 +1,38 @@
 # Plan d'exécution — SFD 38 « Rattachement documentaire »
 
-> **Statut** : **NE PAS DÉMARRER — arbitrage roadmap PO.** La SFD
+> **Statut** : **VALIDÉ PO le 2026-08-17** (SFD
 > [`docs/38-sfd-rattachement-documentaire.md`](../../docs/38-sfd-rattachement-documentaire.md)
-> est un **brouillon v0.2 à valider** ; ce plan en est la traduction en lots, écrite en même
-> temps pour que le PO voie ce que la validation engage — pas pour être exécuté.
+> passée en **v1.0**, décision en son §0) — **mais NE PAS DÉMARRER : arbitrage roadmap PO.**
+> Ce qui est validé, c'est **quoi construire**, pas **quand**.
 >
-> **Amendé le 2026-08-17 (amendement 1 de la SFD, §7.7 — le transport).** `Q-38-03` est
-> **tranchée** : les documents **et leurs métadonnées** ne passent plus par le bord public
-> (tunnel Cloudflare) mais par un **second bord Tailscale**. Le plan passe de **5 à 6 lots** — le
-> nouveau lot 1 porte ce second bord. Deux questions PO restent bloquantes : `Q-38-01` (type
-> médical / cible enfant → position de l'`ADR-0009`) et `Q-38-02` (effacement en cascade) ; une
-> troisième oriente le découpage sans le bloquer : `Q-38-07` (repli **a3** plutôt que **a1**).
+> ⚠️ **Ce chantier entre en concurrence avec le chantier vacances**
+> ([SFD 31](../../docs/31-sfd-calendriers-vacances-scolaires.md), validée le 2026-08-16 et non
+> démarrée, plan [`calendriers-vacances-scolaires.md`](calendriers-vacances-scolaires.md)), et il
+> se place **après la fin du chantier « Le coût ne ment plus »**. Les deux touchent
+> `gateway.openapi.ts`, l'oracle de routes et `bff.dto.ts` : ils ne se parallélisent pas.
 >
-> **Place dans la séquence** : la note de vision (`vision-plateforme-foyer-2026-08.md` §3) situe
-> `AM-65` « au plus tôt à l'étape 3 » — après consolidation, après la séquence SFD 31 → 33, avec
-> `factures-reelles`. Ce plan ne réclame pas d'être avancé ; il existe pour être **arbitré**.
+> **Variante retenue : `a1`** — l'écran unique dans l'application, routes documentaires servies
+> par un **second bord Tailscale**. Motivation PO : _« pour un souci de centralisation et de
+> facilité d'utilisation »_. Le surcoût d'infrastructure est **assumé** : nœud tailnet dédié,
+> seconde source d'identité, porte de CI anti-fuite. La variante `a3` (Paperless joint
+> directement, l'app ne portant que le rattachement) est **écartée** — elle n'est plus un repli
+> disponible, et les lots ne se rediscutent pas sur ce point.
 >
-> ⚠️ **Un préalable qui n'appartient pas à ce chantier** : `AM-94` (la porte d'entrée LAN de
-> l'application contourne l'authentification, et la route de sous-réseau Tailscale du 2026-08-16
-> l'a rendue joignable de partout). Elle est **antérieure et indépendante**, mais le lot 1 pose un
-> second bord sur exactement cette frontière : la traiter avant évite de bâtir sur une question
-> ouverte.
+> **Toutes les questions bloquantes sont tranchées** (SFD §0) : pas de type médical au catalogue
+> et cible `ENFANT` fermée (⇒ `ADR-0009` en **position (b)**) ; l'effacement d'un foyer **ne vide
+> pas** le coffre ; le transport est le bord tailnet. Restent `Q-38-05` (taille max de dépôt) et
+> `Q-38-06` (libellé du tag), qui se tranchent à l'exécution.
+>
+> ⚠️ **Préalable utilisateur, avant le lot 0** : **la seconde personne du foyer rejoint le
+> tailnet.** Sans elle, `a1` ne rend le documentaire accessible qu'à un seul des deux parents —
+> ce qui contredit `RM-32-05` et vide le chantier de son sens pour la moitié du foyer.
+>
+> ⚠️ **Préalable technique bloquant, qui n'appartient pas à ce chantier** : `AM-94` — la porte
+> d'entrée LAN de l'application contournait l'authentification, et la route de sous-réseau
+> Tailscale du 2026-08-16 l'avait rendue joignable de partout. **Mesurée le 2026-08-17 : le trou
+> était réel**, refermé à titre conservatoire ; le **correctif durable reste à livrer**. Le lot 1
+> pose un bord authentifiant sur exactement cette frontière — il ne peut pas démarrer avant, sous
+> peine de rouvrir ce qui vient d'être fermé.
 
 ## 1. Contexte et objectif
 
@@ -35,23 +47,31 @@ depuis l'app ; un justificatif se voit depuis le contrat, le mois ou l'objet qu'
 **Aucun octet de document n'est stocké par creche-planner** — Paperless reste l'unique coffre —
 et **aucun ne transite par un tiers** : le documentaire est servi par le bord tailnet.
 
-## 2. Hypothèses assumées (à corriger par le PO si fausses)
+## 2. Décisions PO et hypothèses restantes
+
+**Depuis le 2026-08-17, `H2`, `H3`, `H4` et `H8` ne sont plus des hypothèses : ce sont des
+décisions PO** (SFD §0). Elles gardent leur numéro — les lots les citent — mais elles ne se
+rediscutent plus en cours d'exécution. Les autres restent des hypothèses, à corriger par le PO
+si elles sont fausses.
 
 - **H1** — L'instance Paperless reste en **2.20.6** au démarrage ; la migration 3.x est
   indépendante et non bloquante grâce à l'épinglage `Accept: application/json; version=9`
   (SFD §8). ⚠️ Si elle est faite **pendant** le chantier, rejouer le lot 2 de bout en bout : la
   3.0 a réécrit le consommateur et remplacé le moteur de recherche.
-- **H2** — Position `ADR-0009` = **(b)** (SFD §7.1) : exemption maintenue par écrit, contrepartie
-  = **aucun type médical au catalogue** et **cible `ENFANT` fermée** en v1. Si le PO répond (a),
-  ajouter un lot d'amont (base légale, AIPD, droits) **avant** le lot 2. Si (c), plan écarté.
-- **H3** — Effacement du foyer : **les rattachements partent, les documents restent** (SFD §7.5).
-- **H4 (révisée 2026-08-17) — le transport est le bord tailnet, variante `a1`.** Les routes
+- **H2 — DÉCIDÉE PO (2026-08-17).** Position `ADR-0009` = **(b)** (SFD §7.1) : exemption
+  maintenue par écrit, contrepartie = **aucun type médical au catalogue** et **cible `ENFANT`
+  fermée** en v1. ⚠️ Ouvrir l'une ou l'autre plus tard n'est pas un ajout de fonctionnalité,
+  c'est une **réouverture d'ADR**.
+- **H3 — DÉCIDÉE PO (2026-08-17).** Effacement du foyer : **les rattachements partent, les
+  documents restent** (SFD §7.5).
+- **H4 — DÉCIDÉE PO (2026-08-17) — le transport est le bord tailnet, variante `a1`, sans repli.**
+  Les routes
   documentaires, métadonnées comprises, sont servies **uniquement** par un second bord Tailscale ;
   le bord public n'expose qu'un compte neutre. ⚠️ **L'ancienne H4 (« transit par la passerelle
   publique accepté ») est retirée** : elle reposait sur une prémisse fausse — « réservé au
   tailnet » n'est pas « réservé à la maison ».
-- **H5** — Le rattachement (lot 5) est **engagé**, pas optionnel : sans lui la promesse d'`AM-65`
-  n'est pas tenue (SFD §2.1).
+- **H5 — DÉCIDÉE PO (2026-08-17, `Q-38-04`).** Le rattachement (lot 5) est **engagé**, pas
+  optionnel : sans lui la promesse d'`AM-65` n'est pas tenue (SFD §2.1).
 - **H6** — Aucune nouvelle dépendance npm : `fetch`, `FormData` et `Blob` natifs.
 - **H7** — Le propriétaire du lien Paperless est la **passerelle**, pas un service métier : il n'y
   a rien à persister côté document, seulement à relayer. ⚠️ **Exception au lot 5** : la table
@@ -138,16 +158,20 @@ Ordre : 0 → 1 → 2 → (3 ∥ 4) → 5. Les lots 3 et 4 sont parallélisables
 `gateway.openapi.ts` et l'oracle de routes — merger 3 d'abord. **Les lots 0 et 1 ne se
 parallélisent avec rien** : ils décident ce que les autres ont le droit de faire.
 
-### Variante `a3` — le repli, si `Q-38-07` le retient
+### Variante `a3` — écartée par le PO le 2026-08-17
 
-Si le PO préfère ne pas développer de dépôt ni de recherche dans l'app (SFD §7.7, variante a3) :
-Paperless est joint **directement** par le tailnet pour déposer et consulter, et le chantier se
-réduit à **lot 0 + lot 1 + lot 5**. Les lots 2 à 4 disparaissent.
+Elle réduisait le chantier à **lot 0 + lot 1 + lot 5** (Paperless joint directement par le
+tailnet pour déposer et consulter, l'app ne portant que le rattachement) : la **moitié du travail
+pour l'essentiel de la valeur**, et la position d'origine de la note de vision.
 
-C'est **la moitié du travail pour l'essentiel de la valeur** — et c'est la position d'origine de
-la note de vision (« la valeur côté app est le **lien** »). Le lot 1 reste nécessaire : sans
-identité sur le bord tailnet, le rattachement s'inscrirait sans acteur. `a1` reste livrable
-**après** `a3`, sans rien jeter.
+**Le PO a tranché pour `a1`** — l'écran unique — _« pour un souci de centralisation et de facilité
+d'utilisation »_, en assumant le surcoût. `a3` n'est donc **plus un repli disponible** : elle
+reste écrite ici comme l'option non retenue, pour que la question ne se rejoue pas à chaque lot
+qui paraîtra long.
+
+⚠️ **Ce que ce choix coûte, à garder lisible** : `a3` offrait la **même protection** — aucun
+document lisible par un tiers. Les six lots au lieu de trois se paient donc pour de
+l'**ergonomie**, pas pour de la sécurité.
 
 ---
 
@@ -248,9 +272,14 @@ est **structurellement** absente du bord public.
 
 ### Pièges connus
 
-- ⚠️ **C'est ici que `AM-94` devient bloquante.** Poser un second bord sur une frontière dont
-  personne ne sait ce qu'elle authentifie, c'est bâtir sur une question ouverte. Trancher `AM-94`
-  d'abord, ou constater explicitement dans la PR ce que la porte LAN fait réellement.
+- ⚠️ **C'est ici que `AM-94` devient bloquante — et elle n'est plus une question, c'est un fait
+  mesuré.** Le 2026-08-17, une requête sans identité, depuis le tailnet, a obtenu **200** sur une
+  route sans `@FoyerScope`. Le trou est refermé à titre conservatoire ; tant que le **correctif
+  durable** n'est pas livré, poser un second bord ici revient à le rouvrir. Le vérifier dans la
+  PR du lot par un négatif rejoué, pas par une relecture de configuration.
+- ⚠️ **Corollaire de conception** : le bord tailnet naît **authentifiant**, jamais « en
+  observation ». Le dépôt a déjà payé le patron inverse (`INTERSERVICE_AUTHZ_ENFORCE` livré en
+  observe-only, toujours pas basculé un mois plus tard).
 - ⚠️ Le bord public et le bord tailnet servent **la même application** : une route « oubliée » de
   la partition est publique **par défaut**. C'est le bon défaut (elle ne fuite pas d'un coup), mais
   il faut que l'inventaire soit dérivé, sinon l'oubli est silencieux — motif `MO-1`.
@@ -414,11 +443,16 @@ tient la promesse d'`AM-65`.
 
 ## Récapitulatif des actions ops (PO — hors code)
 
-1. **Deux réponses avant tout** : `Q-38-01` (type médical / cible enfant) et `Q-38-02`
-   (effacement en cascade). Sans elles, le lot 0 n'a rien à écrire. Une troisième oriente le
-   découpage : `Q-38-07` (repli `a3` — moitié du travail, essentiel de la valeur).
-2. **Le second parent rejoint le tailnet** (H8) — seul geste utilisateur, prérequis de toutes les
-   variantes.
+0. ~~Réponses PO préalables~~ → **obtenues le 2026-08-17** (SFD §0) : variante `a1`, pas de type
+   médical ni de cible `ENFANT`, l'effacement ne vide pas le coffre, transport par le bord
+   tailnet. Il n'y a plus de question bloquante côté produit — seulement l'**ordonnancement**,
+   qui reste au PO (concurrence avec la SFD 31, et après « Le coût ne ment plus »).
+1. **Livrer le correctif durable d'`AM-94`** avant d'ouvrir le lot 1 : la porte LAN est refermée
+   à titre conservatoire, et un déploiement la rouvrirait. Ce n'est pas une action de ce
+   chantier, c'en est le **verrou d'entrée**.
+2. **Le second parent rejoint le tailnet** (H8) — **seul geste utilisateur du dispositif**, et il
+   est **bloquant** : sans lui, `a1` ne sert qu'un des deux parents (`RM-32-05`). À faire avant le
+   lot 0, pas pendant.
 3. **Créer le nœud Tailscale dédié à creche-planner** (D0bis), et vérifier qu'il ne heurte pas le
    `:443` déjà pris par `paperless-caddy`.
 4. **Créer le réseau Docker dédié** entre les deux piles, et vérifier **les deux moitiés** :

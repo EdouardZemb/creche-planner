@@ -1,21 +1,75 @@
 # 38 — SFD Rattachement documentaire : la GED du foyer branchée sur l'app
 
-> Statut : **Brouillon — à valider PO** · Version 0.2 · 2026-08-17
-> Instruit la piste `AM-65` ([doc 34](34-registre-ameliorations.md)) et la décision laissée
-> ouverte par la note de vision (`.claude/plans/vision-plateforme-foyer-2026-08.md` §2 :
+> Statut : **Validée** · Version 1.0 · 2026-08-17
+> Instruit la piste `AM-65` ([doc 34](34-registre-ameliorations.md)) et tranche la décision
+> laissée ouverte par la note de vision (`.claude/plans/vision-plateforme-foyer-2026-08.md` §2 :
 > « probablement via l'API de la GED, décision à instruire le moment venu »).
 > **Rouvre `ADR-0007` et amende `ADR-0008`** — c'est le point dur de cette spécification, et il
 > est traité au §7, pas renvoyé à l'exécution.
 
-## 0. Amendement 1 — le transport (2026-08-17)
+## 0. Décision PO du 2026-08-17
 
-La v0.1 posait une question décisive (`Q-38-03`) : accepter que les documents du foyer
-transitent **en clair au niveau du proxy Cloudflare**. Réponse du PO : _« dans le principe
-d'accord avec le clair, mais existe-t-il des solutions plus sécurisées ? »_ — avec mandat
-d'explorer, y compris de changer de GED si c'est elle qui bloque.
+Cette spécification est **validée** et passe de v0.2 à **v1.0**. Le plan d'exécution
+([`.claude/plans/rattachement-documentaire.md`](../.claude/plans/rattachement-documentaire.md))
+est mis à jour en conséquence, et reste **à ne pas démarrer** : c'est une décision de contenu,
+pas d'ordonnancement (voir « Ce que la validation ne décide pas »).
 
-**Ce n'est pas elle qui bloque, et la question était mal cadrée par ma v0.1.** L'étude complète
-est au §7.7. Ses trois résultats :
+### Variante retenue — `a1`, l'écran unique
+
+Des deux formes étudiées au §7.7, le PO retient **`a1`** — les routes documentaires servies par
+un second bord Tailscale, **derrière l'écran de l'application** — et non le repli `a3` (Paperless
+joint directement, l'app ne portant que le rattachement).
+
+**Motivation, mot pour mot** : _« pour un souci de centralisation et de facilité
+d'utilisation »_. C'est un arbitrage **d'usage**, et il tranche contre la recommandation de coût
+que portait la v0.2 : `a3` coûtait la moitié pour l'essentiel de la valeur, mais laissait deux
+applications à ouvrir. Le PO **assume le surcoût d'infrastructure** que `a1` implique, nommément :
+
+- un **nœud Tailscale dédié** à creche-planner (le `:443` du serveur est déjà pris) ;
+- une **seconde source d'identité** dans la passerelle ;
+- une **porte de CI** interdisant qu'une route documentaire soit servie par le bord public.
+
+Conséquence de découpage : `a3` **disparaît du plan** en tant que variante. Elle reste décrite au
+§7.7 comme l'option écartée et sa raison — pas comme un repli disponible, sans quoi chaque lot se
+rediscuterait.
+
+### Options par défaut confirmées sans changement
+
+- **Aucun type médical au catalogue de types** (`Q-38-01`) — et, par conséquent, la cible
+  `ENFANT` reste **fermée** en v1. L'`ADR-0009` du lot 0 prend donc la **position (b)** du §7.1 :
+  l'exemption domestique est maintenue par écrit, avec ces deux fermetures pour contrepartie, et
+  ses propres seuils de réouverture.
+- **La suppression d'un foyer ne vide pas le coffre** (`Q-38-02`) : la cascade emporte les
+  **rattachements**, jamais les documents. Le coffre est le classeur du foyer, antérieur et
+  extérieur à l'application.
+- **Le transport est le bord tailnet**, comme spécifié en v0.2 (`Q-38-03`) : le transit par le
+  proxy Cloudflare est **abandonné**, métadonnées documentaires comprises.
+- **Ordre de livraison inchangé** (`Q-38-04`) : dépôt → recherche → rattachement, le rattachement
+  restant **engagé** et non optionnel.
+
+### Préalable utilisateur — écrit ici parce qu'il conditionne tout le reste
+
+**La seconde personne du foyer rejoint le tailnet avant le premier lot.** Ce n'est pas une tâche
+d'installation parmi d'autres : sans elle, `a1` ne rend le documentaire accessible qu'à un seul
+des deux parents, ce qui contredit `RM-32-05` (les deux parents voient les mêmes données) et
+viderait le chantier de son sens pour la moitié du foyer.
+
+### Ce que la validation ne décide pas
+
+**L'ordonnancement.** Ce chantier entre en **concurrence directe** avec le chantier vacances
+([SFD 31](31-sfd-calendriers-vacances-scolaires.md)), validée le 2026-08-16 et non démarrée, et
+il se place de toute façon **après la fin du chantier « Le coût ne ment plus »**. Le plan reste
+donc marqué « ne pas démarrer » : ce qui est validé, c'est **quoi construire**, pas **quand**.
+
+Restent ouvertes, sans bloquer : `Q-38-05` (taille maximale de dépôt) et `Q-38-06` (libellé du
+tag de foyer côté coffre) — deux réglages qui se tranchent à l'exécution, sur un essai réel.
+
+### 0.1 Historique — amendement 1, le transport (même jour)
+
+La v0.1 posait `Q-38-03` : accepter que les documents transitent **en clair au niveau du proxy
+Cloudflare**. Réponse du PO : _« dans le principe d'accord avec le clair, mais existe-t-il des
+solutions plus sécurisées ? »_ — avec mandat d'explorer, y compris de changer de GED. L'étude est
+au §7.7 ; ses trois résultats, conservés ici parce qu'ils expliquent la forme de la v1.0 :
 
 1. **Le « clair au proxy » ne vient pas de Paperless, il vient du tunnel.** Cloudflare termine
    TLS à son bord — c'est le mécanisme même du produit, pas un réglage. **Changer de GED n'y
@@ -25,16 +79,16 @@ est au §7.7. Ses trois résultats :
    existe, le serveur y annonce déjà la route du LAN, un téléphone y est déjà. Servir les routes
    documentaires par un **second bord Tailscale** met le contenu hors de portée de Cloudflare —
    sans renoncer au « depuis n'importe où », puisqu'un tailnet marche partout.
-3. **L'étude a trouvé autre chose, plus urgent que ce chantier** : le porte d'entrée LAN de
+3. **L'étude a trouvé autre chose, plus urgent que ce chantier** : la porte d'entrée LAN de
    l'application **contourne l'authentification** (elle est entièrement portée par Cloudflare
    Access), et l'ouverture de la route de sous-réseau Tailscale du 2026-08-16 a transformé cette
    porte de « depuis la maison » en « depuis n'importe où pour un membre du tailnet ». Consigné
-   en `AM-94` — **antérieur et indépendant** de cette SFD.
-
-**Ce que l'amendement change dans cette spécification** : `RM-38-02` est réécrite (deux bords, et
-lequel sert quoi), `Q-38-03` est **tranchée**, et le §10 en tire les conséquences. Le reste — les
-réouvertures d'ADR, la version d'API, le filtre de foyer — est **inchangé** : il ne dépendait pas
-du transport.
+   en `AM-94` — **antérieur et indépendant** de cette SFD, et **préalable** de son lot 1.
+   ⚠️ **Mesuré le même jour : le trou était réel**, et il est refermé à titre conservatoire. La
+   spécification n'a donc plus à traiter `AM-94` comme une incertitude — elle en hérite un fait,
+   et une exigence : **le second bord du lot 1 doit être authentifiant dès son premier commit**,
+   jamais posé « en observation ». Un bord qui laisse passer sans identité est exactement ce qui
+   vient d'être fermé.
 
 ## 1. Contexte & problème
 
@@ -72,8 +126,9 @@ un PAI. C'est ce fait, et lui seul, qui déclenche les réouvertures du §7.
   Paperless par son API, avec métadonnées : foyer, type de document, date du document.
 - **Recherche plein texte et consultation** depuis l'app : liste de résultats, aperçu,
   téléchargement — **toujours relayés par la passerelle**, jamais par un accès direct à Paperless.
-- **Rattachement** d'un document à un objet métier du foyer (contrat, mois facturé, enfant) —
-  candidat au **report en lot ultérieur** (voir §2.1).
+- **Rattachement** d'un document à un objet métier du foyer (contrat, mois facturé) — livré en
+  **dernier lot**, mais **engagé** : ce n'est pas une option (`Q-38-04`, tranchée §0). La cible
+  `ENFANT` est **fermée en v1** (`Q-38-01`, tranchée §0).
 
 ### Hors périmètre (v1) — et pourquoi
 
@@ -99,10 +154,11 @@ Cet écart est **assumé mais doit être décidé**, pas subi. Les deux lectures
   dans `factures-reelles` et la SFD 32 ; livrer le reste sans elle, c'est offrir un deuxième
   écran pour un outil qui en a déjà un.
 
-**Recommandation** : garder l'ordre ci-dessus (dépôt → recherche → lien), parce que les deux
-premiers lots posent le **lien réseau, le secret et le scoping** que le troisième exige de toute
-façon, et qu'ils sont livrables sans attendre `factures-reelles`. Mais le lot 3 ne doit pas être
-présenté comme optionnel : sans lui, ce chantier n'a pas tenu la promesse d'`AM-65`.
+**Tranché par le PO le 2026-08-17** (`Q-38-04`) : l'ordre ci-dessus est retenu — dépôt →
+recherche → rattachement —, parce que les lots amont posent le **lien réseau, le secret, le
+second bord et le scoping** que le rattachement exige de toute façon, et qu'ils sont livrables
+sans attendre `factures-reelles`. Le rattachement **reste engagé**, jamais optionnel : sans lui,
+ce chantier n'a pas tenu la promesse d'`AM-65`.
 
 ## 3. Abstractions & modèle
 
@@ -549,26 +605,35 @@ tailnet, ce serait remplacer une chose qui marche par la même chose, en plus co
 
 **Écarté.**
 
-#### Recommandation pour ce foyer
+#### Décision — `a1`, retenue par le PO le 2026-08-17
 
-**a1 en cible, a3 comme repli assumé si l'effort du second bord n'est pas jugé rentable.**
+**`a1` est retenue** (§0). La v0.2 recommandait `a1` en cible **et** `a3` en repli si l'effort du
+second bord n'était pas jugé rentable ; le PO a tranché pour `a1` sans repli, _« pour un souci de
+centralisation et de facilité d'utilisation »_. **`a3` est donc écartée** — elle reste décrite
+ci-dessus comme l'option non retenue, pas comme une porte de sortie.
 
-Ce qui fait pencher pour a1 dans **ce** cas précis : deux utilisateurs, tous deux équipables de
-Tailscale, un tailnet déjà en service, un serveur qui y annonce déjà sa route, et un point
+Ce qui rendait `a1` praticable dans **ce** cas précis : deux utilisateurs, tous deux équipables
+de Tailscale, un tailnet déjà en service, un serveur qui y annonce déjà sa route, et un point
 d'entrée TLS interne déjà en place. La brique manquante est un **nœud Tailscale dédié à
 creche-planner** et une **seconde source d'identité** dans la passerelle. C'est du travail borné,
 et il rend vrai quelque chose de simple : **aucun document du foyer n'est lisible par un tiers,
 nulle part sur son trajet.**
 
-Ce que a1 impose, et qui doit être accepté avec lui :
+Ce que `a1` impose, **accepté nommément par le PO** :
 
 1. **Les routes documentaires n'existent pas sur le bord public.** Elles répondent 404 par
    Cloudflare. Ce n'est pas une dégradation à gérer, c'est une **partition** — et elle se garde
    par une porte (une route documentaire servie par le bord public doit faire échouer la CI).
 2. **Hors tailnet, la partie documentaire est absente, et l'écran le dit.** « Vos justificatifs
    sont visibles depuis les appareils du foyer » — pas une erreur, pas un chargement infini.
-3. **La seconde personne doit rejoindre le tailnet.** C'est le seul geste utilisateur du
-   dispositif, et il est aussi le prérequis de a3.
+3. **La seconde personne rejoint le tailnet, avant le premier lot.** C'est le seul geste
+   utilisateur du dispositif, et sans lui `a1` ne sert qu'un des deux parents — ce qui
+   contredirait `RM-32-05`.
+
+⚠️ **Ce que le choix de `a1` coûte, et qu'il faut garder sous les yeux** : `a3` livrait la même
+protection pour environ la moitié du travail. Le surcoût est donc payé pour de l'**ergonomie**,
+pas pour de la sécurité. C'est un arbitrage légitime — il doit simplement rester lisible le jour
+où le chantier paraîtra long.
 
 #### La fuite qui reste, et qu'il faut décider
 
@@ -618,24 +683,31 @@ implique de connaître :
 
 ## 9. Questions ouvertes
 
-- **Q-38-01** — Le catalogue de types comporte-t-il un type médical, et la cible `ENFANT`
-  est-elle ouverte ? C'est la question qui décide de la position `ADR-0009` (§7.1) : y répondre
-  « oui » impose la position (a) ; « non » permet la position (b).
-- **Q-38-02** — L'effacement d'un foyer doit-il emporter ses documents du coffre ? (§7.5, option
-  proposée : **non**, seuls les rattachements partent.)
+Cinq des sept sont **tranchées** par la décision PO du 2026-08-17 (§0). Elles restent écrites
+avec leur réponse : une question effacée redevient une question, six mois plus tard.
+
+- ~~**Q-38-01** — Le catalogue de types comporte-t-il un type médical, et la cible `ENFANT`
+  est-elle ouverte ?~~ → **tranchée le 2026-08-17** : **non** aux deux. L'`ADR-0009` prend donc
+  la **position (b)** du §7.1, avec ces deux fermetures pour contrepartie explicite et ses
+  propres seuils de réouverture. ⚠️ Ouvrir l'une ou l'autre plus tard n'est pas un ajout de
+  fonctionnalité : c'est une **réouverture d'ADR**.
+- ~~**Q-38-02** — L'effacement d'un foyer doit-il emporter ses documents du coffre ?~~ →
+  **tranchée le 2026-08-17** : **non**. Seuls les rattachements partent ; les documents restent
+  dans le coffre, qui est antérieur et extérieur à l'application. À écrire comme limite visible
+  en doc 37 §4, à côté des deux exceptions déjà documentées.
 - ~~**Q-38-03** — Faire transiter les documents du foyer en clair au niveau du proxy Cloudflare
-  est-il accepté ?~~ → **tranchée le 2026-08-17 (§7.7)**. L'accord de principe du PO est acquis,
-  mais l'étude a montré qu'on peut faire mieux **sans rien perdre** : les documents et leurs
-  métadonnées passent par un **second bord Tailscale**, le bord public ne voit qu'un compte
+  est-il accepté ?~~ → **tranchée le 2026-08-17 (§7.7)**. L'accord de principe du PO était
+  acquis, mais l'étude a montré qu'on peut faire mieux **sans rien perdre** : les documents et
+  leurs métadonnées passent par un **second bord Tailscale**, le bord public ne voit qu'un compte
   neutre. La prémisse de la question était fausse — « réservé au tailnet » n'est pas « réservé à
-  la maison » : un tailnet marche depuis n'importe où. Reste à confirmer par le PO le seul geste
-  utilisateur que cela suppose : **la seconde personne rejoint le tailnet** (`Q-38-07`).
-- **Q-38-07** — Le repli **a3** (Paperless joint directement par le tailnet pour déposer et
-  consulter ; l'app ne fait que le rattachement) est-il préféré à **a1** (second bord devant
-  l'app) ? a3 coûte presque rien à développer et protège autant ; a1 garde un écran unique. Les
-  deux exigent le même prérequis utilisateur, et a1 peut se livrer **après** a3.
-- **Q-38-04** — Ordre de la valeur : dépôt/recherche d'abord, ou lien d'abord ? (§2.1 ;
-  recommandation : dépôt/recherche, à condition que le lot 3 reste engagé.)
+  la maison » : un tailnet marche depuis n'importe où.
+- ~~**Q-38-07** — Le repli **a3** est-il préféré à **a1** ?~~ → **tranchée le 2026-08-17** :
+  **`a1`**, l'écran unique, _« pour un souci de centralisation et de facilité d'utilisation »_.
+  Arbitrage d'usage assumé **contre** la recommandation de coût de la v0.2 ; le surcoût
+  d'infrastructure est accepté nommément (§0). `a3` cesse d'être un repli disponible.
+- ~~**Q-38-04** — Ordre de la valeur : dépôt/recherche d'abord, ou lien d'abord ?~~ →
+  **tranchée le 2026-08-17** : dépôt → recherche → rattachement, le **rattachement restant
+  engagé** et non optionnel (§2.1).
 - **Q-38-05** — Quelle taille maximale de dépôt ? Elle contraint le corps accepté par la
   passerelle, ses délais et le disjoncteur de son client résilient, dimensionnés aujourd'hui pour
   du JSON. Valeur à proposer par défaut, à confirmer par un essai réel depuis un téléphone.
@@ -655,7 +727,15 @@ implique de connaître :
   registre est un fait plus modeste, à écrire tel quel dans la ligne `T10` : le bord public voit
   **qu'il existe des justificatifs**, pas ce qu'ils sont.
 - **Un second bord à opérer** : un nœud Tailscale dédié à creche-planner, une seconde source
-  d'identité dans la passerelle, et une partition de routes gardée par la CI (`RM-38-02`).
-- **Un geste utilisateur** : la seconde personne rejoint le tailnet. C'est le prérequis de toutes
-  les variantes retenues, et le seul.
+  d'identité dans la passerelle, et une partition de routes gardée par la CI (`RM-38-02`) —
+  **surcoût accepté nommément** par la décision PO du 2026-08-17, au titre de l'écran unique.
+- **Un geste utilisateur, avant le premier lot** : la seconde personne rejoint le tailnet. C'est
+  le seul, et il est bloquant — sans lui, `a1` ne sert qu'un des deux parents.
+- **Un préalable qui n'appartient pas à ce chantier** : `AM-94`, **mesurée le 2026-08-17 — le
+  trou était réel**, refermé à titre conservatoire, correctif durable à livrer. Le lot 1 pose un
+  bord authentifiant sur exactement cette frontière : il ne peut pas démarrer tant que le
+  correctif durable n'est pas en place, sinon il rouvrirait ce qui vient d'être fermé.
 - Aucun octet de document stocké par creche-planner, dans aucune version (`RM-38-01`).
+- **Ce que la validation ne décide pas** : le moment. Le chantier est en concurrence avec la
+  [SFD 31](31-sfd-calendriers-vacances-scolaires.md), validée et non démarrée, et passe de toute
+  façon après « Le coût ne ment plus » (§0).
