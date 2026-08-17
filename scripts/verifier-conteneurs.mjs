@@ -87,8 +87,14 @@
  *    Mesuré (`AM-83`) : cet anonyme survit à `up -d --force-recreate`, et se
  *    perd — en laissant un orphelin — au premier `down`/`up`. Un état qui doit
  *    survivre s'écrit en volume **nommé**, ce qu'aucune porte ne sait exiger.
- *  - Sur l'exposition (règles 7-9), elle ne juge que le **texte des composes du
- *    dépôt**. Elle ne mesure RIEN sur la machine : un conteneur déjà en marche
+ *  - Sur l'exposition (règles 7-9), elle ne juge pas la commande RÉELLEMENT
+ *    tapée. Le clone du serveur porte aussi `docker-compose.override.yml`, que
+ *    Compose charge **tout seul** quand aucun `-f` n'est passé : un
+ *    `docker compose up -d` nu y republierait bases, observabilité, gateway et
+ *    `web` sur `0.0.0.0` — soit pire qu'`AM-94`, et sans qu'aucune ligne de la
+ *    pile de production ait changé. `deploy.mjs` nomme toujours ses deux
+ *    fichiers ; le geste manuel n'est gardé par rien (`AM-96`).
+ *  - Elle ne juge que le **texte des composes du dépôt**. Elle ne mesure RIEN sur la machine : un conteneur déjà en marche
  *    garde les bindings de sa création jusqu'au prochain `up -d`, un
  *    `docker run -p` à la main lui échappe, et une autre pile du serveur
  *    (Paperless, médias…) est hors périmètre. La sonde côté machine est

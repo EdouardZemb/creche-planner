@@ -34,6 +34,11 @@ set -uo pipefail
 HOST="${1:-}"
 TLS_PORT="${2:-443}"
 REFUSED_PORTS="${REFUSED_PORTS:-5433 9090 9093 3000 4200 4220 8082}"
+# Port de VIE : le seul contrôle qui doit RÉUSSIR. Depuis l'inversion du verdict
+# (AM-94), tous les autres attendent un refus — et « tout est refusé » est aussi
+# ce que rendraient une mauvaise IP, un serveur éteint ou un filtrage de sortie.
+# Sans témoin positif, le script conclurait « conforme » sans avoir rien joint.
+ALIVE_PORT="${ALIVE_PORT:-22}"
 
 if [ -z "${HOST}" ]; then
     echo "Usage : $0 <host> [tls_port]" >&2
@@ -48,6 +53,16 @@ fi
 FAILURES=0
 echo "=== Vérification d'exposition : ${HOST} ==="
 echo ""
+
+# --- 0. Témoin de VIE : l'hôte doit être joignable ------------------------
+# Sinon le reste du script ne prouve rien (cf. ALIVE_PORT ci-dessus).
+printf "[VIE]  %s:%s doit RÉPONDRE (sinon rien n'est prouvé) ... " "${HOST}" "${ALIVE_PORT}"
+if timeout 5 bash -c "exec 3<>/dev/tcp/${HOST}/${ALIVE_PORT}" 2>/dev/null; then
+    echo "OK (joignable)"
+else
+    echo "ÉCHEC (hôte injoignable — mauvaise IP, serveur éteint, ou filtrage : le verdict ci-dessous serait vert PAR DÉFAUT)"
+    FAILURES=$((FAILURES + 1))
+fi
 
 # --- 1. Le port TLS de Caddy DOIT être refusé (AM-94) ---------------------
 # Inversion assumée : ce port servait l'application sans identité. S'il répond,

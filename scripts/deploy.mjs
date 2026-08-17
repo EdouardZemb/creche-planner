@@ -85,7 +85,10 @@ const COMPOSE = [
 // blanche CORS, liens des e-mails), il ne dit plus où sonder. Ordre :
 //   1. GATEWAY_URL explicite (le staging le pose dans .env.staging) ;
 //   2. le port loopback publié par la pile (prod : `web`, cf. compose) ;
-//   3. SERVER_ORIGIN, puis localhost:3000 (dev : ports publiés en clair).
+//   3. SERVER_ORIGIN, puis localhost:3000 — repli qui ne joue QUE si la pile
+//      nommée ne publie aucun port loopback (cas de la pile dev/CI, ports en
+//      clair). `DEPLOY_COMPOSE_FILES` vaut la pile PROD par défaut : sur un
+//      poste, sonder la pile dev suppose de le poser, comme pour le `up`.
 const PORT_SONDE = portSondeLoopback(COMPOSE_FILES);
 const GATEWAY_URL =
   process.env.GATEWAY_URL ||
@@ -202,7 +205,11 @@ function portSondeLoopback(fichiers) {
         `\\n {2}${service}:\\r?\\n([\\s\\S]*?)(?=\\n {2}[a-zA-Z0-9_.-]+:|\\n[a-zA-Z]|$)`,
       ).exec(contenu);
       if (bloc === null) continue;
-      const mapping = /- '127\.0\.0\.1:(\d+):\d+'/.exec(bloc[1]);
+      // Guillemets simples, doubles ou absents : `pnpm conteneurs` accepte les
+      // trois (il retire les quotes avant de juger), et une reprise d'écriture
+      // qui passerait la porte doit rester dérivable ICI — sans quoi le repli
+      // silencieux serait `SERVER_ORIGIN`, l'origine LAN qui n'existe plus.
+      const mapping = /-\s*['"]?127\.0\.0\.1:(\d+):\d+['"]?\s*$/m.exec(bloc[1]);
       if (mapping !== null) return Number(mapping[1]);
     }
   }
