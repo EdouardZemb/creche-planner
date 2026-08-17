@@ -1,6 +1,6 @@
 ---
 name: chantier-cout-ne-ment-plus
-description: 'Chantier « Le coût ne ment plus » (validé PO 2026-08-16) — lot 1 (AM-55, AM-13) MERGÉ le 2026-08-17 (c1086f7), NON DÉPLOYÉ ; lot 2 (AM-58, AM-57) écrit le 2026-08-17, PR ouverte non mergée ; restent AM-88, AM-90 et AM-98, trois arbitrages PO'
+description: 'Chantier « Le coût ne ment plus » (validé PO 2026-08-16) — lots 1 (AM-55, AM-13, c1086f7) et 2 (AM-58, AM-57, 5516e00) MERGÉS le 2026-08-17, tous deux NON DÉPLOYÉS ; prochain = lot 3 « les files qui se taisent » (AM-53, AM-61) ; restent AM-88, AM-90 et AM-98, trois arbitrages PO'
 metadata:
   node_type: memory
   type: project
@@ -87,11 +87,18 @@ jour, qui passe INV-01. Un contrat crèche sans terme facturait **0 h** dès le 
 suivant son début. **Un domaine qui refuse de représenter un cas force l'appelant à
 mentir, et le mensonge est plus discret que le refus** (`LE-63`).
 
-## Lot 2 — envois bornés + consentement explicite (`AM-58`, `AM-57`) — PR OUVERTE
+## Lot 2 — envois bornés + consentement explicite (`AM-58`, `AM-57`)
+
+**MERGÉ le 2026-08-17 (PR #344, squash `5516e00`) — NON DÉPLOYÉ.** 44 fichiers,
++1475/−229 ; CI verte de bout en bout (24 checks), `e2e-stack` et `smoke-stack`
+compris. Il attend un train de release **avec le lot 1** (`c1086f7`) et le lot 9 des
+standards (`d913cf6`). ⚠️ Deux migrations partent avec lui (`svc-foyer/0008`,
+`svc-notifications/0020`) : additives, sans DDL, back-fill inclus ; rollback =
+`DELETE … WHERE source_dernier = 'DEFAUT'` et `DELETE … WHERE event_id IS NULL AND
+occurred_at IS NULL`.
 
 Même famille de défauts que le lot 1, **transposée aux notifications** : un état est
-déduit d'une absence, et rien ne borne ce que l'absence autorise. **Écrit le
-2026-08-17**, branche `feat/cout-lot2-envois-consentement`, PR verte non mergée.
+déduit d'une absence, et rien ne borne ce que l'absence autorise.
 
 ### Le constat négatif a trouvé un troisième défaut, plus grave que l'énoncé
 
