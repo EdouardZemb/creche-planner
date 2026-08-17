@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "creche-latence-traces",
-  "title": "Creche Planner — Latence & Traces",
+  "title": "Martha — Latence & Traces",
   "description": "Exploration des traces distribuées via Tempo. Permet d'analyser la latence end-to-end et par service (api-gateway, svc-referentiel, svc-foyer, svc-planification, svc-tarification).",
   "tags": ["creche-planner", "traces", "latence"],
   "timezone": "browser",
@@ -54,7 +54,7 @@
       "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
       "options": {
         "mode": "markdown",
-        "content": "## Traces distribuées & métriques RED — Creche Planner\n\nCe dashboard s'appuie sur **Tempo** (backend de traces) alimenté via le collecteur OTel.\n\n- Utilisez les panneaux **Explorateur de traces** pour explorer les spans par `service.name`.\n- Filtrez par `http.route`, `http.status_code`, ou `error=true` pour isoler les erreurs.\n- Les `trace_id` apparaissent dans les logs pino des services (champ `trace_id`) — corrélation logs ↔ traces possible.\n- **Source des traces** : spans OTLP envoyés par les services NestJS → collecteur → Tempo.\n\n> **Métriques RED (Phase 13a).** Les panneaux **Débit / Erreurs / Latence p50-p95-p99** sont dérivés des traces par le **metrics generator** de Tempo (processeur `span-metrics`), poussés vers Prometheus en `remote_write` puis interrogés via la métrique `traces_spanmetrics_*`. Les percentiles ne couvrent que les spans **serveur** (`span_kind=SPAN_KIND_SERVER`, requêtes entrantes). Sans trafic récent, les séries sont vides — générez quelques requêtes pour les voir apparaître."
+        "content": "## Traces distribuées & métriques RED — Martha\n\nCe dashboard s'appuie sur **Tempo** (backend de traces) alimenté via le collecteur OTel.\n\n- Utilisez les panneaux **Explorateur de traces** pour explorer les spans par `service.name`.\n- Filtrez par `http.route`, `http.status_code`, ou `error=true` pour isoler les erreurs.\n- Les `trace_id` apparaissent dans les logs pino des services (champ `trace_id`) — corrélation logs ↔ traces possible.\n- **Source des traces** : spans OTLP envoyés par les services NestJS → collecteur → Tempo.\n\n> **Métriques RED (Phase 13a).** Les panneaux **Débit / Erreurs / Latence p50-p95-p99** sont dérivés des traces par le **metrics generator** de Tempo (processeur `span-metrics`), poussés vers Prometheus en `remote_write` puis interrogés via la métrique `traces_spanmetrics_*`. Les percentiles ne couvrent que les spans **serveur** (`span_kind=SPAN_KIND_SERVER`, requêtes entrantes). Sans trafic récent, les séries sont vides — générez quelques requêtes pour les voir apparaître."
       }
     },
     {

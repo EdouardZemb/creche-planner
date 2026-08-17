@@ -92,8 +92,8 @@ Un `foyerId` d'URL inexistant/supprimé ne doit plus laisser l'utilisateur bloqu
 
 ### EX-05 — Titre de page (`document.title`) 🟠
 
-- **CA1** Chaque page met à jour le titre de l'onglet (« Planning — Crèche Planner »,
-  « Contrats — Crèche Planner », « Coûts annuels — Crèche Planner », « Nouveau foyer — … »).
+- **CA1** Chaque page met à jour le titre de l'onglet (« Planning — Martha »,
+  « Contrats — Martha », « Coûts annuels — Martha », « Nouveau foyer — … »).
 
 ### EX-06 — État de navigation deep-linkable 🟠
 

@@ -117,7 +117,7 @@ export function Entete() {
         Aller au contenu
       </a>
       <NavLink to="/" end className="marque">
-        Crèche Planner
+        Martha
       </NavLink>
       <nav aria-label="Navigation principale" ref={refNav}>
         {id && (

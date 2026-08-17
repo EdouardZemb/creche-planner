@@ -99,7 +99,7 @@ test.describe('stack réelle : session fraîche après création (lot 3)', () =>
     await expect(page).toHaveURL(/\/foyers\/[^/]+\/contrats/);
 
     // Retour à l'accueil en navigation SPA (marque), sans rechargement complet.
-    await page.getByRole('link', { name: 'Crèche Planner' }).click();
+    await page.getByRole('link', { name: 'Martha' }).click();
 
     // La session est fraîche : l'accueil route vers le dashboard du foyer…
     await expect(page).toHaveURL(/\/foyers\/[^/]+\/dashboard/);

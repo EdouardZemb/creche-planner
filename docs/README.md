@@ -21,7 +21,7 @@ renumérotés — trop de liens existants en dépendent.
 | Contribuer du code            | [CONTRIBUTING.md](../CONTRIBUTING.md), [CONVENTIONS.md](../CONVENTIONS.md), [doc 03](03-standards-developpement.md) |
 | Reprendre le projet           | [doc 06](06-etat-davancement.md) (état d'avancement & guide de reprise)                                             |
 | Déployer / exploiter          | [doc 24](exploitation/24-plan-deploiement-serveur-ct-qdo.md) + [runbook](exploitation/runbook-deploiement.md)       |
-| Comprendre un choix technique | [ADR](adr/) (0001 → 0006)                                                                                           |
+| Comprendre un choix technique | [ADR](adr/) (0001 → 0009)                                                                                           |
 | Écrire ou revoir un document  | [doc 35](35-politique-documentation.md) (politique de documentation)                                                |
 
 ## Spécification fonctionnelle & produit
@@ -51,14 +51,14 @@ renumérotés — trop de liens existants en dépendent.
 
 ## Architecture & conception
 
-| Doc                                                                                    | Contenu                                                                                                                                                                  |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [04 — Architecture & technologies](04-architecture-et-technos.md)                      | Comparatif techno, choix justifiés, découpage en microservices                                                                                                           |
-| [09 — Spec : découplage & maturité microservices](09-spec-decouplage-microservices.md) | Décisions DEC-xx (contrats, projections, résilience)                                                                                                                     |
-| [10 — Plan d'implémentation du découplage](10-plan-implementation-decouplage.md)       | Sessions d'exécution de la doc 09                                                                                                                                        |
-| [14 — Peuplement BDD & API contrats](14-peuplement-bdd-et-api-contrats.md)             | Jeu de données de référence, consommation de l'API par le front                                                                                                          |
-| [37 — Registre des traitements, tiers et durées](37-registre-des-traitements.md)       | Quelles données personnelles vivent où, chez quels tiers, et combien de temps on les garde                                                                               |
-| [ADR 0001 → 0008](adr/)                                                                | Microservices, grain des services, toolchain, contrats décentralisés, registre de contrats, préférences de notification, exemption domestique, écarts de sémantique HTTP |
+| Doc                                                                                    | Contenu                                                                                                                                                                                  |
+| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [04 — Architecture & technologies](04-architecture-et-technos.md)                      | Comparatif techno, choix justifiés, découpage en microservices                                                                                                                           |
+| [09 — Spec : découplage & maturité microservices](09-spec-decouplage-microservices.md) | Décisions DEC-xx (contrats, projections, résilience)                                                                                                                                     |
+| [10 — Plan d'implémentation du découplage](10-plan-implementation-decouplage.md)       | Sessions d'exécution de la doc 09                                                                                                                                                        |
+| [14 — Peuplement BDD & API contrats](14-peuplement-bdd-et-api-contrats.md)             | Jeu de données de référence, consommation de l'API par le front                                                                                                                          |
+| [37 — Registre des traitements, tiers et durées](37-registre-des-traitements.md)       | Quelles données personnelles vivent où, chez quels tiers, et combien de temps on les garde                                                                                               |
+| [ADR 0001 → 0009](adr/)                                                                | Microservices, grain des services, toolchain, contrats décentralisés, registre de contrats, préférences de notification, exemption domestique, écarts de sémantique HTTP, nom du produit |
 
 ## Développement (standards & avancement)
 

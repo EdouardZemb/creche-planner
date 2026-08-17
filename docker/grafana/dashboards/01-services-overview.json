@@ -1,7 +1,7 @@
 {
   "id": null,
   "uid": "creche-services-overview",
-  "title": "Creche Planner — Vue d'ensemble des services",
+  "title": "Martha — Vue d'ensemble des services",
   "description": "Disponibilité des services (scrape Prometheus), métriques du collecteur OTel (traces reçues/envoyées, drops).",
   "tags": ["creche-planner", "infrastructure"],
   "timezone": "browser",

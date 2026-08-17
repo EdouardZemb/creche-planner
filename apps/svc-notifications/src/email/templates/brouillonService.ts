@@ -163,9 +163,28 @@ function lignesEnfant(enfant: EnfantModifie): string[] {
  * indirecte — c'est la famille qui a saisi son adresse de service), qui édite l'outil.
  * C'est le seul endroit où elle peut l'apprendre : elle n'a pas de compte et n'ouvre
  * jamais l'application.
+ *
+ * ⚠️ Le nom du produit y est **toujours suivi de son apposition** (« l'outil familial
+ * qu'elle utilise pour organiser la garde de ses enfants »). Un prénom seul — « Martha »
+ * — se lit comme une **personne** pour un destinataire qui n'a jamais ouvert
+ * l'application : c'est le point que le renommage du 2026-08-17 devait tenir, et c'est
+ * l'apposition qui le tient, pas le nom (ADR-0009).
  */
 const PHRASE_MENTIONS =
-  "Vous recevez ce message parce que la famille vous a enregistré comme établissement d'accueil dans Crèche Planner, l'outil familial qu'elle utilise pour organiser la garde de ses enfants : votre adresse de service y a été saisie par elle, et non par vous.";
+  "Vous recevez ce message parce que la famille vous a enregistré comme établissement d'accueil dans Martha, l'outil familial qu'elle utilise pour organiser la garde de ses enfants : votre adresse de service y a été saisie par elle, et non par vous.";
+
+/**
+ * Signature du récapitulatif adressé au **service**, distincte de celle du mail aux
+ * parents (`recapMardi`, « — Martha » nu, où le nom est déjà connu du lecteur).
+ *
+ * L'ancienne signature disait « — Crèche Planner (pour la famille) » : le nom nommait
+ * la fonction, la parenthèse disait pour le compte de qui. « — Martha (pour la
+ * famille) » aurait gardé la parenthèse en perdant la fonction, et se serait lue
+ * « Martha, quelqu'un de la famille » — une **mauvaise attribution**, pire que
+ * l'opacité qu'on cherchait à éviter. La forme retenue rend les deux d'un coup : qui
+ * écrit (une application), pour qui (la famille).
+ */
+const SIGNATURE = "Martha, l'application de planning de la famille";
 
 /**
  * Pied d'information (HTML + texte) apposé au récapitulatif adressé à l'établissement.
@@ -225,7 +244,7 @@ export function brouillonServiceAgrege(
     `<p>Voici le récapitulatif des modifications de planning pour la <strong>${libelle}</strong>.</p>`,
     ...blocsHtml,
     '<p>Cordialement,</p>',
-    '<p>— Crèche Planner (pour la famille)</p>',
+    `<p>— ${SIGNATURE}</p>`,
     pied.html,
   ].join('\n');
 
@@ -249,7 +268,7 @@ export function brouillonServiceAgrege(
     '',
     ...blocsTexte,
     'Cordialement,',
-    '— Crèche Planner (pour la famille)',
+    `— ${SIGNATURE}`,
     '',
     pied.text,
   ].join('\n');

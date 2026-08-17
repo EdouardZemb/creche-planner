@@ -37,10 +37,10 @@ export function MentionsPage() {
 
       <section className="carte page-etroite">
         <p className="profil-intro">
-          Crèche Planner est un outil familial, développé et hébergé par un
-          parent pour organiser la garde des enfants d’un seul foyer : contrats
-          d’accueil, plannings, coût du mois, et l’envoi du récapitulatif de la
-          semaine au service qui accueille les enfants.
+          Martha est un outil familial, développé et hébergé par un parent pour
+          organiser la garde des enfants d’un seul foyer : contrats d’accueil,
+          plannings, coût du mois, et l’envoi du récapitulatif de la semaine au
+          service qui accueille les enfants.
         </p>
 
         <h2>Ce qui est enregistré</h2>

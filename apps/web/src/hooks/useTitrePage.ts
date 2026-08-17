@@ -1,10 +1,24 @@
 import { createContext, useContext, useEffect } from 'react';
 
-const SUFFIXE = ' — Crèche Planner';
+/**
+ * Nom du produit tel qu'il s'affiche (ADR-0009). Source unique des DEUX endroits qui
+ * doivent s'accorder : le suffixe d'onglet ci-dessous et le repli neutre de
+ * `titreDepuisPathname` — c'est leur désaccord qui produirait « Martha — Martha ».
+ */
+export const NOM_PRODUIT = 'Martha';
 
-/** Intitulé complet de l'onglet (`document.title`) pour un titre de page donné. */
+const SUFFIXE = ` — ${NOM_PRODUIT}`;
+
+/**
+ * Intitulé complet de l'onglet (`document.title`) pour un titre de page donné.
+ *
+ * Le repli neutre (`titreDepuisPathname` sur `/`, un écran de récupération ou une 404)
+ * VAUT le nom du produit : lui apposer le suffixe donnerait « Martha — Martha ». Le
+ * défaut existait déjà sous « Crèche Planner » — deux fois quatorze caractères passaient
+ * pour une signature, un mot de six répété saute aux yeux.
+ */
 export function titreDocument(titre: string): string {
-  return `${titre}${SUFFIXE}`;
+  return titre === NOM_PRODUIT ? NOM_PRODUIT : `${titre}${SUFFIXE}`;
 }
 
 /**
@@ -30,7 +44,7 @@ const DEFAUT: ContexteTitrePage = {
 export const TitrePageContext = createContext<ContexteTitrePage>(DEFAUT);
 
 /**
- * Pose `document.title` à « <titre> — Crèche Planner » le temps où le composant est
+ * Pose `document.title` à « <titre> — Martha » le temps où le composant est
  * monté, ET publie `<titre>` (sans le suffixe) dans le contexte de titre pour que
  * `Coquille` l'annonce. Restaure le titre d'onglet précédent au démontage.
  */

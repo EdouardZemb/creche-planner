@@ -10,7 +10,7 @@
 const documentEcrit = {
   openapi: '3.1.0',
   info: {
-    title: 'Crèche Planner — API Gateway (BFF)',
+    title: 'Martha — API Gateway (BFF)',
     version: '1.0.0',
     description:
       'API orientée écran agrégeant Foyer, Planification et Tarification.',

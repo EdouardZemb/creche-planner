@@ -20,7 +20,7 @@ describe('PageEnErreur', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
     expect(reinitialiser).toHaveBeenCalledOnce();
     // Le titre alimente l'annonce de route de la coquille (UT-02).
-    expect(document.title).toBe('Erreur inattendue — Crèche Planner');
+    expect(document.title).toBe('Erreur inattendue — Martha');
   });
 
   it('renvoie à l’accueil en navigation SPA (la coquille tient encore)', () => {
