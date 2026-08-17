@@ -42,12 +42,12 @@ renumérotés — trop de liens existants en dépendent.
 
 ### SFD à l'étude (brouillons, séquence 31 → 33)
 
-| Doc                                                                                   | Contenu                                                                                                                 |
-| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| [31 — SFD Calendriers & vacances scolaires](31-sfd-calendriers-vacances-scolaires.md) | Calendrier d'ouverture par établissement, import zone scolaire + retouches — **validée v1.0**                           |
-| [32 — SFD Travail, congés & revenus](32-sfd-travail-conges-revenus.md)                | Contrats de travail (FR/CH, frontalier), absences typées, soldes CP/heures, revenus                                     |
-| [33 — SFD Planning famille](33-sfd-planning-famille.md)                               | Vue commune « qui fait quoi, où, avec qui », trajets, détection de conflits                                             |
-| [38 — SFD Rattachement documentaire](38-sfd-rattachement-documentaire.md)             | La GED du foyer (Paperless) branchée sur l'app — dépôt, recherche, rattachement ; **hors séquence 31 → 33**, à arbitrer |
+| Doc                                                                                   | Contenu                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [31 — SFD Calendriers & vacances scolaires](31-sfd-calendriers-vacances-scolaires.md) | Calendrier d'ouverture par établissement, import zone scolaire + retouches — **validée v1.0**                                                                                           |
+| [32 — SFD Travail, congés & revenus](32-sfd-travail-conges-revenus.md)                | Contrats de travail (FR/CH, frontalier), absences typées, soldes CP/heures, revenus                                                                                                     |
+| [33 — SFD Planning famille](33-sfd-planning-famille.md)                               | Vue commune « qui fait quoi, où, avec qui », trajets, détection de conflits                                                                                                             |
+| [38 — SFD Rattachement documentaire](38-sfd-rattachement-documentaire.md)             | La GED du foyer (Paperless) branchée sur l'app — dépôt, recherche, rattachement, par un second bord Tailscale — **validée v1.0** ; **hors séquence 31 → 33**, ordonnancement à arbitrer |
 
 ## Architecture & conception
 
