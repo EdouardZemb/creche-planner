@@ -6,6 +6,7 @@ import {
 } from '@creche-planner/tarification-domain';
 import {
   parsePrestationRm,
+  prestationEstVide,
   valoriserPrestation,
   type ContexteTarif,
   type FoyerCalcul,
@@ -225,5 +226,58 @@ describe('parsePrestationRm (AQ-03)', () => {
     expect(() => parsePrestationRm('CANTINE')).toThrow(
       /prestation projetée invalide/,
     );
+  });
+});
+
+/**
+ * `prestationEstVide` décide **si le coût d'un mois peut se passer des ressources
+ * du foyer** (`AM-55`) : une prestation sans quantité vaut zéro quel que soit le
+ * tarif, une prestation avec quantité impose de connaître les ressources — ou de
+ * refuser. Se tromper dans un sens ferait refuser des mois inoffensifs, dans
+ * l'autre ferait réapparaître le montant faux que le lot supprime. Les quatre
+ * modes sont couverts, chacun avec son opposé.
+ */
+describe('prestationEstVide (garde du refus AM-55)', () => {
+  const vides: readonly PrestationRM[] = [
+    // Mois hors période : le domaine neutralise la mensualité lissée à zéro.
+    {
+      mode: 'CRECHE_PSU',
+      heuresAnnuellesContractualisees: 0,
+      nbMensualites: 7,
+    },
+    { mode: 'CANTINE', nbJours: 0 },
+    { mode: 'PERISCOLAIRE', nbMatins: 0, nbSoirs: 0 },
+    { mode: 'ALSH', nbJourneesCompletes: 0 },
+  ];
+
+  const pleines: readonly PrestationRM[] = [
+    {
+      mode: 'CRECHE_PSU',
+      heuresAnnuellesContractualisees: 885.5,
+      nbMensualites: 7,
+    },
+    // Mensualité neutralisée MAIS complément saisi : il se facture à la minute,
+    // donc il faut le barème, donc les ressources.
+    {
+      mode: 'CRECHE_PSU',
+      heuresAnnuellesContractualisees: 0,
+      nbMensualites: 7,
+      complementMinutes: 30,
+    },
+    { mode: 'CANTINE', nbJours: 1 },
+    { mode: 'PERISCOLAIRE', nbMatins: 0, nbSoirs: 1 },
+    { mode: 'PERISCOLAIRE', nbMatins: 1, nbSoirs: 0 },
+    { mode: 'ALSH', nbJourneesCompletes: 1 },
+    { mode: 'ALSH', nbJourneesCompletes: 0, nbDemiJournees: 1 },
+    // Un repas seul se facture aussi : le compteur est distinct dans la grille.
+    { mode: 'ALSH', nbJourneesCompletes: 0, nbDemiJournees: 0, nbRepas: 1 },
+  ];
+
+  it.each(vides)('vide : $mode', (prestation) => {
+    expect(prestationEstVide(prestation)).toBe(true);
+  });
+
+  it.each(pleines)('non vide : $mode', (prestation) => {
+    expect(prestationEstVide(prestation)).toBe(false);
   });
 });

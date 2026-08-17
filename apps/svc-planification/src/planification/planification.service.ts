@@ -197,7 +197,9 @@ export class PlanificationService {
     if (dto.mode === 'CRECHE_PSU') {
       ContratCreche.creer({
         valideDu: dto.valideDu,
-        valideAu: dto.valideAu ?? dto.valideDu,
+        // `null` = contrat sans terme (`AM-13`) : le domaine sait désormais le
+        // représenter, on ne lui invente plus une fin au jour du début.
+        ...(dto.valideAu !== null ? { valideAu: dto.valideAu } : {}),
         heuresAnnuellesContractualisees: dto.heuresAnnuellesContractualisees,
         nbMensualites: dto.nbMensualites,
         semaineType: semaineTypeDepuisJson(dto.semaineType),

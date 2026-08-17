@@ -111,6 +111,41 @@ export function parsePrestationRm(valeur: unknown): PrestationRM {
 }
 
 /**
+ * Vrai si la prestation ne porte **aucune quantité facturable** : son coût est nul
+ * quels que soient les ressources du foyer et le tarif appliqué.
+ *
+ * Sert de garde au refus « ressources inconnues » (`AM-55`) : refuser un mois qui
+ * ne coûterait rien de toute façon serait un refus gratuit — et il y en aurait
+ * partout, car **l'amont rend toujours une prestation**, à quantités nulles pour un
+ * mois hors période ou jamais saisi (`genererPrestationMoisSegments`). C'est la
+ * présence d'une quantité, pas celle d'une ligne, qui oblige à connaître les
+ * ressources.
+ *
+ * Pour la crèche, la mensualité lissée est facturée dès que le mois est couvert :
+ * `heuresAnnuellesContractualisees` à zéro est précisément la neutralisation que le
+ * domaine applique à un mois hors période.
+ */
+export function prestationEstVide(prestation: PrestationRM): boolean {
+  switch (prestation.mode) {
+    case 'CRECHE_PSU':
+      return (
+        prestation.heuresAnnuellesContractualisees === 0 &&
+        (prestation.complementMinutes ?? 0) === 0
+      );
+    case 'CANTINE':
+      return prestation.nbJours === 0;
+    case 'PERISCOLAIRE':
+      return prestation.nbMatins === 0 && prestation.nbSoirs === 0;
+    default:
+      return (
+        prestation.nbJourneesCompletes === 0 &&
+        (prestation.nbDemiJournees ?? 0) === 0 &&
+        (prestation.nbRepas ?? 0) === 0
+      );
+  }
+}
+
+/**
  * Valorise une prestation projetée en `CoutMois` via la stratégie du mode.
  * - PSU : ressources/effort du foyer + **barème résolu à date** (`contexte`).
  * - ABCM : **grille résolue à date** (`contexte.grille`) ; quantités du read model.

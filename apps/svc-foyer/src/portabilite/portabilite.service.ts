@@ -28,6 +28,13 @@ export interface ExportSituationCourante {
 /** Une version datée des ressources (`foyer_version`). */
 export interface ExportVersionRessources {
   readonly dateEffet: string;
+  /**
+   * Fin de validité **incluse** ; `null` = version en vigueur. Exportée parce
+   * qu'elle est désormais **stockée** (`AM-55`) : une suite de dates d'effet sans
+   * fin laisse la personne dériver elle-même la période de chaque version, alors
+   * que c'est la borne conservée qui décide de son coût — et de sa purge.
+   */
+  readonly dateFin: string | null;
   readonly ressourcesMensuellesCentimes: number;
   readonly rfrCentimes: number;
   readonly nbEnfantsACharge: number;
@@ -201,6 +208,7 @@ export class PortabiliteService {
       },
       versionsRessources: versions.map((v) => ({
         dateEffet: v.dateEffet,
+        dateFin: v.dateFin,
         ressourcesMensuellesCentimes: v.ressourcesMensuellesCentimes,
         rfrCentimes: v.rfrCentimes,
         nbEnfantsACharge: v.nbEnfantsACharge,

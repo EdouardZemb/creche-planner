@@ -92,6 +92,39 @@ describe('FoyersController · création atomique', () => {
     expect(vue.parents[0]?.email).toBe('alex@example.test');
   });
 
+  /**
+   * **`AM-55` — un dossier saisi après coup doit pouvoir dire depuis quand.** La
+   * route de création ne transportait ni `dateEffet` ni `motif`, alors que
+   * `svc-foyer.creer` les accepte depuis SFD 30 et que l'ÉDITION les porte : le
+   * relais est explicite champ par champ, et ces deux-là avaient été oubliés. Sans
+   * conséquence tant que l'aval extrapolait ; depuis ce lot il refuse, et une
+   * famille remplissant son dossier en octobre pour une rentrée de septembre ne
+   * pouvait plus voir septembre. Constaté par `e2e-stack` : le seed déclarait bien
+   * une date d'effet, la passerelle la jetait, et seul mars 2026 échouait.
+   */
+  it('relaie la date d’effet et le motif de la première version de ressources', async () => {
+    const creerFoyer = vi
+      .fn()
+      .mockResolvedValue({ foyer: FOYER, enfants: [], parents: [] });
+    const controller = controleur({ creerFoyer });
+
+    await controller.creer({
+      ressourcesMensuelles: 6716.92,
+      rfr: 72705,
+      nbEnfantsACharge: 2,
+      nbParts: 3,
+      dateEffet: '2026-01-01',
+      motif: 'avis d’imposition 2025',
+    });
+
+    expect(creerFoyer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dateEffet: '2026-01-01',
+        motif: 'avis d’imposition 2025',
+      }),
+    );
+  });
+
   it('accepte une création sans enfants ni parents (défauts [])', async () => {
     const creerFoyer = vi
       .fn()

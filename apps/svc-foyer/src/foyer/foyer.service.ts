@@ -12,6 +12,7 @@ import {
   AucuneVersionApplicableError,
   Money,
   Tranche,
+  cloreVersionPrecedente,
   depuisBornes,
   depuisSuite,
   selectionnerVersionApplicable,
@@ -382,7 +383,18 @@ export class FoyerService {
     const domaine = this.versDomaine(dto);
     const dateEffet = dto.dateEffet ?? this.aujourdHui();
     const { ligne, tranche } = await this.db.transaction(async (tx) => {
-      const foyers = await tx.select().from(foyer).where(eq(foyer.id, id));
+      // `FOR UPDATE` sur la ligne foyer : elle sert de **verrou de l'historique**
+      // (`AM-55`). `materialiserFins` recalcule toutes les bornes depuis un
+      // instantané ; deux saisies concurrentes sur le même foyer les liraient
+      // toutes deux avant l'insert de l'autre et commiteraient des périodes qui se
+      // chevauchent — que `selectionnerVersionApplicable` masquerait ensuite en
+      // départageant par date d'effet, donc sans le moindre signal. Les deux
+      // transactions restent courtes et ne touchent qu'un foyer.
+      const foyers = await tx
+        .select()
+        .from(foyer)
+        .where(eq(foyer.id, id))
+        .for('update');
       if (!foyers[0]) {
         throw new NotFoundException(`foyer introuvable : ${id}`);
       }
@@ -1036,17 +1048,61 @@ export class FoyerService {
   }
 
   /**
+   * **Matérialise la fin de chaque version** du foyer (`AM-55`) : `date_fin` = veille
+   * de la date d'effet de la version suivante, `NULL` pour la dernière — la seule
+   * **en vigueur**. Recalcul complet plutôt qu'incrémental : une saisie rétroactive
+   * s'insère au milieu de la suite et déplace la fin de sa voisine, un `UPDATE`
+   * ciblé sur la nouvelle ligne laisserait donc une borne périmée derrière lui.
+   *
+   * L'arithmétique de la veille reste celle du socle (`cloreVersionPrecedente`) et
+   * n'est pas réécrite en SQL : c'est elle qui définit la continuité sans trou, et
+   * une seconde implémentation en divergerait un jour. Le volume est celui de
+   * l'historique d'**un** foyer (quelques lignes), toujours dans la transaction
+   * appelante — jamais un état intermédiaire visible.
+   */
+  private async materialiserFins(
+    tx: DbTransaction,
+    foyerId: string,
+  ): Promise<void> {
+    const versions = await tx
+      .select()
+      .from(foyerVersion)
+      .where(eq(foyerVersion.foyerId, foyerId));
+    const triees = [...versions].sort((a, b) =>
+      a.dateEffet < b.dateEffet ? -1 : a.dateEffet > b.dateEffet ? 1 : 0,
+    );
+    for (const [i, version] of triees.entries()) {
+      const suivante = triees[i + 1];
+      const dateFin =
+        suivante === undefined
+          ? null
+          : cloreVersionPrecedente(suivante.dateEffet);
+      if (version.dateFin === dateFin) {
+        continue;
+      }
+      await tx
+        .update(foyerVersion)
+        .set({ dateFin })
+        .where(eq(foyerVersion.id, version.id));
+    }
+  }
+
+  /**
    * Rafraîchit la ligne `foyer` **courante** (version applicable aujourd'hui) et
    * ré-émet **l'historique complet** en `FoyerMisAJour.v3` (une émission par version,
    * `tranche` dérivée au barème de la date d'effet de chaque version). Ré-émettre
    * tout garantit à tarification un miroir complet des versions (résolution au mois).
    * Renvoie la version courante et sa tranche pour construire la vue de réponse.
+   *
+   * Les fins de version sont matérialisées **avant** la relecture : l'historique lu
+   * ici est celui qui part sur le fil, bornes comprises.
    */
   private async rafraichirEtEmettre(
     tx: DbTransaction,
     foyerId: string,
     baremes: readonly BaremeTranchesRow[],
   ): Promise<{ ligne: FoyerVersionRow; tranche: Tranche }> {
+    await this.materialiserFins(tx, foyerId);
     const versions = await tx
       .select()
       .from(foyerVersion)
@@ -1090,6 +1146,7 @@ export class FoyerService {
       foyerId: foyerIdSchema.parse(foyerId),
       versionId: v.id,
       dateEffet: v.dateEffet,
+      dateFin: v.dateFin,
       ressourcesMensuellesCentimes: v.ressourcesMensuellesCentimes,
       rfrCentimes: v.rfrCentimes,
       nbEnfantsACharge: v.nbEnfantsACharge,

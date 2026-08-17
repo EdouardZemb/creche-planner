@@ -72,6 +72,12 @@ const OPTIONS_ANNUEL: OptionsResilience = {
  * Client REST résilient vers `svc-tarification` (port 3005). Sur le chemin
  * critique du BFF : timeout + retry borné + circuit-breaker, avec
  * **propagation** des erreurs (`executerResilient`).
+ *
+ * `capturerCorpsErreur` est posé sur les deux lectures (`AM-69` : la capture est
+ * opt-in par client) parce que le service émet désormais un **422 structuré**
+ * `RESSOURCES_INCONNUES_AU_MOIS` — sans elle, `relayer` n'aurait que le statut, et
+ * l'écran retomberait sur le message générique en perdant précisément la seule
+ * information qui distingue « nous ne savons pas » d'une panne.
  */
 @Injectable()
 export class TarificationClient {
@@ -96,6 +102,7 @@ export class TarificationClient {
       methode: 'GET',
       url,
       schema: coutMoisVueSchema,
+      capturerCorpsErreur: true,
     });
   }
 
@@ -117,6 +124,7 @@ export class TarificationClient {
       methode: 'GET',
       url,
       schema: coutAnnuelVueSchema,
+      capturerCorpsErreur: true,
     });
   }
 }

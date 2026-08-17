@@ -15,6 +15,7 @@ import {
   PARENT_MODIFIE_TYPE,
   PARENT_RETIRE_TYPE,
   PREFERENCES_NOTIF_MODIFIEES_TYPE,
+  type FoyerMisAJourPayloadV3,
 } from '@creche-planner/contracts-foyer';
 import type { Acteur } from '@creche-planner/nest-commons';
 import { FoyerService } from './foyer.service.js';
@@ -58,6 +59,8 @@ function ligneFoyerVersion(
     id: 'bbbbbbbb-0000-4000-8000-000000000000',
     foyerId: FOYER_ID,
     dateEffet: '2026-01-01',
+    // Version en vigueur : aucune suivante ne la clôt (`AM-55`).
+    dateFin: null,
     ressourcesMensuellesCentimes: 350000,
     rfrCentimes: 7270500,
     nbEnfantsACharge: 2,
@@ -183,8 +186,14 @@ function fakeDbTransaction(
   };
   const from = (table: unknown) => {
     const rows = rowsPour(table);
+    // `.where(...)` est awaitable ET expose `.for('update')` : le verrou de
+    // l'historique (AM-55) est posé sur la ligne foyer, le double doit donc le
+    // porter — sans quoi il prouverait une chaîne d'appels qui n'existe plus.
+    const resultat = Object.assign(Promise.resolve(rows), {
+      for: () => Promise.resolve(rows),
+    });
     return Object.assign(Promise.resolve(rows), {
-      where: () => Promise.resolve(rows),
+      where: () => resultat,
     });
   };
   const tx = {
@@ -264,8 +273,14 @@ function fakeDbCreationRollback(): {
         : table === foyerVersion
           ? versionsAccum
           : [];
+    // `.where(...)` est awaitable ET expose `.for('update')` : le verrou de
+    // l'historique (AM-55) est posé sur la ligne foyer, le double doit donc le
+    // porter — sans quoi il prouverait une chaîne d'appels qui n'existe plus.
+    const resultat = Object.assign(Promise.resolve(rows), {
+      for: () => Promise.resolve(rows),
+    });
     return Object.assign(Promise.resolve(rows), {
-      where: () => Promise.resolve(rows),
+      where: () => resultat,
     });
   };
   const tx = {
@@ -505,6 +520,61 @@ describe('FoyerService.mettreAJour (versions à date d’effet)', () => {
         dateEffet: '2027-01-01',
         rfrCentimes: 7270500,
       }),
+    );
+  });
+
+  /**
+   * **`AM-55` — la fin d'une version existe en base.** Elle était dérivée à la
+   * lecture par chaque consommateur : « dernière version » et « version dont on
+   * ignore la suite » étaient alors le même objet, et l'aval valorisait un mois
+   * passé avec des ressources qui ne le couvraient pas. Une nouvelle version clôt
+   * donc sa devancière **dans la transaction**, à la veille de sa date d'effet.
+   */
+  it('une nouvelle version clôt la précédente à la veille de sa date d’effet', async () => {
+    const { db, updateSet } = fakeDbTransaction({
+      versions: [ligneFoyerVersion({ dateEffet: '2026-01-01', dateFin: null })],
+    });
+    const service = new FoyerService(db, new JournalAuditService());
+
+    await service.mettreAJour(
+      FOYER_ID,
+      { ...DTO_FOYER, dateEffet: '2026-07-01' },
+      ACTEUR,
+    );
+
+    // La version de janvier est close au 30 juin — la veille, pas le 1er juillet :
+    // les deux périodes ne se chevauchent sur aucun jour.
+    expect(updateSet).toHaveBeenCalledWith({ dateFin: '2026-06-30' });
+    // La nouvelle version, elle, reste EN VIGUEUR (`date_fin` nulle) : aucun
+    // `update` ne lui en pose une, c'est ce qui la protègera d'une purge.
+    expect(
+      updateSet.mock.calls.filter(
+        (c) => (c[0] as { dateFin?: unknown }).dateFin === null,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('la fin matérialisée part sur le fil (FoyerMisAJour.v3)', async () => {
+    const { db, insertValues } = fakeDbTransaction({
+      versions: [
+        ligneFoyerVersion({ dateEffet: '2026-01-01', dateFin: '2026-06-30' }),
+      ],
+    });
+    const service = new FoyerService(db, new JournalAuditService());
+
+    await service.mettreAJour(FOYER_ID, DTO_FOYER, ACTEUR);
+
+    // Sans ce champ, la copie aval devrait re-dériver la suite — et deux
+    // dérivations finissent par diverger (c'est l'origine d'`AM-55`). On lit le
+    // payload émis plutôt qu'un `objectContaining` imbriqué : la borne se vérifie
+    // sur la valeur, pas sur la présence de la clé.
+    const emis = insertValues.mock.calls
+      .map((appel) => appel[0] as { type?: unknown; payload?: unknown })
+      .filter((valeurs) => valeurs.type === FOYER_MIS_A_JOUR_V3_TYPE)
+      .map((valeurs) => valeurs.payload as FoyerMisAJourPayloadV3);
+
+    expect(emis.find((p) => p.dateEffet === '2026-01-01')?.dateFin).toBe(
+      '2026-06-30',
     );
   });
 

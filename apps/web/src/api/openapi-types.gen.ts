@@ -216,6 +216,13 @@ export interface paths {
                         rfr: number;
                         nbEnfantsACharge: number;
                         nbParts: number;
+                        /**
+                         * Format: date
+                         * @description Date d’effet de la PREMIÈRE version de ressources (SFD 30, DV-03). Optionnelle ; défaut aujourd’hui. La renseigner quand le dossier est saisi après coup : le coût d’un mois antérieur à cette date est REFUSÉ (`RESSOURCES_INCONNUES_AU_MOIS`), jamais extrapolé.
+                         */
+                        dateEffet?: string;
+                        /** @description Motif libre de la saisie initiale (traçabilité, D6). */
+                        motif?: string;
                         enfants: {
                             prenom: string;
                             /** Format: date */
@@ -2106,6 +2113,15 @@ export interface paths {
                         "application/json": components["schemas"]["CoutMoisVue"];
                     };
                 };
+                /** @description Le mois porte des prestations à valoriser, mais aucune version de ressources du foyer ne le couvre (code `RESSOURCES_INCONNUES_AU_MOIS`). Le calcul REFUSE plutôt que de se rabattre sur d’autres ressources : un montant faux et plausible ne se distingue pas d’un montant juste. Se répare en enregistrant des ressources à une date d’effet couvrant la période, jamais en réessayant. */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
+                };
             };
         };
         put?: never;
@@ -2144,6 +2160,15 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["CoutAnnuelVue"];
+                    };
+                };
+                /** @description Au moins un mois de l’année porte des prestations qu’aucune version de ressources ne couvre (code `RESSOURCES_INCONNUES_AU_MOIS`). L’année **entière** est refusée : un total dont un douzième est inventé est un total faux, et rien ne le signalerait dans la somme. Les mois sans aucune prestation, eux, valent zéro sans exiger de ressources. */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
                     };
                 };
             };
@@ -2882,7 +2907,7 @@ export interface components {
              * @description Code métier distinguant la CAUSE d’un statut qui, seul, n’en dit rien — trois 409 différents ne se traitent pas de la même façon à l’écran. Absent quand le statut se suffit.
              * @enum {string}
              */
-            code?: "EMAIL_DEJA_UTILISE" | "PARENT_PRINCIPAL_EXISTANT" | "DERNIER_PARENT_ACTIF" | "PERIODE_CHEVAUCHANTE";
+            code?: "EMAIL_DEJA_UTILISE" | "PARENT_PRINCIPAL_EXISTANT" | "DERNIER_PARENT_ACTIF" | "PERIODE_CHEVAUCHANTE" | "RESSOURCES_INCONNUES_AU_MOIS";
             /** @description Détail par champ d’une erreur de validation. Absent hors validation. */
             erreurs?: {
                 champ: string;

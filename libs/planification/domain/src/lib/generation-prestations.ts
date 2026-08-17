@@ -154,7 +154,10 @@ export function genererPrestationMois(
   if (contrat.mode === 'CRECHE_PSU') {
     const contratCreche = ContratCreche.creer({
       valideDu: contrat.valideDu,
-      valideAu: contrat.valideAu ?? contrat.valideDu,
+      // Colonne nullable = contrat **sans terme** ; le repli d'avant (`?? valideDu`)
+      // en faisait une période d'un seul jour, donc un contrat muet dès le mois
+      // suivant (`AM-13`). Spread conditionnel : `exactOptionalPropertyTypes`.
+      ...(contrat.valideAu !== null ? { valideAu: contrat.valideAu } : {}),
       heuresAnnuellesContractualisees:
         contrat.heuresAnnuellesContractualisees ?? 0,
       nbMensualites: contrat.nbMensualites ?? 1,

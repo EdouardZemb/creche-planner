@@ -32,6 +32,8 @@ export const CODES_PROBLEME = {
   PARENT_PRINCIPAL_EXISTANT: 'un parent principal existe déjà pour ce foyer',
   DERNIER_PARENT_ACTIF: 'le dernier parent actif ne peut pas être retiré',
   PERIODE_CHEVAUCHANTE: 'la période chevauche une version existante',
+  RESSOURCES_INCONNUES_AU_MOIS:
+    'aucune version de ressources ne couvre ce mois — le coût ne peut pas être calculé',
 } as const;
 
 /** Code métier d'un problème, tel que le front peut le discriminer. */

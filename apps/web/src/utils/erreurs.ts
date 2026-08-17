@@ -15,6 +15,21 @@ export type { ErreurChamp };
 
 const MESSAGE_5XX = 'Service indisponible, réessayez dans un instant.';
 
+/**
+ * Messages tenus par **code métier** (`CODES_PROBLEME`, RFC 9457), pour les causes
+ * qu'un statut HTTP seul ne sait pas nommer. On n'y met que ce qui appelle une
+ * action différente du message générique du statut.
+ */
+const MESSAGES_PAR_CODE: Readonly<Record<string, string>> = {
+  // `AM-55` : le calcul refuse plutôt que d'inventer des ressources. Le message
+  // dit ce qui manque ET ce qui le répare — sans quoi le refus serait une impasse,
+  // et un montant faux aurait paru préférable.
+  RESSOURCES_INCONNUES_AU_MOIS:
+    'Cette période n’a pas de ressources déclarées : le coût ne peut pas être ' +
+    'calculé sans inventer un montant. Enregistrez vos ressources avec une date ' +
+    'd’effet couvrant cette période depuis « Ma famille ».',
+};
+
 /** Convertit une erreur (ApiError ou Error) en message utilisateur en français. */
 export function messageErreur(e: unknown): string {
   // Hors-ligne : une écriture tentée sans réseau échoue (le fetch rejette). On
@@ -28,6 +43,14 @@ export function messageErreur(e: unknown): string {
     if (e.status >= 500) {
       // 502 (réseau/timeout/circuit ouvert) et autres 5xx → indisponibilité.
       return MESSAGE_5XX;
+    }
+    // Un **code métier** dit la cause là où le statut ne dit rien. Sans cette
+    // lecture, le refus de calcul d'`AM-55` retomberait sur « Données invalides :
+    // vérifiez les champs marqués » — un message qui désigne un formulaire absent
+    // de l'écran, pour un refus qui ne vient pas d'une saisie.
+    const message = MESSAGES_PAR_CODE[codeProbleme(e.corps) ?? ''];
+    if (message !== undefined) {
+      return message;
     }
     switch (e.status) {
       case 400:

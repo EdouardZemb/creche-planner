@@ -172,10 +172,18 @@ export async function executerResilient<T>(
       return resultat;
     } catch (erreur) {
       derniereErreur = erreur;
-      if (essai >= options.retries) {
-        break;
-      }
       if (options.estRejouable !== undefined && !options.estRejouable(erreur)) {
+        // Erreur **déterministe** de l'amont (4xx métier : 404, 409, 422…) : elle
+        // prouve que la dépendance répond, et la réponse ne changera pas d'une
+        // tentative à l'autre. Elle n'est donc **ni** un motif de retry **ni** une
+        // panne à compter — c'est cette seconde moitié qui manquait. Un refus
+        // parfaitement sain, répété trois fois, ouvrait le disjoncteur ; la sonde
+        // de demi-ouverture retombait sur le même refus et le rouvrait aussitôt,
+        // et TOUS les appels de ce client, pour tous les foyers, tournaient au 502.
+        // Sans `estRejouable` (appelants non HTTP), le comptage est inchangé.
+        throw erreur instanceof Error ? erreur : new Error(String(erreur));
+      }
+      if (essai >= options.retries) {
         break;
       }
       await pause(delaiAvantEssai(options, essai));

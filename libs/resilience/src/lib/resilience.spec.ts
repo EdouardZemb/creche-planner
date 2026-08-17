@@ -198,6 +198,60 @@ describe('executerResilient — backoff et discrimination (AM-42)', () => {
     expect(op).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * **Une erreur non rejouable ne compte pas non plus comme une panne.** Elle prouve
+   * que la dépendance répond ; la compter ouvrirait le disjoncteur sur un refus
+   * parfaitement sain, et la sonde de demi-ouverture retomberait sur le même refus.
+   * Le client de tarification partage un disjoncteur entre toutes ses lectures : un
+   * seul foyer dont un mois n'a pas de ressources connues (422 déterministe) aurait
+   * suffi à transformer le coût de **tout le monde** en 502.
+   */
+  it('n’ouvre PAS le circuit sur des erreurs non rejouables répétées', async () => {
+    const cb = new CircuitBreaker(3, 60000);
+    const options = { ...OPTIONS, retries: 0, estRejouable: () => false };
+    const refus = vi.fn().mockRejectedValue(new Error('HTTP 422'));
+
+    for (let i = 0; i < 5; i += 1) {
+      await expect(executerResilient('x', refus, cb, options)).rejects.toThrow(
+        'HTTP 422',
+      );
+    }
+
+    // Le circuit est resté fermé : un appel sain passe.
+    await expect(
+      executerResilient('x', vi.fn().mockResolvedValue('ok'), cb, options),
+    ).resolves.toBe('ok');
+  });
+
+  it('ouvre toujours le circuit sur des erreurs rejouables répétées', async () => {
+    const cb = new CircuitBreaker(3, 60000);
+    const panne = vi.fn().mockRejectedValue(new Error('HTTP 503'));
+    const options = { ...OPTIONS, retries: 0, estRejouable: () => true };
+
+    for (let i = 0; i < 3; i += 1) {
+      await expect(executerResilient('x', panne, cb, options)).rejects.toThrow(
+        'HTTP 503',
+      );
+    }
+
+    await expect(
+      executerResilient('x', vi.fn().mockResolvedValue('ok'), cb, options),
+    ).rejects.toBeInstanceOf(CircuitOuvertError);
+  });
+
+  it('propage une erreur non rejouable qui n’est pas une Error', async () => {
+    const cb = new CircuitBreaker(3, 60000);
+    const op = vi.fn().mockRejectedValue('refus brut');
+    await expect(
+      executerResilient('x', op, cb, {
+        ...OPTIONS,
+        retries: 2,
+        estRejouable: () => false,
+      }),
+    ).rejects.toThrow('refus brut');
+    expect(op).toHaveBeenCalledTimes(1);
+  });
+
   it('espace les essais en backoff exponentiel (base, puis double), jitter neutralisé', async () => {
     vi.useFakeTimers();
     try {

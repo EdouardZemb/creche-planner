@@ -59,6 +59,18 @@ export const creerDossierFoyerSchema = z.object({
   rfr: z.number().nonnegative(),
   nbEnfantsACharge: z.number().int().min(1),
   nbParts: z.number().positive(),
+  // Date d'effet de la **première** version de ressources (SFD 30, DV-03) :
+  // optionnelle, défaut aujourd'hui côté `svc-foyer`. Elle manquait ici alors que
+  // `svc-foyer.creer` l'accepte depuis SFD 30 et que l'édition la porte — un
+  // dossier ne pouvait donc naître qu'avec un historique commençant **le jour de
+  // la saisie**. Sans conséquence tant que l'aval extrapolait ; depuis `AM-55` il
+  // refuse, et une famille qui remplit son dossier en octobre pour une rentrée de
+  // septembre ne pouvait plus voir septembre.
+  dateEffet: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'date ISO YYYY-MM-DD attendue')
+    .optional(),
+  motif: z.string().min(1).max(500).optional(),
   enfants: z.array(ajouterEnfantSchema).default([]),
   parents: z.array(ajouterParentSchema).default([]),
 });
@@ -68,6 +80,11 @@ export type CreerDossierFoyer = z.infer<typeof creerDossierFoyerSchema>;
  * Édition des **scalaires** d'un foyer (`PUT /foyers/:id`) : mêmes champs que la
  * création **sans** `enfants`/`parents` (sous-ressources gérées via leurs propres
  * routes). La validation profonde reste chez `svc-foyer`.
+ *
+ * « Mêmes champs que la création » était **faux** jusqu'au 2026-08-16 : seule
+ * l'édition portait `dateEffet`/`motif`, et rien ne confrontait les deux schémas.
+ * Les tenir alignés est la raison d'être de ce commentaire — s'ils divergent, la
+ * ligne à corriger est celle-ci autant que le code.
  */
 export const ecrireFoyerScalairesSchema = z.object({
   ressourcesMensuelles: z.number().nonnegative(),

@@ -26,6 +26,7 @@ const ETAT_FOYER_COUT =
 const FOYER_ID = '22222222-2222-2222-2222-222222222222';
 const CONTRAT_ID = '33333333-3333-3333-3333-333333333333';
 const GRILLE_ID = '55555555-5555-5555-5555-555555555555';
+const VERSION_ID = '66666666-6666-6666-6666-666666666666';
 
 // nx lance vitest avec cwd = racine du projet (apps/svc-tarification) → racine du dépôt à ../../.
 const RACINE = resolve(process.cwd(), '../..');
@@ -149,6 +150,7 @@ describe('Pact provider · svc-tarification honore le contrat api-gateway', () =
           // (SFD 30, D1 : la projection est désormais la source du tarif).
           await db`delete from prestation_mois where foyer_id = ${FOYER_ID}`;
           await db`delete from contrat where foyer_id = ${FOYER_ID}`;
+          await db`delete from foyer_version where foyer_id = ${FOYER_ID}`;
           await db`delete from foyer where id = ${FOYER_ID}`;
           await db`delete from grille_tarifaire where grille_id = ${GRILLE_ID}`;
           await db`
@@ -157,6 +159,23 @@ describe('Pact provider · svc-tarification honore le contrat api-gateway', () =
               nb_parts, nb_enfants_a_charge
             ) values (
               ${FOYER_ID}, 671692, 7270500, 3, 2, 2
+            )
+          `;
+          // Version de ressources COUVRANT le mois de l'interaction (`AM-55`) :
+          // le calcul refuse désormais un mois qu'aucune version ne couvre. Sans
+          // cette ligne, la vérification passait **par accident** — la ligne
+          // « courante » vaut pour le mois courant et les suivants, or octobre
+          // 2026 était encore à venir au moment d'écrire ce lot. Le même pact
+          // aurait viré au rouge un 1er novembre 2026, sans qu'aucun commit
+          // n'ait bougé.
+          await db`
+            insert into foyer_version (
+              id, foyer_id, date_effet, date_fin,
+              ressources_mensuelles_centimes, rfr_centimes, tranche,
+              nb_parts, nb_enfants_a_charge
+            ) values (
+              ${VERSION_ID}, ${FOYER_ID}, '2026-01-01', null,
+              671692, 7270500, 3, 2, 2
             )
           `;
           await db`

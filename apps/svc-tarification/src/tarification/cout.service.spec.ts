@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ServiceUnavailableException } from '@nestjs/common';
-import { CoutService } from './cout.service.js';
+import type { Clock } from '@creche-planner/nest-commons';
+import { CoutService, RessourcesInconnuesException } from './cout.service.js';
 import type { Database } from '../database/database.types.js';
 import {
   baremePsu,
@@ -179,12 +180,24 @@ function referentielClient(
   } as unknown as ReferentielClient;
 }
 
+/**
+ * Horloge figée au **1er janvier 2026** (`AM-55`). Le service distingue un mois
+ * passé d'un mois courant pour décider si la ligne « courante » d'un foyer sans
+ * historique versionné a le droit de le valoriser : tous les mois exercés par ce
+ * fichier lui sont postérieurs, le comportement testé est donc celui d'avant.
+ */
+function horlogeFigee(instant = '2026-01-01T00:00:00Z'): Clock {
+  return { maintenant: () => new Date(instant) };
+}
+
 describe('CoutService — foyer versionné à date d’effet (DV-03, US-30-03)', () => {
   /** Version applicable en 2026 : tranche 3 (RFR 72 705 €). */
   const versionT3 = {
     id: 'a1111111-0000-4000-8000-000000000000',
     foyerId: FOYER_ID,
     dateEffet: '2026-01-01',
+    // Fin **matérialisée** : veille de la date d'effet de `versionT1` (`AM-55`).
+    dateFin: '2026-12-31',
     ressourcesMensuellesCentimes: 671692,
     rfrCentimes: 7270500,
     tranche: 3,
@@ -199,6 +212,7 @@ describe('CoutService — foyer versionné à date d’effet (DV-03, US-30-03)',
     ...versionT3,
     id: 'a2222222-0000-4000-8000-000000000000',
     dateEffet: '2027-01-01',
+    dateFin: null, // dernière version : en vigueur
     rfrCentimes: 1500000,
     tranche: 1,
   };
@@ -223,6 +237,7 @@ describe('CoutService — foyer versionné à date d’effet (DV-03, US-30-03)',
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
 
     const dec = await service.coutMois(FOYER_ID, '2026-12', false);
@@ -232,6 +247,209 @@ describe('CoutService — foyer versionné à date d’effet (DV-03, US-30-03)',
     expect(dec.totalCentimes).toBe(20288);
     // Janvier 2027 : version T1 → 16 × 10,50 € (recalculé à la nouvelle tranche).
     expect(jan.totalCentimes).toBe(16800);
+  });
+
+  /**
+   * **Le défaut que le lot 1 « la fin d'une version existe » corrige (`AM-55`).**
+   *
+   * Constat négatif, mesuré sur `main` avant correction : un foyer dont la plus
+   * ancienne version de ressources prend effet le 2026-01-01, interrogé sur l'année
+   * **2023** (16 jours de cantine en octobre), rendait **20 288 centimes** — les
+   * ressources de 2026 appliquées à 2023, sans un log, sans un champ, sans une
+   * erreur. Le même montant sortait qu'aucune version ne soit projetée (repli sur la
+   * ligne « courante ») ou qu'une version postérieure existe (étirée vers le passé
+   * par la dérivation). 202,88 € au lieu de 168,00 € si la famille était alors en
+   * tranche 1 : faux, plausible, et impossible à distinguer d'un montant juste.
+   *
+   * Les deux cas sont testés parce qu'ils empruntent deux chemins distincts du
+   * service, et qu'un seul corrigé aurait laissé l'autre mentir.
+   */
+  describe('année passée non couverte par une version (AM-55)', () => {
+    /** Contrat et prestations de 2023 : de quoi valoriser, donc de quoi mentir. */
+    const contrat2023 = { ...CONTRAT_ROW, valideDu: '2023-09-01' };
+    const prestation2023 = { ...PRESTATION_ROW, mois: '2023-10' };
+    /** Repli planification qui RÉUSSIT vide : les 11 autres mois sont vides. */
+    const planificationVide = planificationClient([]);
+
+    function serviceEn2023(versions: readonly unknown[]): CoutService {
+      return new CoutService(
+        fakeDb({
+          foyers: [FOYER_ROW],
+          versions,
+          contrats: [contrat2023],
+          prestations: [prestation2023],
+          grilles: [grilleCantine()],
+        }),
+        foyerClient('echec'),
+        planificationVide,
+        referentielClient('echec'),
+        horlogeFigee('2026-08-16T00:00:00Z'),
+      );
+    }
+
+    it('aucune version projetée : refuse le mois passé au lieu de le valoriser aux ressources d’aujourd’hui', async () => {
+      const rejet = serviceEn2023([]).coutAnnuel(FOYER_ID, 2023, false);
+
+      await expect(rejet).rejects.toBeInstanceOf(RessourcesInconnuesException);
+      // Le refus NOMME le mois en cause : « le coût est faux » ne se corrige pas,
+      // « aucune ressource déclarée pour 2023-10 » se corrige en une saisie.
+      await expect(rejet).rejects.toThrow('2023-10');
+    });
+
+    it('seule version postérieure : refuse plutôt que de l’étirer vers le passé', async () => {
+      await expect(
+        serviceEn2023([versionT3]).coutAnnuel(FOYER_ID, 2023, false),
+      ).rejects.toBeInstanceOf(RessourcesInconnuesException);
+    });
+
+    it('le refus porte le code métier que l’écran discrimine', async () => {
+      const erreur = await serviceEn2023([])
+        .coutAnnuel(FOYER_ID, 2023, false)
+        .catch((e: unknown) => e);
+
+      expect(erreur).toBeInstanceOf(RessourcesInconnuesException);
+      expect((erreur as RessourcesInconnuesException).getStatus()).toBe(422);
+      // 422 et non 503 : rien n'est indisponible, réessayer ne changera rien.
+      expect(
+        (erreur as RessourcesInconnuesException).getResponse(),
+      ).toMatchObject({ code: 'RESSOURCES_INCONNUES_AU_MOIS' });
+    });
+
+    /**
+     * La garde ne doit mordre que là où il y a quelque chose à valoriser. Sans ce
+     * cas, elle rendrait insupportable la situation la plus banale : un foyer créé
+     * en mars dont janvier et février sont légitimement vides — et son année en
+     * cours entière refuserait de s'afficher.
+     */
+    it('un mois passé SANS prestation reste à zéro, sans refus', async () => {
+      const service = new CoutService(
+        fakeDb({
+          foyers: [FOYER_ROW],
+          versions: [versionT3],
+          contrats: [contrat2023],
+          prestations: [], // aucune projection, et le repli confirme : rien
+          grilles: [grilleCantine()],
+        }),
+        foyerClient('echec'),
+        planificationVide,
+        referentielClient('echec'),
+        horlogeFigee('2026-08-16T00:00:00Z'),
+      );
+
+      const vue = await service.coutMois(FOYER_ID, '2023-10', false);
+
+      expect(vue.totalCentimes).toBe(0);
+      expect(vue.prestations).toEqual([]);
+    });
+
+    /**
+     * **Le cas que le repli produit RÉELLEMENT.** `svc-planification` ne rend jamais
+     * une liste vide : `prestationsMois` renvoie toujours **une** prestation par
+     * contrat, à quantités nulles pour un mois hors période ou jamais saisi. Un mois
+     * non couvert par une version arrivait donc ici avec une ligne, et une garde
+     * posée sur « aucune prestation » ne l'aurait jamais vu passer — janvier d'un
+     * foyer créé en mars aurait fait refuser toute l'année en cours.
+     */
+    it('prestation présente mais VIDE : zéro, même sans version couvrant le mois', async () => {
+      const service = new CoutService(
+        fakeDb({
+          foyers: [FOYER_ROW],
+          versions: [versionT3], // en vigueur depuis 2026 seulement
+          contrats: [contrat2023],
+          prestations: [],
+          grilles: [grilleCantine()],
+        }),
+        foyerClient('echec'),
+        // Le repli rend une cantine à ZÉRO jour — ce que fait le vrai service.
+        planificationClient([{ mode: 'CANTINE', nbJours: 0 }]),
+        referentielClient('echec'),
+        horlogeFigee('2026-08-16T00:00:00Z'),
+      );
+
+      const vue = await service.coutMois(FOYER_ID, '2023-10', false);
+
+      expect(vue.totalCentimes).toBe(0);
+      // La ligne reste présente (l'écran distingue « rien à facturer » de « aucun
+      // contrat »), elle ne coûte simplement rien.
+      expect(vue.prestations).toHaveLength(1);
+    });
+
+    it('prestation présente et NON vide : le refus tombe', async () => {
+      const service = new CoutService(
+        fakeDb({
+          foyers: [FOYER_ROW],
+          versions: [versionT3],
+          contrats: [contrat2023],
+          prestations: [],
+          grilles: [grilleCantine()],
+        }),
+        foyerClient('echec'),
+        planificationClient([{ mode: 'CANTINE', nbJours: 1 }]),
+        referentielClient('echec'),
+        horlogeFigee('2026-08-16T00:00:00Z'),
+      );
+
+      await expect(
+        service.coutMois(FOYER_ID, '2023-10', false),
+      ).rejects.toBeInstanceOf(RessourcesInconnuesException);
+    });
+
+    /**
+     * Foyer **sans historique projeté** (v1/v2, ou read model froid rattrapé par le
+     * repli REST) : la ligne « courante » ne porte aucune date. Elle vaut pour le
+     * mois courant — comportement inchangé de l'écran principal — et pour lui seul.
+     */
+    it('sans version projetée : le mois courant passe, un mois passé refuse', async () => {
+      const donnees = {
+        foyers: [FOYER_ROW],
+        versions: [],
+        contrats: [CONTRAT_ROW],
+        prestations: [PRESTATION_ROW], // 16 jours (fakeDb ignore le mois)
+        grilles: [grilleCantine()],
+      };
+      const service = new CoutService(
+        fakeDb(donnees),
+        foyerClient('echec'),
+        planificationClient('echec'),
+        referentielClient('echec'),
+        horlogeFigee('2026-10-15T00:00:00Z'),
+      );
+
+      const courant = await service.coutMois(FOYER_ID, '2026-10', false);
+      expect(courant.totalCentimes).toBe(20288);
+
+      await expect(
+        service.coutMois(FOYER_ID, '2026-09', false),
+      ).rejects.toBeInstanceOf(RessourcesInconnuesException);
+    });
+
+    /**
+     * **Sonde de la fin matérialisée.** Les bornes lues sont celles **stockées**, pas
+     * une suite re-dérivée : ici la version de 2026 est **close** au 2026-12-31 et sa
+     * suivante a disparu de la table (historique purgé, borne T1 doc 37 §3). Une
+     * dérivation locale rouvrirait la dernière version restante et vaudrait pour
+     * 2027 — c'est exactement le montant faux qu'`AM-55` décrit. La fin stockée, elle,
+     * dit que 2027 n'est couvert par rien.
+     */
+    it('version close dont la suivante a été purgée : le mois d’après refuse, il ne se rabat pas', async () => {
+      const service = new CoutService(
+        fakeDb({
+          foyers: [FOYER_ROW],
+          versions: [versionT3], // close au 2026-12-31, aucune suivante en table
+          contrats: [CONTRAT_ROW],
+          prestations: [{ ...PRESTATION_ROW, mois: '2027-01' }],
+          grilles: [grilleCantine(), grilleCantineT1],
+        }),
+        foyerClient('echec'),
+        planificationVide,
+        referentielClient('echec'),
+        horlogeFigee('2027-06-01T00:00:00Z'),
+      );
+
+      await expect(
+        service.coutMois(FOYER_ID, '2027-01', false),
+      ).rejects.toBeInstanceOf(RessourcesInconnuesException);
+    });
   });
 
   it('foyer mono-version (aucune version projetée) : retombe sur la ligne courante — comportement inchangé', async () => {
@@ -246,6 +464,7 @@ describe('CoutService — foyer versionné à date d’effet (DV-03, US-30-03)',
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2026-10', false);
     expect(vue.totalCentimes).toBe(20288);
@@ -264,6 +483,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'), // jamais appelé : la projection foyer est chaude
       planificationClient('echec'), // jamais appelé : la prestation est projetée
       referentielClient('echec'), // jamais appelé : la grille est projetée
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2026-10', false);
     expect(vue.prestations).toHaveLength(1);
@@ -282,6 +502,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('ok'), // le repli /grilles/applicable répond
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2026-10', false);
     expect(vue.totalCentimes).toBe(20288);
@@ -298,6 +519,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     await expect(
       service.coutMois(FOYER_ID, '2026-10', false),
@@ -327,6 +549,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     const juin = await service.coutMois(FOYER_ID, '2026-06', false);
     const septembre = await service.coutMois(FOYER_ID, '2026-09', false);
@@ -356,6 +579,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('ok'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2026-10', false);
     expect(vue.totalCentimes).toBeGreaterThan(0);
@@ -367,6 +591,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient([]),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     await expect(
       service.coutMois(FOYER_ID, '2026-10', false),
@@ -379,6 +604,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient([]),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     await expect(
       service.coutAnnuel(FOYER_ID, 2026, false),
@@ -395,6 +621,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     await expect(
       service.coutMois(FOYER_ID, '2026-10', false),
@@ -411,6 +638,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient([]), // repli RÉUSSIT : zéro prestation ce mois
       referentielClient('echec'),
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2026-10', false);
     expect(vue.prestations).toHaveLength(0);
@@ -429,6 +657,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     await expect(
       service.coutAnnuel(FOYER_ID, 2026, false),
@@ -455,6 +684,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       client,
       referentielClient('echec'),
+      horlogeFigee(),
     );
     await expect(
       service.coutAnnuel(FOYER_ID, 2026, false),
@@ -477,6 +707,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2026-09', false);
     const frais = vue.prestations.find((p) => p.mode === 'FRAIS_FIXES_ABCM');
@@ -498,6 +729,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2027-09', false);
     const frais = vue.prestations.find((p) => p.mode === 'FRAIS_FIXES_ABCM');
@@ -515,6 +747,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2026-09', false);
     const frais = vue.prestations.find((p) => p.mode === 'FRAIS_FIXES_ABCM');
@@ -534,6 +767,7 @@ describe('CoutService — sémantique d’erreur explicite (503, jamais de monta
       foyerClient('echec'),
       planificationClient([]),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     const rejet = service.coutMois(FOYER_ID, '2026-10', false);
     await expect(rejet).rejects.toThrow(/prestation projetée invalide/);
@@ -602,6 +836,7 @@ describe('CoutService — résolution PSU + modes ABCM à date', () => {
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2026-10', false);
     expect(vue.totalCentimes).toBe(43896);
@@ -620,6 +855,7 @@ describe('CoutService — résolution PSU + modes ABCM à date', () => {
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     // Ressources 671 692 c. ∈ [80 000, 700 000] → inchangées, même mensualité.
     const vue = await service.coutMois(FOYER_ID, '2026-10', false);
@@ -644,6 +880,7 @@ describe('CoutService — résolution PSU + modes ABCM à date', () => {
         plancherCentimes: null,
         plafondCentimes: null,
       }),
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2026-10', false);
     expect(vue.totalCentimes).toBe(43896);
@@ -660,6 +897,7 @@ describe('CoutService — résolution PSU + modes ABCM à date', () => {
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     await expect(
       service.coutMois(FOYER_ID, '2026-10', false),
@@ -690,6 +928,7 @@ describe('CoutService — résolution PSU + modes ABCM à date', () => {
         matinCentimes: 333,
         soirCentimes: 705,
       }),
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2026-10', false);
     expect(vue.totalCentimes).toBe(11124);
@@ -728,6 +967,7 @@ describe('CoutService — résolution PSU + modes ABCM à date', () => {
       foyerClient('echec'),
       planificationClient('echec'),
       referentielClient('echec'),
+      horlogeFigee(),
     );
     const vue = await service.coutMois(FOYER_ID, '2026-10', false);
     expect(vue.totalCentimes).toBe(13250);
@@ -763,6 +1003,7 @@ describe('CoutService — résolution PSU + modes ABCM à date', () => {
         demiJourneeCentimes: 950,
         repasCentimes: 750,
       }),
+      horlogeFigee(),
     );
     // 2×2650 + 3×950 + 4×750 = 5300 + 2850 + 3000 = 11150.
     const vue = await service.coutMois(FOYER_ID, '2026-10', false);

@@ -79,8 +79,27 @@ export interface SaisieGenerationCreche {
 export interface ConfigContratCreche {
   /** Début de validité ISO `YYYY-MM-DD` (inclus). */
   readonly valideDu: string;
-  /** Fin de validité ISO `YYYY-MM-DD` (incluse). */
-  readonly valideAu: string;
+  /**
+   * Fin de validité ISO `YYYY-MM-DD` (**incluse**), ou `undefined` pour un contrat
+   * **sans terme** — même convention que `ConfigInscriptionAbcm` côté ABCM, et que
+   * la colonne `contrat.valide_au` (nullable) qui l'alimente.
+   *
+   * Elle était **obligatoire** (`AM-13`) : l'appelant devait donc inventer une fin
+   * pour un contrat qui n'en a pas, et il repliait sur `valideDu` — une période d'un
+   * seul jour. Un contrat crèche à durée indéterminée ne facturait alors **que** le
+   * mois de son début : zéro heure mensualisée, zéro heure réservée, partout
+   * ailleurs. Le domaine ne générait pas « hors période » : il ne savait pas
+   * représenter une période ouverte, et taisait tout le reste.
+   *
+   * ⚠️ **Ce que la période ouverte met en lumière, sans le créer (`AM-90`)** : la
+   * mensualité lissée est facturée sur **chaque** mois couvert, alors qu'elle lisse
+   * un volume annuel sur `nbMensualites` mois. Le modèle suppose donc que la période
+   * dure exactement ce nombre de mois — un contrat fermé de 12 mois à 7 mensualités
+   * sur-facture déjà, et un contrat ouvert le fait indéfiniment. Le domaine n'a
+   * aucune notion des mois **effectivement** facturés ; c'est un arbitrage produit,
+   * pas une correction de code, et il est ouvert au registre.
+   */
+  readonly valideAu?: string;
   /** Heures annuelles contractualisées (doc 02 §7). */
   readonly heuresAnnuellesContractualisees: number;
   /** Nombre de mensualités lissant l'année (ici 7). */
@@ -152,13 +171,13 @@ export class ContratCreche {
   static creer(config: ConfigContratCreche): ContratCreche {
     if (
       !FORMAT_ISO_JOUR.test(config.valideDu) ||
-      !FORMAT_ISO_JOUR.test(config.valideAu)
+      (config.valideAu !== undefined && !FORMAT_ISO_JOUR.test(config.valideAu))
     ) {
       throw new PeriodeContratInvalideError(
-        `dates de validité ISO attendues (YYYY-MM-DD) : ${config.valideDu} → ${config.valideAu}`,
+        `dates de validité ISO attendues (YYYY-MM-DD) : ${config.valideDu} → ${config.valideAu ?? '∞'}`,
       );
     }
-    if (config.valideAu < config.valideDu) {
+    if (config.valideAu !== undefined && config.valideAu < config.valideDu) {
       throw new PeriodeContratInvalideError(
         `fin de validité (${config.valideAu}) antérieure au début (${config.valideDu}) (INV-01)`,
       );
@@ -186,9 +205,15 @@ export class ContratCreche {
     );
   }
 
-  /** Vrai si la date ISO est dans la période de validité du contrat (inclus). */
+  /**
+   * Vrai si la date ISO est dans la période de validité du contrat (bornes
+   * incluses). `valideAu` absent = contrat sans terme : aucune borne haute.
+   */
   private estDansPeriode(iso: string): boolean {
-    return iso >= this.config.valideDu && iso <= this.config.valideAu;
+    if (iso < this.config.valideDu) {
+      return false;
+    }
+    return this.config.valideAu === undefined || iso <= this.config.valideAu;
   }
 
   /**

@@ -95,6 +95,7 @@
     "@creche-planner/contracts-referentiel": "workspace:*",
     "@creche-planner/contracts-planification": "workspace:*",
     "@creche-planner/shared-kernel": "workspace:*",
+    "@creche-planner/shared-semaine": "workspace:*",
     "@creche-planner/nest-commons": "workspace:*",
     "@creche-planner/observability": "workspace:*",
     "@creche-planner/resilience": "workspace:*",
