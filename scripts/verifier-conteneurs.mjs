@@ -93,7 +93,7 @@
  *    `docker compose up -d` nu y republierait bases, observabilité, gateway et
  *    `web` sur `0.0.0.0` — soit pire qu'`AM-94`, et sans qu'aucune ligne de la
  *    pile de production ait changé. `deploy.mjs` nomme toujours ses deux
- *    fichiers ; le geste manuel n'est gardé par rien (`AM-96`).
+ *    fichiers ; le geste manuel n'est gardé par rien (`AM-97`).
  *  - Elle ne juge que le **texte des composes du dépôt**. Elle ne mesure RIEN sur la machine : un conteneur déjà en marche
  *    garde les bindings de sa création jusqu'au prochain `up -d`, un
  *    `docker run -p` à la main lui échappe, et une autre pile du serveur
