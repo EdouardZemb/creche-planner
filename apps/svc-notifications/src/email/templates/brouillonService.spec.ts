@@ -195,7 +195,7 @@ describe('brouillonServiceAgrege', () => {
   });
 
   it('ne nomme jamais le produit sans dire ce que c’est, et garde un objet fonctionnel', () => {
-    const message = brouillonServiceAgrege(BASE);
+    const message = brouillonServiceAgrege({ ...BASE, enfants: [] });
 
     // Arbitrage du renommage « Martha » (2026-08-17, ADR-0009). Le destinataire de ce
     // message est le SEUL à n'avoir aucun contexte : pas de compte, jamais ouvert
@@ -206,11 +206,15 @@ describe('brouillonServiceAgrege', () => {
         "Martha, l'application de planning de la famille",
       );
       expect(rendu).toContain("Martha, l'outil familial");
-      // Sonde négative : aucune occurrence de « Martha » sans son apposition.
-      expect(rendu.match(/Martha/g)).toHaveLength(
-        rendu.match(/Martha, l'(application de planning|outil familial)/g)
-          ?.length,
-      );
+      // Sonde négative : le nom n'apparaît JAMAIS sans son apposition. Compter les
+      // deux et les comparer fait échouer l'ajout d'un « Martha » nu, là où un
+      // simple `toContain` le laisserait passer.
+      const occurrences = rendu.match(/Martha/g) ?? [];
+      const apposees =
+        rendu.match(/Martha, l'(application de planning|outil familial)/g) ??
+        [];
+      expect(occurrences.length).toBeGreaterThan(0);
+      expect(apposees).toHaveLength(occurrences.length);
     }
 
     // L'objet reste fonctionnel et SANS nom de produit : c'est lui, et non l'expéditeur,
