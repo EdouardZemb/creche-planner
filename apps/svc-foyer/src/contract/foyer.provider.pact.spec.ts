@@ -60,10 +60,11 @@ const ETAT_FOYER_JETABLE = 'un foyer jetable, cible de l’effacement';
 const PARENT_JETABLE_ID = '77777777-7777-4777-8777-777777777777';
 const EMAIL_PARENT_JETABLE = 'jetable@example.test';
 // L4 — désabonnement one-click (RFC 8058, PR5). Deux états DÉDIÉS qui seedent
-// parent + ligne `desabonnement_token` (`utilise_le=null`, `expire_le` 2100-01-01).
-// `ETAT_DESABO_OK` : couper EMAIL laisse IN_APP (défaut actif) → 204. `ETAT_DESABO_
-// DERNIER` seede en plus une préférence IN_APP `actif=false` → couper EMAIL ne
-// laisse aucun canal actif → 409, jeton NON consommé (re-seedé à chaque run).
+// parent + consentement matérialisé (`AM-57`) + ligne `desabonnement_token`
+// (`utilise_le=null`, `expire_le` 2100-01-01). `ETAT_DESABO_OK` : les deux canaux
+// consentis, couper EMAIL laisse IN_APP → 204. `ETAT_DESABO_DERNIER` : IN_APP
+// explicitement coupé, couper EMAIL ne laisse aucun canal actif → 409, jeton NON
+// consommé (re-seedé à chaque run).
 const ETAT_DESABO_OK =
   'un jeton de désabonnement valide coupe un canal non critique';
 const ETAT_DESABO_DERNIER =
@@ -368,12 +369,23 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
           };
           await seedFoyer(db, foyerId);
           // Table rase (idempotence, unicité e-mail par foyer) puis UN parent actif.
-          // Aucune préférence stockée : couper EMAIL laisse IN_APP au défaut (actif).
           await db`delete from parent where foyer_id = ${foyerId}`;
           await db`delete from parent where lower(email) = lower(${email})`;
           await db`
             insert into parent (id, foyer_id, prenom, nom, email, principal, ordre, actif)
             values (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, false, 0, true)
+          `;
+          // Consentement MATÉRIALISÉ, comme le fait l'inscription depuis `AM-57` :
+          // couper EMAIL laisse IN_APP actif → 204. Ce seed n'écrivait AUCUNE
+          // préférence et s'appuyait sur l'ancien défaut de lecture (« absence vaut
+          // consentement ») — le jour où ce défaut est tombé, l'interaction a rendu
+          // 409 « au moins un canal doit rester actif ». Un jeu figé qui ne tenait
+          // que par la règle qu'on venait de retirer (`LE-68`).
+          await db`
+            insert into preference_notification (parent_id, type_notification, canal, actif, consentement_at, source_dernier)
+            values
+              (${parentId}, 'VALIDATION_HEBDO', 'EMAIL', true, now(), 'DEFAUT'),
+              (${parentId}, 'VALIDATION_HEBDO', 'IN_APP', true, now(), 'DEFAUT')
           `;
           // Jeton one-shot VALIDE (non expiré, non utilisé) ciblant EMAIL.
           await db`
@@ -395,8 +407,13 @@ describe('Pact provider · svc-foyer honore le contrat api-gateway', () => {
             insert into parent (id, foyer_id, prenom, nom, email, principal, ordre, actif)
             values (${parentId}, ${foyerId}, 'Alex', 'Dupont', ${email}, false, 0, true)
           `;
-          // IN_APP explicitement coupé : couper EMAIL par le jeton laisserait ZÉRO
-          // canal actif → 409, jeton NON consommé (utilise_le reste null).
+          // Consentement matérialisé (`AM-57`), mais IN_APP explicitement coupé par le
+          // parent : couper EMAIL par le jeton laisserait ZÉRO canal actif → 409, jeton
+          // NON consommé (utilise_le reste null).
+          await db`
+            insert into preference_notification (parent_id, type_notification, canal, actif, consentement_at, source_dernier)
+            values (${parentId}, 'VALIDATION_HEBDO', 'EMAIL', true, now(), 'DEFAUT')
+          `;
           await db`
             insert into preference_notification (parent_id, type_notification, canal, actif, source_dernier)
             values (${parentId}, 'VALIDATION_HEBDO', 'IN_APP', false, 'ECRAN')

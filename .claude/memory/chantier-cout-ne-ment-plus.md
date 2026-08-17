@@ -100,7 +100,7 @@ un `POST` sur `2019-W01` sollicitait bien le mailer vers `jaudrey@cscpapin.asso.
 la même sonde a montré qu'un récap **sans aucun enfant concerné** partait tout autant, et
 disait à la crèche « Aucune modification déclarée sur cette semaine ». C'est le défaut le
 plus atteignable des deux : le front filtre (`concernes.length > 0`), donc la règle
-_paraissait_ implémentée — personne ne l'avait écrite côté serveur (`LE-71`).
+_paraissait_ implémentée — personne ne l'avait écrite côté serveur (`LE-73`).
 
 ### Ce que le lot pose
 
@@ -124,6 +124,12 @@ _paraissait_ implémentée — personne ne l'avait écrite côté serveur (`LE-7
   rougi **à partir du 3 août 2026** sans qu'aucune ligne de production ait bougé. Le pact
   `api-gateway ↔ svc-notifications` fige `2026-W10` **dans le fichier de contrat**, donc
   aucune horloge de test ne le sauve : la vérification provider relève la borne par env.
+- ⚠️ **Un défaut de lecture retiré périme les jeux figés qui ne l'écrivaient pas**
+  (`LE-73`). Le `stateHandler` du pact **svc-foyer** « coupe un canal non critique »
+  seedait un parent sans aucune préférence — il ne tenait que par la règle qu'`AM-57`
+  retirait. Rendu **409 au lieu de 204**, vu par la seule CI (le pact provider exige un
+  Postgres). L'inventaire fait pour la borne temporelle n'avait pas été refait pour la
+  fermeture du filtre de consentement.
 - ⚠️ **Aucun contrôle du dépôt n'exécute une migration de back-fill sur des données**
   (`EM-16`). `e2e-stack`/`smoke-stack` migrent une base **vierge** : les deux `INSERT …
 SELECT` de ce lot y traitent zéro ligne. Vérification manuelle impossible : **Docker
