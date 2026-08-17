@@ -42,22 +42,23 @@ renumérotés — trop de liens existants en dépendent.
 
 ### SFD à l'étude (brouillons, séquence 31 → 33)
 
-| Doc                                                                                   | Contenu                                                                             |
-| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| [31 — SFD Calendriers & vacances scolaires](31-sfd-calendriers-vacances-scolaires.md) | Calendrier d'ouverture par établissement, import zone scolaire + retouches          |
-| [32 — SFD Travail, congés & revenus](32-sfd-travail-conges-revenus.md)                | Contrats de travail (FR/CH, frontalier), absences typées, soldes CP/heures, revenus |
-| [33 — SFD Planning famille](33-sfd-planning-famille.md)                               | Vue commune « qui fait quoi, où, avec qui », trajets, détection de conflits         |
+| Doc                                                                                   | Contenu                                                                                                                 |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| [31 — SFD Calendriers & vacances scolaires](31-sfd-calendriers-vacances-scolaires.md) | Calendrier d'ouverture par établissement, import zone scolaire + retouches — **validée v1.0**                           |
+| [32 — SFD Travail, congés & revenus](32-sfd-travail-conges-revenus.md)                | Contrats de travail (FR/CH, frontalier), absences typées, soldes CP/heures, revenus                                     |
+| [33 — SFD Planning famille](33-sfd-planning-famille.md)                               | Vue commune « qui fait quoi, où, avec qui », trajets, détection de conflits                                             |
+| [38 — SFD Rattachement documentaire](38-sfd-rattachement-documentaire.md)             | La GED du foyer (Paperless) branchée sur l'app — dépôt, recherche, rattachement ; **hors séquence 31 → 33**, à arbitrer |
 
 ## Architecture & conception
 
-| Doc                                                                                    | Contenu                                                                                                                                       |
-| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| [04 — Architecture & technologies](04-architecture-et-technos.md)                      | Comparatif techno, choix justifiés, découpage en microservices                                                                                |
-| [09 — Spec : découplage & maturité microservices](09-spec-decouplage-microservices.md) | Décisions DEC-xx (contrats, projections, résilience)                                                                                          |
-| [10 — Plan d'implémentation du découplage](10-plan-implementation-decouplage.md)       | Sessions d'exécution de la doc 09                                                                                                             |
-| [14 — Peuplement BDD & API contrats](14-peuplement-bdd-et-api-contrats.md)             | Jeu de données de référence, consommation de l'API par le front                                                                               |
-| [37 — Registre des traitements, tiers et durées](37-registre-des-traitements.md)       | Quelles données personnelles vivent où, chez quels tiers, et combien de temps on les garde                                                    |
-| [ADR 0001 → 0007](adr/)                                                                | Microservices, grain des services, toolchain, contrats décentralisés, registre de contrats, préférences de notification, exemption domestique |
+| Doc                                                                                    | Contenu                                                                                                                                                                  |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [04 — Architecture & technologies](04-architecture-et-technos.md)                      | Comparatif techno, choix justifiés, découpage en microservices                                                                                                           |
+| [09 — Spec : découplage & maturité microservices](09-spec-decouplage-microservices.md) | Décisions DEC-xx (contrats, projections, résilience)                                                                                                                     |
+| [10 — Plan d'implémentation du découplage](10-plan-implementation-decouplage.md)       | Sessions d'exécution de la doc 09                                                                                                                                        |
+| [14 — Peuplement BDD & API contrats](14-peuplement-bdd-et-api-contrats.md)             | Jeu de données de référence, consommation de l'API par le front                                                                                                          |
+| [37 — Registre des traitements, tiers et durées](37-registre-des-traitements.md)       | Quelles données personnelles vivent où, chez quels tiers, et combien de temps on les garde                                                                               |
+| [ADR 0001 → 0008](adr/)                                                                | Microservices, grain des services, toolchain, contrats décentralisés, registre de contrats, préférences de notification, exemption domestique, écarts de sémantique HTTP |
 
 ## Développement (standards & avancement)
 
