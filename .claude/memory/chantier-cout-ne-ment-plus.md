@@ -1,6 +1,6 @@
 ---
 name: chantier-cout-ne-ment-plus
-description: "Chantier « Le coût ne ment plus » (validé PO 2026-08-16) — lot 1 « la fin d'une version existe » (AM-55, AM-13) livré en PR #336 ; reste AM-88 (purge T1) et AM-90 (mensualité crèche), deux arbitrages PO"
+description: "Chantier « Le coût ne ment plus » (validé PO 2026-08-16) — lot 1 « la fin d'une version existe » (AM-55, AM-13) MERGÉ le 2026-08-17 (PR #336, squash c1086f7), NON DÉPLOYÉ ; reste AM-88 (purge T1) et AM-90 (mensualité crèche), deux arbitrages PO"
 metadata:
   node_type: memory
   type: project
@@ -11,7 +11,13 @@ metadata:
 Validé par le PO le **2026-08-16**. Il attaque une famille de défauts unique : le
 calcul de coût **répond toujours**, y compris quand il n'a pas de quoi répondre.
 
-## Lot 1 — « la fin d'une version existe » (`AM-55`, `AM-13`) — PR #336
+## Lot 1 — « la fin d'une version existe » (`AM-55`, `AM-13`)
+
+**MERGÉ le 2026-08-17 (PR #336, squash `c1086f7`) — NON DÉPLOYÉ.** 45 fichiers,
++3033/−170 ; CI verte de bout en bout (24 checks), `e2e-stack` et `smoke-stack`
+compris. Il attend un train de release, **avec le lot 9 des standards** (`d913cf6`)
+qui attend le même. ⚠️ Deux migrations partent avec lui (`0007` foyer, `0009`
+tarification) : additives, back-fill inclus, rollback = `DROP COLUMN date_fin`.
 
 **Le résultat principal, et il vaut pour tout ce dépôt : une valeur dérivée à la
 lecture par deux consommateurs n'est pas une donnée, c'est deux données qui ne
@@ -80,3 +86,25 @@ nullable, donc l'appelant inventait une fin (`?? valideDu`) — une période d'u
 jour, qui passe INV-01. Un contrat crèche sans terme facturait **0 h** dès le mois
 suivant son début. **Un domaine qui refuse de représenter un cas force l'appelant à
 mentir, et le mensonge est plus discret que le refus** (`LE-63`).
+
+## Lot 2 — envois bornés + consentement explicite (`AM-58`, `AM-57`) — À FAIRE
+
+Même famille de défauts que le lot 1, **transposée aux notifications** : un état est
+déduit d'une absence, et rien ne borne ce que l'absence autorise.
+
+- **`AM-58` (P1)** — rien côté serveur n'empêche de ré-adresser un récapitulatif à
+  une crèche pour une semaine **arbitrairement ancienne**. `POST /envois/etablissement`
+  ne valide `semaineIso` qu'en forme (`z.string().min(1)` au BFF, plus strict côté
+  service), et le front réarme son bouton à chaque montage — le « déjà envoyé » vit
+  dans un état local. La **seule** chose qui empêche un second courriel réel est la
+  ligne `envoi_etablissement`, ce qui a contraint le lot 2b à **anonymiser** cette
+  table au lieu de la purger. ⚠️ Le destinataire est une **vraie crèche**
+  (`jaudrey@cscpapin.asso.fr`) et l'envoi réel est **actif en prod**.
+- **`AM-57` (P1)** — le consentement se déduit d'une **absence de ligne** :
+  `preferences.util.ts` retombe sur `actif` par défaut, `destinataires.service.ts`
+  garde le destinataire tant que la préférence n'est pas explicitement `false`.
+  Supprimer une ligne `actif = false` **réabonne** le parent — exactement la
+  population que la borne T3bis visait.
+
+Les deux verrouillent `AM-36` (4 durées non outillées) au même titre qu'`AM-55` :
+c'est la raison de les traiter ensemble.
