@@ -227,8 +227,10 @@ export class OutboxRelay
         );
       }
     } catch (erreur) {
-      // Le **cycle** a échoué avant même de lire un lot (base indisponible) : rien
-      // n'est publié, rien n'est perdu, on compte l'incident sans attribut de type.
+      // Seule la **lecture** d'une page peut arriver ici : `publierLot` retient les
+      // échecs de publication, message par message. C'est donc un incident de base,
+      // pas un événement en cause — d'où l'absence d'attribut `type`, qui est ce qui
+      // distingue les deux pannes dans l'alerte. Rien n'est publié, rien n'est perdu.
       compteurEchecs.add(1);
       this.logger.warn(
         `Relais outbox interrompu : ${(erreur as Error).message} — réessai au prochain tick`,
