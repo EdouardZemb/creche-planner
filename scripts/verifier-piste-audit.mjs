@@ -604,7 +604,12 @@ function autotest(document, documentAm) {
           document,
           muter(
             documentAm,
-            new RegExp(`(\\| ${piste} \\|[^\\n]*?)🔄`),
+            // `\s*` et non un espace : Prettier ALIGNE les colonnes du tableau, donc
+            // la largeur de la cellule d'identifiant change dès qu'une famille passe à
+            // trois chiffres — `AM-100` a repadé toutes les lignes en `| AM-76  |`. Une
+            // sonde qui code en dur cet espacement cosmétique cesse de muter, et accuse
+            // alors la porte au lieu de la prouver (`LE-42`, `LE-81`).
+            new RegExp(`(\\|\\s*${piste}\\s*\\|[^\\n]*?)🔄`),
             '$1✅',
             'report vers une piste close',
           ),
