@@ -64,6 +64,9 @@
 # **armée** de façon persistante, et dès lors toute défaillance — y compris un
 # port disparu — coupe le battement. Le durcissement se fait donc tout seul au
 # déploiement, sans geste ni fenêtre d'oubli.
+# La tolérance est elle-même conditionnée à la MÉMOIRE : si le répertoire d'état
+# n'est pas utilisable, on ne tolère rien (sans mémoire, l'indulgence n'a pas de
+# fin et couvrirait une panne totale).
 #
 # Lancement manuel (test) :
 #   set -a && . /etc/creche-heartbeat.env && set +a && ./scripts/heartbeat.sh
@@ -79,16 +82,33 @@ TEMOIN_ARMEE="$ETAT_DIR/sonde-armee"
 # clignotement du résolveur suffit à faire manquer un battement, et un seul
 # battement manqué dépasse déjà period+grace côté moniteur (5 min + 5 min) :
 # c'est ce qui a produit de faux « DOWN » les 17 et 18/08 (LE-79).
-RETENTE=(--retry 3 --retry-delay 5 --retry-all-errors)
+#
+# La fenêtre doit couvrir la panne visée, pas la symboliser : un échec DNS
+# revient INSTANTANÉMENT (pas de timeout), donc la durée couverte est celle des
+# pauses seules. Les coupures mesurées durent ~25 s → 5 tentatives espacées de
+# 10 s couvrent ~50 s. Le pire cas (chaque essai jusqu'au bout des -m 10) reste
+# très en deçà des 5 min du timer, et `Type=oneshot` n'impose pas de
+# TimeoutStartSec par défaut.
+RETENTE=(--retry 5 --retry-delay 10)
+# La garde évite un échec DUR sur un curl ancien : l'option inconnue ferait
+# sortir curl en 2 et tuerait le battement entier — soit exactement la panne
+# qu'on prétend éviter.
+if curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
+  RETENTE+=(--retry-all-errors)
+else
+  echo "HEARTBEAT: curl sans --retry-all-errors (< 7.71) — un clignotement DNS ne sera pas rattrapé." >&2
+fi
 
 sonde_armee() { [ -f "$TEMOIN_ARMEE" ]; }
 
+memoire_utilisable() { mkdir -p "$ETAT_DIR" 2>/dev/null && [ -w "$ETAT_DIR" ]; }
+
 armer_sonde() {
   if sonde_armee; then return 0; fi
-  if mkdir -p "$ETAT_DIR" 2>/dev/null && : > "$TEMOIN_ARMEE" 2>/dev/null; then
+  if memoire_utilisable && : > "$TEMOIN_ARMEE" 2>/dev/null; then
     echo "HEARTBEAT: sonde applicative ARMÉE ($HEARTBEAT_HEALTH_URL) — toute défaillance coupera désormais le battement."
   else
-    echo "HEARTBEAT: sonde OK mais armement NON mémorisable dans $ETAT_DIR — le battement restera indulgent au prochain passage. Vérifier StateDirectory= de l'unité." >&2
+    echo "HEARTBEAT: sonde OK mais armement NON mémorisable dans $ETAT_DIR — le battement resterait indulgent. Réinstaller l'unité (elle porte StateDirectory=) : sudo cp scripts/systemd/creche-heartbeat.service /etc/systemd/system/ && sudo systemctl daemon-reload" >&2
   fi
 }
 
@@ -127,6 +147,15 @@ verifier_sante() {
   esac
 
   if [ "$sortie" -eq 7 ] && ! sonde_armee; then
+    # La tolérance ne vaut QUE si l'on saura se souvenir d'en sortir. Sans
+    # mémoire (unité installée sans StateDirectory=, répertoire non
+    # inscriptible), « port jamais publié » et « pile entièrement tombée »
+    # redeviennent indiscernables, et l'indulgence s'installe pour toujours :
+    # le moniteur resterait vert pendant la panne totale. On refuse, bruyamment.
+    if ! memoire_utilisable; then
+      echo "HEARTBEAT: sonde injoignable ET mémoire d'armement inutilisable ($ETAT_DIR) — refus de tolérer, car sans elle une panne totale serait prise pour un port jamais publié. Réinstaller l'unité : sudo cp scripts/systemd/creche-heartbeat.service /etc/systemd/system/ && sudo systemctl daemon-reload" >&2
+      return 1
+    fi
     echo "HEARTBEAT: sonde applicative injoignable ($HEARTBEAT_HEALTH_URL) et JAMAIS armée — port pas encore publié (PR #345 non déployée ?). Battement DÉGRADÉ : il n'atteste que « machine allumée »." >&2
     return 0
   fi

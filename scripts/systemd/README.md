@@ -247,10 +247,18 @@ sudoedit /etc/creche-heartbeat.env    # HEARTBEAT_PING_URL + HEARTBEAT_HEALTH_UR
 > Le fichier posé sur le serveur pointe encore `HEARTBEAT_HEALTH_URL` sur le domaine
 > **public**. Cette URL renvoie `302` (Cloudflare Access) sans jamais atteindre l'app :
 > mesurée en `exit_code=0`, elle faisait passer la jauge en permanence — le battement
-> attestait « Access répond », pas « l'app répond » (`AM-100`/`LE-78`). La remplacer par
-> la sonde loopback :
+> attestait « Access répond », pas « l'app répond » (`AM-100`/`LE-78`).
+>
+> ⚠️ **Recopier l'unité aussi, pas seulement l'env.** `StateDirectory=creche-heartbeat`
+> n'existe que dans `creche-heartbeat.service` : sans lui, `STATE_DIRECTORY` est vide, le
+> script retombe sur `/var/lib/creche-heartbeat` qu'il ne peut pas créer sans être root,
+> et la mémoire d'armement est perdue. Le script **refuse alors de tolérer** un port
+> injoignable (il le dit au journal) — précisément pour que l'oubli soit bruyant plutôt
+> que silencieusement permissif.
 >
 > ```bash
+> sudo cp scripts/systemd/creche-heartbeat.service /etc/systemd/system/   # porte StateDirectory=
+> sudo systemctl daemon-reload
 > sudoedit /etc/creche-heartbeat.env
 > #   HEARTBEAT_HEALTH_URL=http://127.0.0.1:4220/api/health/live
 > sudo systemctl start creche-heartbeat.service
@@ -263,12 +271,23 @@ sudoedit /etc/creche-heartbeat.env    # HEARTBEAT_PING_URL + HEARTBEAT_HEALTH_UR
 > absence et le journalise (« battement DÉGRADÉ ») ; au premier 2xx il l'**arme**, et
 > toute défaillance ultérieure — y compris un port disparu — coupe le battement.
 >
-> **Purge éventuelle.** Si un contournement local a été posé pendant l'incident du
-> 2026-08-18 (drop-in `/etc/systemd/system/creche-heartbeat.service.d/10-retry-dns.conf`
+> ⚠️ **Ce port est recopié, pas dérivé.** La source de vérité est
+> `docker-compose.server.yml` (dont `deploy.mjs` le dérive par `portSondeLoopback()`).
+> Le changer là-bas sans corriger `/etc/creche-heartbeat.env` laisserait une sonde
+> **armée** pointer sur un port mort, donc un « DOWN » permanent. Piste ouverte pour
+> outiller cette dérivation : `AM-103`.
 >
-> - `/usr/local/bin/creche-heartbeat-retry.sh`), il devient redondant une fois ce script
->   déployé — `--retry-all-errors` couvre désormais le clignotement DNS. Le retirer :
->   `sudo rm -rf /etc/systemd/system/creche-heartbeat.service.d && sudo systemctl daemon-reload`.
+> **Purge éventuelle.** Si un contournement local a été posé pendant l'incident du
+> 2026-08-18 — le drop-in `/etc/systemd/system/creche-heartbeat.service.d/10-retry-dns.conf`
+> et le script `/usr/local/bin/creche-heartbeat-retry.sh` — il devient redondant une fois
+> cette version déployée : `--retry-all-errors` couvre désormais le clignotement DNS.
+> Retirer les deux :
+>
+> ```bash
+> sudo rm -rf /etc/systemd/system/creche-heartbeat.service.d
+> sudo rm -f /usr/local/bin/creche-heartbeat-retry.sh
+> sudo systemctl daemon-reload
+> ```
 
 ## 3. Adapter et installer les unités
 
