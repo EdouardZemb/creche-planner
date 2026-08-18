@@ -1,6 +1,6 @@
 ---
 name: chantier-cout-ne-ment-plus
-description: 'Chantier « Le coût ne ment plus » (validé PO 2026-08-16) — lots 1 (AM-55, AM-13, c1086f7) et 2 (AM-58, AM-57, 5516e00) MERGÉS le 2026-08-17, tous deux NON DÉPLOYÉS ; prochain = lot 3 « les files qui se taisent » (AM-53, AM-61) ; restent AM-88, AM-90 et AM-98, trois arbitrages PO'
+description: 'Chantier « Le coût ne ment plus » (validé PO 2026-08-16) — COMPLET : lots 1 (c1086f7), 2 (5516e00) et 3 (9b94764) MERGÉS le 2026-08-17, AUCUN DÉPLOYÉ, train visé ~23/08 ; restent AM-88, AM-90, AM-98, AM-99'
 metadata:
   node_type: memory
   type: project
@@ -10,6 +10,27 @@ metadata:
 
 Validé par le PO le **2026-08-16**. Il attaque une famille de défauts unique : le
 calcul de coût **répond toujours**, y compris quand il n'a pas de quoi répondre.
+
+## ✅ CHANTIER COMPLET — et RIEN N'EST DÉPLOYÉ
+
+Les **trois** lots sont mergés dans `main` le **2026-08-17** : lot 1 `c1086f7`
+(PR #336), lot 2 `5516e00` (PR #344), lot 3 `9b94764` (PR #348). **Aucun n'a été
+déployé** : ils attendent tous le même train, visé **~2026-08-23**, avec le lot 9
+des standards (`d913cf6`). Tant que ce train n'est pas passé, la production ne
+porte **aucun** de ces comportements — ni le refus 422 d'un mois non couvert, ni
+les gardes d'envoi, ni les filtres d'abonnement.
+
+⚠️ **Le relevé `dead_letter` se juge APRÈS ce train, jamais avant.** Le filtre
+`filter_subjects` n'est posé qu'au **redémarrage** du service (`consumers.update`,
+`LE-53`) : d'ici là les baselines `TYPE_INCONNU` de [[prod-deployment-facts]]
+(notif 144, foyer 10, tarif 1) restent **normales** et ne doivent pas être
+rediagnostiquées. Après le train, elles doivent tomber à zéro — et un
+`TYPE_INCONNU` qui persiste cesse d'être « bénin » : il veut alors dire qu'un
+`typesGeres` est en retard sur les contrats.
+
+⚠️ **Quatre migrations partent avec ce train** : `svc-foyer/0007` + `svc-tarification/0009`
+(lot 1), `svc-foyer/0008` + `svc-notifications/0020` (lot 2). Le lot 3 n'en porte
+aucune. Rollbacks détaillés dans les sections de lot ci-dessous.
 
 ## Lot 1 — « la fin d'une version existe » (`AM-55`, `AM-13`)
 
@@ -153,11 +174,107 @@ SELECT` de ce lot y traitent zéro ligne. Vérification manuelle impossible : **
   un code métier `satisfies CodeProbleme` a demandé la dépendance workspace + un
   `pnpm install` (3 lignes de lock).
 
-### Ce qui reste
+## Lot 3 — « les files qui se taisent » (`AM-53`, `AM-61`)
 
+**MERGÉ le 2026-08-17 (PR #348, squash `9b94764`) — NON DÉPLOYÉ.** 32 fichiers,
++2310/−226 ; **23 checks sur 23 verts**, `e2e-stack` et `smoke-stack` compris. Aucune
+migration, aucun changement visible par l'utilisateur. Il attend le même train que les
+lots 1 et 2 et que le lot 9 des standards (`d913cf6`).
+
+**Ce lot clôt le chantier.**
+
+### Le constat négatif a périmé l'énoncé, comme aux deux lots précédents
+
+L'énoncé d'`AM-53` disait `dead_letter` « sans borne » : **faux depuis le lot 2b des
+standards** (`tachePurgeDeadLetter`, 90 j effectifs). Le critère offrait trois branches,
+et celle de la rétention était donc **déjà satisfaite** — fermer la piste dessus aurait
+été un geste nul. C'est le filtre qui a été retenu : la rétention ne fait que **retarder**
+de trois mois la copie en clair, le filtre l'empêche d'exister. Ni « rebut sans payload »,
+qui aurait aveuglé le diagnostic des vrais rebuts.
+
+**Avant, mesuré en production** (baselines du train `0.16.0`, cf. [[prod-deployment-facts]]) :
+notif `TYPE_INCONNU=144` sur `planification.PlanningModifie.v1` (72→144, le seed de chaque
+deploy la remplit), foyer `=10`, tarif `=1` — **155 payloads en clair**, tous attribués au
+« consommateur durable sans `filter_subject` », tous jugés **« bénins »** à l'époque.
+C'est exactement ce que `LE-75` corrige : l'alerte les excluait, donc rien ne pouvait les
+compter. Dérivé côté code par `pnpm abonnements` : **29 couples type×durable** livrés pour
+rien, dont **9 des 11 types de `FOYER` chez `svc-planification`**.
+
+**Après, relevé sur la pile réelle** (`e2e-stack`) : les quatre bases — foyer,
+notifications, planification, tarification — rendent **aucun rebut**, et la sonde prouve
+que le relevé voit bien une ligne injectée. C'est le critère mot à mot.
+
+### Ce que le lot pose
+
+- **`AM-53`** — `filter_subjects` **dérivé** de `ProjectionPort.typesGeres` sur les 7
+  durables. L'équivalence `typesGeres` ⟷ `switch` est prouvée **par exécution** (4
+  `projection.types-geres.spec.ts` : tout type déclaré a une branche, aucun type non
+  déclaré n'en a — l'inventaire vient des contrats, `TYPES_EVENEMENTS_<CONTEXTE>`). Un
+  abonnement sans sujet géré **refuse le boot** : côté JetStream `filter_subjects: []`
+  vaut « tout le stream ».
+- **`AM-61`** — le `try` passe **dans** la boucle du relais, l'échec porte le `type` en
+  attribut, et `outbox_attente_age_secondes` date la plus vieille ligne non publiée
+  (calcul **en base**, donc aucune horloge à figer — `LE-70`). Alerte `OutboxAttenteAgee`
+  (> 30 min) + runbook.
+- Deux portes neuves : `pnpm abonnements` (2 sondes) et `scripts/relever-rebuts.mjs` dans
+  `e2e-stack` (1 sonde) — cette dernière est le relevé littéral du critère.
+- L'exclusion `raison!="TYPE_INCONNU"` de `ConsumerRejetsDetectes` est **levée**.
+
+### La revue a trouvé un défaut que le lot introduisait — et le remède en cachait un autre
+
+- ⚠️ **`LE-77` — retirer un blocage, c'est autoriser un réordonnancement, et l'ordre
+  tenait quelque chose.** L'isolation par événement laissait un `foyer.FoyerSupprime.v1`
+  dépasser un `foyer.Parent*.v1` en échec **transitoire** : effacement du foyer chez les
+  consommateurs, puis **ré-insertion** de l'adresse e-mail du parent. Les gardes
+  `occurred_at` ne protègent que des lignes encore présentes, et `processed_event` ne dit
+  rien d'une **première** livraison tardive. Un effacement RGPD serait devenu révocable.
+  Corrigé par l'ordre **par foyer** (`payload.foyerId`), l'isolation ne jouant qu'entre
+  foyers distincts.
+- ⚠️ **Et le remède ressuscitait le défaut d'origine, une strate plus bas** : un foyer
+  bloqué qui porte à lui seul les 50 plus vieilles lignes monopolise la fenêtre du drain,
+  et plus **aucun** foyer n'avance. Le drain lit donc une page suivante quand une page
+  entière a été différée sans rien publier (≤ 4 pages/tick) — condition qui est aussi le
+  seul cas où l'`offset` reste exact. **Deux tours de constat négatif sur son propre
+  correctif : c'est là qu'étaient les deux vrais défauts du lot.**
+
+### Autres pièges que ce lot a payés
+
+- ⚠️ **`LE-76` — un correctif posé à la création est un no-op sur tout ce qui existe
+  déjà, et la CI ne peut pas le voir.** `jsm.consumers.add` était suivi d'un `catch {}`
+  muet (« déjà présent, on le réutilise tel quel ») : ajouter `filter_subjects` aurait
+  laissé les 7 durables de prod **intacts**, tandis qu'`e2e-stack` — qui part d'un
+  `down -v` — les recrée avec le bon filtre et serait passé vert. Corrigé par
+  `consumers.update` dans le `catch`. **C'est la ligne la plus load-bearing du lot, et
+  rien dans le dépôt ne sait l'exercer** (`EM-17`). ⚠️ `consumers.update` de nats.js est
+  un `Object.assign(config_en_place, demandé)` : un `filter_subject` **singulier** déjà
+  posé survit et fait refuser la mise à jour (exclusivité serveur) — il est écrasé par la
+  chaîne vide.
+- ⚠️ **`LE-75` — l'exclusion qui rendait l'alerte lisible garantissait que le défaut ne
+  sonnerait jamais.** `ConsumerRejetsDetectes{raison!="TYPE_INCONNU"}` était un choix
+  **juste** ; personne n'avait écrit ce qu'il rendait invisible.
+- ⚠️ **`EM-17` — aucun contrôle ne joue une pile dont l'état PRÉEXISTE** : `e2e-stack`
+  part de bases vierges (`EM-16`) **et** de durables neufs. Le constat négatif du lot est
+  donc **dérivé**, pas relevé.
+- ⚠️ Le garde-fou « balayage à vide » a payé immédiatement : `relever-rebuts.mjs`
+  cherchait `pgTable('dead_letter'` sur une seule ligne alors que les 4 schémas la
+  déclarent sur deux — il n'a pas rendu « aucun rebut », il a **échoué**.
+- ⚠️ Ratchet ESLint, 1 seul cran libre : `expect(objet.methode)` coûte un
+  `unbound-method` (règle à sa borne). Garder l'espion en local (`const traiter =
+vi.fn(); { traiter, … }`) au lieu de le relire sur l'objet.
+- ⚠️ **Journée à 8 rouges de CI, tous des `HTTP 503` de GitHub** (baseline de couverture
+  ×4 — le step meurt **avant** lint/test/build —, CodeQL ×4). Aucun n'a jugé le diff.
+
+## Ce qui reste
+
+- **`AM-99`** — un événement outbox durablement refusé est retenté toutes les 2 s **pour
+  toujours** : l'isolation a retiré le blocage, pas le rejeu, et la table n'a ni compteur
+  de tentatives ni colonne d'erreur. Seule l'alerte d'âge borne le silence.
 - **`AM-98`** — la borne T3ter (préférences) reste sans durée, mais le motif a changé :
   ce n'est plus un défaut de code, c'est un arbitrage PO. La trace du désabonnement est
   **aussi la preuve** qu'on a cessé d'écrire à quelqu'un.
 - **`EM-16`** — le harnais qui prouverait un back-fill sur des données.
+- **`EM-17`** — le harnais qui jouerait une pile dont l'**état préexiste** (durable
+  JetStream déjà créé, base déjà peuplée), et qui seul pourrait exercer
+  `consumers.update`.
 - Les deux arbitrages du lot 1 (`AM-88` purge T1, `AM-90` mensualité crèche) sont
   intacts.
