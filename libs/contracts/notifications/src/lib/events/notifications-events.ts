@@ -70,3 +70,14 @@ export const semaineValideeEventSchema = integrationEventSchema(
   semaineValideePayloadSchema,
 );
 export type SemaineValideeEvent = z.infer<typeof semaineValideeEventSchema>;
+
+/**
+ * **Inventaire** des types d'événement du contexte Notifications — donc des sujets
+ * NATS du stream `NOTIFICATIONS`. Aucun service ne consomme ce stream aujourd'hui ;
+ * la liste existe pour que la porte `pnpm abonnements` couvre les **quatre**
+ * contextes, et qu'un premier consommateur n'ait rien à inventer. Même rôle et
+ * même porte que `TYPES_EVENEMENTS_FOYER`, cf. sa documentation.
+ */
+export const TYPES_EVENEMENTS_NOTIFICATIONS: readonly string[] = [
+  SEMAINE_VALIDEE_TYPE,
+];

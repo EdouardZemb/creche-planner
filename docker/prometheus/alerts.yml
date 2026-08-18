@@ -257,17 +257,19 @@ groups:
   - name: fondations
     interval: 30s
     rules:
-      # Un message JetStream a été mis en dead-letter pour une VRAIE perte : illisible
-      # (PARSE_KO), enveloppe sans `type` (ENVELOPPE_INVALIDE) ou livraisons épuisées
-      # (MAX_LIVRAISONS). On EXCLUT délibérément `raison="TYPE_INCONNU"` : un type connu
-      # de l'écosystème mais non projeté par ce service (ex. un abonné au stream FOYER
-      # complet reçoit des types qu'il n'utilise pas) part aussi en dead-letter (critère
-      # d'acceptation du lot 1), mais c'est un IGNORE DE ROUTINE, pas une perte parent —
-      # l'inclure ferait sonner l'alerte en permanence. La trace reste en base
-      # (`dead_letter`, raison=TYPE_INCONNU) pour audit. Voir runbook.
+      # Un message JetStream a été mis en dead-letter. L'exclusion
+      # `raison!="TYPE_INCONNU"` est LEVÉE depuis `AM-53` : elle était juste tant
+      # qu'un durable recevait tout son stream — un type non projeté partait en
+      # dead-letter par construction, l'inclure aurait fait sonner l'alerte en
+      # permanence. Elle avait un coût invisible : cette même exclusion garantissait
+      # que rien n'alerterait JAMAIS sur les milliers de payloads en clair que ces
+      # « ignores de routine » accumulaient. Les durables sont maintenant bornés à ce
+      # qu'ils traitent (`filter_subjects`), donc un `TYPE_INCONNU` ne peut plus
+      # naître que d'un contrat amont enrichi sans que le consommateur suive : un
+      # incident, à traiter comme tel.
       - alert: ConsumerRejetsDetectes
         expr: >
-          increase(consumer_rejets_total{raison!="TYPE_INCONNU"}[15m]) > 0
+          increase(consumer_rejets_total[15m]) > 0
         for: 5m
         labels:
           severity: warning
@@ -275,11 +277,12 @@ groups:
           summary: 'Rejet consumer JetStream ({{ $labels.raison }}) sur le stream {{ $labels.stream }}'
           description: >
             Un consommateur a mis un message du stream {{ $labels.stream }} en dead-letter
-            (raison {{ $labels.raison }}) : {{ $value | humanize }} sur 15 min. C'est une
-            perte potentielle (message illisible, enveloppe invalide, ou livraisons épuisées),
-            pas un ignore de routine. Inspecter la table `dead_letter` du service concerné :
+            (raison {{ $labels.raison }}) : {{ $value | humanize }} sur 15 min. Aucune raison
+            n'est de routine depuis `AM-53` — un `TYPE_INCONNU` signale un type publié en
+            amont que ce service reçoit sans le traiter, donc un `typesGeres` en retard sur
+            les contrats. Inspecter la table `dead_letter` du service concerné :
             `SELECT raison, sujet, erreur, livraisons, created_at FROM dead_letter
-            WHERE raison <> 'TYPE_INCONNU' ORDER BY created_at DESC LIMIT 20;` puis corréler
+            ORDER BY created_at DESC LIMIT 20;` puis corréler
             aux logs (Loki : `{service=~"svc-.*"} |= "Dead-letter"`).
 
       - alert: OutboxBacklogPersistant
@@ -305,10 +308,39 @@ groups:
         annotations:
           summary: 'Échecs de publication outbox (relais bloqué)'
           description: >
-            Le relais outbox a échoué {{ $value | humanize }} cycle(s) de drain sur 15 min
-            (publication NATS ou écriture KO). Les événements restent `published_at IS NULL`
-            et seront republiés — pas de perte, mais un blocage durable retarde la propagation
-            (récap parent, read models). Logs : `{service=~"svc-.*"} |= "Relais outbox interrompu"`.
+            Le relais outbox a échoué {{ $value | humanize }} fois sur 15 min (publication
+            NATS ou écriture KO). Depuis `AM-61` un refus est attribué au `type` du message
+            ({{ $labels.type }} ici ; sans `type` = le cycle entier a échoué, base
+            indisponible). Les événements restent `published_at IS NULL` et seront republiés —
+            pas de perte, mais un blocage durable retarde la propagation
+            (récap parent, read models). Logs : `{service=~"svc-.*"} |= "Publication refusée"`.
+
+      # `AM-61` — l'âge, pas le volume. `outbox_backlog` COMPTE les lignes en attente ;
+      # il ne les DATE pas. Un événement durablement refusé (sujet hors des `subjects`
+      # du stream, payload au-delà de `max_payload`) laisse la file COURTE et ARRÊTÉE :
+      # sous le seuil de 25, l'alerte de volume ne se déclenche jamais, et avant
+      # l'isolation par événement il figeait en plus tout ce qui suivait. 30 min est
+      # large au regard du tick de 2 s : à ce stade ce n'est plus une lenteur, c'est un
+      # blocage. Une coupure NATS de plus de 30 min alerte aussi — c'est voulu, elle a
+      # les mêmes conséquences (récap non parti, read model en retard).
+      - alert: OutboxAttenteAgee
+        expr: outbox_attente_age_secondes > 1800
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Événement outbox en attente depuis {{ $value | humanizeDuration }}'
+          description: >
+            La plus vieille ligne `outbox` non publiée attend depuis
+            {{ $value | humanizeDuration }} alors que le relais tourne toutes les 2 s. Un
+            message refusé n'arrête plus les suivants (`AM-61`), donc ce retard est celui
+            d'un événement précis, indéfiniment retenté : le trouver par
+            `SELECT id, type, occurred_at FROM outbox WHERE published_at IS NULL
+            ORDER BY occurred_at LIMIT 5;` et lire la cause dans les logs
+            (`{service=~"svc-.*"} |= "Publication refusée"`). Corréler à
+            `OutboxPublicationsEchecs`, qui en nomme le `type`. Ne JAMAIS purger une
+            ligne non publiée : `foyer.FoyerSupprime.v1` y est le seul porteur survivant
+            d'un effacement (cf. `tachePurgeOutbox`).
 
       - alert: EnvoiEmailEchecs
         expr: >

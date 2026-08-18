@@ -4,7 +4,7 @@ import * as schema from '../database/schema.js';
 import { ProjectionService } from './projection.service.js';
 
 /** Streams amont consommés par Tarification, et leur consommateur durable. */
-const ABONNEMENTS: readonly Abonnement[] = [
+export const ABONNEMENTS: readonly Abonnement[] = [
   { stream: 'FOYER', durable: 'tarification-foyer' },
   { stream: 'REFERENTIEL', durable: 'tarification-referentiel' },
   { stream: 'PLANIFICATION', durable: 'tarification-planification' },

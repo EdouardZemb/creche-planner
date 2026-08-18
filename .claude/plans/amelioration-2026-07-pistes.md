@@ -178,6 +178,15 @@ Effort : S (≤1 PR simple) · M (1-3 PR) · L (chantier multi-lots). Risque : b
 
 ### C4. Hygiène du flux d'événements : `filter_subjects` + rétention
 
+**✅ Couverte, sauf le rejeu** — `filter_subjects` par consommateur durable au lot 3 de
+« le coût ne ment plus » (`AM-53`, dérivé de `ProjectionPort.typesGeres`, porte
+`pnpm abonnements` + relevé `dead_letter` dans `e2e-stack`) ; purge TTL au lot 2b des
+standards (`PurgeModule` : `outbox` 30 j, `dead_letter` 90 j) ; volumétrie par
+`consumer_rejets_total` et, côté outbox, `outbox_attente_age_secondes` (`AM-61`).
+L'alerte `ConsumerRejetsDetectes` **n'exclut plus** `TYPE_INCONNU`. **Reste ouvert** : le
+script de réinjection ciblée depuis `dead_letter` (reprise toujours manuelle) — et noter
+que la purge des rebuts les rend alors définitivement irréparables au bout de 90 j.
+
 **Type** : dette · **Effort** : S/M · **Risque** : bas
 **Problème** : les consommateurs JetStream ne filtrent pas les sujets (`libs/nest-commons/src/lib/messaging/jetstream-consumer.ts:141`) : svc-notifications reçoit tout le stream FOYER et met en `dead_letter` chaque `EnfantAjouté`/`FoyerMisAJour` normal (`IGNORE_TYPE_INCONNU`) — bruit connu (baseline « voulu » du dernier deploy), mais la table **grossit sans borne**, noie les vrais poison messages, et l'alerte doit exclure `TYPE_INCONNU` pour rester utilisable. Aucune purge de `processed_event`/`dead_letter`, aucun rejeu outillé depuis `dead_letter` (reprise manuelle).
 **Proposition** : `filter_subjects` par consommateur ; job de purge TTL (`processed_event` > 90 j, `dead_letter` traitées) ; métrique de volumétrie ; script de réinjection ciblée.

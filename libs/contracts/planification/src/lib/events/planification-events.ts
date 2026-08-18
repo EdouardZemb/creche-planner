@@ -282,3 +282,20 @@ export const etablissementSupprimeEventSchema = integrationEventSchema(
 export type EtablissementSupprimeEvent = z.infer<
   typeof etablissementSupprimeEventSchema
 >;
+
+/**
+ * **Inventaire** des types d'événement du contexte Planification — donc des sujets
+ * NATS du stream `PLANIFICATION`. Même rôle et même porte que
+ * `TYPES_EVENEMENTS_FOYER` (`pnpm abonnements`), cf. sa documentation.
+ */
+export const TYPES_EVENEMENTS_PLANIFICATION: readonly string[] = [
+  CONTRAT_CREE_TYPE,
+  CONTRAT_CREE_V2_TYPE,
+  CONTRAT_MODIFIE_TYPE,
+  CONTRAT_MODIFIE_V2_TYPE,
+  CONTRAT_SUPPRIME_TYPE,
+  PLANNING_MODIFIE_TYPE,
+  ETABLISSEMENT_CREE_TYPE,
+  ETABLISSEMENT_MODIFIE_TYPE,
+  ETABLISSEMENT_SUPPRIME_TYPE,
+];

@@ -173,3 +173,15 @@ export const baremeTranchesPublieEventSchema = integrationEventSchema(
 export type BaremeTranchesPublieEvent = z.infer<
   typeof baremeTranchesPublieEventSchema
 >;
+
+/**
+ * **Inventaire** des types d'événement du contexte Référentiel — donc des sujets
+ * NATS du stream `REFERENTIEL`. Même rôle et même porte que
+ * `TYPES_EVENEMENTS_FOYER` (`pnpm abonnements`), cf. sa documentation.
+ */
+export const TYPES_EVENEMENTS_REFERENTIEL: readonly string[] = [
+  GRILLE_PUBLIEE_TYPE,
+  GRILLE_PUBLIEE_V2_TYPE,
+  BAREME_PSU_PUBLIE_TYPE,
+  BAREME_TRANCHES_PUBLIE_TYPE,
+];
