@@ -220,10 +220,11 @@ Unités `creche-heartbeat.{service,timer}` : toutes les ~5 min,
 (ou équivalent) hébergée **ailleurs** que sur ce serveur. Si les pings cessent
 (machine éteinte, réseau coupé, systemd HS), le moniteur externe alerte — ce que
 Prometheus/Alertmanager, qui tournent **sur** la machine surveillée, ne peuvent
-pas faire. Optionnellement, le ping n'est envoyé que si la gateway répond 200
+pas faire. Optionnellement, le ping n'est envoyé que si l'app répond **2xx**
 (battement « serveur ET app OK ») — sur sa **liveness** `/api/health/live`, et non
 sur sa readiness, qui agrège les 5 amonts depuis le lot B3 (motif détaillé dans la
-doc ci-dessous). Voir
+doc ci-dessous), et via une origine **loopback**, jamais le domaine public : celui-ci
+est derrière Cloudflare Access, qui répond `302` sans toucher l'origine. Voir
 [docs/exploitation/observabilite.md](../../docs/exploitation/observabilite.md)
 § « Heartbeat externe ».
 
@@ -242,12 +243,51 @@ sudo chmod 600 /etc/creche-heartbeat.env
 sudoedit /etc/creche-heartbeat.env    # HEARTBEAT_PING_URL + HEARTBEAT_HEALTH_URL
 ```
 
-> **Installation déjà en place (lot B3).** Le modèle pointait `HEARTBEAT_HEALTH_URL`
-> sur `/api/health` (readiness). Corriger le fichier posé sur le serveur —
-> `sudoedit /etc/creche-heartbeat.env`, suffixer l'URL en `/api/health/live`, puis
-> `sudo systemctl start creche-heartbeat.service` pour vérifier
-> (« HEARTBEAT: ping envoyé. »). Sans ce geste, la readiness agrégée fera taire le
-> battement au premier amont dégradé.
+> **Installation déjà en place — geste à faire au prochain déploiement (2026-08-18).**
+> Le fichier posé sur le serveur pointe encore `HEARTBEAT_HEALTH_URL` sur le domaine
+> **public**. Cette URL renvoie `302` (Cloudflare Access) sans jamais atteindre l'app :
+> mesurée en `exit_code=0`, elle faisait passer la jauge en permanence — le battement
+> attestait « Access répond », pas « l'app répond » (`AM-100`/`LE-78`).
+>
+> ⚠️ **Recopier l'unité aussi, pas seulement l'env.** `StateDirectory=creche-heartbeat`
+> n'existe que dans `creche-heartbeat.service` : sans lui, `STATE_DIRECTORY` est vide, le
+> script retombe sur `/var/lib/creche-heartbeat` qu'il ne peut pas créer sans être root,
+> et la mémoire d'armement est perdue. Le script **refuse alors de tolérer** un port
+> injoignable (il le dit au journal) — précisément pour que l'oubli soit bruyant plutôt
+> que silencieusement permissif.
+>
+> ```bash
+> sudo cp scripts/systemd/creche-heartbeat.service /etc/systemd/system/   # porte StateDirectory=
+> sudo systemctl daemon-reload
+> sudoedit /etc/creche-heartbeat.env
+> #   HEARTBEAT_HEALTH_URL=http://127.0.0.1:4220/api/health/live
+> sudo systemctl start creche-heartbeat.service
+> journalctl -u creche-heartbeat.service -n 5 --no-pager   # « sonde applicative ARMÉE »
+> ```
+>
+> Le port `4220` est publié par `docker-compose.server.yml` **depuis la PR #345** : il
+> n'existe que sur une prod qui a reçu ce déploiement. Le geste est donc sans risque
+> avant comme après — tant que la sonde n'a jamais répondu 2xx, le script tolère son
+> absence et le journalise (« battement DÉGRADÉ ») ; au premier 2xx il l'**arme**, et
+> toute défaillance ultérieure — y compris un port disparu — coupe le battement.
+>
+> ⚠️ **Ce port est recopié, pas dérivé.** La source de vérité est
+> `docker-compose.server.yml` (dont `deploy.mjs` le dérive par `portSondeLoopback()`).
+> Le changer là-bas sans corriger `/etc/creche-heartbeat.env` laisserait une sonde
+> **armée** pointer sur un port mort, donc un « DOWN » permanent. Piste ouverte pour
+> outiller cette dérivation : `AM-103`.
+>
+> **Purge éventuelle.** Si un contournement local a été posé pendant l'incident du
+> 2026-08-18 — le drop-in `/etc/systemd/system/creche-heartbeat.service.d/10-retry-dns.conf`
+> et le script `/usr/local/bin/creche-heartbeat-retry.sh` — il devient redondant une fois
+> cette version déployée : `--retry-all-errors` couvre désormais le clignotement DNS.
+> Retirer les deux :
+>
+> ```bash
+> sudo rm -rf /etc/systemd/system/creche-heartbeat.service.d
+> sudo rm -f /usr/local/bin/creche-heartbeat-retry.sh
+> sudo systemctl daemon-reload
+> ```
 
 ## 3. Adapter et installer les unités
 
@@ -273,6 +313,11 @@ systemctl list-timers creche-heartbeat.timer
 sudo systemctl start creche-heartbeat.service
 journalctl -u creche-heartbeat.service -n 20 --no-pager   # « HEARTBEAT: ping envoyé. »
 ```
+
+Le journal doit dire **quelle** sémantique le battement porte :
+`« sonde applicative ARMÉE »` (le ping atteste l'app) au premier passage réussi, puis
+`« ping envoyé. »` ; `« battement DÉGRADÉ »` signale que la sonde n'est pas encore
+publiée et que le ping n'atteste plus que « machine allumée ».
 
 Le dashboard Healthchecks.io doit afficher le check **up** avec un ping récent.
 **Tester la chaîne d'alerte de bout en bout** : `sudo systemctl stop

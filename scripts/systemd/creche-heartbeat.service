@@ -10,6 +10,12 @@
 # L'URL de ping est un SECRET : lue depuis /etc/creche-heartbeat.env (HORS
 # dépôt, root:root 0600 — systemd (PID 1) lit EnvironmentFile= avant de
 # basculer sur User=, les droits restreints suffisent donc).
+#
+# StateDirectory= donne au script un /var/lib/creche-heartbeat créé et possédé
+# par User= à chaque démarrage. Il y mémorise l'ARMEMENT de la sonde applicative
+# (premier 2xx observé). Sans cette mémoire, « port jamais publié » et « toute
+# la pile est tombée » seraient indiscernables — et le dead man's switch
+# resterait muet pendant la panne totale qu'il existe pour détecter.
 # ===========================================================================
 [Unit]
 Description=Battement de cœur creche-planner vers le moniteur externe
@@ -21,5 +27,6 @@ Wants=network-online.target
 Type=oneshot
 User=<user>
 EnvironmentFile=/etc/creche-heartbeat.env
+StateDirectory=creche-heartbeat
 ExecStart=/home/<user>/creche-planner/scripts/heartbeat.sh
 Nice=10
