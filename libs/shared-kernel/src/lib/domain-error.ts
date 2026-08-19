@@ -84,3 +84,33 @@ export class TrouDansVersionsError extends DomainError {
     super(message);
   }
 }
+
+/**
+ * Date ISO `YYYY-MM-DD` mal formée présentée à l'arithmétique de dates
+ * (`date-iso.ts`). Seul le format est jugé : l'existence du jour ne l'est pas.
+ */
+export class DateIsoInvalideError extends DomainError {
+  // `public` n'est pas décoratif : il élargit le constructeur `protected` de
+  // `DomainError`, sans quoi la classe ne serait pas instanciable hors hiérarchie.
+  public constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Horodatage de connaissance mal formé (`instant.ts`) : tout ce qui n'est pas un
+ * ISO 8601 UTC de largeur fixe `YYYY-MM-DDTHH:MM:SS.sssZ` — un offset horaire
+ * casserait la comparaison lexicographique sans rien signaler.
+ */
+export class InstantInvalideError extends DomainError {
+  public constructor(message: string) {
+    super(message);
+  }
+}
+
+/** Année hors de la plage grégorienne (1583-9999) présentée au calcul des fériés. */
+export class AnneeInvalideError extends DomainError {
+  public constructor(message: string) {
+    super(message);
+  }
+}
