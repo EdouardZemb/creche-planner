@@ -309,6 +309,13 @@ const MIROIRS = [
         motif: 'union locale du miroir ci-dessus.',
       },
       {
+        fichier: 'libs/planification/domain/src/lib/calendrier-ouverture.ts',
+        symbole: 'SERVICES_CALENDRIER',
+        relation: 'identique',
+        motif:
+          'lib `type:domain` : le calendrier d’ouverture (SFD 31) nomme les services qu’il ouvre ou ferme, sans pouvoir importer les contrats.',
+      },
+      {
         fichier: 'libs/tarification/domain/src/lib/core/politique-tarifaire.ts',
         symbole: 'PolitiqueTarifaireId',
         relation: 'sur-ensemble',

@@ -7,6 +7,29 @@ export {
 } from './lib/jour-semaine.js';
 export { joursDuMois } from './lib/mois.js';
 
+// Calendrier d'ouverture versionné (SFD 31 — 3 couches + axe de connaissance)
+export {
+  SERVICES_CALENDRIER,
+  ancreDeConnaissance,
+  clore,
+  resoudreJour,
+  resoudreMois,
+  verifierUniciteOuverte,
+} from './lib/calendrier-ouverture.js';
+export type {
+  CalendrierOuverture,
+  Connaissance,
+  ContexteJour,
+  ExceptionCalendrier,
+  JourResolu,
+  PeriodeCalendrier,
+  RecurrenceCalendrier,
+  RegimeSemaine,
+  ServiceCalendrier,
+  TypeException,
+  TypePeriode,
+} from './lib/calendrier-ouverture.js';
+
 // Semaine type & plages horaires (crèche)
 export { PlageHoraire } from './lib/plage-horaire.js';
 export { SemaineType } from './lib/semaine-type.js';
@@ -85,4 +108,6 @@ export {
   AjustementJourNonGardeError,
   SaisieJourEnConflitError,
   MoisIncoherentError,
+  ConnaissanceInvalideError,
+  CalendrierIncoherentError,
 } from './lib/planification-error.js';

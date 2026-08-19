@@ -67,3 +67,26 @@ export class MoisIncoherentError extends DomainError {
     super(message);
   }
 }
+
+/**
+ * Ligne de calendrier dont l'intervalle de connaissance est incohérent : clôture
+ * antérieure à l'ouverture, ou clôture d'une ligne déjà close (modèle append-only,
+ * SFD 31 RM-31-03).
+ */
+export class ConnaissanceInvalideError extends DomainError {
+  // `public` élargit le constructeur `protected` de `DomainError` (cf. `AM-104`).
+  public constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Calendrier d'ouverture violant l'unicité **partielle** : deux lignes encore
+ * ouvertes portent la même clé (même jour d'exception, même régime × jour de
+ * semaine de récurrence). La résolution serait ambiguë (SFD 31, D2 révisée).
+ */
+export class CalendrierIncoherentError extends DomainError {
+  public constructor(message: string) {
+    super(message);
+  }
+}
