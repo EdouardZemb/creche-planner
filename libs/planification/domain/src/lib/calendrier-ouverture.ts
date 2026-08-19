@@ -1,4 +1,5 @@
 import {
+  differenceEnJours,
   estDateIso,
   joursFeries,
   type Instant,
@@ -291,6 +292,41 @@ function plusRecente<T extends Connaissance>(
   );
 }
 
+/**
+ * La période **la plus spécifique** d'un ensemble qui couvre déjà le même jour.
+ *
+ * Les périodes se chevauchent par construction : l'open data ne publie que les
+ * **vacances**, l'année scolaire est saisie d'un bloc, et une semaine de vacances
+ * tombe donc *dans* la période scolaire. Départager par l'instant de connaissance
+ * — comme on le fait pour deux lignes concurrentes d'une même clé — rendrait la
+ * réponse dépendante de l'**ordre de saisie** : entrer l'année scolaire après les
+ * vacances rouvrirait la cantine en avril. On départage donc par l'**étendue** :
+ * la période la plus courte l'emporte, ce qui est aussi la façon dont un parent
+ * lit son calendrier.
+ *
+ * L'ordre est **total**, donc indépendant de l'ordre du tableau : étendue
+ * croissante, puis connaissance la plus récente, puis début le plus tardif.
+ */
+function plusSpecifique(
+  periodes: readonly PeriodeCalendrier[],
+): PeriodeCalendrier | undefined {
+  return periodes.reduce<PeriodeCalendrier | undefined>((retenue, periode) => {
+    if (retenue === undefined) {
+      return periode;
+    }
+    const ecart =
+      differenceEnJours(periode.du, periode.au) -
+      differenceEnJours(retenue.du, retenue.au);
+    if (ecart !== 0) {
+      return ecart < 0 ? periode : retenue;
+    }
+    if (periode.connuDepuis !== retenue.connuDepuis) {
+      return periode.connuDepuis > retenue.connuDepuis ? periode : retenue;
+    }
+    return periode.du > retenue.du ? periode : retenue;
+  }, undefined);
+}
+
 /** Vue du calendrier réduite à ce qui était connu à `aLaDate`. */
 interface CalendrierConnu {
   readonly periodes: readonly PeriodeCalendrier[];
@@ -326,6 +362,15 @@ function reduireAuConnu(
  * plus haut) — c'est la clé de la non-régression, les établissements existants ne
  * changent de comportement qu'à la saisie d'une récurrence. Une récurrence saisie
  * mais muette sur ce couple (régime, jour) ferme, elle.
+ *
+ * ⚠️ « Aucune récurrence » se juge sur les lignes **connues à l'instant interrogé**,
+ * jamais sur la table entière — et ce n'est pas un raccourci. Un mois facturé avant
+ * que le calendrier n'existe doit se relire comme il se lisait alors : sans
+ * contrainte de calendrier. Juger sur la table entière ferait **rétroagir** une
+ * récurrence saisie plus tard sur un mois déjà facturé, exactement ce que
+ * l'amendement PO interdit (INV-K1 du MBT). Corollaire assumé : clore toutes les
+ * récurrences d'un établissement le rouvre — un calendrier qui ne dit plus rien ne
+ * contraint plus rien.
  */
 function servicesRecurrents(
   recurrences: readonly RecurrenceCalendrier[],
@@ -378,11 +423,16 @@ function appliquerException(
 
 function resoudreDepuisConnu(connu: CalendrierConnu, jour: string): JourResolu {
   const couvrantes = connu.periodes.filter((p) => p.du <= jour && jour <= p.au);
-  const periodeDeRegime = plusRecente(
+  const periodeDeRegime = plusSpecifique(
     couvrantes.filter(
       (p) => p.type === 'PERIODE_SCOLAIRE' || p.type === 'VACANCES',
     ),
   );
+  // Aucune période couvrante ⇒ régime `SCOLAIRE` (décision du plan) : c'est le
+  // régime **unique** de la crèche, qui n'a pas de notion de vacances. Conséquence
+  // pour un établissement scolaire dont seule l'année scolaire est saisie : un jour
+  // d'août tombant hors de toute période est lu comme scolaire. Ce trou est
+  // détectable et se signale à la saisie, pas ici (`AM-105`).
   const regime: RegimeSemaine =
     periodeDeRegime?.type === 'VACANCES' ? 'VACANCES' : 'SCOLAIRE';
   const contexteDeBase: ContexteJour =
@@ -402,7 +452,7 @@ function resoudreDepuisConnu(connu: CalendrierConnu, jour: string): JourResolu {
   };
 
   // Couche 2 — période fermante.
-  const fermeture = plusRecente(
+  const fermeture = plusSpecifique(
     couvrantes.filter((p) => p.type === 'FERMETURE_ANNUELLE'),
   );
   if (fermeture !== undefined) {

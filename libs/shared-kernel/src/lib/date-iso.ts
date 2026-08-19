@@ -77,3 +77,41 @@ export function ajouterJours(date: string, delta: number): string {
   }
   return formater(annee, mois, jour);
 }
+
+/**
+ * Numéro de jour absolu (jour julien grégorien) d'une date décomposée. Formule
+ * entière **sans branche** : deux dates se comparent et se soustraient en O(1),
+ * là où le report jour à jour d'`ajouterJours` serait linéaire.
+ */
+function jourAbsolu(annee: number, mois: number, jour: number): number {
+  const a = Math.floor((14 - mois) / 12);
+  const y = annee + 4800 - a;
+  const m = mois + 12 * a - 3;
+  return (
+    jour +
+    Math.floor((153 * m + 2) / 5) +
+    365 * y +
+    Math.floor(y / 4) -
+    Math.floor(y / 100) +
+    Math.floor(y / 400) -
+    32045
+  );
+}
+
+/**
+ * Nombre de jours de `debut` à `fin` (négatif si `fin` précède `debut`).
+ * `differenceEnJours(d, d)` vaut 0 — l'étendue d'une période `[du, au]` bornes
+ * incluses est donc `differenceEnJours(du, au) + 1`.
+ *
+ * Lève `DateIsoInvalideError` si l'une des deux n'a pas la forme `YYYY-MM-DD`.
+ */
+export function differenceEnJours(debut: string, fin: string): number {
+  if (!ISO_DATE.test(debut) || !ISO_DATE.test(fin)) {
+    throw new DateIsoInvalideError(
+      `dates ISO invalides : ${debut} → ${fin} (format attendu : YYYY-MM-DD)`,
+    );
+  }
+  const [a1 = 0, m1 = 0, j1 = 0] = debut.split('-').map(Number);
+  const [a2 = 0, m2 = 0, j2 = 0] = fin.split('-').map(Number);
+  return jourAbsolu(a2, m2, j2) - jourAbsolu(a1, m1, j1);
+}

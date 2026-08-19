@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ajouterJours, estDateIso } from './date-iso.js';
+import { ajouterJours, differenceEnJours, estDateIso } from './date-iso.js';
 import { DateIsoInvalideError } from './domain-error.js';
 
 describe('estDateIso', () => {
@@ -46,5 +46,43 @@ describe('ajouterJours', () => {
 
   it('lève DateIsoInvalideError sur un format invalide', () => {
     expect(() => ajouterJours('05/04/2026', 1)).toThrow(DateIsoInvalideError);
+  });
+});
+
+describe('differenceEnJours', () => {
+  it('vaut 0 pour un même jour', () => {
+    expect(differenceEnJours('2026-04-05', '2026-04-05')).toBe(0);
+  });
+
+  it('compte les jours dans le sens croissant', () => {
+    expect(differenceEnJours('2026-04-05', '2026-04-08')).toBe(3);
+    expect(differenceEnJours('2026-01-05', '2026-07-04')).toBe(180);
+  });
+
+  it('est négatif quand la fin précède le début', () => {
+    expect(differenceEnJours('2026-04-08', '2026-04-05')).toBe(-3);
+  });
+
+  it('absorbe les années bissextiles et les frontières de siècle', () => {
+    expect(differenceEnJours('2024-02-28', '2024-03-01')).toBe(2);
+    expect(differenceEnJours('2026-02-28', '2026-03-01')).toBe(1);
+    expect(differenceEnJours('1900-01-01', '2000-01-01')).toBe(36524);
+  });
+
+  it('est cohérent avec ajouterJours', () => {
+    for (const delta of [-60, -1, 0, 1, 39, 50, 400]) {
+      expect(
+        differenceEnJours('2026-04-05', ajouterJours('2026-04-05', delta)),
+      ).toBe(delta);
+    }
+  });
+
+  it('lève DateIsoInvalideError sur l’une ou l’autre borne', () => {
+    expect(() => differenceEnJours('05/04/2026', '2026-04-08')).toThrow(
+      DateIsoInvalideError,
+    );
+    expect(() => differenceEnJours('2026-04-05', '08/04/2026')).toThrow(
+      DateIsoInvalideError,
+    );
   });
 });

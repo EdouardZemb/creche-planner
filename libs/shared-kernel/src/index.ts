@@ -32,7 +32,7 @@ export {
   type Versionne,
   type VersionValide,
 } from './lib/versionnement.js';
-export { estDateIso, ajouterJours } from './lib/date-iso.js';
+export { estDateIso, ajouterJours, differenceEnJours } from './lib/date-iso.js';
 export { instant, type Instant } from './lib/instant.js';
 export {
   joursFeries,

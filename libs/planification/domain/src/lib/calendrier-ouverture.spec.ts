@@ -274,6 +274,147 @@ describe('établissement vierge (D7)', () => {
   });
 });
 
+/**
+ * Constats de la revue de code de la PR #352 — trois comportements que la table de
+ * vérité ne pinglait pas, et qui gouvernent ce que le lot 3 (import) et le lot 4
+ * (génération) écriront.
+ */
+describe('périodes qui se chevauchent : la plus spécifique l’emporte', () => {
+  const anneeScolaire: PeriodeCalendrier = {
+    type: 'PERIODE_SCOLAIRE',
+    libelle: 'Année scolaire',
+    du: '2026-01-05',
+    au: '2026-07-04',
+    connuDepuis: RETOUCHE,
+  };
+  const vacances: PeriodeCalendrier = {
+    type: 'VACANCES',
+    libelle: 'Vacances de printemps',
+    du: '2026-04-12',
+    au: '2026-04-27',
+    connuDepuis: SAISIE,
+  };
+
+  it('les vacances gagnent sur l’année scolaire qui les contient, dans les deux ordres de saisie', () => {
+    for (const periodes of [
+      [anneeScolaire, vacances],
+      [vacances, anneeScolaire],
+    ]) {
+      expect(
+        resoudreJour({ ...ecole(), periodes }, JEUDI_DE_VACANCES, APRES),
+      ).toMatchObject({
+        contexte: 'VACANCES',
+        libelle: 'Vacances de printemps',
+        servicesOuverts: ['ALSH'],
+      });
+    }
+  });
+
+  it('… même quand l’année scolaire est saisie APRÈS les vacances', () => {
+    // Le départage par instant de connaissance rouvrirait ici cantine et
+    // périscolaire en plein mois d’avril : c’est le défaut que ce test épingle.
+    expect(
+      resoudreJour(
+        { ...ecole(), periodes: [vacances, anneeScolaire] },
+        JEUDI_DE_VACANCES,
+        APRES,
+      ).servicesOuverts,
+    ).not.toContain('CANTINE');
+  });
+
+  it('hors des vacances, l’année scolaire reprend la main', () => {
+    expect(
+      resoudreJour(
+        { ...ecole(), periodes: [anneeScolaire, vacances] },
+        LUNDI_SCOLAIRE,
+        APRES,
+      ),
+    ).toMatchObject({
+      contexte: 'PERIODE_SCOLAIRE',
+      libelle: 'Année scolaire',
+      servicesOuverts: ['CANTINE', 'PERISCOLAIRE'],
+    });
+  });
+
+  it('même étendue et même connaissance : le début le plus tardif tranche, dans les deux ordres', () => {
+    // Dernier cran du départage total : sans lui, deux périodes indiscernables
+    // rendraient une réponse dépendante de l'ordre de lecture SQL.
+    const tot: PeriodeCalendrier = {
+      type: 'VACANCES',
+      libelle: 'Tôt',
+      du: '2026-04-12',
+      au: '2026-04-19',
+      connuDepuis: SAISIE,
+    };
+    const tard: PeriodeCalendrier = {
+      ...tot,
+      libelle: 'Tard',
+      du: '2026-04-13',
+      au: '2026-04-20',
+    };
+    for (const periodes of [
+      [tot, tard],
+      [tard, tot],
+    ]) {
+      expect(
+        resoudreJour({ ...ecole(), periodes }, JEUDI_DE_VACANCES, APRES)
+          .libelle,
+      ).toBe('Tard');
+    }
+  });
+
+  it('deux périodes de même étendue : la plus récemment connue tranche', () => {
+    const ancienne: PeriodeCalendrier = { ...vacances, libelle: 'Ancienne' };
+    const recente: PeriodeCalendrier = {
+      ...vacances,
+      libelle: 'Récente',
+      connuDepuis: RETOUCHE,
+    };
+    expect(
+      resoudreJour(
+        { ...ecole(), periodes: [ancienne, recente] },
+        JEUDI_DE_VACANCES,
+        APRES,
+      ).libelle,
+    ).toBe('Récente');
+    expect(
+      resoudreJour(
+        { ...ecole(), periodes: [recente, ancienne] },
+        JEUDI_DE_VACANCES,
+        APRES,
+      ).libelle,
+    ).toBe('Récente');
+  });
+});
+
+describe('deux comportements assumés, épinglés pour qu’ils ne dérivent pas', () => {
+  it('un mois antérieur au calendrier se relit sans contrainte de calendrier', () => {
+    // Le calendrier de l’école n’existe que depuis SAISIE (02/01). Un mois facturé
+    // avant cet instant doit se relire comme il se lisait alors : rien ne le
+    // contraignait. Juger « vierge » sur la table entière ferait rétroagir le
+    // calendrier sur un mois déjà facturé — ce que l’amendement PO interdit.
+    const avantLeCalendrier = instant('2025-12-01T00:00:00.000Z');
+    expect(
+      resoudreJour(ecole(), SAMEDI_SCOLAIRE, avantLeCalendrier).servicesOuverts,
+    ).toEqual(['CRECHE_PSU', 'PERISCOLAIRE', 'CANTINE', 'ALSH']);
+    // …et le même jour, aujourd’hui, est bien fermé par la récurrence.
+    expect(
+      resoudreJour(ecole(), SAMEDI_SCOLAIRE, APRES).servicesOuverts,
+    ).toEqual([]);
+  });
+
+  it('un jour hors de toute période est lu comme scolaire (trou de calendrier, `AM-105`)', () => {
+    // Le 10 août 2026 est un lundi, hors des deux périodes de la fixture : faute de
+    // période de vacances saisie, il est lu comme un lundi scolaire. C’est le prix
+    // du régime unique de la crèche ; l’écran du lot 3 doit signaler le trou.
+    expect(resoudreJour(ecole(), '2026-08-10', APRES)).toMatchObject({
+      contexte: 'PERIODE_SCOLAIRE',
+      libelle: '',
+      servicesOuverts: ['CANTINE', 'PERISCOLAIRE'],
+    });
+  });
+});
+
 describe('resoudreMois', () => {
   it('rend chaque jour du mois, au même instant de connaissance', () => {
     const avril = resoudreMois(ecole(), '2026-04', APRES);

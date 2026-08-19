@@ -65,6 +65,13 @@ est refusé).
 Régimes `FR` / `FR_ALSACE_MOSELLE` (Mulhouse), type ouvert — le plan 32 y ajoutera
 `CH_BL`.
 
+**Deux périodes qui se chevauchent se départagent par la SPÉCIFICITÉ, pas par la
+connaissance** (revue PR #352, `LE-84`) : l'import ne publie que les vacances,
+l'année scolaire saisie d'un bloc les contient — la **plus courte** l'emporte
+(ordre total : étendue, puis connaissance, puis `du`). Départager par l'instant
+de connaissance rendrait la réponse dépendante de l'**ordre de saisie**, ce que
+l'import du lot 3 heurterait de plein fouet.
+
 ## Pièges et écarts constatés au lot 1
 
 - ⚠️ **Le relevé du plan avait dérivé sur les migrations** : il annonçait `0009`
@@ -78,6 +85,14 @@ Régimes `FR` / `FR_ALSACE_MOSELLE` (Mulhouse), type ouvert — le plan 32 y ajo
 - ⚠️ **Le ratchet ne peut baisser que depuis la CI** (`EM-19`, extension d'`EM-02`) :
   ce lot supprime 3 warnings sans qu'aucune session locale puisse verrouiller le
   nouveau total dans `lint-baseline.json`.
+- ⚠️ **Un jour hors de toute période est lu « scolaire »** (`AM-105`) : le régime
+  par défaut est `SCOLAIRE`, nécessaire à la crèche qui n'en a qu'un. Un trou de
+  calendrier (plage non importée) est donc indiscernable d'une vraie période
+  scolaire — à signaler à l'écran du lot 3 ou dans les incohérences du lot 5.
+- ⚠️ **Deux fériés peuvent tomber le même jour** (`LE-83`) : Ascension = 8 mai en
+  2059, 2070, 2081, 2092, 2127 (29 années sur 1583-2200). `joursFeries` déduplique
+  et garde le libellé **fixe** ; le test balaye désormais toute la plage — le
+  précédent scannait 2020-2040, la seule fenêtre sans collision.
 - **La table de vérité ne trouve que ce qu'on y met** (`LE-82`, motif `MO-1`) :
   c'est le MBT qui a exhibé le calendrier où deux lignes ouvertes portaient le
   même instant de connaissance, et où la résolution dépendait alors de l'ordre du

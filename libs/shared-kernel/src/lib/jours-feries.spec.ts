@@ -103,13 +103,32 @@ describe('joursFeries — robustesse du calcul de Pâques', () => {
     ).toBe(attendu);
   });
 
-  it('aucune année ne produit de doublon de date', () => {
-    for (let annee = 2020; annee <= 2040; annee += 1) {
+  /**
+   * ⚠️ La version précédente de ce test balayait 2020-2040 — une fenêtre **sans
+   * aucune collision**. Il affirmait donc l'invariant sans jamais l'exercer : la
+   * garde était verte parce qu'elle ne regardait pas. Le balayage couvre désormais
+   * toute la plage utile, et les années de collision sont nommées en propre.
+   */
+  it('aucune année de 1583 à 2200 ne produit de doublon de date', () => {
+    for (let annee = 1583; annee <= 2200; annee += 1) {
       for (const regime of REGIMES_FERIES) {
         const jours = joursFeries(annee, regime).map((f) => f.jour);
         expect(new Set(jours).size).toBe(jours.length);
       }
     }
+  });
+
+  it('un jour portant deux fériés ne compte qu’une fois, sous le libellé fixe', () => {
+    // Pâques 2059 tombe le 30 mars : Ascension = 30/03 + 39 = 8 mai, jour de la
+    // Victoire 1945. Le jour est fermé une seule fois.
+    const feries = joursFeries(2059, 'FR');
+    expect(feries.filter((f) => f.jour === '2059-05-08')).toEqual([
+      { jour: '2059-05-08', libelle: 'Victoire 1945' },
+    ]);
+    expect(feries).toHaveLength(10);
+    expect(feries.some((f) => f.libelle === 'Ascension')).toBe(false);
+    // Une année sans collision en porte bien 11.
+    expect(joursFeries(2026, 'FR')).toHaveLength(11);
   });
 
   it('refuse une année hors plage grégorienne', () => {

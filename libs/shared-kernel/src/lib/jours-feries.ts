@@ -125,7 +125,17 @@ export function joursFeries(
       libelle,
     })),
   ];
-  // Les dates d'un même régime sont deux à deux distinctes (test dédié) : le
-  // comparateur n'a pas de cas d'égalité à traiter.
-  return feries.sort((x, y) => (x.jour < y.jour ? -1 : 1));
+  // ⚠️ Deux fériés peuvent tomber le **même jour** : l'Ascension (Pâques + 39)
+  // coïncide avec le 8 mai quand Pâques tombe le 30 mars — 2059, 2070, 2081, 2092,
+  // 2127… (29 années entre 1583 et 2200). C'est un seul jour fermé, donc une seule
+  // entrée : les fixes étant listés avant les mobiles, le libellé retenu est celui
+  // du férié **fixe**. Sans cette déduplication, un décompte de jours (plan 32,
+  // congés) compterait le jour deux fois.
+  const parJour = new Map<string, JourFerie>();
+  for (const ferie of feries) {
+    if (!parJour.has(ferie.jour)) {
+      parJour.set(ferie.jour, ferie);
+    }
+  }
+  return [...parJour.values()].sort((x, y) => (x.jour < y.jour ? -1 : 1));
 }
