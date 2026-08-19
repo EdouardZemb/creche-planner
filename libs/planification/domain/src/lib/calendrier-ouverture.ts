@@ -64,6 +64,15 @@ import {
  * `exception > férié > période > récurrence`. Les fériés ne sont **pas historisés**
  * (`joursFeries`) : ils sont calculés, donc déterministes et identiques quel que
  * soit l'instant de connaissance — un seul axe de temps s'y applique.
+ *
+ * ⚠️ **Cela vaut pour un régime donné, pas pour le régime lui-même.** `regimeFeries`
+ * est une donnée d'établissement portée par une colonne simple (D2), hors de tout
+ * axe de connaissance : corriger un `FR` saisi par erreur en `FR_ALSACE_MOSELLE`
+ * changerait rétroactivement l'interprétation des mois déjà facturés — deux jours
+ * par an, mais exactement le genre de retouche que RM-31-03 interdit. Le calcul est
+ * innocent, son entrée ne l'est pas. Suivi en `AM-106`, à trancher au lot 2 : soit
+ * la colonne est historisée comme les trois couches, soit la limite est écrite et
+ * assumée.
  */
 
 /**

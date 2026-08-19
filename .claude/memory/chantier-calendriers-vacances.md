@@ -89,6 +89,11 @@ l'import du lot 3 heurterait de plein fouet.
   par défaut est `SCOLAIRE`, nécessaire à la crèche qui n'en a qu'un. Un trou de
   calendrier (plage non importée) est donc indiscernable d'une vraie période
   scolaire — à signaler à l'écran du lot 3 ou dans les incohérences du lot 5.
+- ⚠️ **Le régime de fériés échappe à l'axe de connaissance** (`AM-106`, à trancher
+  au lot 2) : « les fériés sont calculés donc non historisés » est vrai du calcul,
+  faux de son **entrée** — `regimeFeries` est une colonne simple. Corriger un `FR`
+  en `FR_ALSACE_MOSELLE` rouvrirait le Vendredi saint sur des mois déjà facturés.
+  C'est le seul chemin de retouche rétroactive qui survit au lot 1.
 - ⚠️ **Deux fériés peuvent tomber le même jour** (`LE-83`) : Ascension = 8 mai en
   2059, 2070, 2081, 2092, 2127 (29 années sur 1583-2200). `joursFeries` déduplique
   et garde le libellé **fixe** ; le test balaye désormais toute la plage — le
