@@ -205,13 +205,16 @@ export default [
       //      (`lire<void>(r)` pour les réponses 204). Les solder demande de
       //      scinder `lire<T>` en deux fonctions — refonte du client web, hors lot.
       '@typescript-eslint/no-invalid-void-type': 'warn',
-      // no-unused-vars : on conserve le niveau « warn » historique de la base Nx,
-      // mais on CODIFIE la convention déjà employée dans le dépôt (`_url`, `_init`,
-      // `_strength`…) : un identifiant préfixé d'un souligné est délibérément
-      // inutilisé. Indispensable depuis D3, où le retrait d'une clé s'écrit
-      // `const { [k]: _retire, ...reste } = obj` (cf. no-dynamic-delete).
+      // no-unused-vars : **promue en `error` le 2026-08-19** — la règle est tombée
+      // à 0 warning (mesure de CI, ratchet du run 32307319115), et le ratchet dit
+      // qu'une règle à zéro se promeut gratuitement : le terrain gagné ne se
+      // reperd plus. Le niveau « warn » venait de la base Nx.
+      // Elle CODIFIE par ailleurs la convention déjà employée dans le dépôt
+      // (`_url`, `_init`, `_strength`…) : un identifiant préfixé d'un souligné est
+      // délibérément inutilisé. Indispensable depuis D3, où le retrait d'une clé
+      // s'écrit `const { [k]: _retire, ...reste } = obj` (cf. no-dynamic-delete).
       '@typescript-eslint/no-unused-vars': [
-        'warn',
+        'error',
         {
           argsIgnorePattern: '^_',
           varsIgnorePattern: '^_',
