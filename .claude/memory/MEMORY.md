@@ -12,6 +12,8 @@
 
 ## Chantiers actifs
 
+- [Calendriers & vacances scolaires (SFD 31)](chantier-calendriers-vacances.md) — chantier **LANCÉ le 2026-08-19** (5 lots) ; **lot 1 livré, non mergé** : le domaine calendrier versionné + `joursFeries` — l'**ancre de connaissance est tranchée** (instant de facturation du mois, pas de création du planning).
+  ⚠️ Borne de connaissance **exclusive** vs `au` métier **inclusif** ; unicités **partielles** imposées au lot 2 ; migration du lot 2 = **`0010`**, pas `0009` (relevé du plan périmé).
 - [Le coût ne ment plus](chantier-cout-ne-ment-plus.md) — **chantier COMPLET : lots 1 (`c1086f7`), 2 (`5516e00`) et 3 (`9b94764`) MERGÉS le 2026-08-17, AUCUN DÉPLOYÉ** (train visé ~23/08, avec le lot 9 des standards). Le coût d’un mois non couvert refuse (422) ; le récap ne part plus pour rien et le consentement est écrit ; les 7 durables JetStream ne reçoivent plus que ce qu’ils traitent, et l’outbox date son blocage.
   ⚠️ Le relevé `dead_letter` se juge **APRÈS** le train (le filtre n’est posé qu’au redémarrage) ; retirer un blocage autorise un **réordonnancement** qu’un effacement défait (`LE-77`) ; un correctif posé **à la création** est invisible à une CI qui part d’un `down -v` (`LE-76`, `EM-17`) ; restent `AM-88`, `AM-90`, `AM-98`, `AM-99`.
 - [Vision plateforme du foyer (2026-08)](../plans/vision-plateforme-foyer-2026-08.md) — projection PO 2026-08-11 : vacances/impôts/voiture/courses/documents mappés sur SFD 31-33 + factures-réelles, pistes `AM-63`→`AM-65`, horizon domotique long terme (aucun chantier lancé).
