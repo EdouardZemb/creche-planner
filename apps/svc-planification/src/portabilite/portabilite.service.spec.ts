@@ -86,8 +86,24 @@ function ligneEtablissement(): Record<string, unknown> {
     telephone: '0388000000',
     contact: 'Mme Martin',
     actif: true,
+    zoneScolaire: 'B',
     createdAt: LE,
     updatedAt: LE,
+  };
+}
+
+const ETAB_ID = '44444444-0000-4000-8000-000000000000';
+
+/** Une ligne de calendrier, close ou ouverte selon `connuJusqua`. */
+function ligneCalendrier(
+  extra: Record<string, unknown>,
+  connuJusqua: Date | null = null,
+): Record<string, unknown> {
+  return {
+    etablissementId: ETAB_ID,
+    connuDepuis: LE,
+    connuJusqua,
+    ...extra,
   };
 }
 
@@ -122,24 +138,112 @@ describe('PortabiliteService (svc-planification)', () => {
       [],
       [],
       [],
+      [],
+      [],
+      [],
+      [],
     );
     const service = new PortabiliteService(db);
 
     await service.exporter(FOYER_ID);
 
     const rendus = conditions.map(rendre);
-    expect(rendus).toHaveLength(5);
+    // 2 lectures par foyer, 3 par contrat, 4 par établissement (le calendrier).
+    expect(rendus).toHaveLength(9);
     for (const rendu of rendus.slice(0, 2)) {
       expect(rendu.params).toEqual([FOYER_ID]);
       expect(rendu.sql).toContain('"foyer_id"');
     }
     // contrat_version, correction_journal et planning_mois n'ont PAS de
     // `foyer_id` : elles ne se rattachent au foyer que par leur contrat.
-    for (const rendu of rendus.slice(2)) {
+    for (const rendu of rendus.slice(2, 5)) {
       expect(rendu.params).toEqual([CONTRAT_ID]);
       expect(rendu.sql).toContain('"contrat_id"');
       expect(rendu.sql).not.toContain('"foyer_id"');
     }
+    // Les quatre couches du calendrier ne se rattachent au foyer que par leur
+    // établissement — et surtout, elles ne filtrent PAS sur `connu_jusqua` :
+    // l'export rend l'historique, pas l'état courant.
+    for (const rendu of rendus.slice(5)) {
+      expect(rendu.params).toEqual([ETAB_ID]);
+      expect(rendu.sql).toContain('"etablissement_id"');
+      expect(rendu.sql).not.toContain('"connu_jusqua"');
+    }
+  });
+
+  /**
+   * Le principe du §6 de la doc 37 — « ce qu'un effacement emporte, un export doit
+   * le rendre » — appliqué au calendrier : la cascade emporte les lignes **closes**
+   * comme les ouvertes, donc l'export les rend toutes. N'exporter que l'état
+   * courant livrerait un calendrier sans passé, c'est-à-dire l'inverse de ce que
+   * la SFD 31 conserve.
+   */
+  it('exporte le calendrier de l’établissement, lignes closes comprises', async () => {
+    const clos = new Date('2026-04-01T00:00:00.000Z');
+    const { db } = fakeDbLecture(
+      [],
+      [ligneEtablissement()],
+      [
+        ligneCalendrier(
+          {
+            type: 'VACANCES',
+            libelle: 'Printemps',
+            du: '2026-04-04',
+            au: '2026-04-20',
+            source: 'IMPORT',
+            anneeScolaire: '2025-2026',
+          },
+          clos,
+        ),
+      ],
+      [
+        ligneCalendrier({
+          jour: '2026-03-03',
+          type: 'FERMETURE',
+          libelle: 'Fermeture',
+          services: null,
+        }),
+      ],
+      [
+        ligneCalendrier({
+          regime: 'SCOLAIRE',
+          jourSemaine: 'LUNDI',
+          services: ['CANTINE'],
+        }),
+      ],
+      [ligneCalendrier({ regime: 'FR_ALSACE_MOSELLE' })],
+    );
+    const service = new PortabiliteService(db);
+
+    const vue = await service.exporter(FOYER_ID);
+
+    const calendrier = vue.etablissements[0]?.calendrier;
+    expect(calendrier?.periodes[0]).toMatchObject({
+      source: 'IMPORT',
+      anneeScolaire: '2025-2026',
+      // La borne de clôture voyage : sans elle, la ligne close serait
+      // indiscernable d'une ligne en vigueur.
+      connuJusqua: clos.toISOString(),
+    });
+    expect(calendrier?.exceptions[0]).toMatchObject({ connuJusqua: null });
+    expect(calendrier?.recurrences[0]?.services).toEqual(['CANTINE']);
+    expect(calendrier?.regimesFeries[0]?.regime).toBe('FR_ALSACE_MOSELLE');
+    expect(vue.etablissements[0]?.zoneScolaire).toBe('B');
+  });
+
+  it('rend quatre listes vides quand l’établissement n’a aucun calendrier', async () => {
+    const { db } = fakeDbLecture([], [ligneEtablissement()], [], [], [], []);
+    const service = new PortabiliteService(db);
+
+    const vue = await service.exporter(FOYER_ID);
+
+    // Jamais `undefined` dans le document : un consommateur lit quatre listes.
+    expect(vue.etablissements[0]?.calendrier).toEqual({
+      periodes: [],
+      exceptions: [],
+      recurrences: [],
+      regimesFeries: [],
+    });
   });
 
   it('rattache avenants, corrections et plannings à leur contrat', async () => {
