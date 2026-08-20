@@ -213,6 +213,14 @@ export const preavisRegleSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+/**
+ * Régimes de jours fériés d'un établissement — miroir de `REGIMES_FERIES`
+ * (`shared-kernel`). Déclaré **avant** les schémas qui l'emploient : un `z.enum`
+ * s'évalue à l'initialisation du module, une `const` posée plus bas serait dans sa
+ * zone morte temporelle.
+ */
+const REGIMES_FERIES_BFF = ['FR', 'FR_ALSACE_MOSELLE'] as const;
+
 /** Modes de garde proposables par un établissement (sous-ensemble informatif). */
 const MODES_ETABLISSEMENT = [
   'CRECHE_PSU',
@@ -236,10 +244,81 @@ export const creerEtablissementSchema = z.object({
   telephone: z.string().max(40).nullish(),
   contact: z.string().max(200).nullish(),
   actif: z.boolean().optional(),
+  /** Zone de vacances scolaires (SFD 31), `null` = pas de calendrier scolaire. */
+  zoneScolaire: z.enum(['A', 'B', 'C']).nullish(),
+  /** Régime de fériés (`FR` par défaut, `FR_ALSACE_MOSELLE` pour Mulhouse). */
+  regimeFeries: z.enum(REGIMES_FERIES_BFF).optional(),
 });
 
 /** Édition d'un établissement : tous les champs facultatifs (seuls les fournis changent). */
 export const modifierEtablissementSchema = creerEtablissementSchema.partial();
+
+/**
+ * ## Calendrier d'ouverture (SFD 31, lot 2) — frontière BFF
+ *
+ * La validation profonde reste chez `svc-planification` ; ce qui se joue ici est
+ * la **forme**, et surtout la traversée de `aLaDate`. Ce paramètre franchit quatre
+ * couches (route amont → BFF → ce schéma → client web) et un `z.object` **strippe
+ * silencieusement** toute clé qu'il ne déclare pas : l'oublier à cette étape-ci ne
+ * produit aucune erreur, seulement une réponse résolue au mauvais instant
+ * (`LE-48`). Il est donc déclaré explicitement, et un test le vérifie de bout en
+ * bout plutôt que de le supposer.
+ *
+ * Un service ouvrable par le calendrier est un mode du catalogue — même liste que
+ * les types d'établissement, réutilisée telle quelle.
+ */
+const serviceCalendrierSchema = z.enum(MODES_ETABLISSEMENT);
+
+/** Query de la lecture résolue : plage métier + instant de connaissance. */
+export const lireCalendrierQuerySchema = z.object({
+  du: z.iso.date(),
+  au: z.iso.date(),
+  aLaDate: z.string().min(1).optional(),
+});
+
+/** Query des couches brutes : l'instant de connaissance seul. */
+export const lireCoucheCalendrierQuerySchema = z.object({
+  aLaDate: z.string().min(1).optional(),
+});
+
+/** Remplacement intégral de la récurrence hebdomadaire. */
+export const remplacerRecurrencesSchema = z.object({
+  recurrences: z.array(
+    z.object({
+      regime: z.enum(['SCOLAIRE', 'VACANCES']),
+      jourSemaine: z.enum([
+        'LUNDI',
+        'MARDI',
+        'MERCREDI',
+        'JEUDI',
+        'VENDREDI',
+        'SAMEDI',
+        'DIMANCHE',
+      ]),
+      services: z.array(serviceCalendrierSchema),
+    }),
+  ),
+});
+
+/** Pose d'une exception ponctuelle (`services` omis = tous les services). */
+export const poserExceptionSchema = z.object({
+  jour: z.iso.date(),
+  type: z.enum(['FERMETURE', 'OUVERTURE', 'JOURNEE_PEDAGOGIQUE', 'PONT']),
+  libelle: z.string().min(1).max(200),
+  services: z.array(serviceCalendrierSchema).optional(),
+});
+
+/** Saisie d'une période (`source` n'est pas dans le corps : toujours `MANUEL`). */
+export const saisirPeriodeSchema = z.object({
+  type: z.enum(['PERIODE_SCOLAIRE', 'VACANCES', 'FERMETURE_ANNUELLE']),
+  libelle: z.string().min(1).max(200),
+  du: z.iso.date(),
+  au: z.iso.date(),
+  anneeScolaire: z
+    .string()
+    .regex(/^\d{4}-\d{4}$/, 'année scolaire attendue au format 2026-2027')
+    .optional(),
+});
 
 // Mois borné 01-12 (AQ-04, doc 27 : l'ancienne `\d{2}` acceptait « 2026-13 »).
 const MOIS = /^\d{4}-(0[1-9]|1[0-2])$/;

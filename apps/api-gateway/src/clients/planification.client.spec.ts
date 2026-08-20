@@ -318,4 +318,127 @@ describe('PlanificationClient (gateway→svc-planification)', () => {
       }
     });
   });
+
+  /**
+   * Le calendrier d'ouverture (SFD 31, lot 2). Ce qui se joue ici n'est pas la
+   * plomberie HTTP mais **la construction de la query** : `aLaDate` est optionnel,
+   * et le transmettre vide (`?aLaDate=`) au lieu de l'omettre ferait échouer la
+   * validation amont — le défaut « maintenant » ne s'exprime que par l'ABSENCE du
+   * paramètre. C'est le genre d'écart qu'aucun type ne rattrape.
+   */
+  describe('calendrier', () => {
+    const ETAB = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const INSTANT = '2026-05-01T00:00:00.000Z';
+    const RESOLU_OK = {
+      du: '2026-03-02',
+      au: '2026-03-02',
+      aLaDate: INSTANT,
+      jours: [
+        {
+          jour: '2026-03-02',
+          contexte: 'PERIODE_SCOLAIRE',
+          libelle: '',
+          servicesOuverts: ['CANTINE'],
+        },
+      ],
+    };
+
+    /** L'URL du dernier `fetch` émis. */
+    function derniereUrl(fetchMock: ReturnType<typeof vi.fn>): string {
+      return String(fetchMock.mock.calls.at(-1)?.[0] ?? '');
+    }
+
+    /**
+     * Faux `fetch` rendant `corps`. Les paramètres sont DÉCLARÉS même inutilisés :
+     * sans eux, `vi.fn` infère un tuple d'arguments vide et `mock.calls[n][1]`
+     * devient une erreur de type. Pas d'`async` non plus — une fonction `async`
+     * sans `await` est un avertissement du ratchet, qui ne peut que baisser.
+     */
+    function fetchJson(corps: unknown, statut = 200): ReturnType<typeof vi.fn> {
+      return vi.fn((_url: string, _init?: RequestInit) =>
+        Promise.resolve({
+          ok: true,
+          status: statut,
+          json: () => Promise.resolve(corps),
+        }),
+      );
+    }
+
+    it('n’ajoute PAS `aLaDate` à la query quand il est omis', async () => {
+      const fetchMock = fetchJson(RESOLU_OK);
+      vi.stubGlobal('fetch', fetchMock);
+      await new PlanificationClient().lireCalendrier(
+        ETAB,
+        '2026-03-02',
+        '2026-03-02',
+      );
+      const url = derniereUrl(fetchMock);
+      expect(url).toContain('du=2026-03-02&au=2026-03-02');
+      // Un `?aLaDate=` vide serait rejeté en 400 par le service : l'omission est
+      // la seule façon d'exprimer « maintenant ».
+      expect(url).not.toContain('aLaDate');
+    });
+
+    it('ajoute `aLaDate` encodé quand il est fourni', async () => {
+      const fetchMock = fetchJson(RESOLU_OK);
+      vi.stubGlobal('fetch', fetchMock);
+      await new PlanificationClient().lireCalendrier(
+        ETAB,
+        '2026-03-02',
+        '2026-03-02',
+        INSTANT,
+      );
+      expect(derniereUrl(fetchMock)).toContain(
+        `aLaDate=${encodeURIComponent(INSTANT)}`,
+      );
+    });
+
+    it('parse la réponse résolue en conservant `aLaDate` (le schéma ne le strippe pas)', async () => {
+      vi.stubGlobal('fetch', fetchJson(RESOLU_OK));
+      const vue = await new PlanificationClient().lireCalendrier(
+        ETAB,
+        '2026-03-02',
+        '2026-03-02',
+        INSTANT,
+      );
+      // `LE-48` : un `z.object` strippe en silence ce qu'il ne déclare pas. Si
+      // `aLaDate` disparaissait du schéma, ce test — et lui seul — le dirait.
+      expect(vue.aLaDate).toBe(INSTANT);
+      expect(vue.jours[0]?.servicesOuverts).toEqual(['CANTINE']);
+    });
+
+    it('met `aLaDate` en PREMIER paramètre sur les couches brutes', async () => {
+      const fetchMock = fetchJson({ aLaDate: INSTANT, recurrences: [] });
+      vi.stubGlobal('fetch', fetchMock);
+      await new PlanificationClient().lireRecurrencesCalendrier(ETAB, INSTANT);
+      expect(derniereUrl(fetchMock)).toContain(
+        `/calendrier/recurrences?aLaDate=`,
+      );
+    });
+
+    it('n’ajoute aucune query aux couches brutes sans instant', async () => {
+      const fetchMock = fetchJson({ aLaDate: INSTANT, periodes: [] });
+      vi.stubGlobal('fetch', fetchMock);
+      await new PlanificationClient().lirePeriodesCalendrier(ETAB);
+      expect(derniereUrl(fetchMock)).toMatch(/\/calendrier\/periodes$/);
+    });
+
+    it('relaie les écritures sur les bons chemins', async () => {
+      const fetchMock = fetchJson({ aLaDate: INSTANT, recurrences: [] });
+      vi.stubGlobal('fetch', fetchMock);
+      const client = new PlanificationClient();
+      await client.remplacerRecurrencesCalendrier(ETAB, { recurrences: [] });
+      expect(derniereUrl(fetchMock)).toContain('/calendrier/recurrences');
+    });
+
+    it('clôt une exception par DELETE sur son identifiant', async () => {
+      const fetchMock = fetchJson({}, 204);
+      vi.stubGlobal('fetch', fetchMock);
+      await new PlanificationClient().cloreExceptionCalendrier(ETAB, 'e1');
+      expect(derniereUrl(fetchMock)).toContain('/calendrier/exceptions/e1');
+      expect(fetchMock.mock.calls.at(-1)?.[1]).toMatchObject({
+        method: 'DELETE',
+      });
+    });
+  });
 });

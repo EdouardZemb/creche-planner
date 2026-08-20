@@ -18,7 +18,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
   // (lot D6), qui confronte le document au graphe de modules Nest et exige l'égalité
   // dans les deux sens. C'est lui qui a montré que 12 opérations servies — dont les
   // 6 routes `/notifications/*` — n'étaient documentées nulle part.
-  it('expose exactement les 39 routes attendues', () => {
+  it('expose exactement les 45 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -36,6 +36,15 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/foyers/{id}/parents/{parentId}',
         '/api/v1/foyers/{foyerId}/etablissements',
         '/api/v1/foyers/{foyerId}/etablissements/{id}',
+        // Calendrier d'ouverture (SFD 31, lot 2). Six chemins, dix opérations :
+        // la lecture résolue (contrat GELÉ, consommé sans pact par le plan 33)
+        // et les trois couches en append-only — « supprimer » y est une clôture.
+        '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier',
+        '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/recurrences',
+        '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/periodes',
+        '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/periodes/{periodeId}',
+        '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/exceptions',
+        '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/exceptions/{exceptionId}',
         '/api/v1/moi',
         '/api/v1/moi/profil',
         '/api/v1/moi/preferences',

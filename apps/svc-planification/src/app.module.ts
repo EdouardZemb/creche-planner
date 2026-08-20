@@ -17,6 +17,7 @@ import * as schema from './database/schema.js';
 import { ConsumersModule } from './consumers/consumers.module.js';
 import { PlanificationModule } from './planification/planification.module.js';
 import { EtablissementModule } from './etablissement/etablissement.module.js';
+import { CalendrierModule } from './calendrier/calendrier.module.js';
 import { PortabiliteModule } from './portabilite/portabilite.module.js';
 import { ResolveurFoyerPlanification } from './security/resolveur-foyer.js';
 
@@ -40,6 +41,9 @@ import { ResolveurFoyerPlanification } from './security/resolveur-foyer.js';
     ConsumersModule,
     PlanificationModule,
     EtablissementModule,
+    // Calendrier d'ouverture versionné (SFD 31, lot 2) : 3 couches historisées +
+    // le régime de fériés sur le même axe de connaissance.
+    CalendrierModule,
     // Export de portabilité (lot 3) : contrats, avenants, corrections, plannings
     // et établissements du foyer.
     PortabiliteModule,
