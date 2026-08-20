@@ -55,14 +55,27 @@ export interface EtablissementVue {
   readonly regimeFeries: RegimeFeries;
 }
 
-/** Détection d'une violation d'unicité Postgres (`23505`) portée par `postgres`. */
-function estViolationUnicite(erreur: unknown): erreur is { code: string } {
+/**
+ * Détection d'une violation d'unicité Postgres (`23505`) portée par `postgres`,
+ * **avec le nom de la contrainte** heurtée.
+ *
+ * Le nom n'est pas un détail : depuis que `creer`/`modifier` écrivent aussi le
+ * régime de fériés (`calendrier_regime_feries`, `AM-106`), une transaction peut
+ * heurter DEUX unicités différentes. Traduire les deux par « ce nom est déjà pris »
+ * enverrait le parent corriger un nom parfaitement valide.
+ */
+function estViolationUnicite(
+  erreur: unknown,
+): erreur is { code: string; constraint_name?: string } {
   return (
     typeof erreur === 'object' &&
     erreur !== null &&
     (erreur as { code?: unknown }).code === '23505'
   );
 }
+
+/** Nom de l'unicité `(foyer_id, nom)` d'un établissement (migration `0002`). */
+const UNICITE_NOM = 'etablissement_foyer_nom_uq';
 
 @Injectable()
 export class EtablissementService {
@@ -319,14 +332,26 @@ export class EtablissementService {
     };
   }
 
-  /** Traduit une violation d'unicité (nom déjà pris dans le foyer) en 409. */
+  /**
+   * Traduit une violation d'unicité en 409. **Seule** celle du nom porte le message
+   * du nom : une autre contrainte (le régime de fériés concurrent, par exemple)
+   * rend un conflit générique plutôt qu'un diagnostic faux. Un `23505` sans nom de
+   * contrainte — driver plus ancien — retombe sur le cas historique, qui reste le
+   * plus probable.
+   */
   private traduireUnicite(erreur: unknown): never {
-    if (estViolationUnicite(erreur)) {
+    if (!estViolationUnicite(erreur)) {
+      throw erreur;
+    }
+    const contrainte = erreur.constraint_name;
+    if (contrainte === undefined || contrainte === UNICITE_NOM) {
       throw new ConflictException(
         'un établissement portant ce nom existe déjà pour ce foyer',
       );
     }
-    throw erreur;
+    throw new ConflictException(
+      `l'établissement a été modifié en même temps (${contrainte}) : recharger puis réessayer`,
+    );
   }
 
   /** Vue d'une ligne, le régime de fériés étant déjà connu (lecture groupée). */

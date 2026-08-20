@@ -40,6 +40,8 @@ const HIRONDELLES: EtablissementVue = {
   telephone: null,
   contact: null,
   actif: true,
+  zoneScolaire: null,
+  regimeFeries: 'FR' as const,
 };
 const ABCM: EtablissementVue = {
   id: ID_ABCM,
@@ -52,6 +54,8 @@ const ABCM: EtablissementVue = {
   telephone: null,
   contact: null,
   actif: true,
+  zoneScolaire: null,
+  regimeFeries: 'FR' as const,
 };
 
 describe('estContratActifSurSemaine', () => {

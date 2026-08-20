@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   NotFoundException,
@@ -8,12 +9,12 @@ import {
   and,
   asc,
   eq,
+  gt,
   gte,
   inArray,
   isNull,
   lte,
   or,
-  sql,
   type SQL,
 } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
@@ -163,6 +164,32 @@ export class CalendrierService {
   }
 
   /**
+   * Traduit une violation d'unicité Postgres (`23505`) en **409**.
+   *
+   * Les unicités du calendrier sont **partielles** (`WHERE connu_jusqua IS NULL`)
+   * et deux écritures concurrentes peuvent les heurter : deux onglets qui posent
+   * une exception le même jour, ou une semaine type envoyée deux fois. Sans cette
+   * traduction, le parent voit un 500 pour un conflit parfaitement ordinaire — et
+   * le CRUD établissement, lui, rend déjà 409 sur la même famille d'erreur.
+   */
+  private async enConflit<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (erreur) {
+      if (
+        typeof erreur === 'object' &&
+        erreur !== null &&
+        (erreur as { code?: unknown }).code === '23505'
+      ) {
+        throw new ConflictException(
+          'le calendrier a été modifié en même temps : recharger puis réessayer',
+        );
+      }
+      throw erreur;
+    }
+  }
+
+  /**
    * La ligne rendue par un `INSERT … RETURNING`. Postgres en rend toujours une
    * (aucune de ces insertions n'a de clause de conflit) ; on le **vérifie** au
    * lieu de l'affirmer par un `!` — une assertion non-nulle transformerait une
@@ -305,7 +332,7 @@ export class CalendrierService {
           // Borne haute EXCLUSIVE : `connu_jusqua > ancre`, jamais `>=`.
           or(
             isNull(calendrierRegimeFeries.connuJusqua),
-            sql`${calendrierRegimeFeries.connuJusqua} > ${borne}`,
+            gt(calendrierRegimeFeries.connuJusqua, borne),
           ),
         ),
       )
@@ -444,6 +471,15 @@ export class CalendrierService {
    * clôture et l'ouverture qui la suit, posées au même instant, désignent
    * exactement une ligne et jamais deux.
    */
+  /**
+   * ⚠️ **Comparateurs typés (`lte`/`gt`), jamais un fragment brut.** Interpoler une
+   * valeur dans un gabarit SQL la place en paramètre **sans** le type de la
+   * colonne : `postgres` reçoit alors un `Date` qu'il ne sait pas encoder et la
+   * requête meurt en 500 (« Received an instance of Date »). Le défaut ne se voit
+   * ni au typecheck ni au test unitaire — un faux `db` n'exécute aucune requête —
+   * seulement contre une vraie base (`LE-88`, trouvé par la vérification pact
+   * provider en CI ; une sonde de spec l'interdit désormais en source).
+   */
   private connuA(
     table: { connuDepuis: AnyPgColumn; connuJusqua: AnyPgColumn },
     ancre: Instant,
@@ -451,7 +487,7 @@ export class CalendrierService {
     const borne = new Date(ancre);
     return and(
       lte(table.connuDepuis, borne),
-      or(isNull(table.connuJusqua), sql`${table.connuJusqua} > ${borne}`),
+      or(isNull(table.connuJusqua), gt(table.connuJusqua, borne)),
     );
   }
 
@@ -468,28 +504,30 @@ export class CalendrierService {
     await this.garantirEtablissement(etablissementId);
     const t = this.maintenant();
     const borne = new Date(t);
-    await this.db.transaction(async (tx: Tx) => {
-      await tx
-        .update(calendrierRecurrence)
-        .set({ connuJusqua: borne })
-        .where(
-          and(
-            eq(calendrierRecurrence.etablissementId, etablissementId),
-            isNull(calendrierRecurrence.connuJusqua),
-          ),
-        );
-      if (dto.recurrences.length > 0) {
-        await tx.insert(calendrierRecurrence).values(
-          dto.recurrences.map((r) => ({
-            etablissementId,
-            regime: r.regime,
-            jourSemaine: r.jourSemaine,
-            services: r.services,
-            connuDepuis: borne,
-          })),
-        );
-      }
-    });
+    await this.enConflit(() =>
+      this.db.transaction(async (tx: Tx) => {
+        await tx
+          .update(calendrierRecurrence)
+          .set({ connuJusqua: borne })
+          .where(
+            and(
+              eq(calendrierRecurrence.etablissementId, etablissementId),
+              isNull(calendrierRecurrence.connuJusqua),
+            ),
+          );
+        if (dto.recurrences.length > 0) {
+          await tx.insert(calendrierRecurrence).values(
+            dto.recurrences.map((r) => ({
+              etablissementId,
+              regime: r.regime,
+              jourSemaine: r.jourSemaine,
+              services: r.services,
+              connuDepuis: borne,
+            })),
+          );
+        }
+      }),
+    );
     return this.lireRecurrences(etablissementId, t);
   }
 
@@ -506,30 +544,32 @@ export class CalendrierService {
   ): Promise<ExceptionVue> {
     await this.garantirEtablissement(etablissementId);
     const borne = new Date(this.maintenant());
-    const ligne = await this.db.transaction(async (tx: Tx) => {
-      await tx
-        .update(calendrierException)
-        .set({ connuJusqua: borne })
-        .where(
-          and(
-            eq(calendrierException.etablissementId, etablissementId),
-            eq(calendrierException.jour, dto.jour),
-            isNull(calendrierException.connuJusqua),
-          ),
-        );
-      const [inseree] = await tx
-        .insert(calendrierException)
-        .values({
-          etablissementId,
-          jour: dto.jour,
-          type: dto.type,
-          libelle: dto.libelle,
-          services: dto.services === undefined ? null : [...dto.services],
-          connuDepuis: borne,
-        })
-        .returning();
-      return inseree;
-    });
+    const ligne = await this.enConflit(() =>
+      this.db.transaction(async (tx: Tx) => {
+        await tx
+          .update(calendrierException)
+          .set({ connuJusqua: borne })
+          .where(
+            and(
+              eq(calendrierException.etablissementId, etablissementId),
+              eq(calendrierException.jour, dto.jour),
+              isNull(calendrierException.connuJusqua),
+            ),
+          );
+        const [inseree] = await tx
+          .insert(calendrierException)
+          .values({
+            etablissementId,
+            jour: dto.jour,
+            type: dto.type,
+            libelle: dto.libelle,
+            services: dto.services === undefined ? null : [...dto.services],
+            connuDepuis: borne,
+          })
+          .returning();
+        return inseree;
+      }),
+    );
     return this.versExceptionVue(
       this.ligneInseree([ligne], 'calendrier_exception'),
     );

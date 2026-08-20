@@ -178,9 +178,11 @@ const ETABLISSEMENT_DEFAUT = 'Établissement';
  *   en plus). Semaine scolaire lun/mar/jeu/ven pour cantine et périscolaire, ALSH
  *   le mercredi ; pendant les vacances, l'ALSH seul. C'est la récurrence qui
  *   remplace la constante morte `JOURS_OUVERTURE_ECOLE` (D5).
- * - **Crèche Les Hirondelles** — aucune zone scolaire (elle n'a pas de vacances),
- *   régime national, ouverte du lundi au vendredi, plus ses fermetures annuelles
- *   posées en exceptions.
+ * - **Crèche Les Hirondelles** — aucune zone scolaire (elle n'a pas de vacances
+ *   scolaires), ouverte du lundi au vendredi, plus ses fermetures annuelles posées
+ *   en exceptions. Régime de fériés **Alsace-Moselle** comme l'école : les deux
+ *   établissements sont à Mulhouse, c'est le lieu qui décide, pas la nature du
+ *   service.
  *
  * ⚠️ Le seed passe par l'**API BFF**, jamais par SQL : c'est ce qui fait qu'il
  * emprunte exactement le chemin du produit, validation comprise. Un seed SQL

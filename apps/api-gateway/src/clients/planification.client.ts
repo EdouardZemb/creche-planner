@@ -153,12 +153,22 @@ const etablissementVueSchema = z.object({
   actif: z.boolean(),
   /**
    * Zone de vacances scolaires (SFD 31) — `null` = pas de calendrier scolaire.
-   * `nullish` par tolérance : un provider pas encore à niveau ne doit pas faire
-   * échouer la lecture (même patron que `premiereInscription`).
+   *
+   * `nullish` **en entrée** par tolérance (un provider pas encore à niveau ne doit
+   * pas faire échouer la lecture, patron de `premiereInscription`), mais **normalisé
+   * en sortie** : le document OpenAPI déclare ces deux champs *requis*, et le type
+   * web en est généré. Relayer un `undefined` rendrait un 200 qui viole le contrat
+   * de la gateway elle-même, sans qu'aucune erreur ne le dise.
    */
-  zoneScolaire: z.enum(['A', 'B', 'C']).nullish(),
-  /** Régime de fériés **actuellement connu** (`FR` par défaut, D7). */
-  regimeFeries: z.enum(['FR', 'FR_ALSACE_MOSELLE']).nullish(),
+  zoneScolaire: z
+    .enum(['A', 'B', 'C'])
+    .nullish()
+    .transform((v) => v ?? null),
+  /** Régime de fériés **actuellement connu**, `FR` à défaut (D7). */
+  regimeFeries: z
+    .enum(['FR', 'FR_ALSACE_MOSELLE'])
+    .nullish()
+    .transform((v) => v ?? 'FR'),
 });
 
 export type EtablissementVue = z.infer<typeof etablissementVueSchema>;

@@ -109,6 +109,14 @@ refuse tout `.delete(` — la différence entre « les cas testés ne suppriment
 
 ## Pièges et écarts constatés au lot 2
 
+- ⚠️ **Un faux `db` prouve la forme de l'appel, jamais que la requête s'exécute**
+  (`LE-97`) : le prédicat de borne haute passait par un gabarit SQL interpolant
+  une valeur — le `Date` partait en paramètre **sans le type de la colonne**, et
+  `postgres` refusait de l'encoder. **500 sur les deux lectures du calendrier**,
+  invisible au typecheck, au lint et aux 23 tests unitaires du service. Seule la
+  **vérification pact provider** (vraie base, CI) l'a vu. Corrigé par les
+  comparateurs typés de drizzle (`gt`), et une **sonde de source** interdit
+  désormais tout gabarit SQL dans ce service.
 - ⚠️ **`verifierUniciteOuverte` n'est appelée nulle part** (`AM-116`) : l'unicité
   ouverte n'est tenue que par les index partiels Postgres, donc une violation
   concurrente remonte en `23505` brut (500) au lieu du 409 que le CRUD
