@@ -3,6 +3,7 @@ import {
   MODES_CONTRAT,
   preavisRegleSchema,
 } from '@creche-planner/contracts-planification';
+import { regimeFeriesSchema } from '../calendrier/calendrier.dto.js';
 
 /**
  * Liste des **types** proposés par un établissement : sous-ensemble (possiblement
@@ -35,6 +36,20 @@ export const creerEtablissementSchema = z.object({
   telephone: z.string().max(40).nullish(),
   contact: z.string().max(200).nullish(),
   actif: z.boolean().optional(),
+  /**
+   * Zone de vacances scolaires (`A`|`B`|`C`), `null` = pas de calendrier scolaire
+   * (cas de la crèche). Sert l'import open data du lot 3 : elle dit *où chercher*
+   * les périodes, pas ce qu'un jour vaut — elle n'est donc pas historisée.
+   */
+  zoneScolaire: z.enum(['A', 'B', 'C']).nullish(),
+  /**
+   * Régime de jours fériés (`FR` par défaut, D7 ; `FR_ALSACE_MOSELLE` pour
+   * Mulhouse). ⚠️ À la différence de la zone, il **est** historisé : il entre dans
+   * la résolution d'un jour, donc le corriger après coup changerait des mois déjà
+   * facturés (`AM-106`). La persistance passe par `calendrier_regime_feries` ;
+   * cette valeur-ci est celle **actuellement connue**.
+   */
+  regimeFeries: regimeFeriesSchema.optional(),
 });
 export type CreerEtablissementDto = z.infer<typeof creerEtablissementSchema>;
 

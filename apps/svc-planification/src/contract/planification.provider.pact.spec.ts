@@ -54,6 +54,25 @@ const VERSION_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 /** Identifiant figé du contrat (aligné avec le pact consumer). */
 const CONTRAT_ID = '11111111-1111-1111-1111-111111111111';
 
+/**
+ * État calendrier (SFD 31, lot 2 — aligné consumer) : un établissement dont les
+ * trois couches sont seedées, **avec une retouche de la récurrence du lundi**
+ * matérialisée append-only (l'ancienne ligne close au 1er avril, la nouvelle
+ * ouverte au même instant). C'est cette retouche que les deux interactions
+ * encadrent : sans elle, une implémentation qui ignore `aLaDate` passerait.
+ */
+const ETAT_CALENDRIER =
+  'un établissement avec un calendrier d’ouverture retouché existe';
+
+/** Établissement porteur du calendrier seedé (aligné consumer). */
+const ETAB_CALENDRIER_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+/** Instant de la retouche seedée (borne de connaissance, UTC largeur fixe). */
+const INSTANT_RETOUCHE = '2026-04-01T00:00:00.000Z';
+
+/** Instant d'ouverture des lignes initiales, antérieur aux deux lectures. */
+const INSTANT_INITIAL = '2026-01-01T00:00:00.000Z';
+
 /** Foyer figé dont on liste les contrats (aligné avec le pact consumer). */
 const FOYER_LISTE_ID = '22222222-2222-2222-2222-222222222222';
 
@@ -183,6 +202,75 @@ async function seedVersionInitiale(
 }
 
 /**
+ * Sème le calendrier d'ouverture de l'établissement `ETAB_CALENDRIER_ID` (SFD 31,
+ * lot 2), **avec sa retouche**. Idempotent : on efface d'abord les quatre tables
+ * pour cet établissement — ici et seulement ici, un `delete` est légitime, c'est
+ * une remise à zéro de fixture, pas une retouche métier.
+ *
+ * Le calendrier seedé, et pourquoi chaque ligne y est :
+ *
+ * - régime de fériés `FR_ALSACE_MOSELLE`, ouvert depuis le 1er janvier — c'est le
+ *   cas réel (Mulhouse), et il prouve que le régime est une **donnée** ;
+ * - récurrence `SCOLAIRE` du lundi : `[CANTINE, PERISCOLAIRE]` du 1er janvier au
+ *   1er avril (ligne **close**), puis `[CANTINE]` à partir du 1er avril (ligne
+ *   ouverte). Les deux coexistent en base : c'est tout l'objet de l'historisation ;
+ * - récurrence `SCOLAIRE` du mardi : `[CANTINE]`, jamais retouchée ;
+ * - exception `FERMETURE` le 3 mars, qui prime sur la récurrence du mardi.
+ *
+ * Les dates de mars sont choisies **hors de tout jour férié français** : le sujet
+ * de l'interaction est l'axe de connaissance, pas le calcul des fériés (couvert
+ * exhaustivement par les specs du `shared-kernel`).
+ */
+async function seedCalendrier(db: Sql): Promise<void> {
+  await db`delete from calendrier_exception where etablissement_id = ${ETAB_CALENDRIER_ID}`;
+  await db`delete from calendrier_recurrence where etablissement_id = ${ETAB_CALENDRIER_ID}`;
+  await db`delete from calendrier_periode where etablissement_id = ${ETAB_CALENDRIER_ID}`;
+  await db`delete from calendrier_regime_feries where etablissement_id = ${ETAB_CALENDRIER_ID}`;
+  await db`
+    insert into etablissement (id, foyer_id, nom, zone_scolaire)
+    values (${ETAB_CALENDRIER_ID}, ${FOYER_SEED}, 'École Pact (calendrier)', 'B')
+    on conflict (id) do update set zone_scolaire = 'B'
+  `;
+  await db`
+    insert into calendrier_regime_feries (etablissement_id, regime, connu_depuis)
+    values (${ETAB_CALENDRIER_ID}, 'FR_ALSACE_MOSELLE', ${INSTANT_INITIAL})
+  `;
+  await db`
+    insert into calendrier_recurrence
+      (etablissement_id, regime, jour_semaine, services, connu_depuis, connu_jusqua)
+    values (
+      ${ETAB_CALENDRIER_ID}, 'SCOLAIRE', 'LUNDI',
+      ${JSON.stringify(['CANTINE', 'PERISCOLAIRE'])}::jsonb,
+      ${INSTANT_INITIAL}, ${INSTANT_RETOUCHE}
+    )
+  `;
+  await db`
+    insert into calendrier_recurrence
+      (etablissement_id, regime, jour_semaine, services, connu_depuis)
+    values (
+      ${ETAB_CALENDRIER_ID}, 'SCOLAIRE', 'LUNDI',
+      ${JSON.stringify(['CANTINE'])}::jsonb, ${INSTANT_RETOUCHE}
+    )
+  `;
+  await db`
+    insert into calendrier_recurrence
+      (etablissement_id, regime, jour_semaine, services, connu_depuis)
+    values (
+      ${ETAB_CALENDRIER_ID}, 'SCOLAIRE', 'MARDI',
+      ${JSON.stringify(['CANTINE'])}::jsonb, ${INSTANT_INITIAL}
+    )
+  `;
+  await db`
+    insert into calendrier_exception
+      (etablissement_id, jour, type, libelle, connu_depuis)
+    values (
+      ${ETAB_CALENDRIER_ID}, '2026-03-03', 'FERMETURE',
+      'Fermeture exceptionnelle', ${INSTANT_INITIAL}
+    )
+  `;
+}
+
+/**
  * Purge un établissement créé « à la volée » par une interaction précédente
  * (et les contrats/plannings qui s'y rattachent), pour rendre la vérification
  * rejouable sur une base persistante.
@@ -274,6 +362,9 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
         },
         [ETAT_SANS_ETAB_ALSH]: async (): Promise<void> => {
           await purgerEtablissementParNom(db, 'Centre Pact ALSH');
+        },
+        [ETAT_CALENDRIER]: async (): Promise<void> => {
+          await seedCalendrier(db);
         },
         [ETAT_CONTRAT_CRECHE]: async (): Promise<void> => {
           // Contrat crèche PSU de Mia (doc 02 §7) : 763 h / 7 mensualités.

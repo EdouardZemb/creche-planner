@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { LocationInterceptor } from './location.interceptor.js';
+import { CalendrierFoyerController } from './calendrier-foyer.controller.js';
 import { ContratsController } from './contrats.controller.js';
 import { CoutsController } from './couts.controller.js';
 import { DesabonnementController } from './desabonnement.controller.js';
@@ -28,6 +29,10 @@ import { ValidationsController } from './validations.controller.js';
     CoutsController,
     DesabonnementController,
     EtablissementsFoyerController,
+    // Calendrier d'ouverture d'un établissement (SFD 31, lot 2). Contrôleur
+    // distinct du CRUD établissement : même préfixe de chemin, mais un cycle de
+    // vie et un contrat propres — celui de la lecture résolue est gelé.
+    CalendrierFoyerController,
     ValidationsController,
     ReferentielBffController,
   ],

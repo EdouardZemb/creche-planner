@@ -574,8 +574,8 @@ describe('OpenAPI · statut de succès et Location (lot 7, AM-39)', () => {
   });
 
   /**
-   * Constat écrit plutôt que supposé : sur les cinq URI créées, **une seule** se
-   * lit en `GET` (`/foyers/{id}`) ; les quatre autres n'exposent que `PUT` et
+   * Constat écrit plutôt que supposé : sur les sept URI créées, **une seule** se
+   * lit en `GET` (`/foyers/{id}`) ; les six autres n'exposent que `PUT` et/ou
    * `DELETE`. Le `Location` y reste juste — la RFC 9110 §10.2.2 en fait l'URI de
    * la ressource créée, pas une promesse de lisibilité, et une URI qui accepte
    * `PUT`/`DELETE` **est** une ressource. Mais un client qui la suivrait en `GET`
@@ -606,6 +606,13 @@ describe('OpenAPI · statut de succès et Location (lot 7, AM-39)', () => {
     expect(parLisibilite).toEqual([
       '——— POST /api/v1/contrats',
       '——— POST /api/v1/foyers/{foyerId}/etablissements',
+      // Calendrier (SFD 31, lot 2) : la ressource créée s'adresse en
+      // `PUT`/`DELETE` mais se LIT par sa collection (`GET …/periodes`,
+      // `GET …/exceptions`), qui rend la couche entière à un instant de
+      // connaissance donné. Une lecture par identifiant n'aurait de sens que
+      // détachée de cet instant — donc pas de `GET` unitaire.
+      '——— POST /api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/exceptions',
+      '——— POST /api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/periodes',
       '——— POST /api/v1/foyers/{id}/enfants',
       '——— POST /api/v1/foyers/{id}/parents',
       'GET POST /api/v1/foyers',

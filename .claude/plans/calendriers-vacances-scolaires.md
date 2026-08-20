@@ -65,7 +65,7 @@ Après ce chantier : chaque établissement porte un **calendrier d'ouverture** �
 
 Identiques au plan `versionnement-dates-effet.md` §4 (corepack pnpm, typecheck+test, pactes à blanc, migrations au boot, ratchet, e2e destructif, langage parent). S'y référer. S'y ajoutent :
 
-- **Checklist contrat BFF** — pour CHAQUE lot exposant une nouvelle route relayée par la gateway (lots 2, 3, 5 depuis le redécoupage du 2026-08-16) : entrée dans `libs/contracts/kernel/src/lib/openapi/gateway.openapi.ts` (document **manuel**) ; faire évoluer l'oracle « expose exactement les N routes attendues » (`gateway.openapi.spec.ts`, **38 routes depuis le lot C7**, 37 après D6, 27 avant) ; `pnpm nx run web:generate-types` sans diff (`types/bff.ts` est **GÉNÉRÉ** — job CI `openapi-types-drift`) ; pact consumer + provider pour la route (y compris le `POST` import du lot 2). ⚠️ Depuis D6, une route servie mais absente du document fait **échouer `nx test api-gateway`** (`openapi.couverture.spec.ts` compare le document au graphe de modules Nest) : l'oubli n'est plus silencieux.
+- **Checklist contrat BFF** — pour CHAQUE lot exposant une nouvelle route relayée par la gateway (lots 2, 3, 5 depuis le redécoupage du 2026-08-16) : entrée dans `libs/contracts/kernel/src/lib/openapi/gateway.openapi.ts` (document **manuel**) ; faire évoluer l'oracle « expose exactement les N routes attendues » (`gateway.openapi.spec.ts` — ⚠️ **relire le chiffre dans le code, jamais ici** : annoncé 38 par ce plan, il valait **39** au moment du lot 2, porté à **45** par ses six chemins de calendrier, `LE-87`) ; `pnpm nx run web:generate-types` sans diff (`types/bff.ts` est **GÉNÉRÉ** — job CI `openapi-types-drift`) ; pact consumer + provider pour la route (y compris le `POST` import du lot 2). ⚠️ Depuis D6, une route servie mais absente du document fait **échouer `nx test api-gateway`** (`openapi.couverture.spec.ts` compare le document au graphe de modules Nest) : l'oubli n'est plus silencieux.
 - **Gate CI de couverture** : échec si −0,5 pt de lignes vs main — tout service/écran massif neuf (import, écran calendrier) arrive avec ses specs **dans la même PR**.
 - **Sécurité inter-services** : la bascule `INTERSERVICE_AUTHZ_ENFORCE=1` arrivera pendant ces chantiers — toute nouvelle route svc-planification porte son `@ScopeFoyerInterServices` dès le premier commit (jamais d'observe-only qui casserait à la bascule).
 
@@ -130,6 +130,25 @@ Une fonction pure sait répondre, pour un établissement, un jour J **et un inst
 
 ## Lot 2 — Schéma versionné + API de lecture résolue
 
+> **LIVRÉ le 2026-08-20** (branche `feat/calendrier-schema-api-lecture`) — migration `0010`
+> (4 tables historisées), `calendrier.{dto,service,controller,module}.ts`, façade BFF
+> `/foyers/:foyerId/etablissements/:id/calendrier*`, oracle OpenAPI 39 → **45**, 2 interactions
+> pact encadrant une retouche, seed de démo par l'API. Consignés : `AM-106` **clos**, `AM-107`,
+> `LE-85`, `LE-86`, `LE-87`.
+>
+> **Écarts assumés**, tous trois documentés dans la PR :
+>
+> 1. **`AM-106` tranché en faveur de l'axe de connaissance.** Le régime de fériés est historisé
+>    dans une **quatrième** table append-only (`calendrier_regime_feries`) au lieu d'être une
+>    colonne simple d'`etablissement` — la D2 disait le contraire. `EtablissementVue.regimeFeries`
+>    reste au contrat : c'est la valeur _actuellement connue_, lue sur la ligne ouverte.
+> 2. **Deux routes de lecture de couche en plus** (`GET …/periodes`, `GET …/exceptions`), non
+>    prévues par l'énoncé. Sans elles, les `PUT`/`DELETE` par identifiant que le plan demande sont
+>    inutilisables : on ne supprime pas un `id` qu'aucune route ne fait connaître.
+> 3. **Pas de `PUT` sur les exceptions.** `POST …/exceptions` est un **upsert par jour** (il clôt
+>    l'exception ouverte du jour et en ouvre une nouvelle), ce qui est exactement la retouche
+>    voulue — un second verbe dirait la même chose deux fois.
+
 **Modèle : Opus 4.8.** Dépend du lot 1. **Le contrat de lecture est figé par ce lot** — c'est son enjeu principal.
 
 ### Objectif
@@ -153,7 +172,7 @@ Le calendrier existe en base sous une forme historisée conforme au lot 1, et se
 ### Pièges connus
 
 - Le résolveur foyer de svc-planification résout déjà `etablissement→foyer` (chantier fondations) — le réutiliser, pas de nouveau résolveur.
-- `nx <svc>:typecheck` est lib-only (ne typecheck pas les specs) — la CI si ; reproduire avec `tsc --build tsconfig.spec.json` depuis le dossier du service.
+- ~~`nx <svc>:typecheck` est lib-only (ne typecheck pas les specs) — la CI si ; reproduire avec `tsc --build tsconfig.spec.json` depuis le dossier du service.~~ ⚠️ **Périmé pour `svc-planification`, constaté au lot 2 (`LE-86`)** : son `tsconfig.json` référence `tsconfig.app.json` **et** `tsconfig.spec.json`, et `nx run svc-planification:typecheck` a bien signalé 17 erreurs de specs. Le contournement était du travail en double. Rejouer la commande avant de la contourner — le piège peut rester vrai ailleurs.
 - ⚠️ **`aLaDate` traverse quatre couches** (route → BFF → `bff.dto.ts` → `z.object` du client web) et le `z.object` **strippe les clés qu'il ne connaît pas** : un oubli à la dernière étape est **silencieux** (`LE-48`). Le vérifier explicitement, pas le supposer.
 
 ---
