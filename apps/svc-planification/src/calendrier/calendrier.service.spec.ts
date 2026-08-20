@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Clock } from '@creche-planner/nest-commons';
 import { CalendrierService } from './calendrier.service.js';
 import type { Database } from '../database/database.types.js';
@@ -400,6 +404,54 @@ describe('CalendrierService — l’écriture est append-only', () => {
   });
 });
 
+describe('CalendrierService — un conflit de concurrence est un 409, pas un 500', () => {
+  /** Faux `db` dont l'écriture heurte l'unicité partielle (`23505` de `postgres`). */
+  function fakeConflit(): Database {
+    const erreur = Object.assign(new Error('duplicate key'), { code: '23505' });
+    return {
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: () => Promise.resolve([{ id: ETAB }]) }),
+        }),
+      }),
+      transaction: () => Promise.reject(erreur),
+    } as unknown as Database;
+  }
+
+  it('traduit un 23505 en 409 sur la pose d’exception', async () => {
+    const service = new CalendrierService(fakeConflit(), horloge);
+    await expect(
+      service.poserException(ETAB, {
+        jour: '2026-03-03',
+        type: 'FERMETURE',
+        libelle: 'Fermeture',
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('traduit un 23505 en 409 sur le remplacement de la semaine type', async () => {
+    const service = new CalendrierService(fakeConflit(), horloge);
+    await expect(
+      service.remplacerRecurrences(ETAB, { recurrences: [] }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('laisse passer une erreur qui n’est pas une violation d’unicité', async () => {
+    const db = {
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: () => Promise.resolve([{ id: ETAB }]) }),
+        }),
+      }),
+      transaction: () => Promise.reject(new Error('connexion perdue')),
+    } as unknown as Database;
+    const service = new CalendrierService(db, horloge);
+    await expect(
+      service.remplacerRecurrences(ETAB, { recurrences: [] }),
+    ).rejects.toThrow('connexion perdue');
+  });
+});
+
 describe('CalendrierService.poserRegimeFeries — l’axe de connaissance du régime (AM-106)', () => {
   it('clôt la tranche en cours puis en ouvre une nouvelle', async () => {
     const { db, clotures, ouvertures } = fakeEcriture([]);
@@ -496,5 +548,29 @@ describe('CalendrierService — sonde négative : aucune suppression en source',
     // Sans ce contrôle, une regex qui ne matche jamais rendrait le test ci-dessus
     // vert pour la mauvaise raison — le mode de défaillance dominant du dépôt.
     expect('await tx.delete(calendrierPeriode)').toMatch(/\.delete\(/);
+  });
+
+  /**
+   * **Sonde négative n°2, née d'un défaut réel.** Un fragment `sql` brut qui
+   * interpole une valeur la passe en paramètre **sans le type de la colonne** :
+   * `postgres` reçoit un `Date` qu'il ne sait pas encoder, et la route meurt en
+   * 500. Le typecheck ne le voit pas, et les tests ci-dessus non plus — un faux
+   * `db` n'exécute aucune requête. Seule la vérification pact provider, contre une
+   * vraie base, l'a montré (`LE-88`).
+   *
+   * Ce test est le filet qui manquait : il refuse **toute** interpolation de
+   * valeur dans un `sql\`…\`` de ce service. Les comparateurs typés de drizzle
+   * (`lte`, `gt`, `eq`…) couvrent tout ce dont le calendrier a besoin.
+   */
+  it('n’interpole aucune valeur dans un fragment `sql` brut', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src/calendrier/calendrier.service.ts'),
+      'utf8',
+    );
+    expect(source).not.toMatch(/sql`/);
+  });
+
+  it('voit bien un fragment `sql` quand il y en a un (sonde de la sonde)', () => {
+    expect('or(isNull(c), sql`${c} > ${borne}`)').toMatch(/sql`/);
   });
 });

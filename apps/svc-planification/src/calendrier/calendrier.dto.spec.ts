@@ -127,6 +127,30 @@ describe('remplacerRecurrencesSchema', () => {
     ).toBe(false);
   });
 
+  it('refuse deux lignes pour le même (régime, jour) — 400, pas 409', () => {
+    // L'index partiel unique les refuserait de toute façon, mais en `23505` :
+    // un conflit de concurrence pour une saisie qui est en réalité invalide.
+    expect(
+      remplacerRecurrencesSchema.safeParse({
+        recurrences: [
+          { regime: 'SCOLAIRE', jourSemaine: 'LUNDI', services: ['CANTINE'] },
+          { regime: 'SCOLAIRE', jourSemaine: 'LUNDI', services: ['ALSH'] },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepte le même jour sous deux régimes différents', () => {
+    expect(
+      remplacerRecurrencesSchema.safeParse({
+        recurrences: [
+          { regime: 'SCOLAIRE', jourSemaine: 'LUNDI', services: ['CANTINE'] },
+          { regime: 'VACANCES', jourSemaine: 'LUNDI', services: ['ALSH'] },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
   it('refuse un régime hebdomadaire inconnu', () => {
     expect(
       remplacerRecurrencesSchema.safeParse({

@@ -64,23 +64,38 @@ export type LireCoucheQuery = z.infer<typeof lireCoucheQuerySchema>;
  * nouvelles au **même** instant — une semaine type s'édite d'un bloc, elle ne se
  * relit jamais à moitié retouchée.
  */
-export const remplacerRecurrencesSchema = z.object({
-  recurrences: z.array(
-    z.object({
-      regime: z.enum(['SCOLAIRE', 'VACANCES']),
-      jourSemaine: z.enum([
-        'LUNDI',
-        'MARDI',
-        'MERCREDI',
-        'JEUDI',
-        'VENDREDI',
-        'SAMEDI',
-        'DIMANCHE',
-      ]),
-      services: servicesSchema,
-    }),
-  ),
-});
+export const remplacerRecurrencesSchema = z
+  .object({
+    recurrences: z.array(
+      z.object({
+        regime: z.enum(['SCOLAIRE', 'VACANCES']),
+        jourSemaine: z.enum([
+          'LUNDI',
+          'MARDI',
+          'MERCREDI',
+          'JEUDI',
+          'VENDREDI',
+          'SAMEDI',
+          'DIMANCHE',
+        ]),
+        services: servicesSchema,
+      }),
+    ),
+  })
+  // Le corps décrit une SEMAINE : deux lignes pour le même (régime, jour) n'ont
+  // pas de sens, et l'index partiel unique les refuserait de toute façon — mais
+  // en `23505`, donc en 409 pour une saisie qui est en réalité **invalide**.
+  // Le dire ici en fait un 400 avec le champ fautif, avant toute écriture.
+  .refine(
+    (dto) =>
+      new Set(dto.recurrences.map((r) => `${r.regime}/${r.jourSemaine}`))
+        .size === dto.recurrences.length,
+    {
+      message:
+        'deux récurrences portent le même couple (régime, jour de semaine)',
+      path: ['recurrences'],
+    },
+  );
 
 export type RemplacerRecurrencesDto = z.infer<
   typeof remplacerRecurrencesSchema
