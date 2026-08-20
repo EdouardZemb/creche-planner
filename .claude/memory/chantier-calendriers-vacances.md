@@ -109,6 +109,13 @@ refuse tout `.delete(` — la différence entre « les cas testés ne suppriment
 
 ## Pièges et écarts constatés au lot 2
 
+- ⚠️ **Le calendrier EST exporté en portabilité, historique compris** (`LE-89`) : les
+  quatre tables pendent à `etablissement` par une clé `ON DELETE CASCADE`, donc le
+  critère du §6 de la doc 37 — « ce qu'un effacement emporte, un export doit le
+  rendre » — s'applique. La ligne « hors périmètre : barèmes, grilles et
+  **calendriers** » visait ceux du **référentiel** : même mot, propriétaire
+  opposé. `ExportEtablissement.calendrier` rend les lignes **closes** aussi, avec
+  leurs bornes — sans quoi l'export livrerait un calendrier sans passé.
 - ⚠️ **Un faux `db` prouve la forme de l'appel, jamais que la requête s'exécute**
   (`LE-97`) : le prédicat de borne haute passait par un gabarit SQL interpolant
   une valeur — le `Date` partait en paramètre **sans le type de la colonne**, et
