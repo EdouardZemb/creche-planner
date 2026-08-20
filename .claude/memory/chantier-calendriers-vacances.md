@@ -1,6 +1,6 @@
 ---
 name: chantier-calendriers-vacances
-description: "Chantier « Calendriers d'ouverture & vacances scolaires » (SFD 31 v1.0, 5 lots) — lot 1 (domaine versionné + fériés) livré le 2026-08-19, non mergé ; l'ancre de connaissance est tranchée"
+description: "Chantier « Calendriers d'ouverture & vacances scolaires » (SFD 31 v1.0, 5 lots) — lot 1 MERGÉ le 2026-08-20 (#352, df77ebf), NON DÉPLOYÉ ; l'ancre de connaissance est tranchée ; lot 2 à démarrer"
 metadata:
   node_type: memory
   type: project
@@ -15,6 +15,15 @@ versionné à date d'effet, un mois déjà facturé est intouchable.
 
 Lancement autorisé par le PO le **2026-08-19**, « Le coût ne ment plus » étant
 complet (lots 1-3 mergés le 17/08).
+
+> **État au 2026-08-20** : lot 1 **MERGÉ** — PR #352, squash `df77ebf`, CI verte
+> de bout en bout (24 checks). **NON DÉPLOYÉ** : le domaine ne sort en prod
+> qu'avec le prochain train (celui qui portera aussi « Le coût ne ment plus »
+> lots 1-3, le lot 9 des standards, #345 et #351). Aucun effet observable en
+> production avant : ce lot n'a **aucun appelant runtime**.
+>
+> Au passage, le ratchet ESLint est verrouillé à **645** (était 649) et
+> `@typescript-eslint/no-unused-vars` est promue en **`error`**.
 
 ## État des lots
 
