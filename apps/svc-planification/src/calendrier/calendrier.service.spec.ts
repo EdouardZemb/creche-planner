@@ -10,6 +10,8 @@ import type { Clock } from '@creche-planner/nest-commons';
 import { CalendrierService } from './calendrier.service.js';
 import type { Database } from '../database/database.types.js';
 import {
+  calendrierException,
+  calendrierPeriode,
   calendrierRecurrence,
   calendrierRegimeFeries,
   etablissement,
@@ -47,6 +49,43 @@ function ligneRecurrence(
     services,
     connuDepuis: new Date(connuDepuis),
     connuJusqua: connuJusqua === null ? null : new Date(connuJusqua),
+  };
+}
+
+/** Une ligne de période telle que Postgres la rend. */
+function lignePeriode(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id: '33333333-3333-4333-8333-333333333333',
+    etablissementId: ETAB,
+    type: 'VACANCES',
+    libelle: 'Vacances de printemps',
+    du: '2026-03-01',
+    au: '2026-03-31',
+    source: 'MANUEL',
+    anneeScolaire: null,
+    importeLe: null,
+    connuDepuis: new Date('2026-01-01T00:00:00.000Z'),
+    connuJusqua: null,
+    ...overrides,
+  };
+}
+
+/** Une ligne d'exception telle que Postgres la rend. */
+function ligneException(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id: '44444444-4444-4444-8444-444444444444',
+    etablissementId: ETAB,
+    jour: '2026-03-03',
+    type: 'FERMETURE',
+    libelle: 'Fermeture exceptionnelle',
+    services: null,
+    connuDepuis: new Date('2026-01-01T00:00:00.000Z'),
+    connuJusqua: null,
+    ...overrides,
   };
 }
 
@@ -120,12 +159,10 @@ function fakeEcriture(lignesRendues: unknown[] = []): {
     insert: () => ({
       values: (v: unknown) => {
         ouvertures.push(v);
-        return {
-          returning: () =>
-            Promise.resolve(
-              lignesRendues.length > 0 ? lignesRendues : [ligneRecurrence([])],
-            ),
-        };
+        // Rend EXACTEMENT ce qu'on lui a dit de rendre — y compris rien. Un repli
+        // « si vide, invente une ligne » rendrait intestable la garde
+        // `ligneInseree`, qui existe précisément pour ce cas.
+        return { returning: () => Promise.resolve(lignesRendues) };
       },
     }),
     delete: () => {
@@ -266,6 +303,104 @@ describe('CalendrierService.lireResolu — les deux axes de temps', () => {
   });
 });
 
+describe('CalendrierService — les lignes CLOSES restent lisibles dans le passé', () => {
+  /**
+   * Ces cas ne sont pas décoratifs : ils empruntent la branche « la ligne porte
+   * un `connuJusqua` » du mappage vers le domaine. C'est **la** branche de
+   * l'historique — celle qu'on n'emprunte jamais en lisant « aujourd'hui », et
+   * donc celle qu'un jeu de tests distrait laisse non exercée alors qu'elle porte
+   * toute la promesse de RM-31-03.
+   */
+  it('mappe une période close sans perdre sa borne de connaissance', async () => {
+    const service = new CalendrierService(
+      fakeLecture(
+        new Map<unknown, unknown[]>([
+          [etablissement, [{ id: ETAB }]],
+          [
+            calendrierPeriode,
+            [
+              // Close le 1er mai : invisible au 15 juin, visible au 1er février.
+              lignePeriode({
+                connuJusqua: new Date('2026-05-01T00:00:00.000Z'),
+                type: 'FERMETURE_ANNUELLE',
+                libelle: 'Fermeture annuelle',
+              }),
+            ],
+          ],
+          [calendrierRegimeFeries, [{ regime: 'FR' }]],
+        ]),
+      ),
+      horloge,
+    );
+    const avant = await service.lireResolu(
+      ETAB,
+      '2026-03-02',
+      '2026-03-02',
+      AVANT,
+    );
+    expect(avant.jours[0]?.contexte).toBe('FERMETURE');
+    expect(avant.jours[0]?.libelle).toBe('Fermeture annuelle');
+
+    const apres = await service.lireResolu(ETAB, '2026-03-02', '2026-03-02');
+    // Même jour, instant postérieur à la clôture : la période ne s'applique plus.
+    expect(apres.jours[0]?.contexte).not.toBe('FERMETURE');
+  });
+
+  it('mappe une exception close ET ciblée sur des services', async () => {
+    const service = new CalendrierService(
+      fakeLecture(
+        new Map<unknown, unknown[]>([
+          [etablissement, [{ id: ETAB }]],
+          [
+            calendrierException,
+            [
+              ligneException({
+                type: 'OUVERTURE',
+                libelle: 'Garderie exceptionnelle',
+                services: ['ALSH'],
+                connuJusqua: new Date('2026-05-01T00:00:00.000Z'),
+              }),
+            ],
+          ],
+          [calendrierRegimeFeries, [{ regime: 'FR' }]],
+        ]),
+      ),
+      horloge,
+    );
+    const vue = await service.lireResolu(
+      ETAB,
+      '2026-03-03',
+      '2026-03-03',
+      AVANT,
+    );
+    expect(vue.jours[0]?.servicesOuverts).toEqual(['ALSH']);
+    expect(vue.jours[0]?.libelle).toBe('Garderie exceptionnelle');
+  });
+
+  it('lit les périodes et les exceptions ouvertes à un instant', async () => {
+    const service = new CalendrierService(
+      fakeLecture(
+        new Map<unknown, unknown[]>([
+          [etablissement, [{ id: ETAB }]],
+          [calendrierPeriode, [lignePeriode({ anneeScolaire: '2025-2026' })]],
+          [calendrierException, [ligneException({ services: ['CANTINE'] })]],
+        ]),
+      ),
+      horloge,
+    );
+    const periodes = await service.lirePeriodes(ETAB, AVANT);
+    expect(periodes.aLaDate).toBe(AVANT);
+    expect(periodes.periodes[0]).toMatchObject({
+      source: 'MANUEL',
+      anneeScolaire: '2025-2026',
+      connuDepuis: '2026-01-01T00:00:00.000Z',
+    });
+
+    const exceptions = await service.lireExceptions(ETAB);
+    expect(exceptions.exceptions[0]?.services).toEqual(['CANTINE']);
+  });
+});
+
 describe('CalendrierService — l’écriture est append-only', () => {
   it('clôt la récurrence en vigueur AVANT d’ouvrir la nouvelle, au même instant', async () => {
     // La relecture d'après écriture rend une ligne de récurrence complète : ce
@@ -309,6 +444,53 @@ describe('CalendrierService — l’écriture est append-only', () => {
     await service.clorePeriode(ETAB, '22222222-2222-4222-8222-222222222222');
     expect(clotures[0]?.['connuJusqua']).toEqual(MAINTENANT);
     expect(aSupprime()).toBe(false);
+  });
+
+  it('ouvre une période avec son année scolaire', async () => {
+    const { db, ouvertures } = fakeEcriture([lignePeriode()]);
+    const service = new CalendrierService(db, horloge);
+    const vue = await service.saisirPeriode(ETAB, {
+      type: 'VACANCES',
+      libelle: 'Vacances de printemps',
+      du: '2026-03-01',
+      au: '2026-03-31',
+      anneeScolaire: '2025-2026',
+    });
+    expect(ouvertures[0]).toMatchObject({
+      anneeScolaire: '2025-2026',
+      // Le parent pose du MANUEL, jamais de l'IMPORT (le lot 3 a son chemin).
+      source: 'MANUEL',
+    });
+    expect(vue.du).toBe('2026-03-01');
+  });
+
+  it('refuse de rendre une vue si l’insertion n’a rendu aucune ligne', async () => {
+    // Postgres en rend toujours une (aucune clause de conflit ici) : on le
+    // VÉRIFIE au lieu de l'affirmer par un `!`, qui transformerait une anomalie
+    // de driver en `TypeError` illisible trois couches plus haut.
+    const { db } = fakeEcriture([]);
+    const service = new CalendrierService(db, horloge);
+    await expect(
+      service.saisirPeriode(ETAB, {
+        type: 'VACANCES',
+        libelle: 'Vacances',
+        du: '2026-03-01',
+        au: '2026-03-31',
+      }),
+    ).rejects.toThrow('insertion sans ligne rendue');
+  });
+
+  it('rend 404 quand la période à retoucher est inconnue ou déjà close', async () => {
+    const { db } = fakeEcriture([]);
+    const service = new CalendrierService(db, horloge);
+    await expect(
+      service.retoucherPeriode(ETAB, '33333333-3333-4333-8333-333333333333', {
+        type: 'VACANCES',
+        libelle: 'Vacances',
+        du: '2026-03-01',
+        au: '2026-03-31',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('rend 404 sur la clôture d’une ligne inconnue ou déjà close', async () => {
