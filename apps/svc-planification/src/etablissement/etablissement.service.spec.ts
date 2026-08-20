@@ -7,6 +7,7 @@ import {
   ETABLISSEMENT_SUPPRIME_TYPE,
 } from '@creche-planner/contracts-planification';
 import { EtablissementService } from './etablissement.service.js';
+import type { CalendrierService } from '../calendrier/calendrier.service.js';
 import type { Database } from '../database/database.types.js';
 import type { EtablissementRow } from '../database/schema.js';
 import type {
@@ -39,10 +40,37 @@ function ligneEtab(
     telephone: null,
     contact: null,
     actif: true,
+    zoneScolaire: null,
     createdAt: new Date('2026-06-29T00:00:00Z'),
     updatedAt: new Date('2026-06-29T00:00:00Z'),
     ...overrides,
   };
+}
+
+/**
+ * Faux `CalendrierService` : le CRUD établissement lui délègue le **régime de
+ * fériés**, historisé sur l'axe de connaissance (`AM-106`). On capte les poses
+ * pour vérifier qu'elles ont bien lieu dans la transaction, et on rend un régime
+ * connu pour la vue.
+ */
+function fauxCalendrier(regime: 'FR' | 'FR_ALSACE_MOSELLE' = 'FR'): {
+  calendrier: CalendrierService;
+  poses: { etablissementId: string; regime: string }[];
+} {
+  const poses: { etablissementId: string; regime: string }[] = [];
+  const calendrier = {
+    poserRegimeFeries: (
+      _tx: unknown,
+      etablissementId: string,
+      pose: string,
+    ) => {
+      poses.push({ etablissementId, regime: pose });
+      return Promise.resolve();
+    },
+    regimesFeriesOuverts: (ids: readonly string[]) =>
+      Promise.resolve(new Map(ids.map((id) => [id, regime]))),
+  } as unknown as CalendrierService;
+  return { calendrier, poses };
 }
 
 /** Une valeur insérée dans l'outbox est reconnaissable à sa clé `payload`. */
@@ -189,7 +217,7 @@ function payloadDe(ligne: Record<string, unknown>): Record<string, unknown> {
 describe('EtablissementService.creer', () => {
   it('insère l’établissement + l’outbox EtablissementCree (même transaction)', async () => {
     const { db, outbox, etab } = fakeCreer();
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
 
     const dto: CreerEtablissementDto = {
       nom: 'Crèche du centre',
@@ -226,7 +254,7 @@ describe('EtablissementService.creer', () => {
 
   it('applique les défauts (types vide, actif vrai, coordonnées nulles)', async () => {
     const { db, etab } = fakeCreer();
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
 
     await service.creer(FOYER_ID, { nom: 'Sans contact' });
 
@@ -247,7 +275,7 @@ describe('EtablissementService.creer', () => {
     const db = {
       transaction: vi.fn(() => Promise.reject(conflit)),
     } as unknown as Database;
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
 
     await expect(
       service.creer(FOYER_ID, { nom: 'Doublon' }),
@@ -323,7 +351,7 @@ describe('EtablissementService.creer (idempotence, Lot 3 — C1)', () => {
 
   it('double création (même id) → 1 ressource, 1 seul EtablissementCree, même vue', async () => {
     const { db, etab, outbox } = fakeCreerStateful();
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
     const dto: CreerEtablissementDto = { id: ID_A, nom: 'Crèche du centre' };
 
     const vue1 = await service.creer(FOYER_ID, dto);
@@ -339,7 +367,7 @@ describe('EtablissementService.creer (idempotence, Lot 3 — C1)', () => {
 
   it('id différent + même nom → 409 conservé (vrai doublon), rien de créé ni émis en plus', async () => {
     const { db, etab, outbox } = fakeCreerStateful();
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
     await service.creer(FOYER_ID, { id: ID_A, nom: 'Doublon' });
 
     await expect(
@@ -355,7 +383,7 @@ describe('EtablissementService.creer (idempotence, Lot 3 — C1)', () => {
 describe('EtablissementService.modifier', () => {
   it('ne met à jour que les champs fournis + émet EtablissementModifie', async () => {
     const { db, outbox, set } = fakeMaj(true);
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
 
     const dto: ModifierEtablissementDto = { nom: 'Renommée' };
     await service.modifier(ETAB_ID, dto);
@@ -371,7 +399,7 @@ describe('EtablissementService.modifier', () => {
 
   it('un emailService explicitement null vide le champ', async () => {
     const { db, set } = fakeMaj(true);
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
 
     await service.modifier(ETAB_ID, { emailService: null });
 
@@ -380,7 +408,7 @@ describe('EtablissementService.modifier', () => {
 
   it('lève NotFoundException si l’établissement est introuvable (rien d’émis)', async () => {
     const { db, outbox } = fakeMaj(false);
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
 
     await expect(
       service.modifier(ETAB_ID, { nom: 'X' }),
@@ -392,7 +420,7 @@ describe('EtablissementService.modifier', () => {
 describe('EtablissementService.archiver', () => {
   it('passe actif=false + émet EtablissementModifie', async () => {
     const { db, outbox, set } = fakeMaj(true);
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
 
     const vue = await service.archiver(ETAB_ID);
 
@@ -403,7 +431,7 @@ describe('EtablissementService.archiver', () => {
 
   it('lève NotFoundException si l’établissement est introuvable', async () => {
     const { db } = fakeMaj(false);
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
     await expect(service.archiver(ETAB_ID)).rejects.toBeInstanceOf(
       NotFoundException,
     );
@@ -413,7 +441,7 @@ describe('EtablissementService.archiver', () => {
 describe('EtablissementService.supprimer', () => {
   it('supprime + émet EtablissementSupprime (même transaction)', async () => {
     const { db, outbox, supprime } = fakeSuppr(true);
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
 
     await service.supprimer(ETAB_ID);
 
@@ -424,7 +452,7 @@ describe('EtablissementService.supprimer', () => {
 
   it('lève NotFoundException si introuvable, sans supprimer ni émettre', async () => {
     const { db, outbox, supprime } = fakeSuppr(false);
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
 
     await expect(service.supprimer(ETAB_ID)).rejects.toBeInstanceOf(
       NotFoundException,
@@ -436,7 +464,7 @@ describe('EtablissementService.supprimer', () => {
   it('GARDE (P2) : bloque en 409 si des contrats sont rattachés, sans supprimer ni émettre', async () => {
     // Le comptage réel (`compterContratsRattaches`) renvoie 2 via le 2ᵉ select.
     const { db, outbox, supprime } = fakeSuppr(true, 2);
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
 
     await expect(service.supprimer(ETAB_ID)).rejects.toBeInstanceOf(
       ConflictException,
@@ -452,7 +480,7 @@ describe('EtablissementService.lister / parId', () => {
       ligneEtab({ nom: 'A', types: ['CRECHE_PSU'] }),
       ligneEtab({ id: '88888888-8888-4888-8888-888888888888', nom: 'B' }),
     ]);
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
 
     const vues = await service.lister(FOYER_ID);
     expect(vues).toHaveLength(2);
@@ -461,14 +489,14 @@ describe('EtablissementService.lister / parId', () => {
 
   it('parId renvoie la vue si présent', async () => {
     const db = fakeLecture([ligneEtab({ nom: 'Cible' })]);
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
     const vue = await service.parId(ETAB_ID);
     expect(vue).toMatchObject({ id: ETAB_ID, nom: 'Cible' });
   });
 
   it('parId lève NotFoundException si absent', async () => {
     const db = fakeLecture([]);
-    const service = new EtablissementService(db);
+    const service = new EtablissementService(db, fauxCalendrier().calendrier);
     await expect(service.parId(ETAB_ID)).rejects.toBeInstanceOf(
       NotFoundException,
     );

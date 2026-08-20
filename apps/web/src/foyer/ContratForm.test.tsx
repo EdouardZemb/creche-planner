@@ -60,6 +60,8 @@ const etablissementsTest: EtablissementFoyerVue[] = [
     telephone: null,
     contact: null,
     actif: true,
+    zoneScolaire: null,
+    regimeFeries: 'FR',
   },
 ];
 
@@ -75,6 +77,8 @@ const etablissementArchive: EtablissementFoyerVue = {
   telephone: null,
   contact: null,
   actif: false,
+  zoneScolaire: null,
+  regimeFeries: 'FR',
 };
 
 function rendu(onCree = vi.fn()) {

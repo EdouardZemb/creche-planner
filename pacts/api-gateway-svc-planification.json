@@ -900,6 +900,113 @@
       }
     },
     {
+      "description": "une lecture du calendrier résolu avant retouche",
+      "providerStates": [
+        {
+          "name": "un établissement avec un calendrier d’ouverture retouché existe"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/etablissements/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/calendrier",
+        "query": {
+          "aLaDate": [
+            "2026-02-01T00:00:00.000Z"
+          ],
+          "au": [
+            "2026-03-02"
+          ],
+          "du": [
+            "2026-03-02"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "aLaDate": "2026-02-01T00:00:00.000Z",
+          "au": "2026-03-02",
+          "du": "2026-03-02",
+          "jours": [
+            {
+              "contexte": "PERIODE_SCOLAIRE",
+              "jour": "2026-03-02",
+              "libelle": "",
+              "servicesOuverts": [
+                "CANTINE",
+                "PERISCOLAIRE"
+              ]
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "une lecture du calendrier résolu d’un établissement",
+      "providerStates": [
+        {
+          "name": "un établissement avec un calendrier d’ouverture retouché existe"
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "path": "/api/etablissements/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/calendrier",
+        "query": {
+          "aLaDate": [
+            "2026-05-01T00:00:00.000Z"
+          ],
+          "au": [
+            "2026-03-03"
+          ],
+          "du": [
+            "2026-03-02"
+          ]
+        }
+      },
+      "response": {
+        "body": {
+          "aLaDate": "2026-05-01T00:00:00.000Z",
+          "au": "2026-03-03",
+          "du": "2026-03-02",
+          "jours": [
+            {
+              "contexte": "PERIODE_SCOLAIRE",
+              "jour": "2026-03-02",
+              "libelle": "",
+              "servicesOuverts": [
+                "CANTINE"
+              ]
+            },
+            {
+              "contexte": "FERMETURE",
+              "jour": "2026-03-03",
+              "libelle": "Fermeture exceptionnelle",
+              "servicesOuverts": []
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.jours[1].libelle": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "une lecture du cœur d’un contrat par id",
       "providerStates": [
         {

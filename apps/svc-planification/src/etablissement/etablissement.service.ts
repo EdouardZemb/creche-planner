@@ -16,6 +16,8 @@ import {
   type PreavisRegle,
 } from '@creche-planner/contracts-planification';
 import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
+import type { RegimeFeries } from '@creche-planner/shared-kernel';
+import { CalendrierService } from '../calendrier/calendrier.service.js';
 import type { Database } from '../database/database.types.js';
 import {
   contrat,
@@ -43,6 +45,14 @@ export interface EtablissementVue {
   readonly telephone: string | null;
   readonly contact: string | null;
   readonly actif: boolean;
+  /** Zone de vacances scolaires (`A`|`B`|`C`), `null` si sans calendrier scolaire. */
+  readonly zoneScolaire: 'A' | 'B' | 'C' | null;
+  /**
+   * Régime de fériés **actuellement connu** (`AM-106`). Lu sur la ligne ouverte de
+   * `calendrier_regime_feries`, pas sur une colonne d'`etablissement` : la valeur
+   * est historisée, cette vue n'en montre que la tranche courante.
+   */
+  readonly regimeFeries: RegimeFeries;
 }
 
 /** Détection d'une violation d'unicité Postgres (`23505`) portée par `postgres`. */
@@ -56,7 +66,10 @@ function estViolationUnicite(erreur: unknown): erreur is { code: string } {
 
 @Injectable()
 export class EtablissementService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly calendrier: CalendrierService,
+  ) {}
 
   /** Liste les établissements d'un foyer, triés par nom (rendu stable). */
   async lister(foyerId: string): Promise<EtablissementVue[]> {
@@ -65,7 +78,11 @@ export class EtablissementService {
       .from(etablissement)
       .where(eq(etablissement.foyerId, foyerId))
       .orderBy(asc(etablissement.nom));
-    return lignes.map((l) => this.versVue(l));
+    // Un seul aller-retour pour tous les régimes du foyer, pas un par ligne.
+    const regimes = await this.calendrier.regimesFeriesOuverts(
+      lignes.map((l) => l.id),
+    );
+    return lignes.map((l) => this.versVue(l, regimes.get(l.id)));
   }
 
   /** Lit un établissement par son id. 404 s'il n'existe pas. */
@@ -78,7 +95,7 @@ export class EtablissementService {
     if (!ligne) {
       throw new NotFoundException(`établissement introuvable : ${id}`);
     }
-    return this.versVue(ligne);
+    return this.versVueAvecRegime(ligne);
   }
 
   /**
@@ -112,6 +129,7 @@ export class EtablissementService {
             telephone: dto.telephone ?? null,
             contact: dto.contact ?? null,
             actif: dto.actif ?? true,
+            zoneScolaire: dto.zoneScolaire ?? null,
           })
           .onConflictDoNothing({ target: etablissement.id })
           .returning();
@@ -130,12 +148,22 @@ export class EtablissementService {
           }
           return existant;
         }
+        // Le régime de fériés est posé DANS la transaction de création (`AM-106`) :
+        // un établissement dont la ligne de régime manquerait resterait lisible
+        // (D7 le ramène à `FR`), mais sa création aurait deux vérités possibles
+        // selon l'instant du crash. Uniquement sur une vraie insertion — un rejeu
+        // idempotent ne doit pas réécrire un régime modifié depuis par un `PUT`.
+        await this.calendrier.poserRegimeFeries(
+          tx,
+          ligneInseree.id,
+          dto.regimeFeries ?? 'FR',
+        );
         await tx
           .insert(outbox)
           .values(this.evenementEtat(ETABLISSEMENT_CREE_TYPE, ligneInseree));
         return ligneInseree;
       });
-      return this.versVue(ligne);
+      return await this.versVueAvecRegime(ligne);
     } catch (erreur) {
       this.traduireUnicite(erreur);
     }
@@ -163,6 +191,8 @@ export class EtablissementService {
     if (dto.telephone !== undefined) set.telephone = dto.telephone ?? null;
     if (dto.contact !== undefined) set.contact = dto.contact ?? null;
     if (dto.actif !== undefined) set.actif = dto.actif;
+    if (dto.zoneScolaire !== undefined)
+      set.zoneScolaire = dto.zoneScolaire ?? null;
     try {
       const ligne = await this.db.transaction(async (tx) => {
         const maj = await tx
@@ -174,12 +204,18 @@ export class EtablissementService {
         if (!ligneMaj) {
           throw new NotFoundException(`établissement introuvable : ${id}`);
         }
+        if (dto.regimeFeries !== undefined) {
+          // Clôt la tranche en cours et en ouvre une nouvelle — la précédente
+          // reste lisible, donc les mois facturés sous l'ancien régime gardent
+          // leurs fériés (`AM-106`). Reposer le même régime est un no-op.
+          await this.calendrier.poserRegimeFeries(tx, id, dto.regimeFeries);
+        }
         await tx
           .insert(outbox)
           .values(this.evenementEtat(ETABLISSEMENT_MODIFIE_TYPE, ligneMaj));
         return ligneMaj;
       });
-      return this.versVue(ligne);
+      return await this.versVueAvecRegime(ligne);
     } catch (erreur) {
       this.traduireUnicite(erreur);
     }
@@ -206,7 +242,7 @@ export class EtablissementService {
         .values(this.evenementEtat(ETABLISSEMENT_MODIFIE_TYPE, ligneMaj));
       return ligneMaj;
     });
-    return this.versVue(ligne);
+    return this.versVueAvecRegime(ligne);
   }
 
   /**
@@ -293,7 +329,11 @@ export class EtablissementService {
     throw erreur;
   }
 
-  private versVue(ligne: EtablissementRow): EtablissementVue {
+  /** Vue d'une ligne, le régime de fériés étant déjà connu (lecture groupée). */
+  private versVue(
+    ligne: EtablissementRow,
+    regimeFeries: RegimeFeries | undefined,
+  ): EtablissementVue {
     return {
       id: ligne.id,
       foyerId: ligne.foyerId,
@@ -305,6 +345,18 @@ export class EtablissementService {
       telephone: ligne.telephone,
       contact: ligne.contact,
       actif: ligne.actif,
+      zoneScolaire: ligne.zoneScolaire,
+      // Aucune ligne ouverte ⇒ `FR`, le défaut national (D7). Le cas existe pour
+      // un établissement antérieur à la reprise de la migration `0010`.
+      regimeFeries: regimeFeries ?? 'FR',
     };
+  }
+
+  /** Vue d'une ligne unique, avec la lecture du régime ouvert qu'elle implique. */
+  private async versVueAvecRegime(
+    ligne: EtablissementRow,
+  ): Promise<EtablissementVue> {
+    const regimes = await this.calendrier.regimesFeriesOuverts([ligne.id]);
+    return this.versVue(ligne, regimes.get(ligne.id));
   }
 }

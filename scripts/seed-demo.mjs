@@ -169,6 +169,70 @@ const ETABLISSEMENTS = {
 /** Établissement de repli pour un contrat de surcouche sans entrée `ETABLISSEMENTS`. */
 const ETABLISSEMENT_DEFAUT = 'Établissement';
 
+/**
+ * Calendrier d'ouverture de démonstration (SFD 31, lot 2), par nom
+ * d'établissement. Reproduit le cas réel :
+ *
+ * - **École ABCM** — zone **B** (l'import du lot 3 ira y chercher les vacances),
+ *   régime de fériés **Alsace-Moselle** (Mulhouse : Vendredi saint et 26 décembre
+ *   en plus). Semaine scolaire lun/mar/jeu/ven pour cantine et périscolaire, ALSH
+ *   le mercredi ; pendant les vacances, l'ALSH seul. C'est la récurrence qui
+ *   remplace la constante morte `JOURS_OUVERTURE_ECOLE` (D5).
+ * - **Crèche Les Hirondelles** — aucune zone scolaire (elle n'a pas de vacances),
+ *   régime national, ouverte du lundi au vendredi, plus ses fermetures annuelles
+ *   posées en exceptions.
+ *
+ * ⚠️ Le seed passe par l'**API BFF**, jamais par SQL : c'est ce qui fait qu'il
+ * emprunte exactement le chemin du produit, validation comprise. Un seed SQL
+ * poserait sans effort des données que l'API refuserait.
+ */
+const CALENDRIERS = {
+  'École ABCM': {
+    zoneScolaire: 'B',
+    regimeFeries: 'FR_ALSACE_MOSELLE',
+    recurrences: [
+      ...['LUNDI', 'MARDI', 'JEUDI', 'VENDREDI'].map((jourSemaine) => ({
+        regime: 'SCOLAIRE',
+        jourSemaine,
+        services: ['CANTINE', 'PERISCOLAIRE'],
+      })),
+      { regime: 'SCOLAIRE', jourSemaine: 'MERCREDI', services: ['ALSH'] },
+      ...['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI'].map(
+        (jourSemaine) => ({
+          regime: 'VACANCES',
+          jourSemaine,
+          services: ['ALSH'],
+        }),
+      ),
+    ],
+    exceptions: [],
+  },
+  'Crèche Les Hirondelles': {
+    zoneScolaire: null,
+    regimeFeries: 'FR_ALSACE_MOSELLE',
+    recurrences: ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI'].map(
+      (jourSemaine) => ({
+        regime: 'SCOLAIRE',
+        jourSemaine,
+        services: ['CRECHE_PSU'],
+      }),
+    ),
+    // Fermetures annuelles de la crèche, en exceptions ponctuelles. Sous-ensemble
+    // représentatif des 18 dates seedées par le Référentiel (`FERMETURES_2026`) —
+    // leur reprise complète est le sujet du lot 4, pas de celui-ci.
+    exceptions: [
+      { jour: '2026-05-15', type: 'FERMETURE', libelle: 'Pont de l’Ascension' },
+      { jour: '2026-08-03', type: 'FERMETURE', libelle: 'Fermeture d’été' },
+      { jour: '2026-08-04', type: 'FERMETURE', libelle: 'Fermeture d’été' },
+      {
+        jour: '2026-12-24',
+        type: 'FERMETURE',
+        libelle: 'Fermeture de fin d’année',
+      },
+    ],
+  },
+};
+
 /** Plannings mensuels NOMINAUX à écrire (corps vide = sans absence/complément). */
 const PLANNINGS = {
   // Crèche : période contractuelle (7 mensualités) → reproduit la mensualité fixe.
@@ -507,6 +571,43 @@ async function garantirEtablissements(foyerId, noms) {
 }
 
 /**
+ * Pose le calendrier d'ouverture des établissements seedés (SFD 31, lot 2), via
+ * les routes BFF du lot.
+ *
+ * **Idempotent, mais pas gratuitement** : `PUT …/recurrences` remplace la semaine
+ * type d'un bloc, donc le rejouer est sans effet observable — il ajoute en
+ * revanche une tranche de connaissance à l'historique. `POST …/exceptions` est un
+ * upsert **par jour** : rejouer clôt l'exception du jour et en rouvre une
+ * identique. C'est le prix de l'append-only, et il est assumé : un seed n'écrase
+ * rien, il déclare l'état voulu à l'instant où on le joue.
+ */
+async function garantirCalendriers(foyerId, etablissementsParNom) {
+  for (const [nom, id] of Object.entries(etablissementsParNom)) {
+    const calendrier = CALENDRIERS[nom];
+    if (!calendrier) continue;
+    const base = `/foyers/${foyerId}/etablissements/${id}`;
+    // Zone et régime voyagent par le CRUD établissement : la zone est une colonne
+    // simple, le régime est historisé côté service (`AM-106`).
+    await http('PUT', base, {
+      zoneScolaire: calendrier.zoneScolaire,
+      regimeFeries: calendrier.regimeFeries,
+    });
+    await http('PUT', `${base}/calendrier/recurrences`, {
+      recurrences: calendrier.recurrences,
+    });
+    for (const exception of calendrier.exceptions) {
+      await http('POST', `${base}/calendrier/exceptions`, exception);
+    }
+    console.log(
+      `• Calendrier de « ${nom} » posé ` +
+        `(${calendrier.recurrences.length} récurrence(s), ` +
+        `${calendrier.exceptions.length} exception(s), ` +
+        `fériés ${calendrier.regimeFeries})`,
+    );
+  }
+}
+
+/**
  * Table `prénom → id` des enfants du foyer : chaque contrat porte le lien
  * `enfantId` (référence svc-foyer) en plus du prénom dénormalisé. Lus via le
  * dossier foyer (`GET /foyers/:id` → `{ foyer, enfants, parents }`) — la
@@ -684,6 +785,10 @@ async function main() {
     ),
   ];
   const etablissements = await garantirEtablissements(foyerId, noms);
+
+  // Calendrier d'ouverture des établissements (SFD 31, lot 2) : zone scolaire,
+  // régime de fériés, semaine type par régime et fermetures annuelles.
+  await garantirCalendriers(foyerId, etablissements);
 
   // Enfants du foyer (prénom → id) : lien `enfantId` requis à la création.
   const enfants = await enfantsParPrenom(foyerId);
