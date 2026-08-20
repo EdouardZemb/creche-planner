@@ -1,6 +1,6 @@
 ---
 name: chantier-calendriers-vacances
-description: "Chantier « Calendriers d'ouverture & vacances scolaires » (SFD 31 v1.0, 5 lots) — lot 1 (domaine versionné + fériés) livré le 2026-08-19, non mergé ; l'ancre de connaissance est tranchée"
+description: "Chantier « Calendriers d'ouverture & vacances scolaires » (SFD 31 v1.0, 5 lots) — lot 1 mergé (#352), lot 2 (schéma + API de lecture) livré le 2026-08-20 ; l'ancre de connaissance et l'axe du régime de fériés sont tranchés"
 metadata:
   node_type: memory
   type: project
@@ -18,13 +18,13 @@ complet (lots 1-3 mergés le 17/08).
 
 ## État des lots
 
-| Lot | Objet                                                  | État                                                              |
-| --- | ------------------------------------------------------ | ----------------------------------------------------------------- |
-| 1   | Domaine calendrier versionné + fériés partagés         | **livré 2026-08-19**, branche `feat/calendrier-domaine-versionne` |
-| 2   | Schéma versionné + API de lecture (contrat figé)       | à faire                                                           |
-| 3   | Import open data + écran calendrier                    | à faire (préalable : lot C0 de consolidation)                     |
-| 4   | Branchement génération + reprise `jour_non_facturable` | à faire                                                           |
-| 5   | Web : sélectionnabilité, visualisation, incohérences   | à faire (préalables : C0, et C5 tranché)                          |
+| Lot | Objet                                                  | État                                                               |
+| --- | ------------------------------------------------------ | ------------------------------------------------------------------ |
+| 1   | Domaine calendrier versionné + fériés partagés         | **mergé 2026-08-19** (#352, `df77ebf`), non déployé                |
+| 2   | Schéma versionné + API de lecture (contrat figé)       | **livré 2026-08-20**, branche `feat/calendrier-schema-api-lecture` |
+| 3   | Import open data + écran calendrier                    | à faire (préalable : lot C0 de consolidation)                      |
+| 4   | Branchement génération + reprise `jour_non_facturable` | à faire                                                            |
+| 5   | Web : sélectionnabilité, visualisation, incohérences   | à faire (préalables : C0, et C5 tranché)                           |
 
 ## Ce que le lot 1 a décidé — et qui engage les quatre autres
 
@@ -71,6 +71,63 @@ l'année scolaire saisie d'un bloc les contient — la **plus courte** l'emporte
 (ordre total : étendue, puis connaissance, puis `du`). Départager par l'instant
 de connaissance rendrait la réponse dépendante de l'**ordre de saisie**, ce que
 l'import du lot 3 heurterait de plein fouet.
+
+## Ce que le lot 2 a décidé — et qui engage la suite
+
+**`AM-106` est tranché, en faveur de l'axe de connaissance.** Le régime de fériés
+n'est **pas** une colonne d'`etablissement` (la D2 le prévoyait ainsi) : il vit dans
+une **quatrième table append-only**, `calendrier_regime_feries`, de forme identique
+aux trois couches. Le motif est que c'était le **dernier** chemin de retouche
+rétroactive du chantier — corriger un `FR` saisi par erreur en `FR_ALSACE_MOSELLE`
+rouvrait le Vendredi saint et le 26 décembre sur des mois déjà facturés. La variante
+« limite écrite et assumée » revenait à laisser survivre le seul chemin de réécriture
+du passé au chantier qui existe pour le fermer. **Une source, pas deux** : il n'y a
+pas de colonne de cache sur `etablissement` ; `EtablissementVue.regimeFeries` est
+la valeur _actuellement connue_, lue sur la ligne ouverte, avec repli `FR` (D7).
+⚠️ **Conséquence pour le CRUD établissement** : `EtablissementService` écrit dans la
+transaction du calendrier (`poserRegimeFeries(tx, …)`), et `EtablissementModule`
+importe donc `CalendrierModule`.
+
+**Le contrat de lecture est gelé, et son défaut est observable.** `GET
+…/calendrier?du=&au=&aLaDate=` rend `{ du, au, aLaDate, jours[] }` — l'enveloppe
+**réverbère** l'instant de connaissance réellement employé, y compris (surtout) quand
+l'appelant l'a omis. C'est ce qui rend le défaut « maintenant » constatable au lieu
+de supposé, et ce qui laisse la place à un champ futur sans casser le consommateur
+silencieux du plan 33.
+
+**Deux écarts d'API assumés vs l'énoncé du plan** : deux routes de lecture de couche
+en plus (`GET …/periodes`, `GET …/exceptions`) — sans elles, les `PUT`/`DELETE` par
+identifiant demandés par le plan sont inutilisables, on ne supprime pas un `id`
+qu'aucune route ne fait connaître ; et **pas de `PUT` sur les exceptions**, le `POST`
+étant un **upsert par jour** (il clôt l'ouverte et en ouvre une neuve), ce qui _est_
+la retouche voulue.
+
+**« Supprimer » est une clôture, partout.** Aucune écriture du calendrier ne fait de
+`DELETE` ni d'`UPDATE` de donnée. Une sonde de spec lit la **source** du service et
+refuse tout `.delete(` — la différence entre « les cas testés ne suppriment pas » et
+« le service ne sait pas supprimer », qui est la propriété que RM-31-03 exige.
+
+## Pièges et écarts constatés au lot 2
+
+- ⚠️ **`verifierUniciteOuverte` n'est appelée nulle part** (`AM-116`) : l'unicité
+  ouverte n'est tenue que par les index partiels Postgres, donc une violation
+  concurrente remonte en `23505` brut (500) au lieu du 409 que le CRUD
+  établissement sait déjà produire.
+- ⚠️ **Un faux `db` indexé par rang d'appel teste l'ordre d'évaluation** (`LE-94`) :
+  les constructeurs drizzle sont des _thenables_, la requête n'est consommée qu'au
+  `await`. Dans un `Promise.all`, l'ordre de consommation ne suit pas l'ordre
+  d'écriture. Le faux répond désormais **par table**.
+- ⚠️ **Le piège « `nx <svc>:typecheck` est lib-only » est PÉRIMÉ ici** (`LE-95`) :
+  le `tsconfig.json` de `svc-planification` référence aussi `tsconfig.spec.json`,
+  la commande signale bien les erreurs de specs. Le contournement annoncé par le
+  plan était du travail en double.
+- ⚠️ **L'oracle de routes avait encore dérivé** (`LE-96`, motif `MO-2`) : 38
+  annoncé par le plan, **39** dans le code, porté à **45**.
+- **La migration `0010` et ses index partiels ne sont prouvés qu'en CI** (`EM-16`
+  encore actif : pas de Docker ici, donc pas de Postgres jetable). C'est la
+  **vérification pact provider** qui les exerce, avec un état seedé portant une
+  retouche de récurrence — sans cette retouche, une implémentation qui ignore
+  `aLaDate` passerait au vert.
 
 ## Pièges et écarts constatés au lot 1
 
