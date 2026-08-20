@@ -1,3 +1,4 @@
+import { ajouterJours } from './date-iso.js';
 import {
   AucuneVersionApplicableError,
   ChevauchementVersionsError,
@@ -69,19 +70,6 @@ export class PeriodeValidite {
   }
 }
 
-/** Vrai si `annee` est bissextile (règle grégorienne). */
-function estBissextile(annee: number): boolean {
-  return (annee % 4 === 0 && annee % 100 !== 0) || annee % 400 === 0;
-}
-
-/** Nombre de jours du mois `mois` (1-12) de l'année `annee`. */
-function joursDansMois(annee: number, mois: number): number {
-  if (mois === 2) {
-    return estBissextile(annee) ? 29 : 28;
-  }
-  return mois === 4 || mois === 6 || mois === 9 || mois === 11 ? 30 : 31;
-}
-
 /**
  * Veille de `dateEffet` (ISO `YYYY-MM-DD`) : la borne haute **inclusive** de la
  * version précédente quand une nouvelle version prend effet ce jour-là. Arithmétique
@@ -94,21 +82,7 @@ export function cloreVersionPrecedente(dateEffet: string): string {
   if (!ISO_DATE.test(dateEffet)) {
     throw new PeriodeInvalideError(`date d'effet invalide : ${dateEffet}`);
   }
-  const [a = 0, m = 0, d = 0] = dateEffet.split('-').map(Number);
-  let annee = a;
-  let mois = m;
-  let jour = d - 1;
-  if (jour === 0) {
-    mois -= 1;
-    if (mois === 0) {
-      mois = 12;
-      annee -= 1;
-    }
-    jour = joursDansMois(annee, mois);
-  }
-  return `${String(annee).padStart(4, '0')}-${String(mois).padStart(2, '0')}-${String(
-    jour,
-  ).padStart(2, '0')}`;
+  return ajouterJours(dateEffet, -1);
 }
 
 /** Toute version datée porte une période de validité. */

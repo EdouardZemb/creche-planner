@@ -17,6 +17,9 @@ export {
   AucuneVersionApplicableError,
   ChevauchementVersionsError,
   TrouDansVersionsError,
+  DateIsoInvalideError,
+  InstantInvalideError,
+  AnneeInvalideError,
 } from './lib/domain-error.js';
 export {
   PeriodeValidite,
@@ -29,3 +32,11 @@ export {
   type Versionne,
   type VersionValide,
 } from './lib/versionnement.js';
+export { estDateIso, ajouterJours, differenceEnJours } from './lib/date-iso.js';
+export { instant, type Instant } from './lib/instant.js';
+export {
+  joursFeries,
+  REGIMES_FERIES,
+  type RegimeFeries,
+  type JourFerie,
+} from './lib/jours-feries.js';

@@ -56,7 +56,7 @@ function segmentAbcm(
 
 describe('genererPrestationMoisSegments', () => {
   it('lève ParametreContratInvalideError si aucun segment', () => {
-    expect(() => genererPrestationMoisSegments([], MOIS, {}, [])).toThrowError(
+    expect(() => genererPrestationMoisSegments([], MOIS, {}, [])).toThrow(
       ParametreContratInvalideError,
     );
   });

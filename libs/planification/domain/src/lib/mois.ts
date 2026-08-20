@@ -29,9 +29,9 @@ export function joursDuMois(mois: string): string[] {
   const nbJours = new Date(Date.UTC(annee, numeroMois, 0)).getUTCDate();
   const jours: string[] = [];
   for (let jour = 1; jour <= nbJours; jour += 1) {
-    jours.push(
-      `${correspondance[1]}-${correspondance[2]}-${deuxChiffres(jour)}`,
-    );
+    // `mois` est la chaîne validée par la regex ancrée : la réutiliser évite de
+    // ré-assembler des captures typées `string | undefined`.
+    jours.push(`${mois}-${deuxChiffres(jour)}`);
   }
   return jours;
 }
