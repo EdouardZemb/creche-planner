@@ -134,6 +134,34 @@
   ont été consommées, remise en marche à la main. Remède : exemption motivée + `pnpm conteneurs`
   refuse ce couple (10 sondes). **Chrono INTERSERVICE démarré au 2026-08-15.**
 
+- **2026-08-23 — relevé de la semaine d'observation INTERSERVICE (lecture seule, RIEN
+  n'a été basculé).** Fenêtre pleine et sans redémarrage : conteneurs `0.17.0` démarrés
+  le 2026-08-15 13:44 UTC, `ASSERTION_IDENTITE_SECRET` posé sur les 6 (donc **observe**,
+  pas _legacy_), `INTERSERVICE_AUTHZ_ENFORCE` vide partout.
+  - `foyer_audit_actions_total{acteur="inconnu"}` : **aucune série**. `gateway_authz_refus_total`
+    et `svc_scope_refus_total` : **aucune série**. **0 « AURAIT REFUSÉ »** dans les journaux
+    des 6 services sur 8 jours ; alerte `ScopeInterServicesRefus` chargée, aucune alerte active.
+  - ⚠️ **Le piège « absent ≠ non déployé » a été tranché, pas supposé** — trois preuves :
+    le compteur d'audit s'incrémente sur **toute** mutation consignée (pas seulement
+    `inconnu`) ; la table `journal_audit` **existe** et compte **0 ligne** ; et la voie OTel
+    de `svc-foyer` est vivante (`purge_lignes_total`, `outbox_backlog`,
+    `migrations_en_attente` arrivent bien en TSDB). Le zéro des journaux n'est pas non plus
+    un artefact de niveau : les lignes `warn` sortent (2 à 39 par service).
+  - ⚠️ **Le vrai résultat est la fenêtre, pas les compteurs** : sur ~940 000 requêtes,
+    **tout est sonde de santé** sauf **~84 requêtes métier sur 3 journées, toutes en
+    lecture**. Zéro mutation ; le récap du mardi n'est pas parti (dernier envoi au
+    2026-07-21). **Ni le chemin d'écriture ni l'assertion machine n'ont été exercés.**
+    Ce qui est réellement prouvé, c'est le chemin **lecture** — dont les routes du faux
+    positif du 2026-07-29 (`/moi`, `…/parents`, `…/preferences`), passées **sans un seul
+    refus fantôme** : le correctif `@FoyerScope('identite')` tient en production.
+  - **Verdict : propre au sens du runbook, mais l'indicateur a compté zéro sur zéro
+    exposition.** Reco portée à `AM-79` : **préalable** = une mutation réelle depuis le
+    compte parent d'Édouard, qui doit faire apparaître `foyer_audit_actions_total` avec
+    `acteur="parent"` (si `inconnu` : ne pas basculer) ; **puis bascule isolée**, **non
+    couplée au train** qui porte lot 9 + coût 1-3 + Martha + vacances lot 1 — la
+    réversibilité est acquise (runbook étape 5), c'est l'**attribution** d'une panne qui
+    ne l'est pas. La bascule reste un **geste PO**.
+
 - **Une sonde `--autotest` qui ne mute rien accuse la porte** (lot 5) : une mutation
   écrite sur un `\n` littéral ne remplace RIEN dans un fichier CRLF (tout l'arbre de
   travail sous Windows), la porte lit le fichier intact et le verdict affiché dit « la
