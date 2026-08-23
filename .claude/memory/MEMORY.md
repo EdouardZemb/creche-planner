@@ -23,7 +23,7 @@
 - [Plan consolidation UI + qualité](plan-consolidation-ui-qualite.md) — **journal complet des sessions dans la fiche.** État 2026-08-07 : A ✅ 7/7 ; mergés NON DÉPLOYÉS = B3/B7, C5/C7, D1-D4/D6/D8 → prochain train de release ; restent B4/B5/B8, C6/C8/C9, D5/D7, chantier E ; gestes PO : merge #284 (verte), re-run `main` rouge du 06/08 (incident GitHub, pas une régression), rclone R2(a), bascule INTERSERVICE R3.
 - [SFD 30→33 extension famille](plan-sfd-30-33-extension-famille.md) — SFD 30 exécutée → [[chantier-versionnement-dates-effet]] ; **SFD 31 VALIDÉE v1.0 (2026-08-16)** : calendrier versionné à date d'effet (D6 renversée), 4→5 lots, à démarrer après « Le coût ne ment plus » + FullCalendar 7.
   Ordre consolidation→31→32→33→factures ; reste validation PO des SFD 30/32/33 et de leurs hypothèses.
-- [Plan fondations backend](plan-fondations-backend.md) — 6 lots ✅ prod `0.13.0` ; HMAC + scoping LIVE en OBSERVE-ONLY ; **reste : bascule INTERSERVICE après ~1 sem de logs propres (geste PO = R3)** ; détail dans la fiche.
+- [Plan fondations backend](plan-fondations-backend.md) — 6 lots ✅ prod `0.13.0` ; HMAC + scoping LIVE en OBSERVE-ONLY ; **semaine d’observation LUE le 2026-08-23 : propre, mais fenêtre presque vide (0 mutation) — reste la bascule, geste PO = R3, avec son préalable en `AM-79`** ; détail dans la fiche.
 - [Veille alertes : outillage](veille-alertes-outillage.md) — lire la conclusion du workflow `veille-alertes.yml` (les alertes sont illisibles depuis une session distante) ; **actions PO : activer Dependabot alerts (Settings → Code security), dismisser CodeQL #12/#1** ; détail dans la fiche.
 
 ## Références & pièges toujours actifs
