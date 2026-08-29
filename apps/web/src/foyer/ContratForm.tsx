@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
+import { type FormEvent, useId, useMemo, useState } from 'react';
 import {
   coherenceHeuresAnnuelles,
   heuresMaximalesSurPeriode,
@@ -72,6 +72,15 @@ const NOUVEL_ETABLISSEMENT = '__nouveau__';
  * plages VIDE. Un contrat créé sans toucher aux horaires n'avait donc aucune
  * semaine type, et ses heures annuelles ne correspondaient à rien.
  */
+/**
+ * Repli du champ « heures annuelles » quand la période est encore ouverte ou
+ * incomplète, donc qu'aucun plafond n'est calculable. C'était la valeur par
+ * défaut historique — la durée légale annuelle du **travail** en France — et
+ * c'est elle qui a produit le contrat fautif ; elle ne subsiste que le temps que
+ * les dates soient saisies, et la garde de cohérence l'intercepte si elle reste.
+ */
+const HEURES_ANNUELLES_DEFAUT = '1607';
+
 const PLAGE_DEFAUT: PlageHoraire = {
   debutHeures: 8,
   debutMinutes: 0,
@@ -127,19 +136,21 @@ export function ContratForm({
   const [valideAu, setValideAu] = useState(contrat?.valideAu ?? '');
 
   // CRECHE_PSU
-  const [heuresAnnuelles, setHeuresAnnuelles] = useState(
+  /**
+   * Heures **saisies à la main** (ou héritées du contrat édité). `null` tant que
+   * le parent n'a rien tapé : la valeur affichée est alors **dérivée** de la
+   * semaine type et de la période. Un état « valeur du champ » doublé d'un
+   * drapeau « a-t-il touché ? » aurait demandé un effet pour se resynchroniser —
+   * or une valeur qui se calcule n'a pas à être stockée.
+   */
+  const [heuresSaisies, setHeuresSaisies] = useState<string | null>(
     contrat?.heuresAnnuellesContractualisees !== undefined
       ? String(contrat.heuresAnnuellesContractualisees)
-      : '1607',
+      : null,
   );
   const [nbMensualites, setNbMensualites] = useState(
     contrat?.nbMensualites !== undefined ? String(contrat.nbMensualites) : '12',
   );
-  // Vrai dès que le parent a touché le champ des heures (ou qu'on édite un contrat
-  // existant, dont la valeur fait foi) : la dérivation cesse alors de l'écraser.
-  // Sans ce drapeau, corriger la valeur à la main serait impossible — chaque coche
-  // de jour la remettrait à la valeur dérivée.
-  const [heuresSaisiesAlaMain, setHeuresSaisiesAlaMain] = useState(edition);
   const [cochesJours, setCochesJours] = useState<
     Partial<Record<JourSemaine, boolean>>
   >(() => cochesDepuisSemaine(contrat?.semaineType));
@@ -181,20 +192,16 @@ export function ContratForm({
     [semaineTypeSaisie, periodeSaisie],
   );
 
-  // Report automatique : cocher un jour ou changer les dates remplit le champ,
-  // tant que le parent ne l'a pas lui-même modifié. Un plafond nul (aucun jour
-  // gardé) n'est pas reporté : ce serait remplacer une valeur par une donnée
-  // vide, alors que la saisie est simplement encore en cours.
-  useEffect(() => {
-    if (
-      heuresSaisiesAlaMain ||
-      heuresMaximales === null ||
-      heuresMaximales === 0
-    ) {
-      return;
-    }
-    setHeuresAnnuelles(String(heuresMaximales));
-  }, [heuresMaximales, heuresSaisiesAlaMain]);
+  /**
+   * Valeur affichée : celle du parent s'il en a saisi une, sinon la dérivation.
+   * Un plafond nul (aucun jour gardé) ne remplace rien — ce serait afficher une
+   * donnée vide alors que la saisie est simplement encore en cours.
+   */
+  const heuresAnnuelles =
+    heuresSaisies ??
+    (heuresMaximales !== null && heuresMaximales > 0
+      ? String(heuresMaximales)
+      : HEURES_ANNUELLES_DEFAUT);
 
   // ABCM
   const [semaineAbcm, setSemaineAbcm] = useState<SemaineAbcm>(() =>
@@ -601,8 +608,7 @@ export function ContratForm({
                 onChange={(e) => {
                   // Reprendre la main gèle la dérivation : le contrat papier fait
                   // foi, l'application ne doit pas réécrire ce que le parent tape.
-                  setHeuresSaisiesAlaMain(true);
-                  setHeuresAnnuelles(e.target.value);
+                  setHeuresSaisies(e.target.value);
                 }}
                 className="champ-large"
               />
@@ -610,7 +616,7 @@ export function ContratForm({
           </ChampFormulaire>
           {heuresMaximales !== null && heuresMaximales > 0 && (
             <p className="muted" style={{ margin: '0.15rem 0 0' }}>
-              {`Calculé depuis votre semaine type et la période : au plus ${heuresMaximales} h, `}
+              {`Calculé depuis votre semaine type et la période : au plus ${String(heuresMaximales)} h, `}
               {
                 'sans aucune fermeture. Ajustez à la baisse selon les semaines de '
               }

@@ -854,9 +854,8 @@ describe('ContratForm — heures annuelles dérivées de la semaine type', () =>
     await waitFor(() => {
       expect(mockedApi.creerContrat).toHaveBeenCalled();
     });
-    const saisie = mockedApi.creerContrat.mock.calls[0]![0] as {
-      semaineType: Record<string, unknown[]>;
-    };
+    const appel = mockedApi.creerContrat.mock.calls[0] as unknown[];
+    const saisie = appel[0] as { semaineType: Record<string, unknown[]> };
     expect(saisie.semaineType['LUNDI']).toHaveLength(1);
     expect(saisie.semaineType['VENDREDI']).toHaveLength(1);
     expect(saisie.semaineType['MERCREDI']).toHaveLength(0);

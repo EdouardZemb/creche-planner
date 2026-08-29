@@ -63,7 +63,7 @@ export interface PeriodeValiditeContrat {
 }
 
 /** Noms de jours, indexés comme `Date#getUTCDay` (0 = dimanche). */
-const JOURS_PAR_INDEX: readonly string[] = [
+const JOURS_PAR_INDEX = [
   'DIMANCHE',
   'LUNDI',
   'MARDI',
@@ -71,7 +71,20 @@ const JOURS_PAR_INDEX: readonly string[] = [
   'JEUDI',
   'VENDREDI',
   'SAMEDI',
-];
+] as const;
+
+/** Les seuls index que `Date#getUTCDay` peut rendre. */
+type IndexJour = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+/**
+ * Nom du jour depuis l'index de `getUTCDay`. Le `% 7` n'est pas défensif : il
+ * **prouve** au typage que l'index est dans le tuple, ce qui évite d'affirmer
+ * l'évidence par un `!` — et une assertion de non-nullité serait ici un aveu que
+ * le type ne décrit pas ce que le code sait déjà.
+ */
+function nomDuJour(indexUtc: number): string {
+  return JOURS_PAR_INDEX[(indexUtc % 7) as IndexJour];
+}
 
 const FORMAT_ISO_JOUR = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -146,10 +159,7 @@ export function heuresMaximalesSurPeriode(
     return null;
   }
   while (curseur.getTime() <= dernier) {
-    minutes += minutesDuJour(
-      semaineType,
-      JOURS_PAR_INDEX[curseur.getUTCDay()]!,
-    );
+    minutes += minutesDuJour(semaineType, nomDuJour(curseur.getUTCDay()));
     curseur.setUTCDate(curseur.getUTCDate() + 1);
   }
   return arrondiCentiemeHeure(minutes / 60);
