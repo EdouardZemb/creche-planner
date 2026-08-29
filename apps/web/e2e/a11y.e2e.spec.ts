@@ -329,13 +329,16 @@ test.describe("Audit d'accessibilité automatisé (axe-core, WCAG 2.1 AA)", () =
     await expect(
       page.locator('#panneau-enfant-Mia[role="tabpanel"]'),
     ).toBeVisible();
-    // Sous-onglet « mode » → tabpanel (calendrier) correspondant.
-    await expect(page.getByRole('tab', { name: /Cantine/i })).toHaveAttribute(
-      'aria-controls',
-      'panneau-mode-CANTINE',
-    );
+    // Sous-onglet de CONTRAT → tabpanel (calendrier) correspondant. On vérifie le
+    // LIEN, pas la forme de l'identifiant : l'onglet est désormais identifié par le
+    // contrat et non par le mode (deux contrats de même mode partageaient sinon le
+    // même `id`), et coder le schéma en dur ne prouvait rien d'autre que sa propre
+    // stabilité — ce que WCAG 4.1.2 ne demande pas.
+    const ongletContrat = page.getByRole('tab', { name: /Cantine/i });
+    const panneauId = await ongletContrat.getAttribute('aria-controls');
+    expect(panneauId).toBeTruthy();
     await expect(
-      page.locator('#panneau-mode-CANTINE[role="tabpanel"]'),
+      page.locator(`#${panneauId ?? ''}[role="tabpanel"]`),
     ).toBeVisible();
 
     const r = await auditer(page, 'planning (UT-01 onglets)');
