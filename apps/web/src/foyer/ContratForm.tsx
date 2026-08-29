@@ -1,4 +1,9 @@
-import { type FormEvent, useId, useState } from 'react';
+import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
+import {
+  coherenceHeuresAnnuelles,
+  heuresMaximalesSurPeriode,
+  messageCoherenceHeures,
+} from '@creche-planner/shared-semaine';
 import { api, ApiError } from '../api/client';
 import type {
   EnfantVue,
@@ -58,6 +63,22 @@ const CHAMPS_LIES = new Set<string>([
 /** Valeur sentinelle du sélecteur d'établissement : « créer à la volée ». */
 const NOUVEL_ETABLISSEMENT = '__nouveau__';
 
+/**
+ * Plage proposée pour un jour gardé dont l'horaire n'a pas été précisé. Elle était
+ * jusqu'ici écrite en clair dans le rendu, ce qui la rendait **purement
+ * décorative** : `plagesJours` n'était renseigné qu'à la première modification
+ * d'un champ horaire, si bien qu'un jour coché — y compris les quatre jours
+ * cochés par défaut à l'ouverture du formulaire — partait avec une liste de
+ * plages VIDE. Un contrat créé sans toucher aux horaires n'avait donc aucune
+ * semaine type, et ses heures annuelles ne correspondaient à rien.
+ */
+const PLAGE_DEFAUT: PlageHoraire = {
+  debutHeures: 8,
+  debutMinutes: 0,
+  finHeures: 17,
+  finMinutes: 30,
+};
+
 export interface ContratFormProps {
   foyerId: string;
   enfants: EnfantVue[];
@@ -114,12 +135,66 @@ export function ContratForm({
   const [nbMensualites, setNbMensualites] = useState(
     contrat?.nbMensualites !== undefined ? String(contrat.nbMensualites) : '12',
   );
+  // Vrai dès que le parent a touché le champ des heures (ou qu'on édite un contrat
+  // existant, dont la valeur fait foi) : la dérivation cesse alors de l'écraser.
+  // Sans ce drapeau, corriger la valeur à la main serait impossible — chaque coche
+  // de jour la remettrait à la valeur dérivée.
+  const [heuresSaisiesAlaMain, setHeuresSaisiesAlaMain] = useState(edition);
   const [cochesJours, setCochesJours] = useState<
     Partial<Record<JourSemaine, boolean>>
   >(() => cochesDepuisSemaine(contrat?.semaineType));
   const [plagesJours, setPlagesJours] = useState<
     Partial<Record<JourSemaine, PlageHoraire>>
-  >(() => plagesDepuisSemaine(contrat?.semaineType));
+  >(() => {
+    // Les jours cochés à l'ouverture (quatre, pour un nouveau contrat) reçoivent
+    // la plage par défaut : sans cela l'écran montre des horaires que la saisie
+    // ne porte pas.
+    const initiales = plagesDepuisSemaine(contrat?.semaineType);
+    const coches = cochesDepuisSemaine(contrat?.semaineType);
+    for (const jour of JOURS_SEMAINE_OUVRES) {
+      if (coches[jour] === true && initiales[jour] === undefined) {
+        initiales[jour] = PLAGE_DEFAUT;
+      }
+    }
+    return initiales;
+  });
+
+  // ---- Dérivation des heures annuelles depuis la semaine type ---------------
+  //
+  // Les heures annuelles ne sont pas une donnée indépendante : elles se déduisent
+  // de la semaine type et de la période, toutes deux saisies juste ici. Le champ
+  // proposait pourtant `1607` par défaut — la durée légale annuelle du *travail*
+  // en France, qui n'a aucun sens comme volume de garde — sans que rien ne la
+  // confronte au rythme choisi. On dérive donc la valeur, et on refuse celles que
+  // la semaine type ne peut physiquement pas produire.
+  const semaineTypeSaisie = useMemo(
+    () => construireSemaineType(cochesJours, plagesJours),
+    [cochesJours, plagesJours],
+  );
+  const periodeSaisie = useMemo(
+    () => ({ valideDu, valideAu: valideAu.trim() === '' ? null : valideAu }),
+    [valideDu, valideAu],
+  );
+  /** Plafond physique de la période, ou `null` (période ouverte / dates incomplètes). */
+  const heuresMaximales = useMemo(
+    () => heuresMaximalesSurPeriode(semaineTypeSaisie, periodeSaisie),
+    [semaineTypeSaisie, periodeSaisie],
+  );
+
+  // Report automatique : cocher un jour ou changer les dates remplit le champ,
+  // tant que le parent ne l'a pas lui-même modifié. Un plafond nul (aucun jour
+  // gardé) n'est pas reporté : ce serait remplacer une valeur par une donnée
+  // vide, alors que la saisie est simplement encore en cours.
+  useEffect(() => {
+    if (
+      heuresSaisiesAlaMain ||
+      heuresMaximales === null ||
+      heuresMaximales === 0
+    ) {
+      return;
+    }
+    setHeuresAnnuelles(String(heuresMaximales));
+  }, [heuresMaximales, heuresSaisiesAlaMain]);
 
   // ABCM
   const [semaineAbcm, setSemaineAbcm] = useState<SemaineAbcm>(() =>
@@ -212,6 +287,30 @@ export function ContratForm({
       setErreurGlobale('Un établissement est requis pour le contrat.');
       setChargement(false);
       return;
+    }
+
+    // Garde de cohérence, AVANT tout aller-retour réseau : le service refuse la
+    // même chose (400), mais un refus immédiat évite au parent d'attendre pour
+    // apprendre que sa saisie est impossible. Les deux bords lisent la MÊME
+    // fonction (`@creche-planner/shared-semaine`) — c'est la duplication de cette
+    // règle qui avait laissé passer le défaut.
+    if (mode === 'CRECHE_PSU') {
+      const heures = parseFloat(heuresAnnuelles);
+      const messageHeures = messageCoherenceHeures(
+        coherenceHeuresAnnuelles(semaineTypeSaisie, periodeSaisie, heures),
+        heures,
+      );
+      if (messageHeures !== null) {
+        setErreursChamps([
+          {
+            champ: 'heuresAnnuellesContractualisees',
+            message: messageHeures,
+          },
+        ]);
+        setErreurGlobale('Vérifiez les heures annuelles du contrat.');
+        setChargement(false);
+        return;
+      }
     }
 
     const baseContrat = {
@@ -500,12 +599,24 @@ export function ContratForm({
                 required
                 value={heuresAnnuelles}
                 onChange={(e) => {
+                  // Reprendre la main gèle la dérivation : le contrat papier fait
+                  // foi, l'application ne doit pas réécrire ce que le parent tape.
+                  setHeuresSaisiesAlaMain(true);
                   setHeuresAnnuelles(e.target.value);
                 }}
                 className="champ-large"
               />
             )}
           </ChampFormulaire>
+          {heuresMaximales !== null && heuresMaximales > 0 && (
+            <p className="muted" style={{ margin: '0.15rem 0 0' }}>
+              {`Calculé depuis votre semaine type et la période : au plus ${heuresMaximales} h, `}
+              {
+                'sans aucune fermeture. Ajustez à la baisse selon les semaines de '
+              }
+              {'fermeture de l’établissement.'}
+            </p>
+          )}
 
           <ChampFormulaire
             id="nbMensualites"
@@ -538,12 +649,7 @@ export function ContratForm({
           <fieldset className="bloc-champs" style={{ margin: '0.75rem 0 0' }}>
             <legend>Semaine type (jours et horaires)</legend>
             {JOURS_SEMAINE_OUVRES.map((jour) => {
-              const plage = plagesJours[jour] ?? {
-                debutHeures: 8,
-                debutMinutes: 0,
-                finHeures: 17,
-                finMinutes: 30,
-              };
+              const plage = plagesJours[jour] ?? PLAGE_DEFAUT;
               return (
                 <PlageEditor
                   key={jour}
@@ -555,6 +661,17 @@ export function ContratForm({
                       const { [jour]: _retire, ...sansJour } = prev;
                       return val ? { ...prev, [jour]: true } : sansJour;
                     });
+                    // Cocher un jour lui DONNE sa plage par défaut. Sans cela,
+                    // `construireSemaineType` rendait `[]` pour un jour coché
+                    // dont les horaires n'avaient pas été touchés : les 8 h 00 →
+                    // 17 h 30 affichés n'étaient qu'un décor, et le contrat
+                    // partait avec une journée vide — donc des heures annuelles
+                    // qui ne correspondaient à rien.
+                    if (val) {
+                      setPlagesJours((prev) =>
+                        prev[jour] ? prev : { ...prev, [jour]: PLAGE_DEFAUT },
+                      );
+                    }
                   }}
                   onPlage={(p) => {
                     setPlagesJours((prev) => ({ ...prev, [jour]: p }));

@@ -48,7 +48,9 @@ import {
   type ContratVersionRow,
 } from '../database/schema.js';
 import {
+  coherenceHeuresAnnuelles,
   joursDeLaSemaine,
+  messageCoherenceHeures,
   moisDeLaSemaine,
 } from '@creche-planner/shared-semaine';
 import { ReferentielClient } from './referentiel.client.js';
@@ -204,6 +206,11 @@ export class PlanificationService {
         nbMensualites: dto.nbMensualites,
         semaineType: semaineTypeDepuisJson(dto.semaineType),
       });
+      this.exigerHeuresCoherentes(
+        dto.semaineType,
+        { valideDu: dto.valideDu, valideAu: dto.valideAu },
+        dto.heuresAnnuellesContractualisees,
+      );
     }
 
     // Clé d'idempotence fournie par la gateway (partagée par les 2 tentatives d'un
@@ -880,6 +887,58 @@ export class PlanificationService {
           (champs.semaineType as SemaineTypeJson | null) ?? {},
         ),
       });
+    }
+    // Pas de garde de cohérence des heures ici, et c'est délibéré : une version
+    // ne décrit que la **sous-période** ouverte à sa date d'effet, alors que les
+    // heures restent le volume **annuel** du contrat. Confronter l'un à l'autre
+    // refuserait des avenants parfaitement ordinaires — un avenant au 1er juin
+    // sur un contrat qui finit en juillet ne peut « produire » que huit semaines,
+    // et rejetterait le volume annuel légitime qu'il reconduit. Le plafond n'a de
+    // sens que là où semaine type et période décrivent la même chose : à la
+    // création. Ce que cette porte ne couvre pas est donc nommé plutôt que
+    // deviné (registre doc 34 §5).
+  }
+
+  /**
+   * Refuse des heures annuelles que la semaine type ne peut **physiquement** pas
+   * produire sur la période du contrat (400, erreur rattachée au champ).
+   *
+   * Cause du garde-fou : le formulaire propose `1607` par défaut — la durée légale
+   * annuelle du *travail* en France, qui n'a aucun sens comme volume de garde — et
+   * rien ne confrontait jamais cette valeur à la semaine type saisie juste à côté.
+   * Un contrat de production a ainsi été créé avec 1607 h pour 27 h/semaine, soit
+   * 59,5 semaines de garde, et la mensualisation surfacturait d'autant.
+   *
+   * La règle ne refuse que l'**impossible** (cf. `heures-annuelles.ts`) : jamais une
+   * période ouverte, jamais une semaine type vide, jamais une estimation seulement
+   * généreuse. Toute fermeture d'établissement ne fait que baisser le plafond, elle
+   * ne peut donc pas créer de faux refus.
+   *
+   * Elle est posée **au bord d'écriture**, pas dans `ContratCreche.creer` : ce
+   * constructeur est aussi celui que `genererPrestationMois` emprunte pour *lire*
+   * un contrat déjà stocké. Y lever ferait échouer le calcul de coût des contrats
+   * incohérents **déjà en base**, dont celui qui a motivé ce correctif — un refus
+   * de saisie deviendrait une panne de lecture. Les lignes existantes restent donc
+   * calculables et se corrigent au prochain enregistrement.
+   */
+  private exigerHeuresCoherentes(
+    semaineTypeJson: SemaineTypeJson,
+    periode: { valideDu: string; valideAu: string | null },
+    heuresAnnuellesContractualisees: number,
+  ): void {
+    const verdict = coherenceHeuresAnnuelles(
+      semaineTypeJson,
+      periode,
+      heuresAnnuellesContractualisees,
+    );
+    const message = messageCoherenceHeures(
+      verdict,
+      heuresAnnuellesContractualisees,
+    );
+    if (message !== null) {
+      throw new BadRequestException([
+        { champ: 'heuresAnnuellesContractualisees', message },
+      ]);
     }
   }
 

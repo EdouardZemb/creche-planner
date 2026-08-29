@@ -547,8 +547,19 @@ describe('ContratForm', () => {
     valideAu: '2026-12-31',
     heuresAnnuellesContractualisees: 763,
     nbMensualites: 7,
+    // Trois jours gardés (8 h 30 → 17 h 00 = 25 h 30/semaine). La fixture n'en
+    // portait qu'un : 763 h annuelles auraient alors exigé 90 lundis dans
+    // l'année, ce qui est impossible — et c'est exactement ce que la garde de
+    // cohérence refuse désormais. Le plafond de cette semaine sur 2026 est de
+    // 1326 h, la fixture est donc tenable.
     semaineType: {
       LUNDI: [
+        { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
+      ],
+      MERCREDI: [
+        { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
+      ],
+      VENDREDI: [
         { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
       ],
     },
@@ -794,5 +805,144 @@ describe('ContratForm', () => {
         name: /Créer une nouvelle crèche \/ école/i,
       }),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * **Non-régression du défaut de production du 2026-08-29.** Le formulaire proposait
+ * `1607` h annuelles par défaut — la durée légale annuelle du *travail* en France —
+ * et ne confrontait jamais cette valeur à la semaine type saisie juste en dessous.
+ * Un contrat de rentrée a ainsi été créé, depuis un compte parent, avec 1607 h pour
+ * 27 h/semaine : 59,5 semaines de garde, et une mensualisation surévaluée d'environ
+ * 27 %. Les heures se DÉRIVENT désormais, et l'impossible est refusé avant l'envoi.
+ *
+ * Ces tests ont aussi mis au jour un second défaut, corrigé ici : les quatre jours
+ * cochés à l'ouverture n'avaient **aucune plage horaire** — les 8 h 00 → 17 h 30
+ * affichés n'étaient qu'un décor, et un contrat créé sans toucher aux horaires
+ * partait avec une semaine type entièrement vide.
+ */
+describe('ContratForm — heures annuelles dérivées de la semaine type', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * Ramène la saisie à la forme réelle du contrat de production : période du
+   * 01/09/2026 au 23/07/2027 et **trois** jours gardés. Le formulaire en coche
+   * quatre par défaut (lundi, mardi, jeudi, vendredi) : on décoche le vendredi.
+   */
+  function saisirRentree(): void {
+    fireEvent.change(screen.getByLabelText(/Valide du/i), {
+      target: { value: '2026-09-01' },
+    });
+    fireEvent.change(screen.getByLabelText(/Valide au/i), {
+      target: { value: '2027-07-23' },
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Vendredi' }));
+  }
+
+  it('les jours cochés par défaut portent une VRAIE plage horaire', async () => {
+    // Le défaut : quatre jours cochés, aucune plage — la semaine type partait vide.
+    mockedApi.creerContrat.mockResolvedValue(contratVueFactice);
+    rendu();
+    fireEvent.change(screen.getByLabelText(/Valide du/i), {
+      target: { value: '2026-09-01' },
+    });
+    choisirEtablissement();
+    fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.creerContrat).toHaveBeenCalled();
+    });
+    const saisie = mockedApi.creerContrat.mock.calls[0]![0] as {
+      semaineType: Record<string, unknown[]>;
+    };
+    expect(saisie.semaineType['LUNDI']).toHaveLength(1);
+    expect(saisie.semaineType['VENDREDI']).toHaveLength(1);
+    expect(saisie.semaineType['MERCREDI']).toHaveLength(0);
+  });
+
+  it('DÉRIVE les heures depuis les jours cochés et la période', async () => {
+    rendu();
+    // Avant toute saisie de période, le champ porte encore la valeur héritée.
+    expect(screen.getByLabelText(/Heures annuelles/i)).toHaveValue(1607);
+
+    saisirRentree();
+
+    // 46 lundis + 47 mardis + 47 jeudis sur la période, à 9 h 30 = 1330 h.
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Heures annuelles/i)).toHaveValue(1330);
+    });
+    expect(
+      screen.getByText(/Calculé depuis votre semaine type et la période/i),
+    ).toBeInTheDocument();
+  });
+
+  it('REFUSE 1607 h saisies à la main, sans appeler l’API', async () => {
+    rendu();
+    saisirRentree();
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Heures annuelles/i)).toHaveValue(1330);
+    });
+
+    // Le parent réécrit la valeur par défaut historique : elle est impossible.
+    fireEvent.change(screen.getByLabelText(/Heures annuelles/i), {
+      target: { value: '1607' },
+    });
+    choisirEtablissement();
+    fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
+
+    expect(
+      await screen.findByText(
+        /ce contrat représente au maximum 1330 h sur sa période/i,
+      ),
+    ).toBeInTheDocument();
+    expect(mockedApi.creerContrat).not.toHaveBeenCalled();
+  });
+
+  it('ne réécrit plus la valeur dès que le parent l’a saisie à la main', async () => {
+    rendu();
+    saisirRentree();
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Heures annuelles/i)).toHaveValue(1330);
+    });
+
+    fireEvent.change(screen.getByLabelText(/Heures annuelles/i), {
+      target: { value: '1100' },
+    });
+    // Raccourcir la période change le plafond : la valeur saisie doit SURVIVRE,
+    // sinon corriger le chiffre à la main serait impossible.
+    fireEvent.change(screen.getByLabelText(/Valide au/i), {
+      target: { value: '2027-06-30' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Heures annuelles/i)).toHaveValue(1100);
+    });
+  });
+
+  it('accepte une valeur sous le plafond et envoie la saisie', async () => {
+    mockedApi.creerContrat.mockResolvedValue({
+      ...contratVueFactice,
+      valideDu: '2026-09-01',
+      valideAu: '2027-07-23',
+    });
+    rendu();
+    saisirRentree();
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Heures annuelles/i)).toHaveValue(1330);
+    });
+
+    fireEvent.change(screen.getByLabelText(/Heures annuelles/i), {
+      target: { value: '1150' },
+    });
+    choisirEtablissement();
+    fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.creerContrat).toHaveBeenCalledWith(
+        expect.objectContaining({ heuresAnnuellesContractualisees: 1150 }),
+      );
+    });
   });
 });

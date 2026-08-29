@@ -781,14 +781,24 @@ describe('PlanificationService.creerContrat', () => {
       etablissementId: ETAB_ID,
       // Le front envoie toujours les 7 jours (tableau vide = jour non gardé) ;
       // `z.record(<enum>, …)` de Zod v4 exige d'ailleurs les 7 clés.
+      // Semaine type DOCUMENTÉE de Mia (doc 02 §7) : lundi, mercredi, vendredi
+      // 8 h 30 → 17 h 00, soit 25 h 30/semaine. Elle ne portait ici que le lundi,
+      // ce qui rendait la fixture **physiquement impossible** — 885,5 h annuelles
+      // exigent au moins 105 lundis dans l'année. La garde de cohérence des
+      // heures (`coherenceHeuresAnnuelles`) l'a mise au jour ; le plafond réel de
+      // cette semaine sur 2026 est de 1326 h, la fixture est donc désormais tenable.
       semaineType: {
         LUNDI: [
           { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
         ],
         MARDI: [],
-        MERCREDI: [],
+        MERCREDI: [
+          { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
+        ],
         JEUDI: [],
-        VENDREDI: [],
+        VENDREDI: [
+          { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
+        ],
         SAMEDI: [],
         DIMANCHE: [],
       },
@@ -819,12 +829,20 @@ const DTO_CRECHE_BASE = {
   valideAu: '2026-12-31',
   heuresAnnuellesContractualisees: 885.5,
   nbMensualites: 7,
+  // Semaine type DOCUMENTÉE de Mia (doc 02 §7) : lundi, mercredi, vendredi
+  // 8 h 30 → 17 h 00 = 25 h 30/semaine, seule forme qui rende 885,5 h annuelles
+  // physiquement atteignables sur l'année (plafond 1326 h). Cf. le commentaire de
+  // la fixture ci-dessus : le lundi seul plafonnait à 442 h.
   semaineType: {
     LUNDI: [{ debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 }],
     MARDI: [],
-    MERCREDI: [],
+    MERCREDI: [
+      { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
+    ],
     JEUDI: [],
-    VENDREDI: [],
+    VENDREDI: [
+      { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 0 },
+    ],
     SAMEDI: [],
     DIMANCHE: [],
   },
@@ -2089,5 +2107,115 @@ describe('PlanificationService.rattacherEnfant (back-fill enfant_id)', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(updateSet).not.toHaveBeenCalled();
     expect(insertValues).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * **Non-régression du défaut de production du 2026-08-29.** Un contrat de rentrée
+ * a été créé depuis un compte parent avec `1607` h annuelles — la valeur proposée
+ * par défaut du formulaire, qui est la durée légale annuelle du *travail* en
+ * France — pour une semaine type de 27 h. Soit 59,5 semaines de garde, quand une
+ * année en compte 52 ; la mensualisation surfacturait d'environ 27 %.
+ *
+ * Rien, ni côté formulaire ni côté service, ne confrontait la valeur à la semaine
+ * type saisie juste à côté. La garde le fait maintenant **au bord d'écriture**,
+ * et refuse uniquement l'impossible (cf. `heures-contrat.ts`).
+ */
+describe('PlanificationService — cohérence des heures annuelles', () => {
+  /** Les valeurs EXACTES du contrat fautif en production. */
+  const SEMAINE_RENTREE = {
+    LUNDI: [
+      { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 30 },
+    ],
+    MARDI: [
+      { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 30 },
+    ],
+    MERCREDI: [],
+    JEUDI: [
+      { debutHeures: 8, debutMinutes: 30, finHeures: 17, finMinutes: 30 },
+    ],
+    VENDREDI: [],
+    SAMEDI: [],
+    DIMANCHE: [],
+  };
+  const DTO_RENTREE = {
+    ...DTO_CRECHE_BASE,
+    enfant: 'Lisa',
+    valideDu: '2026-09-01',
+    valideAu: '2027-07-23',
+    nbMensualites: 12,
+    semaineType: SEMAINE_RENTREE,
+    etablissementId: ETAB_ID,
+  };
+
+  it('REFUSE 1607 h pour 27 h/semaine, et n’insère aucun contrat', async () => {
+    const { db, inserts } = fakeCreerAvecEtab(true);
+    const service = new PlanificationService(db, referentielVide);
+
+    await expect(
+      service.creerContrat({
+        ...DTO_RENTREE,
+        heuresAnnuellesContractualisees: 1607,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(inserts.find((i) => i['mode'] === 'CRECHE_PSU')).toBeUndefined();
+  });
+
+  it('rattache le refus au champ, avec un message sans jargon ni identifiant', async () => {
+    const { db } = fakeCreerAvecEtab(true);
+    const service = new PlanificationService(db, referentielVide);
+
+    await expect(
+      service.creerContrat({
+        ...DTO_RENTREE,
+        heuresAnnuellesContractualisees: 1607,
+      }),
+    ).rejects.toThrow();
+
+    // Le corps du 400 porte l'erreur RATTACHÉE au champ : c'est ce qui permet au
+    // formulaire de la poser sous la bonne ligne plutôt qu'en bandeau générique.
+    let capturee: unknown;
+    try {
+      await service.creerContrat({
+        ...DTO_RENTREE,
+        heuresAnnuellesContractualisees: 1607,
+      });
+    } catch (e) {
+      capturee = (e as BadRequestException).getResponse();
+    }
+    expect(capturee).toMatchObject({
+      statusCode: 400,
+      message: [
+        {
+          champ: 'heuresAnnuellesContractualisees',
+          message:
+            'Avec 27 h par semaine, ce contrat représente au maximum 1260 h sur ' +
+            'sa période, même sans aucune fermeture. Vous avez saisi 1607 h.',
+        },
+      ],
+    });
+  });
+
+  it('ACCEPTE la même saisie ramenée sous le plafond (1260 h)', async () => {
+    const { db, inserts } = fakeCreerAvecEtab(true);
+    const service = new PlanificationService(db, referentielVide);
+
+    await service.creerContrat({
+      ...DTO_RENTREE,
+      heuresAnnuellesContractualisees: 1260,
+    });
+    expect(inserts.find((i) => i['mode'] === 'CRECHE_PSU')).toBeDefined();
+  });
+
+  it('n’a aucun avis sur un contrat SANS TERME (aucun plafond n’existe)', async () => {
+    const { db, inserts } = fakeCreerAvecEtab(true);
+    const service = new PlanificationService(db, referentielVide);
+
+    await service.creerContrat({
+      ...DTO_RENTREE,
+      valideAu: null,
+      heuresAnnuellesContractualisees: 1607,
+    });
+    expect(inserts.find((i) => i['mode'] === 'CRECHE_PSU')).toBeDefined();
   });
 });
