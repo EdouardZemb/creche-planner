@@ -149,7 +149,15 @@ export function CalendrierCreche({
   // Ouvre la modale adaptée au jour cliqué (absence si gardé, ajout sinon).
   const ouvrirSaisie = useCallback(
     (iso: string) => {
-      if (!estDansPeriode(iso)) return;
+      // Le clic était AVALÉ SANS UN MOT hors période : le parent ne pouvait pas
+      // distinguer « ce jour n'est pas dans mon contrat » d'une application en
+      // panne. On le dit au lieu de sortir en silence.
+      if (!estDansPeriode(iso)) {
+        annoncer(
+          'Ce jour est en dehors de la période de ce contrat : il n’y a rien à y saisir.',
+        );
+        return;
+      }
       setPortee('mois');
       if (joursGardes.has(iso)) {
         const garde = plageContratJour(iso);
@@ -194,6 +202,7 @@ export function CalendrierCreche({
       setDialogDate(iso);
     },
     [
+      annoncer,
       estDansPeriode,
       joursGardes,
       absences,

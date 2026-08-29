@@ -632,6 +632,38 @@ h3 {
   font-weight: 700;
 }
 
+/* Onglet de CONTRAT : deux lignes — le mode, puis la période qui l'identifie.
+   Les sous-onglets du planning étaient indexés sur le mode de garde : deux
+   contrats crèche successifs pour le même enfant (celui qui s'achève, celui de
+   la rentrée) portaient donc le même libellé « Crèche », sans rien pour les
+   distinguer. La seconde ligne est cette distinction. */
+.onglet-contrat {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  line-height: 1.2;
+}
+
+.onglet-periode {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--gris);
+}
+
+/* Contrat qui ne couvre PAS le mois affiché (terminé, ou pas encore commencé) :
+   il reste consultable — le passé est facturé — mais il ne doit pas se lire
+   comme le contrat courant. */
+.onglet-hors-periode .onglet-periode {
+  font-style: italic;
+}
+
+/* Panneau affiché à la place du calendrier quand le mois ne contient aucun jour
+   du contrat : sans lui, le calendrier restait vide et chaque clic était avalé
+   sans un mot. */
+.etat-hors-periode {
+  padding: var(--esp-4) 0;
+}
+
 /* ---- Modale -------------------------------------------------------------- */
 /* Base mobile : la modale s'ancre en bas de l'écran (bottom-sheet), pleine
    largeur, pouce à portée. Elle redevient une carte centrée dès la tablette

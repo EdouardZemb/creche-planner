@@ -360,26 +360,28 @@ describe('PlanningPage', () => {
 
     renderPage('foyer-1', '?enfant=Alice');
 
-    const ongletPsu = await screen.findByRole('tab', { name: 'Crèche' });
-    expect(ongletPsu).toHaveAttribute('id', 'onglet-mode-CRECHE_PSU');
+    // L'onglet est identifié par le CONTRAT, pas par le mode : deux contrats de
+    // même mode auraient sinon le même `id` DOM et le même nom accessible.
+    const ongletPsu = await screen.findByRole('tab', { name: /^Crèche,/ });
+    expect(ongletPsu).toHaveAttribute('id', 'onglet-contrat-contrat-1');
     expect(ongletPsu).toHaveAttribute(
       'aria-controls',
-      'panneau-mode-CRECHE_PSU',
+      'panneau-contrat-contrat-1',
     );
     expect(ongletPsu).toHaveAttribute('tabindex', '0');
 
-    const ongletAbcm = screen.getByRole('tab', { name: 'ABCM' });
+    const ongletAbcm = screen.getByRole('tab', { name: /^ABCM,/ });
     expect(ongletAbcm).toHaveAttribute('tabindex', '-1');
 
-    // Le tabpanel actif (calendrier) est relié à l'onglet PSU.
+    // Le tabpanel actif (calendrier) est relié à l'onglet du contrat affiché.
     const panneaux = screen.getAllByRole('tabpanel');
     const panneauMode = panneaux.find(
-      (p) => p.getAttribute('id') === 'panneau-mode-CRECHE_PSU',
+      (p) => p.getAttribute('id') === 'panneau-contrat-contrat-1',
     );
     expect(panneauMode).toBeDefined();
     expect(panneauMode).toHaveAttribute(
       'aria-labelledby',
-      'onglet-mode-CRECHE_PSU',
+      'onglet-contrat-contrat-1',
     );
 
     // Flèche droite -> ABCM, focus géré. Les calendriers sont chargés en `lazy`
@@ -389,7 +391,7 @@ describe('PlanningPage', () => {
     ongletPsu.focus();
     await user.keyboard('{ArrowRight}');
     const abcmApres = await screen.findByRole('tab', {
-      name: 'ABCM',
+      name: /^ABCM,/,
       selected: true,
     });
     expect(abcmApres).toHaveFocus();
@@ -486,10 +488,142 @@ describe('PlanningPage', () => {
 
     renderPage();
 
-    const onglet = await screen.findByRole('tab', { name: 'Crèche' });
+    // Le nom accessible porte désormais le mode ET la période qui identifie le
+    // contrat ; le libellé visible, lui, reste « Crèche ».
+    const onglet = await screen.findByRole('tab', { name: /^Crèche,/ });
     expect(onglet).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('Crèche')).toBeInTheDocument();
     // Plus aucun libellé ASCII non accentué, ni le sigle « PSU » (jargon parent).
     expect(screen.queryByText('Creche')).not.toBeInTheDocument();
     expect(screen.queryByText('Crèche PSU')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * **Non-régression du défaut de production du 2026-08-29.** Un enfant avait deux
+ * contrats crèche successifs — l'ancien achevé le 24/07, celui de la rentrée
+ * débutant le 01/09 — et le planning, en août :
+ *
+ * 1. affichait DEUX onglets « Crèche » strictement identiques (même libellé, même
+ *    `id` DOM, tous deux `aria-selected`), parce que l'onglet était indexé sur le
+ *    **mode** de garde et non sur le contrat ;
+ * 2. rendait toujours le PREMIER contrat du mode (`find(c => c.mode === …)`), si
+ *    bien que le contrat de la rentrée était injoignable, quel que soit le clic ;
+ * 3. n'indiquait nulle part que l'un des deux était terminé ;
+ * 4. affichait un calendrier vide dont chaque clic était avalé en silence, aucun
+ *    jour d'août n'appartenant à l'une ou l'autre période.
+ */
+describe('PlanningPage — deux contrats de même mode (cas de la rentrée)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** Les deux contrats crèche de l'enfant, aux dates réelles de production. */
+  const CONTRATS_RENTREE = [
+    {
+      id: 'contrat-ancien',
+      foyerId: 'foyer-1',
+      enfant: 'Alice',
+      enfantId: 'enfant-alice',
+      mode: 'CRECHE_PSU',
+      valideDu: '2026-01-01',
+      valideAu: '2026-07-24',
+      semaineType: {},
+    },
+    {
+      id: 'contrat-rentree',
+      foyerId: 'foyer-1',
+      enfant: 'Alice',
+      enfantId: 'enfant-alice',
+      mode: 'CRECHE_PSU',
+      valideDu: '2026-09-01',
+      valideAu: '2027-07-23',
+      semaineType: {},
+    },
+  ];
+
+  function rendreAout() {
+    vi.mocked(api.lireFoyer).mockResolvedValue(dossierMock);
+    vi.mocked(api.listerContrats).mockResolvedValue(
+      CONTRATS_RENTREE as unknown as Awaited<
+        ReturnType<typeof api.listerContrats>
+      >,
+    );
+    return renderPage('foyer-1', '?enfant=Alice&mois=2026-08');
+  }
+
+  it('rend DEUX onglets distincts, avec des identifiants DOM différents', async () => {
+    rendreAout();
+
+    const ancien = await screen.findByRole('tab', {
+      name: /Crèche, terminé le 24\/07\/2026/,
+    });
+    const rentree = screen.getByRole('tab', {
+      name: /Crèche, à partir du 01\/09\/2026/,
+    });
+
+    expect(ancien).toHaveAttribute('id', 'onglet-contrat-contrat-ancien');
+    expect(rentree).toHaveAttribute('id', 'onglet-contrat-contrat-rentree');
+    expect(ancien.getAttribute('id')).not.toBe(rentree.getAttribute('id'));
+  });
+
+  it('MARQUE le contrat échu et n’en sélectionne qu’UN seul', async () => {
+    rendreAout();
+
+    const ancien = await screen.findByRole('tab', {
+      name: /terminé le 24\/07\/2026/,
+    });
+    const rentree = screen.getByRole('tab', {
+      name: /à partir du 01\/09\/2026/,
+    });
+
+    // Le contrat terminé est nommé comme tel, et n'est PAS celui qu'on ouvre :
+    // en août, c'est celui de la rentrée qu'un parent vient remplir.
+    expect(ancien).toHaveAttribute('aria-selected', 'false');
+    expect(rentree).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getAllByRole('tab', { selected: true })).toHaveLength(2); // 1 enfant + 1 contrat
+  });
+
+  it('EXPLIQUE que le mois affiché est hors période, au lieu d’un calendrier muet', async () => {
+    rendreAout();
+
+    expect(
+      await screen.findByText(/ne couvre aucun jour de août 2026/i),
+    ).toBeInTheDocument();
+    // Aucun calendrier n'est rendu : il n'aurait rien à montrer et chaque clic
+    // y serait ignoré sans un mot.
+    expect(screen.queryByTestId('fullcalendar')).not.toBeInTheDocument();
+  });
+
+  it('propose d’aller au mois où il y a effectivement à saisir', async () => {
+    const user = userEvent.setup();
+    rendreAout();
+
+    await user.click(
+      await screen.findByRole('button', { name: /Afficher septembre 2026/i }),
+    );
+
+    // Le contrat de la rentrée couvre septembre : le calendrier reparaît.
+    expect(await screen.findByTestId('fullcalendar')).toBeInTheDocument();
+    expect(screen.queryByText(/ne couvre aucun jour/i)).not.toBeInTheDocument();
+  });
+
+  it('permet d’ATTEINDRE le contrat échu, que l’ancien onglet rendait injoignable', async () => {
+    const user = userEvent.setup();
+    rendreAout();
+
+    await user.click(
+      await screen.findByRole('tab', { name: /terminé le 24\/07\/2026/ }),
+    );
+
+    const ancien = await screen.findByRole('tab', {
+      name: /terminé le 24\/07\/2026/,
+      selected: true,
+    });
+    expect(ancien).toBeInTheDocument();
+    // Et son propre message le concerne : il s'est terminé en juillet.
+    expect(
+      await screen.findByRole('button', { name: /Afficher juillet 2026/i }),
+    ).toBeInTheDocument();
   });
 });

@@ -339,14 +339,27 @@ export class PlanificationService {
    * Liste les contrats d'un foyer, avec leur configuration mode-spécifique
    * (semaine type / inscriptions, heures, mensualités). Lecture seule : alimente
    * la gestion des contrats et les calendriers de planning du front (qui ne
-   * stocke plus rien côté client). Triée par enfant puis mode (rendu stable).
+   * stocke plus rien côté client). Triée par enfant, mode, début de validité puis
+   * date de création — les deux derniers critères sont ce qui rend l'ordre
+   * réellement stable quand un enfant a deux contrats du même mode.
    */
   async listerContrats(foyerId: string): Promise<ContratDetailVue[]> {
     const lignes = await this.db
       .select()
       .from(contrat)
       .where(eq(contrat.foyerId, foyerId))
-      .orderBy(contrat.enfant, contrat.mode);
+      // Départage jusqu'au bout : `(enfant, mode)` ne suffit PAS à ordonner deux
+      // contrats successifs du même enfant dans le même mode — l'ancien qui
+      // s'achève et celui de la rentrée — et Postgres ne garantit alors AUCUN
+      // ordre. Le commentaire ci-dessus promettait « rendu stable » : c'était
+      // faux exactement dans ce cas, et l'écran s'ouvrait sur l'un ou l'autre
+      // au gré des requêtes. Même ordre que l'export de portabilité.
+      .orderBy(
+        contrat.enfant,
+        contrat.mode,
+        contrat.valideDu,
+        contrat.createdAt,
+      );
     return lignes.map((l) => ({
       id: l.id,
       foyerId: l.foyerId,
