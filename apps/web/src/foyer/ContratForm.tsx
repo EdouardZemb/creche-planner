@@ -304,7 +304,7 @@ export function ContratForm({
     if (mode === 'CRECHE_PSU') {
       const heures = parseFloat(heuresAnnuelles);
       const messageHeures = messageCoherenceHeures(
-        coherenceHeuresAnnuelles(semaineTypeSaisie, periodeSaisie, heures),
+        coherenceHeuresAnnuelles(semaineTypeSaisie, heures),
         heures,
       );
       if (messageHeures !== null) {

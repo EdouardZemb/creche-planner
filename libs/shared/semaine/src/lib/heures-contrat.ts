@@ -11,12 +11,23 @@
  * de garde) pour une semaine type de 27 h, soit 59,5 semaines de garde. La
  * mensualisation (`heures / mensualités`) surfacturait d'autant.
  *
- * Ce module ne fait donc pas qu'estimer : il donne le **plafond** que la semaine
- * type ne peut pas dépasser sur sa propre période, si l'établissement n'avait
- * jamais fermé un seul jour. C'est un majorant **physique**, pas une prévision —
- * toute fermeture ne fait que le réduire. Une valeur au-dessus n'est pas
- * « discutable » : elle est impossible, ce qui la rend refusable sans arbitraire
- * et sans seuil de tolérance à régler.
+ * Le module rend donc **deux** services, à ne pas confondre :
+ *
+ * 1. **Dériver** une valeur à proposer — `heuresMaximalesSurPeriode` compte ce que
+ *    la semaine type produit sur la période du contrat, fermetures exclues. C'est
+ *    une **suggestion**, généreuse par construction.
+ * 2. **Refuser** l'impossible — `coherenceHeuresAnnuelles` convertit la valeur en
+ *    **semaines de garde équivalentes** (`heures / heures par semaine`) et rejette
+ *    au-delà de **52** : un volume dit *annuel* ne peut pas demander plus de
+ *    semaines qu'une année n'en contient. 1607 h à 27 h/semaine en réclame 59,5.
+ *
+ * Le refus porte volontairement sur l'**année**, et non sur la période du contrat.
+ * Un premier jet bornait sur la période : il refusait alors le jeu de données de
+ * référence du dépôt (`scripts/seed-demo.mjs`) et une spec e2e, c'est-à-dire la
+ * convention établie du produit — les heures annuelles n'y sont pas re-proratisées
+ * quand le contrat couvre sept mois. Une garde qui contredit la convention du
+ * produit n'est pas une garde, c'est un changement de modèle déguisé. Celle-ci ne
+ * dit qu'une chose, et elle est vraie partout : **une année a 52 semaines**.
  *
  * Il vit ici, et non dans `planification-domain`, pour une raison de frontière :
  * `context:web` ne peut dépendre que de `context:web` et `context:shared`. Une
@@ -27,13 +38,15 @@
  * manipulent déjà.
  *
  * **Ce que ce module ne couvre pas, et le dit :**
- * - il ne connaît **pas** les fermetures réelles (le calendrier d'établissement,
- *   SFD 31, n'est pas déployé) : il majore, il n'ajuste pas ;
- * - il n'a **aucun avis** sur une période **ouverte** (pas de `valideAu`) : sans
- *   borne haute il n'existe pas de plafond, et en inventer un serait mentir ;
+ * - il ne refuse **pas** une valeur seulement trop généreuse pour la période du
+ *   contrat — seulement celle qui dépasse une année entière de garde. Resserrer
+ *   demanderait de trancher d'abord si les heures annuelles se proratisent sur un
+ *   contrat de sept mois : c'est une question de modèle, pas de garde-fou ;
+ * - il ne connaît **pas** les fermetures réelles (calendrier d'établissement,
+ *   SFD 31, non déployé) : la suggestion majore, elle n'ajuste pas ;
  * - il n'a **aucun avis** sur une semaine type **vide** (0 h/semaine) : c'est un
- *   défaut d'un autre ordre, et en faire un plafond à 0 h transformerait ce
- *   module en seconde garde déguisée sur un sujet qui n'est pas le sien.
+ *   défaut d'un autre ordre, et en faire une seconde garde déguisée serait sortir
+ *   de son sujet.
  */
 
 /** Une plage horaire de la semaine type, telle qu'elle est stockée et transmise. */
@@ -176,45 +189,45 @@ export function heuresMaximalesSurPeriode(
 export type CoherenceHeuresAnnuelles =
   | {
       readonly coherent: true;
-      /** Plafond physique, ou `null` si la période est ouverte (aucun plafond). */
-      readonly maximum: number | null;
       readonly heuresHebdomadaires: number;
       /** `null` quand la semaine type est vide : aucune équivalence à calculer. */
       readonly semainesEquivalentes: number | null;
     }
   | {
       readonly coherent: false;
-      /** Un verdict négatif suppose un plafond : il est toujours connu. */
-      readonly maximum: number;
       readonly heuresHebdomadaires: number;
       /**
        * Semaines de garde qu'il faudrait pour atteindre la valeur saisie. C'est le
        * chiffre qui rend l'absurdité lisible : « 59,5 semaines » se comprend sans
-       * calcul, « 1607 h » non.
+       * calcul, « 1607 h » non. Toujours > {@link SEMAINES_PAR_AN} ici.
        */
       readonly semainesEquivalentes: number;
     };
 
 /**
- * Confronte des heures annuelles saisies à ce que le contrat peut produire. Ne
- * refuse **que** l'impossible ; tout le reste est déclaré cohérent (cf. l'en-tête
- * du module pour ce qui est délibérément hors de portée).
+ * Semaines d'une année. Le seuil n'est pas un réglage : c'est un fait de
+ * calendrier, et c'est ce qui rend le refus indiscutable.
+ */
+export const SEMAINES_PAR_AN = 52;
+
+/**
+ * Confronte des heures annuelles au rythme hebdomadaire saisi, et refuse ce qui
+ * demanderait **plus de semaines qu'une année n'en contient**. La période du
+ * contrat n'entre pas dans ce jugement — cf. l'en-tête du module.
  */
 export function coherenceHeuresAnnuelles(
   semaineType: SemaineTypeHeures,
-  periode: PeriodeValiditeContrat,
   heuresAnnuellesContractualisees: number,
 ): CoherenceHeuresAnnuelles {
   const hebdo = heuresHebdomadaires(semaineType);
-  const maximum = heuresMaximalesSurPeriode(semaineType, periode);
   // Valeur absente ou non numérique (champ vide en cours de saisie) : ce module
   // n'a rien à en dire, et prétendre le contraire afficherait « NaN h » au
   // parent. Le caractère obligatoire du champ et la validation du domaine
-  // (`ContratCreche.creer`, ≥ 0 et fini) traitent déjà ce cas.
+  // (`ContratCreche.creer`, ≥ 0 et fini) traitent déjà ce cas. Semaine type vide :
+  // aucune équivalence n'est calculable, donc aucun avis.
   if (!Number.isFinite(heuresAnnuellesContractualisees) || hebdo === 0) {
     return {
       coherent: true,
-      maximum,
       heuresHebdomadaires: hebdo,
       semainesEquivalentes: null,
     };
@@ -222,20 +235,10 @@ export function coherenceHeuresAnnuelles(
   const semainesEquivalentes = arrondiCentiemeHeure(
     heuresAnnuellesContractualisees / hebdo,
   );
-  if (maximum === null || heuresAnnuellesContractualisees <= maximum) {
-    return {
-      coherent: true,
-      maximum,
-      heuresHebdomadaires: hebdo,
-      semainesEquivalentes,
-    };
+  if (semainesEquivalentes <= SEMAINES_PAR_AN) {
+    return { coherent: true, heuresHebdomadaires: hebdo, semainesEquivalentes };
   }
-  return {
-    coherent: false,
-    maximum,
-    heuresHebdomadaires: hebdo,
-    semainesEquivalentes,
-  };
+  return { coherent: false, heuresHebdomadaires: hebdo, semainesEquivalentes };
 }
 
 /** Nombre d'heures lisible : entier sans décimale, décimal avec virgule. */
@@ -259,9 +262,9 @@ export function messageCoherenceHeures(
     return null;
   }
   return (
-    `Avec ${formaterHeures(verdict.heuresHebdomadaires)} h par semaine, ce contrat ` +
-    `représente au maximum ${formaterHeures(verdict.maximum)} h sur sa période, ` +
-    `même sans aucune fermeture. Vous avez saisi ` +
-    `${formaterHeures(heuresAnnuellesContractualisees)} h.`
+    `${formaterHeures(heuresAnnuellesContractualisees)} h à ` +
+    `${formaterHeures(verdict.heuresHebdomadaires)} h par semaine représentent ` +
+    `${formaterHeures(verdict.semainesEquivalentes)} semaines de garde, alors ` +
+    `qu'une année n'en compte que ${String(SEMAINES_PAR_AN)}.`
   );
 }

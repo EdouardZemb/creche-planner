@@ -156,100 +156,85 @@ describe('heuresMaximalesSurPeriode', () => {
 
 describe('coherenceHeuresAnnuelles', () => {
   it('REFUSE le cas de production : 1607 h pour 27 h/semaine (non-régression)', () => {
-    const verdict = coherenceHeuresAnnuelles(
-      SEMAINE_RENTREE,
-      PERIODE_RENTREE,
-      1607,
-    );
+    const verdict = coherenceHeuresAnnuelles(SEMAINE_RENTREE, 1607);
     expect(verdict.coherent).toBe(false);
-    expect(verdict.maximum).toBe(1260);
     expect(verdict.heuresHebdomadaires).toBe(27);
     // 1607 ÷ 27 = 59,52 semaines — le chiffre qui rend l'absurdité lisible.
     expect(verdict.semainesEquivalentes).toBe(59.52);
   });
 
-  it('ACCEPTE le contrat précédent, saisi à la main et cohérent (885,5 h)', () => {
-    const verdict = coherenceHeuresAnnuelles(
-      SEMAINE_ANCIENNE,
-      PERIODE_ANCIENNE,
-      885.5,
+  it('ACCEPTE le contrat précédent du même enfant (885,5 h à 32,5 h/sem)', () => {
+    expect(coherenceHeuresAnnuelles(SEMAINE_ANCIENNE, 885.5).coherent).toBe(
+      true,
     );
-    expect(verdict.coherent).toBe(true);
-    expect(verdict.maximum).toBe(959);
   });
 
-  it('accepte une valeur exactement égale au plafond (borne incluse)', () => {
-    expect(
-      coherenceHeuresAnnuelles(SEMAINE_RENTREE, PERIODE_RENTREE, 1260).coherent,
-    ).toBe(true);
+  it('ACCEPTE le jeu de données de référence du dépôt, tel quel', () => {
+    // `scripts/seed-demo.mjs` : lundi/mercredi/vendredi 8 h 30 → 17 h 00 (25,5 h),
+    // 831,5 h et 885,5 h sur janvier→juillet, avec des coûts que QUATRE specs e2e
+    // assertent. Une garde qui les refuserait changerait le modèle du produit, pas
+    // un garde-fou — c'est ce qui a fait abandonner la borne sur la période.
+    const semaineSeed: SemaineTypeHeures = {
+      LUNDI: [plage(8, 30, 17, 0)],
+      MERCREDI: [plage(8, 30, 17, 0)],
+      VENDREDI: [plage(8, 30, 17, 0)],
+    };
+    expect(heuresHebdomadaires(semaineSeed)).toBe(25.5);
+    expect(coherenceHeuresAnnuelles(semaineSeed, 831.5).coherent).toBe(true);
+    expect(coherenceHeuresAnnuelles(semaineSeed, 885.5).coherent).toBe(true);
   });
 
-  it('refuse dès le premier dixième d heure au-dessus du plafond', () => {
-    expect(
-      coherenceHeuresAnnuelles(SEMAINE_RENTREE, PERIODE_RENTREE, 1260.1)
-        .coherent,
-    ).toBe(false);
-  });
-
-  it('n a aucun avis sur une période ouverte (aucun plafond n existe)', () => {
-    const verdict = coherenceHeuresAnnuelles(
-      SEMAINE_RENTREE,
-      { valideDu: '2026-09-01', valideAu: null },
-      99999,
+  it('accepte exactement 52 semaines, refuse au-delà', () => {
+    // 27 h/semaine × 52 = 1404 h : la dernière valeur tenable.
+    expect(coherenceHeuresAnnuelles(SEMAINE_RENTREE, 1404).coherent).toBe(true);
+    expect(coherenceHeuresAnnuelles(SEMAINE_RENTREE, 1404.5).coherent).toBe(
+      false,
     );
-    expect(verdict.coherent).toBe(true);
-    expect(verdict.maximum).toBeNull();
   });
 
-  it('n a aucun avis sur une valeur non numérique (champ vide en cours de saisie)', () => {
-    const verdict = coherenceHeuresAnnuelles(
-      SEMAINE_RENTREE,
-      PERIODE_RENTREE,
-      Number.NaN,
+  it('ne dépend PAS de la période : un contrat de 7 mois n’est pas re-proratisé', () => {
+    // Même valeur, période courte ou longue : le verdict est le même. C'est la
+    // convention du produit (les heures annuelles ne sont pas proratisées).
+    expect(coherenceHeuresAnnuelles(SEMAINE_ANCIENNE, 885.5).coherent).toBe(
+      true,
     );
+  });
+
+  it('n’a aucun avis sur une valeur non numérique (champ vide en cours de saisie)', () => {
+    const verdict = coherenceHeuresAnnuelles(SEMAINE_RENTREE, Number.NaN);
     expect(verdict.coherent).toBe(true);
     // Sans cette garde, le message afficherait « NaN h » au parent.
     expect(messageCoherenceHeures(verdict, Number.NaN)).toBeNull();
   });
 
-  it('n a aucun avis sur une semaine type vide (défaut d un autre ordre)', () => {
-    const verdict = coherenceHeuresAnnuelles({}, PERIODE_RENTREE, 1607);
+  it('n’a aucun avis sur une semaine type vide (défaut d’un autre ordre)', () => {
+    const verdict = coherenceHeuresAnnuelles({}, 1607);
     expect(verdict.coherent).toBe(true);
     expect(verdict.semainesEquivalentes).toBeNull();
   });
 });
 
 describe('messageCoherenceHeures', () => {
-  it('nomme les trois chiffres, sans sigle ni identifiant technique', () => {
-    const verdict = coherenceHeuresAnnuelles(
-      SEMAINE_RENTREE,
-      PERIODE_RENTREE,
-      1607,
-    );
+  it('compte en SEMAINES — l’unité qu’un parent comprend sans calcul', () => {
+    const verdict = coherenceHeuresAnnuelles(SEMAINE_RENTREE, 1607);
     expect(messageCoherenceHeures(verdict, 1607)).toBe(
-      'Avec 27 h par semaine, ce contrat représente au maximum 1260 h sur sa ' +
-        'période, même sans aucune fermeture. Vous avez saisi 1607 h.',
+      '1607 h à 27 h par semaine représentent 59,52 semaines de garde, alors ' +
+        "qu'une année n'en compte que 52.",
     );
   });
 
   it('écrit les décimales à la française (virgule, pas point)', () => {
-    // Lundi seul, 9 h 00 → 16 h 30 = 7,5 h/semaine ; deux lundis = 15 h de plafond.
-    const semaine: SemaineTypeHeures = { LUNDI: [plage(9, 0, 16, 30)] };
-    const periode = { valideDu: '2026-09-07', valideAu: '2026-09-14' };
-    const verdict = coherenceHeuresAnnuelles(semaine, periode, 20);
+    const semaine: SemaineTypeHeures = { LUNDI: [plage(9, 0, 16, 30)] }; // 7,5 h
+    const verdict = coherenceHeuresAnnuelles(semaine, 600);
     expect(verdict.coherent).toBe(false);
-    expect(messageCoherenceHeures(verdict, 20)).toBe(
-      'Avec 7,5 h par semaine, ce contrat représente au maximum 15 h sur sa ' +
-        'période, même sans aucune fermeture. Vous avez saisi 20 h.',
+    expect(messageCoherenceHeures(verdict, 600)).toBe(
+      '600 h à 7,5 h par semaine représentent 80 semaines de garde, alors ' +
+        "qu'une année n'en compte que 52.",
     );
   });
 
-  it('rend null quand il n y a rien à signaler', () => {
-    const verdict = coherenceHeuresAnnuelles(
-      SEMAINE_ANCIENNE,
-      PERIODE_ANCIENNE,
-      885.5,
-    );
+  it('rend null quand il n’y a rien à signaler', () => {
+    const verdict = coherenceHeuresAnnuelles(SEMAINE_ANCIENNE, 885.5);
     expect(messageCoherenceHeures(verdict, 885.5)).toBeNull();
   });
 });

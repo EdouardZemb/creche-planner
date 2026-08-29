@@ -136,7 +136,12 @@ test.describe('stack réelle : effacement du foyer et de ses copies aval', () =>
         etablissementId,
         valideDu: '2026-01-01',
         valideAu: '2026-07-31',
-        heuresAnnuellesContractualisees: 831.5,
+        // 400 h pour un seul jour gardé (8 h 30 → 17 h 00 = 8,5 h/semaine) : 47
+        // semaines de garde. La valeur précédente (831,5 h) en demandait 97,8, soit
+        // près du double d'une année — la garde de cohérence la refuse désormais.
+        // Ce test ne porte pas sur le coût : seul compte qu'un contrat existe, puis
+        // disparaisse avec le foyer.
+        heuresAnnuellesContractualisees: 400,
         nbMensualites: 7,
         semaineType: semaineComplete({
           LUNDI: [

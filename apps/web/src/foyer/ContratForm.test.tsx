@@ -891,10 +891,9 @@ describe('ContratForm — heures annuelles dérivées de la semaine type', () =>
     choisirEtablissement();
     fireEvent.click(screen.getByRole('button', { name: /Créer le contrat/i }));
 
+    // 1607 ÷ 28,5 h/semaine = 56,39 semaines : plus qu'une année n'en contient.
     expect(
-      await screen.findByText(
-        /ce contrat représente au maximum 1330 h sur sa période/i,
-      ),
+      await screen.findByText(/56,39 semaines de garde/i),
     ).toBeInTheDocument();
     expect(mockedApi.creerContrat).not.toHaveBeenCalled();
   });

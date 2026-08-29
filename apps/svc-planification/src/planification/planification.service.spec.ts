@@ -2189,14 +2189,14 @@ describe('PlanificationService — cohérence des heures annuelles', () => {
         {
           champ: 'heuresAnnuellesContractualisees',
           message:
-            'Avec 27 h par semaine, ce contrat représente au maximum 1260 h sur ' +
-            'sa période, même sans aucune fermeture. Vous avez saisi 1607 h.',
+            '1607 h à 27 h par semaine représentent 59,52 semaines de garde, ' +
+            "alors qu'une année n'en compte que 52.",
         },
       ],
     });
   });
 
-  it('ACCEPTE la même saisie ramenée sous le plafond (1260 h)', async () => {
+  it('ACCEPTE la même saisie ramenée sous une année de garde (1260 h)', async () => {
     const { db, inserts } = fakeCreerAvecEtab(true);
     const service = new PlanificationService(db, referentielVide);
 
@@ -2207,14 +2207,19 @@ describe('PlanificationService — cohérence des heures annuelles', () => {
     expect(inserts.find((i) => i['mode'] === 'CRECHE_PSU')).toBeDefined();
   });
 
-  it('n’a aucun avis sur un contrat SANS TERME (aucun plafond n’existe)', async () => {
+  it('ne juge PAS la période : un contrat de 7 mois garde son volume annuel', async () => {
+    // Les heures annuelles ne sont pas proratisées dans ce produit — le jeu de
+    // données de référence (`seed-demo.mjs`) porte 885,5 h sur janvier→juillet, et
+    // quatre specs e2e assertent les coûts qui en découlent.
     const { db, inserts } = fakeCreerAvecEtab(true);
     const service = new PlanificationService(db, referentielVide);
 
     await service.creerContrat({
-      ...DTO_RENTREE,
-      valideAu: null,
-      heuresAnnuellesContractualisees: 1607,
+      ...DTO_CRECHE_BASE,
+      etablissementId: ETAB_ID,
+      valideDu: '2026-01-01',
+      valideAu: '2026-07-31',
+      heuresAnnuellesContractualisees: 885.5,
     });
     expect(inserts.find((i) => i['mode'] === 'CRECHE_PSU')).toBeDefined();
   });

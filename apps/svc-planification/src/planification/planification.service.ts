@@ -208,7 +208,6 @@ export class PlanificationService {
       });
       this.exigerHeuresCoherentes(
         dto.semaineType,
-        { valideDu: dto.valideDu, valideAu: dto.valideAu },
         dto.heuresAnnuellesContractualisees,
       );
     }
@@ -909,10 +908,11 @@ export class PlanificationService {
    * Un contrat de production a ainsi été créé avec 1607 h pour 27 h/semaine, soit
    * 59,5 semaines de garde, et la mensualisation surfacturait d'autant.
    *
-   * La règle ne refuse que l'**impossible** (cf. `heures-annuelles.ts`) : jamais une
-   * période ouverte, jamais une semaine type vide, jamais une estimation seulement
-   * généreuse. Toute fermeture d'établissement ne fait que baisser le plafond, elle
-   * ne peut donc pas créer de faux refus.
+   * La règle ne refuse que l'**impossible** : une valeur qui demanderait plus de
+   * semaines de garde qu'une année n'en contient (cf. `heures-contrat.ts`). Elle ne
+   * juge NI la période du contrat — les heures annuelles ne sont pas proratisées
+   * dans ce produit, le jeu de données de référence en atteste — ni une semaine
+   * type vide, ni une estimation seulement généreuse.
    *
    * Elle est posée **au bord d'écriture**, pas dans `ContratCreche.creer` : ce
    * constructeur est aussi celui que `genererPrestationMois` emprunte pour *lire*
@@ -923,12 +923,10 @@ export class PlanificationService {
    */
   private exigerHeuresCoherentes(
     semaineTypeJson: SemaineTypeJson,
-    periode: { valideDu: string; valideAu: string | null },
     heuresAnnuellesContractualisees: number,
   ): void {
     const verdict = coherenceHeuresAnnuelles(
       semaineTypeJson,
-      periode,
       heuresAnnuellesContractualisees,
     );
     const message = messageCoherenceHeures(
