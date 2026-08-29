@@ -253,6 +253,11 @@ export function EncartValidation({
           <EditeurSemaine
             foyerId={foyerId}
             semaineIso={semaineEditee}
+            // Seuls ces contrats ont une semaine à valider : l'éditeur n'offre
+            // « Valider » qu'à eux (cf. `EditeurContratSemaine.validable`).
+            contratsAValider={semaines
+              .filter((n) => n.semaineIso === semaineEditee)
+              .map((n) => n.contratId)}
             onFermer={() => {
               setSemaineEditee(null);
             }}

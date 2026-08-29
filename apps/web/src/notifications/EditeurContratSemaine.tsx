@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { api } from '../api/client';
+import { api, ApiError } from '../api/client';
 import type {
   ContratBesoinsSemaine,
   ExceptionAbcm,
@@ -40,6 +40,15 @@ import { ModaleJourSemaine } from './ModaleJourSemaine';
 // ajouté ». L'aplatissement/reconstruction des besoins vit dans `besoinsSemaine.ts`,
 // leur indexation et leur lecture par jour dans `indexBesoins.ts`.
 
+/**
+ * Ce que voit un parent quand il n'y a rien à valider pour cette semaine. Il n'y a
+ * ni panne ni saisie à corriger : le message le dit, et rappelle que l'édition,
+ * elle, a bien été enregistrée — sans quoi le parent croirait avoir tout perdu.
+ */
+const RIEN_A_VALIDER =
+  'Cette semaine n’était pas proposée à la validation pour ce contrat : il n’y ' +
+  'a rien à valider ici. Vos modifications sont enregistrées.';
+
 export interface EditeurContratSemaineProps {
   contrat: ContratBesoinsSemaine;
   jours: string[];
@@ -53,6 +62,15 @@ export interface EditeurContratSemaineProps {
    * `VALIDEE_AVEC_MODIFS`.
    */
   onValide?: (statut: StatutNotification) => void;
+  /**
+   * Vrai si CE contrat a bien une semaine à valider. La vue « besoins » liste
+   * **tous** les contrats couvrant la semaine, alors que la validation n'existe
+   * que pour ceux qu'un rappel du mardi a notifiés : proposer « Valider » aux
+   * autres menait droit à un 404, affiché au parent en « Ressource introuvable ».
+   * Absent = information non disponible → on garde le bouton (le 404 reste
+   * rattrapé plus bas, avec un message compréhensible).
+   */
+  validable?: boolean;
 }
 
 /**
@@ -66,6 +84,7 @@ export function EditeurContratSemaine({
   semaineIso,
   onEnregistre,
   onValide,
+  validable = true,
 }: EditeurContratSemaineProps) {
   const handleEnregistre = useCallback(() => {
     onEnregistre?.();
@@ -301,7 +320,16 @@ export function EditeurContratSemaine({
       );
       onValide?.(r.statut);
     } catch (err) {
-      setMessageValidation(messageErreur(err));
+      // 404 = cette semaine n'a jamais été proposée à la validation pour ce
+      // contrat (aucun rappel du mardi ne l'a notifiée). Ce n'est PAS une panne,
+      // et « Ressource introuvable » — ce que le mapping générique affichait —
+      // ne dit rien à un parent qui vient d'enregistrer sa semaine. On nomme la
+      // situation, et on rassure sur ce qui a bien été fait.
+      setMessageValidation(
+        err instanceof ApiError && err.status === 404
+          ? RIEN_A_VALIDER
+          : messageErreur(err),
+      );
     } finally {
       setEnValidation(false);
     }
@@ -379,19 +407,26 @@ export function EditeurContratSemaine({
           flexWrap: 'wrap',
         }}
       >
-        <Bouton
-          onClick={() => {
-            void valider();
-          }}
-          disabled={enValidation || etatSave === 'en-cours'}
-          // L'éditeur hebdo empile un bloc par contrat : plusieurs boutons
-          // « Valider » coexistent. Le suffixe enfant/mode rend chaque cible
-          // unique pour les technologies d'assistance (même pattern que
-          // `ariaLabel()` dans EncartValidation).
-          aria-label={`Valider la ${libelleSemaine(semaineIso)} — ${contrat.enfant}, ${libelleMode(mode)}`}
-        >
-          {enValidation ? 'Validation…' : 'Valider'}
-        </Bouton>
+        {validable ? (
+          <Bouton
+            onClick={() => {
+              void valider();
+            }}
+            disabled={enValidation || etatSave === 'en-cours'}
+            // L'éditeur hebdo empile un bloc par contrat : plusieurs boutons
+            // « Valider » coexistent. Le suffixe enfant/mode rend chaque cible
+            // unique pour les technologies d'assistance (même pattern que
+            // `ariaLabel()` dans EncartValidation).
+            aria-label={`Valider la ${libelleSemaine(semaineIso)} — ${contrat.enfant}, ${libelleMode(mode)}`}
+          >
+            {enValidation ? 'Validation…' : 'Valider'}
+          </Bouton>
+        ) : (
+          // Aucune semaine à valider pour ce contrat : on n'offre pas une action
+          // qui ne peut que échouer. Un contrat créé après le rappel du mardi
+          // (celui de la rentrée, par exemple) est dans ce cas.
+          <span className="muted">{RIEN_A_VALIDER}</span>
+        )}
         {messageValidation !== null && (
           <span className="credit" role="status">
             {messageValidation}

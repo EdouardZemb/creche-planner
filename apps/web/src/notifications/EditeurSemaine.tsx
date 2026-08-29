@@ -16,6 +16,14 @@ export interface EditeurSemaineProps {
   onFermer: () => void;
   /** Notifie le parent qu'une écriture a abouti (rafraîchir un éventuel coût). */
   onEnregistre?: () => void;
+  /**
+   * Identifiants des contrats qui ont RÉELLEMENT une semaine à valider (liste
+   * `a-valider` de l'encart appelant). La vue « besoins » liste tous les contrats
+   * couvrant la semaine, y compris ceux qu'aucun rappel du mardi n'a notifiés :
+   * sans cette liste, on leur proposait « Valider » et le service répondait 404.
+   * Absente = information non disponible → comportement inchangé.
+   */
+  contratsAValider?: readonly string[];
 }
 
 /**
@@ -30,6 +38,7 @@ export function EditeurSemaine({
   semaineIso,
   onFermer,
   onEnregistre,
+  contratsAValider,
 }: EditeurSemaineProps) {
   const { data, loading, error } = useAsync(
     (signal) => api.lireSemaineBesoins(foyerId, semaineIso, { signal }),
@@ -135,6 +144,11 @@ export function EditeurSemaine({
                   jours={data.jours}
                   semaineIso={semaineIso}
                   onValide={surValidation}
+                  {...(contratsAValider !== undefined
+                    ? {
+                        validable: contratsAValider.includes(contrat.contratId),
+                      }
+                    : {})}
                   {...(onEnregistre ? { onEnregistre } : {})}
                 />
               ))}
