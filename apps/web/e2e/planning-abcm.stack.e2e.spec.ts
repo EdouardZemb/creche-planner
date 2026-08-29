@@ -114,14 +114,27 @@ test('stack réelle : garde de période — aucun jour ABCM avant la rentrée (j
     page.getByRole('heading', { name: 'Planning mensuel' }),
   ).toBeVisible();
 
-  // Le calendrier est monté…
-  await expect(cellule(page, '2026-06-01')).toBeVisible();
-  // …mais AUCUN évènement « Cantine » n'est rendu dans la grille sur tout le mois
-  // (on scope sur .fc-event-title pour ignorer l'onglet/le titre « Cantine »).
+  // La garde de période est désormais EXPLICITE : plutôt qu'un calendrier monté mais
+  // vide — dont chaque clic était avalé sans un mot — l'écran dit que le contrat ne
+  // couvre aucun jour du mois, et propose celui où il y a à saisir. L'intention du
+  // test est inchangée (aucun jour ABCM avant la rentrée) ; elle est simplement
+  // vérifiable de façon plus forte : il n'y a plus de grille du tout.
+  await expect(
+    page.getByText(/ne couvre aucun jour de juin 2026/i),
+  ).toBeVisible();
+  await expect(cellule(page, '2026-06-01')).toHaveCount(0);
   await expect(evenements(page, 'Cantine')).toHaveCount(0);
 
-  // Idem pour le périscolaire (titre par séance « Soir » pour Zoé).
+  // Idem pour le périscolaire. Le nom accessible de l'onglet porte désormais la
+  // période en plus du mode ; `getByRole` cherchant une sous-chaîne, le libellé
+  // seul suffit — comme partout ailleurs dans cette suite.
   await page.getByRole('tab', { name: 'Périscolaire' }).click();
-  await expect(cellule(page, '2026-06-01')).toBeVisible();
+  await expect(
+    page.getByText(/ne couvre aucun jour de juin 2026/i),
+  ).toBeVisible();
   await expect(evenements(page, 'Soir')).toHaveCount(0);
+
+  // Et le raccourci mène au premier mois utile : la rentrée.
+  await page.getByRole('button', { name: /Afficher septembre 2026/i }).click();
+  await expect(cellule(page, '2026-09-01')).toBeVisible();
 });
