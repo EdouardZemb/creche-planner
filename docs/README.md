@@ -42,13 +42,13 @@ renumérotés — trop de liens existants en dépendent.
 
 ### SFD à l'étude (brouillons, séquence 31 → 33)
 
-| Doc                                                                                   | Contenu                                                                                                                                                                                            |
-| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [31 — SFD Calendriers & vacances scolaires](31-sfd-calendriers-vacances-scolaires.md) | Calendrier d'ouverture par établissement, import zone scolaire + retouches — **validée v1.0**                                                                                                      |
-| [32 — SFD Travail, congés & revenus](32-sfd-travail-conges-revenus.md)                | Contrats de travail (FR/CH, frontalier), absences typées, soldes CP/heures, revenus                                                                                                                |
-| [33 — SFD Planning famille](33-sfd-planning-famille.md)                               | Vue commune « qui fait quoi, où, avec qui », trajets, détection de conflits                                                                                                                        |
-| [38 — SFD Rattachement documentaire](38-sfd-rattachement-documentaire.md)             | La GED du foyer (Paperless) branchée sur l'app — dépôt, recherche, rattachement, par un second bord Tailscale — **validée v1.0** ; **hors séquence 31 → 33**, ordonnancement à arbitrer            |
-| [39 — SFD Recette systématique & agents QA](39-sfd-recette-systematique-agents-qa.md) | Un filet de recette de bout en bout avant livraison : parcours par persona rejoué sur staging, défauts convertis en tests permanents — **brouillon v0.1, NE PAS DÉMARRER** ; hors séquence 31 → 33 |
+| Doc                                                                                   | Contenu                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [31 — SFD Calendriers & vacances scolaires](31-sfd-calendriers-vacances-scolaires.md) | Calendrier d'ouverture par établissement, import zone scolaire + retouches — **validée v1.0**                                                                                                                               |
+| [32 — SFD Travail, congés & revenus](32-sfd-travail-conges-revenus.md)                | Contrats de travail (FR/CH, frontalier), absences typées, soldes CP/heures, revenus                                                                                                                                         |
+| [33 — SFD Planning famille](33-sfd-planning-famille.md)                               | Vue commune « qui fait quoi, où, avec qui », trajets, détection de conflits                                                                                                                                                 |
+| [38 — SFD Rattachement documentaire](38-sfd-rattachement-documentaire.md)             | La GED du foyer (Paperless) branchée sur l'app — dépôt, recherche, rattachement, par un second bord Tailscale — **validée v1.0** ; **hors séquence 31 → 33**, ordonnancement à arbitrer                                     |
+| [39 — SFD Recette systématique & agents QA](39-sfd-recette-systematique-agents-qa.md) | Un filet de recette de bout en bout avant livraison : parcours par persona rejoué sur staging, défauts convertis en tests permanents — **validée v1.0** ; hors séquence 31 → 33, lot 0 (remise en état de staging) bloquant |
 
 ## Architecture & conception
 
@@ -84,15 +84,15 @@ renumérotés — trop de liens existants en dépendent.
 
 ## Tests & qualité
 
-| Doc                                                                                   | Contenu                                                                                               |
-| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| [15 — Tests E2E sur stack réelle](15-spec-tests-e2e-stack-reelle.md)                  | Étage E2E sans mock contre la pile dockerisée                                                         |
-| [17 — Tests Model-Based (CT-MBT)](17-tests-model-based-ct-mbt.md)                     | Modèles, property testing, oracle                                                                     |
-| [20 — Plan de test par phase](20-plan-de-test.md)                                     | Ce qui est testé, à quel niveau, par phase                                                            |
-| [21 — Politique & stratégie de test](21-politique-strategie-test.md)                  | Niveaux de test, KPI, politique de non-régression                                                     |
-| [22 — Registre d'anomalies](22-registre-anomalies.md)                                 | Anomalies AN-xx + DDP par niveau de détection                                                         |
-| [23 — Smoke de performance](23-smoke-performance.md)                                  | Garde de latence sur `/api/v1/couts/annuel`                                                           |
-| [39 — SFD Recette systématique & agents QA](39-sfd-recette-systematique-agents-qa.md) | Recette de parcours par persona avant livraison, agents explorateurs — **brouillon, ne pas démarrer** |
+| Doc                                                                                   | Contenu                                                                                 |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [15 — Tests E2E sur stack réelle](15-spec-tests-e2e-stack-reelle.md)                  | Étage E2E sans mock contre la pile dockerisée                                           |
+| [17 — Tests Model-Based (CT-MBT)](17-tests-model-based-ct-mbt.md)                     | Modèles, property testing, oracle                                                       |
+| [20 — Plan de test par phase](20-plan-de-test.md)                                     | Ce qui est testé, à quel niveau, par phase                                              |
+| [21 — Politique & stratégie de test](21-politique-strategie-test.md)                  | Niveaux de test, KPI, politique de non-régression                                       |
+| [22 — Registre d'anomalies](22-registre-anomalies.md)                                 | Anomalies AN-xx + DDP par niveau de détection                                           |
+| [23 — Smoke de performance](23-smoke-performance.md)                                  | Garde de latence sur `/api/v1/couts/annuel`                                             |
+| [39 — SFD Recette systématique & agents QA](39-sfd-recette-systematique-agents-qa.md) | Recette de parcours par persona avant livraison, agents explorateurs — **validée v1.0** |
 
 ## Exploitation ([`exploitation/`](exploitation/))
 
