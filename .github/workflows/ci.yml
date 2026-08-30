@@ -317,6 +317,18 @@ jobs:
           node scripts/verifier-empechements.mjs --autotest
           node scripts/verifier-empechements.mjs
 
+      # Idempotence du jeu de référence (`AM-108`, `LE-90`). Le seed était
+      # idempotent pour ce qu'il CRÉAIT, jamais pour ce qu'il DÉCLARAIT : sur un
+      # foyer réutilisé, la date d'effet des ressources restait celle du PREMIER
+      # amorçage. Invisible ici — la CI part d'un `down -v`, donc toujours par la
+      # branche de création — le défaut ne vivait qu'en staging et en production,
+      # où il a fait échouer la porte 3 du train `0.18.0` (422
+      # `RESSOURCES_INCONNUES_AU_MOIS` sur `/couts/annuel`). Ces sondes exercent
+      # la branche de RÉUTILISATION contre un client HTTP factice, sans réseau ni
+      # pile : c'est le seul endroit du dépôt où ce chemin est jugé.
+      - name: Jeu de référence — idempotence de la version de ressources (bloquant)
+        run: node scripts/seed-demo.mjs --autotest
+
       # Politique de documentation (doc 35), volet « navigation ». Un lien mort
       # ne se voit qu'en le suivant : renommer un fichier, renommer un titre
       # (l'ancre suit le titre) ou déplacer un document vers `exploitation/`
