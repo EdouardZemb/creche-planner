@@ -6,7 +6,14 @@ import { useTitrePage } from '../hooks/useTitrePage';
 import { useContrats } from '../foyer/useContrats';
 import { moisCourant, formaterMoisFr } from '../utils/dates';
 import { libelleMode } from '../utils/libelles';
+import {
+  etatContrat,
+  libelleEtatContrat,
+  moisUtile,
+  resoudreContratAffiche,
+} from './etatContrat';
 import { Badge } from '../ui/Badge';
+import { Bouton } from '../ui/Bouton';
 import { EtatVide } from '../ui/EtatVide';
 import { ChargementPage } from '../ui/ChargementPage';
 import { FrontiereErreur } from '../layout/FrontiereErreur';
@@ -48,8 +55,12 @@ export function PlanningPage() {
   // EX-06 : mois porté par l'URL (restauré au rechargement et au bouton retour).
   const mois = searchParams.get('mois') ?? moisCourant();
 
-  // EX-06/CA2 : onglet enfant et mode actif portés par l'URL.
+  // EX-06/CA2 : onglet enfant et contrat actif portés par l'URL. `?contrat=<id>`
+  // désigne un contrat PRÉCIS ; `?mode=` reste lu pour ne pas casser les liens
+  // profonds déjà émis (dashboard, mail du mardi), mais il ne sait pas départager
+  // deux contrats de même mode — c'est exactement le défaut corrigé ici.
   const enfantParam = searchParams.get('enfant');
+  const contratParam = searchParams.get('contrat');
   const modeParam = searchParams.get('mode');
 
   // Version incrémentée après chaque écriture de planning réussie → rafraîchit
@@ -72,20 +83,19 @@ export function PlanningPage() {
     (c) => c.enfant === enfantSelectionne,
   );
 
-  // Mode actif pour cet enfant. Par défaut (hors paramètre d'URL), on privilégie
-  // le contrat **valide pour le mois affiché** plutôt que le premier de la liste :
-  // sinon la page peut s'ouvrir sur un contrat futur/passé au calendrier vide
-  // (ex. cantine ABCM démarrant en septembre alors qu'on affiche juin).
-  const contratValidePourMois = contratsEnfant.find(
-    (c) =>
-      c.valideDu <= `${mois}-31` &&
-      (c.valideAu === null || c.valideAu >= `${mois}-01`),
+  // Contrat affiché : identité de l'onglet, PLUS le mode (cf. `etatContrat.ts`).
+  const contratActif = resoudreContratAffiche(
+    contratsEnfant,
+    mois,
+    contratParam,
+    modeParam,
   );
-  const modeSelectionne =
-    modeParam ?? (contratValidePourMois ?? contratsEnfant[0])?.mode;
 
-  const contratActif =
-    contratsEnfant.find((c) => c.mode === modeSelectionne) ?? null;
+  // Mois où le contrat affiché a quelque chose à saisir, quand ce n'est pas celui
+  // qu'on regarde. C'est le cas de la rentrée : en août, ni le contrat qui s'est
+  // achevé en juillet ni celui qui commence en septembre n'ont un seul jour à
+  // montrer — et l'écran ne le disait pas.
+  const moisASaisir = contratActif ? moisUtile(contratActif, mois) : null;
 
   /** Met à jour un paramètre d'URL (supprime la clé si valeur nulle). */
   const setParam = (cles: Record<string, string | null>) => {
@@ -109,8 +119,10 @@ export function PlanningPage() {
     setParam({ enfant: prenom, mode: null });
   };
 
-  const handleModeClick = (mode: string) => {
-    setParam({ mode });
+  const handleContratClick = (contratId: string) => {
+    // On pose `?contrat=` ET on retire `?mode=` : laisser l'ancien paramètre
+    // derrière soi rouvrirait le premier contrat du mode au rechargement.
+    setParam({ contrat: contratId, mode: null });
   };
 
   const handleSimuleChange = (checked: boolean) => {
@@ -134,7 +146,9 @@ export function PlanningPage() {
   const refsOngletsEnfants = useRef<Record<string, HTMLButtonElement | null>>(
     {},
   );
-  const refsOngletsModes = useRef<Record<string, HTMLButtonElement | null>>({});
+  const refsOngletsContrats = useRef<Record<string, HTMLButtonElement | null>>(
+    {},
+  );
 
   /**
    * UT-01/CA2 : navigation clavier conforme au motif ARIA Tabs.
@@ -365,34 +379,48 @@ export function PlanningPage() {
                           aria-label="Modes de garde"
                         >
                           {contratsEnfant.map((c) => {
-                            const actif = modeSelectionne === c.mode;
+                            const actif = contratActif?.id === c.id;
+                            const periode = libelleEtatContrat(c, mois);
+                            const enCours = etatContrat(c, mois) === 'en-cours';
                             return (
                               <button
                                 key={c.id}
                                 ref={(el) => {
-                                  refsOngletsModes.current[c.mode] = el;
+                                  refsOngletsContrats.current[c.id] = el;
                                 }}
                                 type="button"
                                 role="tab"
-                                id={`onglet-mode-${c.mode}`}
-                                aria-controls={`panneau-mode-${c.mode}`}
+                                id={`onglet-contrat-${c.id}`}
+                                aria-controls={`panneau-contrat-${c.id}`}
                                 aria-selected={actif}
                                 tabIndex={actif ? 0 : -1}
-                                className={actif ? 'onglet actif' : 'onglet'}
+                                className={`onglet onglet-contrat${
+                                  actif ? ' actif' : ''
+                                }${enCours ? '' : ' onglet-hors-periode'}`}
+                                // Le nom accessible porte l'identité COMPLÈTE :
+                                // deux contrats crèche se lisent « Crèche,
+                                // terminé le 24/07/2026 » et « Crèche, à partir
+                                // du 01/09/2026 ». Le seul libellé de mode les
+                                // rendait indiscernables, à l'œil comme au
+                                // lecteur d'écran.
+                                aria-label={`${libelleMode(c.mode)}, ${periode}`}
                                 onClick={() => {
-                                  handleModeClick(c.mode);
+                                  handleContratClick(c.id);
                                 }}
                                 onKeyDown={(e) => {
                                   naviguerOnglets(
                                     e,
-                                    contratsEnfant.map((ce) => ce.mode),
-                                    c.mode,
-                                    refsOngletsModes.current,
-                                    handleModeClick,
+                                    contratsEnfant.map((ce) => ce.id),
+                                    c.id,
+                                    refsOngletsContrats.current,
+                                    handleContratClick,
                                   );
                                 }}
                               >
-                                {libelleMode(c.mode)}
+                                <span>{libelleMode(c.mode)}</span>
+                                <span className="onglet-periode">
+                                  {periode}
+                                </span>
                               </button>
                             );
                           })}
@@ -404,13 +432,13 @@ export function PlanningPage() {
                           style={{ marginBottom: 0 }}
                           role="tabpanel"
                           id={
-                            modeSelectionne
-                              ? `panneau-mode-${modeSelectionne}`
+                            contratActif
+                              ? `panneau-contrat-${contratActif.id}`
                               : undefined
                           }
                           aria-labelledby={
-                            modeSelectionne
-                              ? `onglet-mode-${modeSelectionne}`
+                            contratActif
+                              ? `onglet-contrat-${contratActif.id}`
                               : undefined
                           }
                         >
@@ -429,7 +457,30 @@ export function PlanningPage() {
                             )}
                           </div>
 
-                          {contratActif !== null ? (
+                          {contratActif !== null && moisASaisir !== null ? (
+                            // Le mois affiché ne contient AUCUN jour du contrat :
+                            // le calendrier serait vide et chaque clic serait
+                            // avalé en silence (`estDansPeriode` refuse le jour
+                            // sans rien dire). C'est ce qui s'est passé en août
+                            // 2026 : le contrat précédent s'était achevé le 24/07,
+                            // celui de la rentrée commençait le 01/09, et l'écran
+                            // ne donnait AUCUNE explication. On le dit, et on
+                            // propose le mois où il y a effectivement à saisir.
+                            <div className="etat-hors-periode">
+                              <p className="mt-0">
+                                {`Ce contrat ne couvre aucun jour de ${formaterMoisFr(mois)} : `}
+                                {libelleEtatContrat(contratActif, mois)}
+                                {'.'}
+                              </p>
+                              <Bouton
+                                onClick={() => {
+                                  handleMoisChange(moisASaisir);
+                                }}
+                              >
+                                {`Afficher ${formaterMoisFr(moisASaisir)}`}
+                              </Bouton>
+                            </div>
+                          ) : contratActif !== null ? (
                             // C7 : frontière autour du `<Suspense>`. Un chunk
                             // `lazy()` qui n'arrive pas (réseau coupé, fichier
                             // disparu après un déploiement) est un mode de

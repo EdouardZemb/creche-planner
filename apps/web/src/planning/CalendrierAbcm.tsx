@@ -218,12 +218,19 @@ export function CalendrierAbcm({
 
   const ouvrirAjustement = useCallback(
     (iso: string) => {
-      if (mode === 'ALSH' || !estDansPeriode(iso)) return;
+      if (mode === 'ALSH') return;
+      // Cf. `CalendrierCreche` : un jour hors période refusait le clic en silence.
+      if (!estDansPeriode(iso)) {
+        annoncer(
+          'Ce jour est en dehors de la période de ce contrat : il n’y a rien à y saisir.',
+        );
+        return;
+      }
       setPortee('mois');
       setChoixAjustement(effectifJour(ctx, iso));
       setDateAjustement(iso);
     },
-    [mode, estDansPeriode, ctx, setPortee],
+    [mode, annoncer, estDansPeriode, ctx, setPortee],
   );
 
   const confirmerAjustement = useCallback(() => {
@@ -305,8 +312,13 @@ export function CalendrierAbcm({
 
   const ouvrirSaisieAlsh = useCallback(
     (iso: string) => {
-      if (mode !== 'ALSH' || !iso.startsWith(mois) || !estDansPeriode(iso))
+      if (mode !== 'ALSH' || !iso.startsWith(mois)) return;
+      if (!estDansPeriode(iso)) {
+        annoncer(
+          'Ce jour est en dehors de la période de ce contrat : il n’y a rien à y saisir.',
+        );
         return;
+      }
       // Prérempli depuis l'état EFFECTIF (explicite > exception > récurrence).
       const eff = alshEffectifDe(ctx, iso);
       setPortee('mois');
@@ -317,7 +329,7 @@ export function CalendrierAbcm({
       );
       setDateAlsh(iso);
     },
-    [mode, mois, estDansPeriode, ctx, setPortee],
+    [mode, mois, annoncer, estDansPeriode, ctx, setPortee],
   );
 
   const handleDateClick = useCallback(
