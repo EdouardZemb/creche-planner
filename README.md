@@ -40,8 +40,8 @@ le tarif de son époque, et une correction rétroactive est un **avenant** expli
 
 ## État du projet
 
-🚀 **En production** (version `0.17.0`, promue le 2026-08-15) — déployée par
-**trains de release** successifs (18 à ce jour) sur un serveur auto-hébergé,
+🚀 **En production** (version `0.18.0`, promue le 2026-08-30) — déployée par
+**trains de release** successifs (19 à ce jour) sur un serveur auto-hébergé,
 derrière Cloudflare Access
 (voir [doc 24](docs/exploitation/24-plan-deploiement-serveur-ct-qdo.md)).
 

@@ -1,3 +1,23 @@
+## 0.18.0 (2026-08-30)
+
+### 🚀 Features
+
+- **notifications:** envois bornés et consentement écrit (lot 2, AM-58, AM-57) ([#344](https://github.com/EdouardZemb/creche-planner/pull/344))
+- **nom:** l'application s'appelle Martha — renommage d'affichage seul (ADR-0009) ([#343](https://github.com/EdouardZemb/creche-planner/pull/343))
+- **cout:** la fin d'une version de ressources existe (lot 1, AM-55, AM-13) ([#336](https://github.com/EdouardZemb/creche-planner/pull/336))
+- **a11y:** cible WCAG 2.2 AA — 9 criteres evalues, 2 echecs corriges (lot 9, AM-49) ([#334](https://github.com/EdouardZemb/creche-planner/pull/334))
+
+### 🩹 Fixes
+
+- **validation:** ne pas proposer de valider une semaine jamais notifiée ([#361](https://github.com/EdouardZemb/creche-planner/pull/361))
+- **planning:** un onglet par contrat, et dire pourquoi un mois est vide ([#360](https://github.com/EdouardZemb/creche-planner/pull/360))
+- **contrat:** les heures annuelles se déduisent du planning, et l'impossible est refusé ([#359](https://github.com/EdouardZemb/creche-planner/pull/359))
+
+### ❤️ Thank You
+
+- Claude Opus 5 (1M context)
+- Edouard Zemb @EdouardZemb
+
 ## 0.17.0 (2026-08-15)
 
 ### 🚀 Features

@@ -1,3 +1,16 @@
+## 0.18.0 (2026-08-30)
+
+### 🚀 Features
+
+- **files:** les deux files ne se taisent plus (lot 3, AM-53, AM-61) ([#348](https://github.com/EdouardZemb/creche-planner/pull/348))
+- **notifications:** envois bornés et consentement écrit (lot 2, AM-58, AM-57) ([#344](https://github.com/EdouardZemb/creche-planner/pull/344))
+- **nom:** l'application s'appelle Martha — renommage d'affichage seul (ADR-0009) ([#343](https://github.com/EdouardZemb/creche-planner/pull/343))
+
+### ❤️ Thank You
+
+- Claude Opus 5 (1M context)
+- Edouard Zemb @EdouardZemb
+
 ## 0.17.0 (2026-08-15)
 
 This was a version bump only for svc-notifications to align it with other projects, there were no code changes.

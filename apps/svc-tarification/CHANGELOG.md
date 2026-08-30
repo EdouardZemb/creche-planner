@@ -1,3 +1,15 @@
+## 0.18.0 (2026-08-30)
+
+### 🚀 Features
+
+- **files:** les deux files ne se taisent plus (lot 3, AM-53, AM-61) ([#348](https://github.com/EdouardZemb/creche-planner/pull/348))
+- **cout:** la fin d'une version de ressources existe (lot 1, AM-55, AM-13) ([#336](https://github.com/EdouardZemb/creche-planner/pull/336))
+
+### ❤️ Thank You
+
+- Claude Opus 5 (1M context)
+- Edouard Zemb @EdouardZemb
+
 ## 0.17.0 (2026-08-15)
 
 This was a version bump only for svc-tarification to align it with other projects, there were no code changes.
