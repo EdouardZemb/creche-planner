@@ -28,12 +28,18 @@
  * (ignoré par git, lié à l'instance de base). Relancer le script :
  *  - réutilise le foyer s'il existe encore (`GET /foyers/:id` → 200) ;
  *  - sinon recrée tout (volumes Docker réinitialisés) ;
- *  - réécrit contrats (PUT) et plannings (PUT, upsert naturel) sans doublon.
+ *  - réécrit contrats (PUT) et plannings (PUT, upsert naturel) sans doublon ;
+ *  - **garantit la version de ressources à la date d'effet du jeu de référence**
+ *    sur un foyer réutilisé (`garantirVersionRessources`). Cette dernière ligne
+ *    manquait : « idempotent » ne valait que pour ce que le script CRÉAIT, jamais
+ *    pour ce qu'il DÉCLARAIT sur un foyer déjà là (`LE-76`/`EM-17`, 3e fois).
  *
  * ## Usage
  *   docker compose up -d            # stack + amorçage référentiel
  *   node scripts/seed-demo.mjs      # peuplement foyer (ou: pnpm seed:demo)
  *   node scripts/seed-demo.mjs --verify   # + contrôle des coûts calculés
+ *   node scripts/seed-demo.mjs --autotest # rejoue les sondes de `garantirFoyer`
+ *                                         # (client HTTP factice, aucun réseau)
  *
  * Variable d'env `SEED_BASE_URL` pour cibler une autre gateway
  * (défaut http://localhost:3000/api/v1).
@@ -401,19 +407,76 @@ async function sauverEtat(etat) {
 
 // --- Orchestration --------------------------------------------------------
 
+/**
+ * Garantit que la version de ressources à la date d'effet du jeu de référence
+ * existe sur un foyer **déjà en base**, et la déclare si elle manque.
+ *
+ * ## Pourquoi cette fonction existe
+ *
+ * `garantirFoyer` réutilisait le foyer sans rien vérifier de son contenu : la
+ * `dateEffet` du jeu de référence n'était envoyée que dans le `POST /foyers` de
+ * CRÉATION. Sur toute instance déjà amorcée — staging, production — la version
+ * de ressources gardait donc la date du **premier** seed, et les mois antérieurs
+ * n'étaient couverts par aucune version. Sans conséquence tant que l'aval
+ * extrapolait ; depuis `AM-55` le calcul de coût les REFUSE (422
+ * `RESSOURCES_INCONNUES_AU_MOIS`), et la porte 3 de `deploy.mjs` — dont le smoke
+ * perf sonde `/couts/annuel` sur ce foyer — bloque alors le déploiement.
+ *
+ * C'est la TROISIÈME occurrence du motif `LE-76`/`EM-17` : un correctif posé à
+ * la CRÉATION est un no-op sur tout ce qui existe déjà, et la CI ne peut pas le
+ * voir puisqu'elle part d'un `down -v`. Le dépôt écrit donc ici la correction
+ * durable, pas une nouvelle leçon (cf. `CLAUDE.md`, § boucle d'amélioration).
+ *
+ * L'écriture passe par `PUT /foyers/:id`, qui **crée ou écrase** la version à
+ * `dateEffet` (cf. `svc-foyer.mettreAJour`) : la rejouer est sans effet, et elle
+ * ne touche pas les versions postérieures déjà déclarées.
+ *
+ * @param {string} foyerId
+ * @param {{ dateEffet?: string, ressourcesMensuelles: number, rfr: number,
+ *           nbEnfantsACharge: number, nbParts: number }} foyer
+ * @param {typeof http} requete client HTTP (injecté par `--autotest`)
+ * @returns {Promise<'absente-ajoutee' | 'deja-presente' | 'sans-date-effet'>}
+ */
+async function garantirVersionRessources(foyerId, foyer, requete = http) {
+  const dateEffet = foyer.dateEffet;
+  // Sans date d'effet déclarée, le jeu de référence ne prétend rien sur
+  // l'historique : on ne réécrit pas ce qu'il ne décrit pas.
+  if (!dateEffet) return 'sans-date-effet';
+
+  const versions = (await requete('GET', `/foyers/${foyerId}/versions`)) ?? [];
+  if (versions.some((v) => v.dateEffet === dateEffet)) {
+    console.log(`  ↳ ressources déjà déclarées au ${dateEffet}`);
+    return 'deja-presente';
+  }
+
+  await requete('PUT', `/foyers/${foyerId}`, {
+    ressourcesMensuelles: foyer.ressourcesMensuelles,
+    rfr: foyer.rfr,
+    nbEnfantsACharge: foyer.nbEnfantsACharge,
+    nbParts: foyer.nbParts,
+    dateEffet,
+    motif: "Alignement du jeu de référence (seed) sur sa date d'effet",
+  });
+  console.log(`  ↳ ressources déclarées au ${dateEffet} (version rétroactive)`);
+  return 'absente-ajoutee';
+}
+
 /** Garantit le foyer + ses enfants ; renvoie l'UUID foyer. */
-async function garantirFoyer(etat, foyer) {
+async function garantirFoyer(etat, foyer, requete = http) {
   if (etat.foyerId) {
     try {
-      await http('GET', `/foyers/${etat.foyerId}`);
+      await requete('GET', `/foyers/${etat.foyerId}`);
       console.log(`• Foyer déjà présent (${etat.foyerId}) — réutilisé`);
+      // Réutiliser un foyer ne dit RIEN de son contenu : la date d'effet du jeu
+      // de référence doit y être garantie comme elle l'est à la création.
+      await garantirVersionRessources(etat.foyerId, foyer, requete);
       return etat.foyerId;
     } catch {
       console.log('• Foyer absent en base — recréation (état réinitialisé)');
       etat.contrats = {};
     }
   }
-  const { foyer: cree, enfants } = await http('POST', '/foyers', foyer);
+  const { foyer: cree, enfants } = await requete('POST', '/foyers', foyer);
   etat.foyerId = cree.id;
   console.log(
     `• Foyer créé ${cree.id} (tranche ${cree.tranche ?? '?'}) ` +
@@ -652,7 +715,142 @@ async function main() {
   if (VERIFIER) await verifierCouts(foyerId);
 }
 
-main().catch((e) => {
+// --- Sondes négatives (`--autotest`) ---------------------------------------
+
+/**
+ * Client HTTP factice : enregistre les appels et rend des réponses plausibles.
+ * Aucun réseau, aucune pile — la sonde doit tourner sur un clone nu.
+ *
+ * @param {{ versions: { dateEffet: string }[], foyerExiste: boolean }} monde
+ */
+function clientFactice({ versions, foyerExiste }) {
+  /** @type {{ methode: string, chemin: string, corps: unknown }[]} */
+  const appels = [];
+  /** @type {typeof http} */
+  const requete = async (methode, chemin, corps) => {
+    appels.push({ methode, chemin, corps });
+    if (methode === 'GET' && chemin.endsWith('/versions')) return versions;
+    if (methode === 'GET') {
+      if (!foyerExiste) throw new Error('404 — foyer absent');
+      return { foyer: { id: 'existant' }, enfants: [], parents: [] };
+    }
+    if (methode === 'POST') {
+      return { foyer: { id: 'cree', tranche: 1 }, enfants: [] };
+    }
+    return undefined;
+  };
+  return { appels, requete };
+}
+
+/**
+ * Rejoue les quatre cas de `garantirFoyer` contre le client factice.
+ *
+ * Ces sondes existent parce que la CI ne PEUT PAS voir le défaut qu'elles
+ * gardent : elle part d'un `down -v`, donc toujours par la branche de CRÉATION,
+ * où la date d'effet a toujours été correcte. Le défaut ne vivait que sur une
+ * instance déjà amorcée (`LE-76`/`EM-17`, 3e occurrence) — c'est-à-dire en
+ * staging et en production, là où aucun test ne tournait.
+ *
+ * Les attendus sont DÉRIVÉS de `FOYER_DEFAUT`, jamais recopiés : si le jeu de
+ * référence change de date d'effet ou de montants, la sonde suit.
+ *
+ * @returns {Promise<number>} code de sortie (0 = toutes les sondes mordent)
+ */
+async function autotest() {
+  const attendue = FOYER_DEFAUT.dateEffet;
+  /** @type {{ nom: string, monde: Parameters<typeof clientFactice>[0],
+   *           etat: { foyerId?: string, contrats: Record<string, unknown> },
+   *           attendu: (appels: { methode: string, chemin: string, corps: any }[]) => string | null }[]} */
+  const sondes = [
+    {
+      // LE CAS QUI ARRIVE VRAIMENT : staging et prod, amorcés avant `AM-55`.
+      nom: 'foyer réutilisé SANS la version à la date d’effet → déclarée',
+      monde: { versions: [{ dateEffet: '2026-06-22' }], foyerExiste: true },
+      etat: { foyerId: 'existant', contrats: {} },
+      attendu: (appels) => {
+        const put = appels.find((a) => a.methode === 'PUT');
+        if (!put)
+          return 'aucun PUT : la version manquante n’a pas été déclarée';
+        if (put.corps?.dateEffet !== attendue)
+          return `PUT à la mauvaise date d’effet : ${put.corps?.dateEffet}`;
+        if (put.corps?.rfr !== FOYER_DEFAUT.rfr)
+          return `PUT au mauvais RFR : ${put.corps?.rfr}`;
+        if (
+          put.corps?.ressourcesMensuelles !== FOYER_DEFAUT.ressourcesMensuelles
+        )
+          return `PUT aux mauvaises ressources : ${put.corps?.ressourcesMensuelles}`;
+        if (put.corps?.nbParts !== FOYER_DEFAUT.nbParts)
+          return `PUT au mauvais nombre de parts : ${put.corps?.nbParts}`;
+        return null;
+      },
+    },
+    {
+      nom: 'foyer réutilisé AVEC la version → aucune écriture (idempotence)',
+      monde: { versions: [{ dateEffet: attendue }], foyerExiste: true },
+      etat: { foyerId: 'existant', contrats: {} },
+      attendu: (appels) =>
+        appels.some((a) => a.methode !== 'GET')
+          ? 'une écriture a été émise alors que la version existait déjà'
+          : null,
+    },
+    {
+      nom: 'foyer disparu de la base → recréation (cas création intact)',
+      monde: { versions: [], foyerExiste: false },
+      etat: { foyerId: 'fantome', contrats: { c1: {} } },
+      attendu: (appels) =>
+        appels.some((a) => a.methode === 'POST' && a.chemin === '/foyers')
+          ? null
+          : 'aucun POST /foyers : la recréation ne se fait plus',
+    },
+    {
+      nom: 'premier seed (aucun état) → création directe, sans lecture de versions',
+      monde: { versions: [], foyerExiste: false },
+      etat: { contrats: {} },
+      attendu: (appels) => {
+        if (appels.some((a) => a.chemin.endsWith('/versions')))
+          return 'lecture des versions sur un foyer qui n’existe pas encore';
+        return appels.some(
+          (a) => a.methode === 'POST' && a.chemin === '/foyers',
+        )
+          ? null
+          : 'aucun POST /foyers à la création';
+      },
+    },
+  ];
+
+  console.log('Sondes de `garantirFoyer` (client HTTP factice)\n');
+  let echecs = 0;
+  for (const sonde of sondes) {
+    const { appels, requete } = clientFactice(sonde.monde);
+    let erreur = null;
+    try {
+      await garantirFoyer(sonde.etat, FOYER_DEFAUT, requete);
+    } catch (e) {
+      erreur = `la fonction a levé : ${e.message}`;
+    }
+    const constat = erreur ?? sonde.attendu(appels);
+    if (constat === null) {
+      console.log(`  ✔ ${sonde.nom}`);
+    } else {
+      echecs += 1;
+      console.error(`  ✗ ${sonde.nom}\n      ${constat}`);
+    }
+  }
+  console.log(
+    `\n  ${sondes.length - echecs}/${sondes.length} sonde(s) vertes.`,
+  );
+  return echecs === 0 ? 0 : 1;
+}
+
+/** Point d'entrée : sondes négatives si `--autotest`, sinon peuplement réel. */
+async function demarrer() {
+  if (process.argv.includes('--autotest')) {
+    process.exit(await autotest());
+  }
+  await main();
+}
+
+demarrer().catch((e) => {
   console.error(`\n❌ Échec du seed : ${e.message}`);
   process.exit(1);
 });
