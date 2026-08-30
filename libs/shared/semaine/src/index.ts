@@ -15,3 +15,13 @@ export {
 } from './lib/fenetre.js';
 export { jourCourantParis } from './lib/jour-courant.js';
 export { libelleSemaineFr } from './lib/libelle-semaine.js';
+export {
+  coherenceHeuresAnnuelles,
+  heuresHebdomadaires,
+  heuresMaximalesSurPeriode,
+  messageCoherenceHeures,
+  type CoherenceHeuresAnnuelles,
+  type PeriodeValiditeContrat,
+  type PlageHeuresContrat,
+  type SemaineTypeHeures,
+} from './lib/heures-contrat.js';
