@@ -85,6 +85,7 @@ function rendre(
   props?: {
     onEnregistre?: () => void;
     onValide?: (s: ValidationResultat['statut']) => void;
+    validable?: boolean;
   },
 ) {
   return render(
@@ -682,6 +683,109 @@ describe('EditeurContratSemaine (modes ABCM et ALSH)', () => {
     });
     expect(
       screen.getByRole('button', { name: 'Saisir le Mercredi 01/07/2026' }),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * **Non-régression du 404 rencontré en production le 2026-08-29.** Un parent a
+ * créé le contrat de la rentrée, saisi sa semaine dans l'éditeur hebdomadaire
+ * (trois écritures acceptées, 204), puis cliqué « Valider » — et reçu un 404 :
+ * `aucune semaine 2026-W36 à valider pour le contrat f2899521…`.
+ *
+ * Cause : l'éditeur propose « Valider » pour **tout** contrat couvrant la
+ * semaine, alors que la validation n'existe que pour ceux qu'un rappel du mardi a
+ * notifiés. Un contrat créé après ce rappel n'en a évidemment aucun. Le refus
+ * était de surcroît affiché en « Ressource introuvable » — un message qui ne dit
+ * rien à un parent, et qui laisse croire que la saisie a été perdue.
+ */
+describe('EditeurContratSemaine — semaine jamais notifiée', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('N’OFFRE PAS « Valider » quand ce contrat n’a rien à valider', () => {
+    rendre(contratCreche(), { validable: false });
+
+    expect(
+      screen.queryByRole('button', { name: BOUTON_VALIDER }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/il n’y a rien à valider ici/i),
+    ).toBeInTheDocument();
+    // La saisie, elle, a bien été enregistrée : le dire évite de laisser croire
+    // à une perte.
+    expect(
+      screen.getByText(/Vos modifications sont enregistrées/i),
+    ).toBeInTheDocument();
+  });
+
+  it('offre « Valider » par défaut (information non disponible)', () => {
+    rendre(contratCreche());
+
+    expect(
+      screen.getByRole('button', { name: BOUTON_VALIDER }),
+    ).toBeInTheDocument();
+  });
+
+  it('traite un 404 comme « rien à valider », jamais en « Ressource introuvable »', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.validerSemaine).mockRejectedValue(
+      new ApiError(404, {
+        message: [
+          {
+            champ: 'semaineIso',
+            message:
+              'aucune semaine 2026-W36 à valider pour le contrat ' +
+              'f2899521-cffc-465f-96b0-43e59a5b7de8',
+          },
+        ],
+      }),
+    );
+    rendre(contratCreche());
+
+    await user.click(screen.getByRole('button', { name: BOUTON_VALIDER }));
+
+    expect(
+      await screen.findByText(/il n’y a rien à valider ici/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Ressource introuvable/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('n’expose JAMAIS l’identifiant technique du contrat au parent', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.validerSemaine).mockRejectedValue(
+      new ApiError(404, {
+        message: [
+          {
+            champ: 'semaineIso',
+            message:
+              'aucune semaine 2026-W36 à valider pour le contrat ' +
+              'f2899521-cffc-465f-96b0-43e59a5b7de8',
+          },
+        ],
+      }),
+    );
+    const { container } = rendre(contratCreche());
+
+    await user.click(screen.getByRole('button', { name: BOUTON_VALIDER }));
+    await screen.findByText(/il n’y a rien à valider ici/i);
+
+    expect(container.textContent).not.toMatch(/f2899521/);
+    expect(container.textContent).not.toMatch(/2026-W36/);
+  });
+
+  it('laisse les autres erreurs suivre le mapping habituel', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.validerSemaine).mockRejectedValue(new ApiError(503, {}));
+    rendre(contratCreche());
+
+    await user.click(screen.getByRole('button', { name: BOUTON_VALIDER }));
+
+    expect(
+      await screen.findByText(/Service indisponible/i),
     ).toBeInTheDocument();
   });
 });
