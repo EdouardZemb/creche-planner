@@ -49,6 +49,21 @@ renumérotés — trop de liens existants en dépendent.
 | [33 — SFD Planning famille](33-sfd-planning-famille.md)                               | Vue commune « qui fait quoi, où, avec qui », trajets, détection de conflits                                                                                                             |
 | [38 — SFD Rattachement documentaire](38-sfd-rattachement-documentaire.md)             | La GED du foyer (Paperless) branchée sur l'app — dépôt, recherche, rattachement, par un second bord Tailscale — **validée v1.0** ; **hors séquence 31 → 33**, ordonnancement à arbitrer |
 
+### SFD 40 → 44 — domaine associatif ABCM (brouillons, **ne pas démarrer**)
+
+Le prestataire ABCM / La Regio Schule, ses services et ses obligations de membre. Cinq documents
+écrits ensemble, **en attente de validation PO** : ils décrivent le _quoi_, aucun n'est ordonnancé.
+La note d'architecture « deux moteurs de tarification » (crèche PSU vs forfaits ABCM par tranche)
+vit au §7 de la doc 41, et les quatre autres y renvoient.
+
+| Doc                                                                                | Contenu                                                                                                                                                                      |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [40 — SFD Unités associatives](40-sfd-unites-associatives.md)                      | L'engagement de bénévolat du foyer : quota, période du 1ᵉʳ juin au 31 mai, reste-à-faire, échéance — le calcul existe déjà, il n'est branché nulle part                      |
+| [41 — SFD Cantine, périscolaire & ALSH](41-sfd-cantine-periscolaire-alsh-abcm.md)  | Réservation avant le jeudi 12 h, absences et carence, barème à trois tranches par site et par niveau, matière du rapprochement de facture — **porte la note d'architecture** |
+| [42 — SFD Vacances & ALSH](42-sfd-vacances-alsh.md)                                | Inscription par période plutôt que jour par jour, six créneaux, formule tarifaire dérivée                                                                                    |
+| [43 — SFD Calendrier scolaire ABCM](43-sfd-calendrier-scolaire-abcm.md)            | Les dates 2026/27 injectées dans le calendrier versionné — et la réponse à `Q-31-01` : la zone B donne les vacances, jamais les ouvertures d'ALSH                            |
+| [44 — SFD Inscription & réinscription](44-sfd-inscription-reinscription-pieces.md) | Dossier annuel, pièces et péremptions, RFR renouvelé chaque année — **sans jamais stocker de pièce médicale**                                                                |
+
 ## Architecture & conception
 
 | Doc                                                                                    | Contenu                                                                                                                                                                                  |
