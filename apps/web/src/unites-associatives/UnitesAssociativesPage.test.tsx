@@ -349,3 +349,163 @@ describe('phraseEcheance', () => {
     );
   });
 });
+
+describe('UnitesAssociativesPage · états de la page', () => {
+  beforeEach(() => {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockReset();
+  });
+
+  it('annonce le chargement avant la première réponse', () => {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockReturnValue(
+      new Promise(() => undefined),
+    );
+    rendre();
+
+    expect(screen.getByRole('status').textContent).toContain('Chargement');
+  });
+
+  it('propose de réessayer quand le suivi est indisponible', async () => {
+    vi.mocked(api.lireSuiviUnitesAssociatives)
+      .mockRejectedValueOnce(new Error('service indisponible'))
+      .mockResolvedValue(suivi());
+    rendre();
+
+    const reessayer = await screen.findByRole('button', { name: 'Réessayer' });
+    fireEvent.click(reessayer);
+
+    // Le second appel réussit : l'écran de récupération cède la place au suivi.
+    await screen.findByRole('heading', { name: 'Où j’en suis' });
+  });
+
+  it('dit où se prennent les créneaux quand aucun n’est encore noté', async () => {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockResolvedValue(
+      suivi({ sessions: [] }),
+    );
+    rendre();
+
+    expect(
+      (await screen.findByText(/Aucun créneau noté/)).textContent,
+    ).toContain('site travaux');
+  });
+
+  it('distingue une session faite d’une session annulée', async () => {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockResolvedValue(
+      suivi({
+        sessions: [
+          { ...PREMIERE_SESSION, id: 's-1', etat: 'REALISEE' },
+          { ...PREMIERE_SESSION, id: 's-2', etat: 'ANNULEE' },
+        ],
+      }),
+    );
+    rendre();
+
+    expect(await screen.findByText('Fait')).toBeTruthy();
+    expect(screen.getByText('Annulé')).toBeTruthy();
+    // Ni l'une ni l'autre n'offre plus « C'est fait » : le geste est passé.
+    expect(screen.queryByRole('button', { name: 'C’est fait' })).toBeNull();
+  });
+});
+
+describe('UnitesAssociativesPage · noter un créneau (US-40-02 CA1)', () => {
+  beforeEach(() => {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockReset();
+    vi.mocked(api.ajouterSessionUa).mockReset();
+  });
+
+  it('saisit les quatre champs et relaie la session, bornée à la période', async () => {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockResolvedValue(suivi());
+    vi.mocked(api.ajouterSessionUa).mockResolvedValue({} as never);
+    rendre();
+
+    const date = await screen.findByLabelText(/Date du créneau/);
+    // La saisie ne peut pas sortir de la période déclarée : le service le
+    // refuserait, l'écran l'empêche d'abord.
+    expect(date.getAttribute('min')).toBe('2026-06-01');
+    expect(date.getAttribute('max')).toBe('2027-05-31');
+
+    fireEvent.change(date, { target: { value: '2026-10-17' } });
+    fireEvent.change(screen.getByLabelText(/Durée/), {
+      target: { value: '2.5' },
+    });
+    fireEvent.change(screen.getByLabelText(/Type de créneau/), {
+      target: { value: 'CVE' },
+    });
+    fireEvent.change(screen.getByLabelText(/Qui s’y colle/), {
+      target: { value: 'Camille' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Noter ce créneau' }));
+
+    await waitFor(() => {
+      expect(api.ajouterSessionUa).toHaveBeenCalledWith(FOYER, {
+        engagementId: 'eng-1',
+        date: '2026-10-17',
+        dureeHeures: 2.5,
+        type: 'CVE',
+        realisePar: 'Camille',
+      });
+    });
+  });
+
+  it('omet « qui s’y colle » quand il est laissé vide (le reste est facultatif)', async () => {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockResolvedValue(suivi());
+    vi.mocked(api.ajouterSessionUa).mockResolvedValue({} as never);
+    rendre();
+
+    fireEvent.change(await screen.findByLabelText(/Date du créneau/), {
+      target: { value: '2026-10-17' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Noter ce créneau' }));
+
+    await waitFor(() => {
+      expect(api.ajouterSessionUa).toHaveBeenCalledWith(
+        FOYER,
+        expect.not.objectContaining({ realisePar: expect.anything() }),
+      );
+    });
+  });
+});
+
+describe('UnitesAssociativesPage · déclarer avec d’autres valeurs (RM-40-02)', () => {
+  beforeEach(() => {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockReset();
+    vi.mocked(api.declarerEngagementUa).mockReset();
+  });
+
+  it('accepte un quota et une valeur d’UA corrigés par le parent', async () => {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockResolvedValue(
+      suivi({ engagement: null, compteurs: null, sessions: [] }),
+    );
+    vi.mocked(api.declarerEngagementUa).mockResolvedValue({} as never);
+    rendre();
+
+    fireEvent.change(
+      await screen.findByLabelText(/Quota d’unités associatives/),
+      { target: { value: '10' } },
+    );
+    fireEvent.change(screen.getByLabelText(/Valeur d’une unité/), {
+      target: { value: '40' },
+    });
+    fireEvent.change(screen.getByLabelText(/Caution déposée/), {
+      target: { value: '0' },
+    });
+    fireEvent.change(screen.getByLabelText(/Début de période/), {
+      target: { value: '2026-09-01' },
+    });
+    fireEvent.change(screen.getByLabelText(/Fin de période/), {
+      target: { value: '2027-08-31' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Déclarer cette période' }),
+    );
+
+    await waitFor(() => {
+      expect(api.declarerEngagementUa).toHaveBeenCalledWith(FOYER, {
+        debut: '2026-09-01',
+        fin: '2027-08-31',
+        quotaHeures: 10,
+        valeurUaCentimes: 4000,
+        cautionCentimes: 0,
+      });
+    });
+  });
+});
