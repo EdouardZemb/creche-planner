@@ -428,18 +428,25 @@ Les quatre classes :
 | `svc-tarification`  | `bareme_psu`              | hors périmètre | Barème ; aucune donnée personnelle.                                                                                                                                     |
 | `svc-tarification`  | `prestation_mois`         | copie          | Quantités **dérivées** de `svc-planification.planning_mois` : un calcul, pas une saisie.                                                                                |
 | `svc-tarification`  | `contrat`                 | copie          | Projection **appauvrie** de `svc-planification.contrat`.                                                                                                                |
+| `svc-tarification`  | `engagement_ua`           | exportée       | Engagement de bénévolat déclaré par le foyer (SFD 40) : quota, valeur de l'UA, période, caution. **Projeté de nulle part** — c'est une saisie du parent.                |
+| `svc-tarification`  | `session_ua`              | exportée       | Créneaux de bénévolat notés par le foyer, avec leur état. Aucune re-projection ne les recréerait : le système de réservation est un site tiers que Martha ne lit pas.   |
+| `svc-tarification`  | `journal_audit`           | exportée       | Piste d'audit acteur des saisies ci-dessus (§1, T9). Exportée **sans jamais recopier** la valeur modifiée — elle est déjà rendue par les deux tables qui la portent.    |
 | `svc-tarification`  | `processed_event`         | technique      | Garde-fou anti-rejeu.                                                                                                                                                   |
 | `svc-tarification`  | `outbox`                  | technique      | File de publication ; bornée au temps (§3, T7).                                                                                                                         |
 | `svc-tarification`  | `dead_letter`             | technique      | Magasin terminal de rebuts ; borné au temps (§3, T7).                                                                                                                   |
 
 ### Les trois exclusions, et pourquoi elles ne sont pas des oublis
 
-1. **Les copies aval ne sortent pas.** `svc-tarification` ne détient que des projections
+1. **Les copies aval ne sortent pas.** `svc-tarification` ne détient, **hors unités
+   associatives**, que des projections
    des tables ci-dessus, et `svc-notifications` en porte quatre. Les inclure ferait passer
    pour une donnée de plus ce qui n'est qu'un second exemplaire de la même — souvent moins
    complet que l'original. La règle vaut dans un seul sens : là où la copie porte **moins**
    que sa source (`svc-planification.etablissement` et ses coordonnées, absentes du
    read-model aval), c'est la **source** qui est exportée.
+   Depuis la **SFD 40** (unités associatives), `svc-tarification` détient en plus
+   **deux saisies du parent** (`engagement_ua`, `session_ua`) et leur piste d'audit : celles-là
+   ne sont la copie de rien — l'export les rend, c'est la même règle et non une exception.
 2. **Le `jti` d'un jeton de désabonnement ne sort pas.** Ce jeton désabonne sans
    authentification : recopié dans un fichier téléchargé, conservé, transféré, il resterait
    actionnable par quiconque le lit. Le type, le canal et les dates suffisent à la
@@ -507,6 +514,10 @@ Les cinq classes :
 | `svc-notifications` | `POST /envois/etablissement`                      | différée       | `AM-77`                                                                                                                                                                                                                                      |
 | `svc-notifications` | `POST /validations/:contratId/:semaineIso`        | différée       | `AM-77`                                                                                                                                                                                                                                      |
 | `svc-notifications` | `POST /moi/notifications/:id/lu`                  | différée       | `AM-77`                                                                                                                                                                                                                                      |
+| `svc-tarification`  | `POST /unites-associatives`                       | auditée        | `engagement_ua.declare`                                                                                                                                                                                                                      |
+| `svc-tarification`  | `POST /unites-associatives/sessions`              | auditée        | `session_ua.ajoutee`                                                                                                                                                                                                                         |
+| `svc-tarification`  | `PUT /unites-associatives/sessions/:sessionId`    | auditée        | `session_ua.modifiee` — c'est l'action qui déplace des heures d'un compteur à l'autre, donc celle qui change le coût projeté du foyer                                                                                                        |
+| `svc-tarification`  | `DELETE /unites-associatives/sessions/:sessionId` | auditée        | `session_ua.supprimee` — la ligne est écrite **avant** la suppression et lui survit : aucune clé étrangère ne la rattache à la session, elle porte le foyer                                                                                  |
 | `svc-referentiel`   | `POST /grilles/abcm`                              | hors périmètre | Publication d'un barème public par un administrateur ; aucune donnée personnelle                                                                                                                                                             |
 | `svc-referentiel`   | `POST /baremes/psu`                               | hors périmètre | Publication d'un barème public par un administrateur ; aucune donnée personnelle                                                                                                                                                             |
 | `svc-referentiel`   | `POST /baremes/tranches`                          | hors périmètre | Publication de seuils de tranche par un administrateur ; aucune donnée personnelle                                                                                                                                                           |

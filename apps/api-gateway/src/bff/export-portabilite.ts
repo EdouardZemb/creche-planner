@@ -1,6 +1,7 @@
 import type { ExportFoyerVue } from '../clients/foyer.client.js';
 import type { ExportNotificationsVue } from '../clients/notifications.client.js';
 import type { ExportPlanificationVue } from '../clients/planification.client.js';
+import type { ExportUnitesAssociativesVue } from '../clients/tarification.client.js';
 
 /**
  * Version du **format** du document d'export, pas de l'application. Elle
@@ -23,6 +24,12 @@ export interface ExportPortabiliteVue {
   readonly situationFoyer: ExportFoyerVue;
   readonly gardeEtPlanning: ExportPlanificationVue;
   readonly communications: ExportNotificationsVue;
+  /**
+   * Engagement de bénévolat du foyer et sessions saisies (SFD 40). Section
+   * **ajoutée** au format, ce qui est additif : `VERSION_FORMAT_EXPORT` ne bouge
+   * pas — un lecteur du fichier ne perd rien, il trouve une section de plus.
+   */
+  readonly engagementAssociatif: ExportUnitesAssociativesVue;
 }
 
 /** Les trois parts de service, telles que rendues par les clients. */
@@ -32,6 +39,7 @@ export interface PartsExport {
   readonly foyer: ExportFoyerVue;
   readonly planification: ExportPlanificationVue;
   readonly notifications: ExportNotificationsVue;
+  readonly unitesAssociatives: ExportUnitesAssociativesVue;
 }
 
 /**
@@ -49,5 +57,6 @@ export function assemblerExport(parts: PartsExport): ExportPortabiliteVue {
     situationFoyer: parts.foyer,
     gardeEtPlanning: parts.planification,
     communications: parts.notifications,
+    engagementAssociatif: parts.unitesAssociatives,
   };
 }

@@ -45,6 +45,21 @@ export type {
   ConfigUnitesAssociatives,
   SaisieUnitesAssociatives,
 } from './lib/abcm/unites-associatives-abcm.js';
+export {
+  ETATS_SESSION_UA,
+  SEUIL_ALERTE_ECHEANCE_JOURS,
+  TYPES_SESSION_UA,
+  calculerSuiviUa,
+  joursEntre,
+} from './lib/abcm/suivi-unites-associatives.js';
+export type {
+  CoutProjeteUa,
+  EngagementUaCalcul,
+  EtatSessionUa,
+  SessionUaCalcul,
+  SuiviUa,
+  TypeSessionUa,
+} from './lib/abcm/suivi-unites-associatives.js';
 
 // Consolidation foyer
 export { consoliderCoutMoisFoyer } from './lib/consolidation/cout-mois-foyer.js';

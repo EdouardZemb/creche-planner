@@ -601,3 +601,43 @@ export interface ContratLocal extends ContratVue {
   semaineType?: SemaineTypeCreche;
   semaineAbcm?: SemaineAbcm;
 }
+
+// ---- Unités associatives (SFD 40) -------------------------------------------
+
+/**
+ * Suivi de l'engagement de bénévolat du foyer : engagement courant, sessions et
+ * les trois compteurs. `engagement: null` = aucune période déclarée — l'écran
+ * propose alors la déclaration, il n'affiche pas trois zéros qui laisseraient
+ * croire le foyer à jour.
+ */
+export type SuiviUaVue = ReponseJson<'/api/v1/unites-associatives', 'get', 200>;
+
+/** L'engagement d'une période (quota, valeur d'UA, dates, caution). */
+export type EngagementUaVue = SchemaComposant<'EngagementUaVue'>;
+
+/** Une session de bénévolat — la recopie d'un créneau pris sur le site travaux. */
+export type SessionUaVue = SchemaComposant<'SessionUaVue'>;
+
+/** Les trois compteurs, l'échéance et les deux coûts projetés (SFD 40 §3.1). */
+export type CompteursUaVue = SchemaComposant<'CompteursUaVue'>;
+
+/** Un coût projeté AVEC son hypothèse — les deux ne se séparent pas (RM-40-05). */
+export type CoutProjeteUaVue = SchemaComposant<'CoutProjeteUaVue'>;
+
+/** Corps de déclaration d'un engagement. */
+export type DeclarerEngagementUa = CorpsRequeteJson<
+  '/api/v1/unites-associatives',
+  'post'
+>;
+
+/** Corps d'ajout d'une session (quatre champs utiles, le reste facultatif). */
+export type AjouterSessionUa = CorpsRequeteJson<
+  '/api/v1/unites-associatives/sessions',
+  'post'
+>;
+
+/** Corps de modification d'une session (« c'est fait », « ça n'a pas eu lieu »). */
+export type ModifierSessionUa = CorpsRequeteJson<
+  '/api/v1/unites-associatives/sessions/{sessionId}',
+  'put'
+>;

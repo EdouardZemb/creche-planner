@@ -39,11 +39,14 @@ import {
   contrat,
   deadLetter,
   enfant,
+  engagementUa,
   foyer,
   foyerVersion,
   grilleTarifaire,
+  journalAudit,
   prestationMois,
   processedEvent,
+  sessionUa,
 } from '../database/schema.js';
 import { PlanificationClient } from '../fallback/planification.client.js';
 
@@ -725,6 +728,14 @@ export class ProjectionService {
       await tx.delete(contrat).where(eq(contrat.foyerId, foyerId));
       await tx.delete(enfant).where(eq(enfant.foyerId, foyerId));
       await tx.delete(foyerVersion).where(eq(foyerVersion.foyerId, foyerId));
+      // Unités associatives (SFD 40) : ce sont les seules SAISIES du foyer que ce
+      // service détienne, et aucune clé étrangère ne les rattache à `foyer` (qui
+      // n'est ici qu'une projection, possiblement froide au moment de la saisie).
+      // Leur effacement est donc explicite, ici, avec le reste. `session_ua` part
+      // avant `engagement_ua`, dont elle dépend par clé étrangère.
+      await tx.delete(sessionUa).where(eq(sessionUa.foyerId, foyerId));
+      await tx.delete(engagementUa).where(eq(engagementUa.foyerId, foyerId));
+      await tx.delete(journalAudit).where(eq(journalAudit.foyerId, foyerId));
       await tx.delete(foyer).where(eq(foyer.id, foyerId));
       await tx
         .delete(deadLetter)

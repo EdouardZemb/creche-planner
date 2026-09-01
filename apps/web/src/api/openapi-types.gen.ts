@@ -2092,6 +2092,252 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/unites-associatives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suivi des unités associatives du foyer (SFD 40)
+         * @description Les trois compteurs (réalisé, réservé, restant), l’échéance et les deux coûts projetés. **Martha ne réserve rien** : les créneaux se prennent sur le site travaux de l’association, cette API en tient le compte (RM-40-01).
+         */
+        get: {
+            parameters: {
+                query: {
+                    foyer: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Suivi du foyer (engagement `null` si rien de déclaré). */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SuiviUaVue"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Déclarer l’engagement d’une période */
+        post: {
+            parameters: {
+                query: {
+                    foyer: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        debut: string;
+                        /** Format: date */
+                        fin: string;
+                        quotaHeures: number;
+                        valeurUaCentimes: number;
+                        cautionCentimes?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Engagement déclaré. */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EngagementUaVue"];
+                    };
+                };
+                /** @description Une période déjà déclarée couvre ces dates (US-40-01 CA2) : deux périodes qui se recouvrent rendraient le reste-à-faire ambigu. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/unites-associatives/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Noter un créneau pris sur le site travaux
+         * @description La session est créée à l’état `PREVUE` et compte immédiatement au compteur « réservé » (US-40-02 CA2). Martha n’a rien réservé.
+         */
+        post: {
+            parameters: {
+                query: {
+                    foyer: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        engagementId: string;
+                        /** Format: date */
+                        date: string;
+                        dureeHeures: number;
+                        type: string;
+                        realisePar?: string;
+                        /** Format: uuid */
+                        etablissementId?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Session enregistrée (état `PREVUE`). */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SessionUaVue"];
+                    };
+                };
+                /** @description La date est hors de la période déclarée. */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/unites-associatives/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Marquer une session réalisée ou annulée, ou la corriger
+         * @description Aucune transition n’est automatique : le temps qui passe ne marque pas une session réalisée, il la rend « à confirmer » (RM-40-06).
+         */
+        put: {
+            parameters: {
+                query: {
+                    foyer: string;
+                };
+                header?: never;
+                path: {
+                    sessionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        etat?: "PREVUE" | "REALISEE" | "ANNULEE";
+                        /** Format: date */
+                        date?: string;
+                        dureeHeures?: number;
+                        type?: string;
+                        realisePar?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Session mise à jour. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SessionUaVue"];
+                    };
+                };
+                /** @description Session inconnue pour ce foyer. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        /**
+         * Supprimer une session saisie par erreur
+         * @description À distinguer d’une ANNULATION (`etat: ANNULEE`), qui garde la trace d’un créneau qui a existé.
+         */
+        delete: {
+            parameters: {
+                query: {
+                    foyer: string;
+                };
+                header?: never;
+                path: {
+                    sessionId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Session supprimée. */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Session inconnue pour ce foyer. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/couts": {
         parameters: {
             query?: never;
@@ -2667,6 +2913,73 @@ export interface components {
                 envoisEtablissement: components["schemas"]["LigneExport"][];
                 messagesInApp: components["schemas"]["LigneExport"][];
             };
+            /** @description Engagement de bénévolat déclaré par le foyer (unités associatives), ses sessions saisies et la piste d’audit de ces saisies. Section AJOUTÉE au format : additive, `versionFormat` ne bouge pas. */
+            engagementAssociatif: {
+                /** Format: uuid */
+                foyerId: string;
+                engagements: components["schemas"]["LigneExport"][];
+                pisteAudit: components["schemas"]["LigneExport"][];
+            };
+        };
+        /** @description Un coût projeté d’unités associatives AVEC son hypothèse (RM-40-05) : un montant affiché sans dire s’il suppose les créneaux réservés réalisés est un chiffre qui ment par omission. */
+        CoutProjeteUaVue: {
+            montantCentimes: number;
+            /** @enum {string} */
+            hypothese: "SI_TU_TARRETES_LA" | "SI_TU_REALISES_TES_RESERVATIONS";
+        };
+        /** @description Les trois compteurs du suivi des unités associatives (SFD 40 §3.1) — réalisé, réservé, restant — plus les heures « à confirmer » (session passée encore prévue), l’échéance et les deux coûts projetés. */
+        CompteursUaVue: {
+            quotaHeures: number;
+            heuresRealisees: number;
+            heuresReservees: number;
+            heuresAConfirmer: number;
+            heuresRestantes: number;
+            quotaAtteint: boolean;
+            joursAvantEcheance: number;
+            coutSiArret: components["schemas"]["CoutProjeteUaVue"];
+            coutSiReservationsRealisees: components["schemas"]["CoutProjeteUaVue"];
+            alerteEcheance: boolean;
+        };
+        /** @description Engagement de bénévolat d’un foyer pour une période. Quota, valeur de l’UA, bornes et caution sont des DONNÉES saisies (RM-40-02), jamais des constantes du code. */
+        EngagementUaVue: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            foyerId: string;
+            /** Format: date */
+            debut: string;
+            /** Format: date */
+            fin: string;
+            quotaHeures: number;
+            valeurUaCentimes: number;
+            cautionCentimes: number | null;
+        };
+        /** @description Une session de bénévolat — la RECOPIE d’un créneau pris sur le site travaux de l’association (RM-40-01). `aConfirmer` est dérivé : une session passée encore `PREVUE` n’est jamais comptée d’office comme réalisée (RM-40-06). */
+        SessionUaVue: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            engagementId: string;
+            /** Format: date */
+            date: string;
+            dureeHeures: number;
+            type: string;
+            realisePar: string | null;
+            etablissementId: string | null;
+            /** @enum {string} */
+            etat: "PREVUE" | "REALISEE" | "ANNULEE";
+            aConfirmer: boolean;
+        };
+        /** @description Suivi des unités associatives d’un foyer : engagement courant, sessions et compteurs. `engagement: null` = aucune période déclarée — l’écran propose alors la déclaration au lieu d’afficher trois zéros. */
+        SuiviUaVue: {
+            /** Format: uuid */
+            foyerId: string;
+            /** Format: date */
+            aujourdhui: string;
+            engagement: components["schemas"]["EngagementUaVue"] | null;
+            compteurs: components["schemas"]["CompteursUaVue"] | null;
+            sessions: components["schemas"]["SessionUaVue"][];
+            seuilAlerteJours: number;
         };
         /** @description Vue projetée d’un enfant rattaché à un foyer. */
         EnfantVue: {

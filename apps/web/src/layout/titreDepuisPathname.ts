@@ -15,7 +15,7 @@ export function titreDepuisPathname(pathname: string): string {
   if (pathname === '/desabonnement') return 'Désabonnement';
   if (pathname === '/mentions') return 'Informations sur vos données';
   const foyer =
-    /^\/foyers\/[^/]+\/(dashboard|contrats|planning|couts|etablissements|modifier)$/.exec(
+    /^\/foyers\/[^/]+\/(dashboard|contrats|planning|couts|etablissements|unites-associatives|modifier)$/.exec(
       pathname,
     );
   if (foyer) {
@@ -24,6 +24,7 @@ export function titreDepuisPathname(pathname: string): string {
     if (segment === 'contrats') return 'Contrats';
     if (segment === 'planning') return 'Planning';
     if (segment === 'etablissements') return 'Crèches & écoles';
+    if (segment === 'unites-associatives') return 'Unités associatives';
     if (segment === 'modifier') return 'Ma famille';
     return 'Coûts annuels';
   }
