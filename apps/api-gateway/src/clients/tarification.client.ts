@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { z } from 'zod';
+import { z, type ZodType } from 'zod';
 import { loadConfig } from '../config.js';
 import {
   CircuitBreaker,
@@ -48,6 +48,105 @@ const coutAnnuelVueSchema = z.object({
 });
 
 export type CoutAnnuelVue = z.infer<typeof coutAnnuelVueSchema>;
+
+/**
+ * Suivi des unités associatives (SFD 40). Les trois compteurs et les deux coûts
+ * projetés viennent du domaine ; le BFF les relaie tels quels, sans recalculer —
+ * un second calcul côté passerelle serait une seconde vérité.
+ */
+const coutProjeteUaSchema = z.object({
+  montantCentimes: z.number(),
+  hypothese: z.enum(['SI_TU_TARRETES_LA', 'SI_TU_REALISES_TES_RESERVATIONS']),
+});
+
+const compteursUaSchema = z.object({
+  quotaHeures: z.number(),
+  heuresRealisees: z.number(),
+  heuresReservees: z.number(),
+  heuresAConfirmer: z.number(),
+  heuresRestantes: z.number(),
+  quotaAtteint: z.boolean(),
+  joursAvantEcheance: z.number(),
+  coutSiArret: coutProjeteUaSchema,
+  coutSiReservationsRealisees: coutProjeteUaSchema,
+  alerteEcheance: z.boolean(),
+});
+
+const engagementUaVueSchema = z.object({
+  id: z.string(),
+  foyerId: z.string(),
+  debut: z.string(),
+  fin: z.string(),
+  quotaHeures: z.number(),
+  valeurUaCentimes: z.number(),
+  cautionCentimes: z.number().nullable(),
+});
+
+export type EngagementUaVue = z.infer<typeof engagementUaVueSchema>;
+
+const sessionUaVueSchema = z.object({
+  id: z.string(),
+  engagementId: z.string(),
+  date: z.string(),
+  dureeHeures: z.number(),
+  type: z.string(),
+  realisePar: z.string().nullable(),
+  etablissementId: z.string().nullable(),
+  etat: z.string(),
+  aConfirmer: z.boolean(),
+});
+
+export type SessionUaVue = z.infer<typeof sessionUaVueSchema>;
+
+const suiviUaVueSchema = z.object({
+  foyerId: z.string(),
+  aujourdhui: z.string(),
+  engagement: engagementUaVueSchema.nullable(),
+  compteurs: compteursUaSchema.nullable(),
+  sessions: z.array(sessionUaVueSchema),
+  seuilAlerteJours: z.number(),
+});
+
+export type SuiviUaVue = z.infer<typeof suiviUaVueSchema>;
+
+/** Part `svc-tarification` de l'export de portabilité (doc 37 §6). */
+const exportUnitesAssociativesSchema = z.object({
+  foyerId: z.string(),
+  engagements: z.array(
+    z.object({
+      debut: z.string(),
+      fin: z.string(),
+      quotaHeures: z.number(),
+      valeurUaCentimes: z.number(),
+      cautionCentimes: z.number().nullable(),
+      declareLe: z.string(),
+      sessions: z.array(
+        z.object({
+          date: z.string(),
+          dureeHeures: z.number(),
+          type: z.string(),
+          realisePar: z.string().nullable(),
+          etat: z.string(),
+          saisieLe: z.string(),
+        }),
+      ),
+    }),
+  ),
+  pisteAudit: z.array(
+    z.object({
+      action: z.string(),
+      cibleType: z.string(),
+      cibleId: z.string().nullable(),
+      acteurType: z.string(),
+      acteur: z.string().nullable(),
+      le: z.string(),
+    }),
+  ),
+});
+
+export type ExportUnitesAssociativesVue = z.infer<
+  typeof exportUnitesAssociativesSchema
+>;
 
 const OPTIONS: OptionsResilience = {
   timeoutMs: 2000,
@@ -125,6 +224,113 @@ export class TarificationClient {
       url,
       schema: coutAnnuelVueSchema,
       capturerCorpsErreur: true,
+    });
+  }
+
+  /**
+   * Appel résilient générique vers `svc-tarification` pour les routes « unités
+   * associatives », dont les corps et les codes d'erreur (409, 404) doivent
+   * remonter tels quels au front — d'où `capturerCorpsErreur`.
+   */
+  private appelUa<T>(config: {
+    methode: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    chemin: string;
+    corps?: unknown;
+    schema: ZodType<T>;
+  }): Promise<T>;
+  private appelUa(config: {
+    methode: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    chemin: string;
+    corps?: unknown;
+  }): Promise<void>;
+  private appelUa<T>(config: {
+    methode: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    chemin: string;
+    corps?: unknown;
+    schema?: ZodType<T> | undefined;
+  }): Promise<T | void> {
+    const commun = {
+      service: 'svc-tarification',
+      logger: this.logger,
+      breaker: this.breaker,
+      options: OPTIONS,
+      methode: config.methode,
+      url: `${loadConfig().tarificationUrl}${config.chemin}`,
+      corps: config.corps,
+      capturerCorpsErreur: true,
+    };
+    return config.schema === undefined
+      ? appelResilient(commun)
+      : appelResilient({ ...commun, schema: config.schema });
+  }
+
+  /** GET `/api/unites-associatives` — suivi du foyer (compteurs + sessions). */
+  async suiviUnitesAssociatives(foyerId: string): Promise<SuiviUaVue> {
+    return this.appelUa({
+      methode: 'GET',
+      chemin: `/api/unites-associatives?foyer=${encodeURIComponent(foyerId)}`,
+      schema: suiviUaVueSchema,
+    });
+  }
+
+  /** POST `/api/unites-associatives` — déclare l'engagement d'une période. */
+  async declarerEngagementUa(
+    foyerId: string,
+    saisie: unknown,
+  ): Promise<EngagementUaVue> {
+    return this.appelUa({
+      methode: 'POST',
+      chemin: `/api/unites-associatives?foyer=${encodeURIComponent(foyerId)}`,
+      corps: saisie,
+      schema: engagementUaVueSchema,
+    });
+  }
+
+  /** POST `/api/unites-associatives/sessions` — note un créneau déjà réservé. */
+  async ajouterSessionUa(
+    foyerId: string,
+    saisie: unknown,
+  ): Promise<SessionUaVue> {
+    return this.appelUa({
+      methode: 'POST',
+      chemin: `/api/unites-associatives/sessions?foyer=${encodeURIComponent(foyerId)}`,
+      corps: saisie,
+      schema: sessionUaVueSchema,
+    });
+  }
+
+  /** PUT `/api/unites-associatives/sessions/:id` — réalisée, annulée, corrigée. */
+  async modifierSessionUa(
+    foyerId: string,
+    sessionId: string,
+    saisie: unknown,
+  ): Promise<SessionUaVue> {
+    return this.appelUa({
+      methode: 'PUT',
+      chemin:
+        `/api/unites-associatives/sessions/${encodeURIComponent(sessionId)}` +
+        `?foyer=${encodeURIComponent(foyerId)}`,
+      corps: saisie,
+      schema: sessionUaVueSchema,
+    });
+  }
+
+  /** DELETE `/api/unites-associatives/sessions/:id` — 204 sans corps. */
+  async supprimerSessionUa(foyerId: string, sessionId: string): Promise<void> {
+    await this.appelUa({
+      methode: 'DELETE',
+      chemin:
+        `/api/unites-associatives/sessions/${encodeURIComponent(sessionId)}` +
+        `?foyer=${encodeURIComponent(foyerId)}`,
+    });
+  }
+
+  /** GET `/api/foyers/:id/export` — part UA de l'export de portabilité. */
+  async exporter(foyerId: string): Promise<ExportUnitesAssociativesVue> {
+    return this.appelUa({
+      methode: 'GET',
+      chemin: `/api/foyers/${encodeURIComponent(foyerId)}/export`,
+      schema: exportUnitesAssociativesSchema,
     });
   }
 }

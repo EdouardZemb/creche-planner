@@ -614,12 +614,18 @@ describe('OpenAPI · statut de succès et Location (lot 7, AM-39)', () => {
 
   // Le périmètre déclaré de la garde, écrit en test plutôt qu'en prose : elle
   // exige l'accord code/contrat, jamais qu'une création **doive** poser un
-  // `Location`. Cinq 201 n'en posent pas, et chacune pour une raison constatée
+  // `Location`. Sept 201 n'en posent pas, et chacune pour une raison constatée
   // (écart assumé du lot 7, cf. `docs/34-registre-ameliorations.md` `AM-39`) :
   // les quatre premières ne créent aucune ressource **adressable** (l'API
   // n'expose ni URI d'envoi ni URI de barème/grille) ; la cinquième en crée une
   // mais ne la nomme pas — `POST /contrats/{id}/versions` rend le contrat mis à
   // jour, l'identifiant de la version reste dans `svc-planification`.
+  //
+  // Les deux dernières viennent de la SFD 40, même raison que les quatre
+  // premières : ni l'engagement d'unités associatives ni une session n'ont d'URI
+  // propre — l'API n'expose qu'un `GET /unites-associatives` qui rend le suivi
+  // ENTIER, parce que c'est lui l'objet utile (trois compteurs + échéance), pas
+  // la ligne qu'on vient d'écrire.
   //
   // Cette liste est un **attendu écrit**, le seul de la garde : elle vaut
   // signature. Une création neuve sans `Location` la fait rougir, ce qui force à
@@ -635,6 +641,8 @@ describe('OpenAPI · statut de succès et Location (lot 7, AM-39)', () => {
       'POST /api/v1/referentiel/baremes/psu',
       'POST /api/v1/referentiel/baremes/tranches',
       'POST /api/v1/referentiel/grilles',
+      'POST /api/v1/unites-associatives',
+      'POST /api/v1/unites-associatives/sessions',
     ]);
   });
 });

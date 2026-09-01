@@ -20,6 +20,7 @@ import {
 } from '../clients/foyer.client.js';
 import { NotificationsClient } from '../clients/notifications.client.js';
 import { PlanificationClient } from '../clients/planification.client.js';
+import { TarificationClient } from '../clients/tarification.client.js';
 import {
   assemblerExport,
   type ExportPortabiliteVue,
@@ -67,10 +68,11 @@ import { RessourceCreee } from './ressource-creee.decorator.js';
 export class FoyersController {
   constructor(
     private readonly foyers: FoyerClient,
-    // Les deux clients ci-dessous ne servent qu'à l'export de portabilité : c'est
+    // Les trois clients ci-dessous ne servent qu'à l'export de portabilité : c'est
     // la seule route de ce contrôleur qui sorte de `svc-foyer`.
     private readonly planification: PlanificationClient,
     private readonly notifications: NotificationsClient,
+    private readonly tarification: TarificationClient,
   ) {}
 
   /**
@@ -213,31 +215,36 @@ export class FoyersController {
    * **Aucune dégradation gracieuse ici**, contrairement à `apercuImpact` ou aux
    * préférences de `/moi` : un service muet y fait perdre un enrichissement, ce
    * qui est rattrapable ; ici il ferait livrer un export **amputé sans le dire**,
-   * c'est-à-dire un document qui affirme être complet et ne l'est pas. Les trois
-   * appels sont donc dans un seul `relayer` : soit les trois répondent, soit
+   * c'est-à-dire un document qui affirme être complet et ne l'est pas. Les quatre
+   * appels sont donc dans un seul `relayer` : soit les quatre répondent, soit
    * l'export échoue.
    *
-   * `svc-tarification` n'est **pas** interrogé : ses 5 tables sont des copies
-   * projetées des données ci-dessus (`docs/37-registre-des-traitements.md` §5).
-   * Les inclure ferait passer pour une donnée de plus ce qui n'est qu'un second
-   * exemplaire de la même.
+   * `svc-tarification` est interrogé **depuis la SFD 40**, et pour ses deux seules
+   * tables qui ne sont pas des copies : l'engagement d'unités associatives et ses
+   * sessions sont des **saisies du parent**, projetées de nulle part. Ses cinq
+   * autres tables restent hors de l'export, pour la raison d'origine — les
+   * inclure ferait passer pour une donnée de plus ce qui n'est qu'un second
+   * exemplaire de la même (`docs/37-registre-des-traitements.md` §6).
    */
   @Get(':id/export')
   @FoyerScope('param:id')
   exporter(@Param('id') id: string): Promise<ExportPortabiliteVue> {
     const genereLe = new Date().toISOString();
     return relayer(async () => {
-      const [foyer, planification, notifications] = await Promise.all([
-        this.foyers.exporter(id),
-        this.planification.exporter(id),
-        this.notifications.exporter(id),
-      ]);
+      const [foyer, planification, notifications, unitesAssociatives] =
+        await Promise.all([
+          this.foyers.exporter(id),
+          this.planification.exporter(id),
+          this.notifications.exporter(id),
+          this.tarification.exporter(id),
+        ]);
       return assemblerExport({
         foyerId: id,
         genereLe,
         foyer,
         planification,
         notifications,
+        unitesAssociatives,
       });
     });
   }

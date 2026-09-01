@@ -41,6 +41,12 @@ import type {
   SuiviEnvois,
   GrilleAbcmVue,
   PublierGrille,
+  SuiviUaVue,
+  EngagementUaVue,
+  SessionUaVue,
+  DeclarerEngagementUa,
+  AjouterSessionUa,
+  ModifierSessionUa,
 } from '../types/bff';
 
 // Client HTTP du BFF. Base URL configurable via VITE_API_BASE_URL (défaut '/api',
@@ -699,6 +705,98 @@ export const api = {
       { headers: entetes(false) },
       opts,
     ).then((r) => lire<CoutAnnuelVue>(r));
+  },
+
+  // ---- Unités associatives (SFD 40) -----------------------------------------
+  //
+  // **Martha ne réserve rien** : les créneaux se prennent sur le site travaux de
+  // l'association (RM-40-01). Ces appels tiennent le compte de ce qui a été pris
+  // et de ce qui a été fait.
+
+  /** Suivi du foyer — `GET /v1/unites-associatives?foyer=` (compteurs + sessions). */
+  lireSuiviUnitesAssociatives(
+    foyerId: string,
+    opts: RequeteOptions = {},
+  ): Promise<SuiviUaVue> {
+    return requeteIdempotente(
+      `${BASE}/v1/unites-associatives?foyer=${encodeURIComponent(foyerId)}`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<SuiviUaVue>(r));
+  },
+
+  /** Déclare l'engagement de la période — `POST /v1/unites-associatives?foyer=`. */
+  declarerEngagementUa(
+    foyerId: string,
+    saisie: DeclarerEngagementUa,
+    opts: RequeteOptions = {},
+  ): Promise<EngagementUaVue> {
+    return requete(
+      `${BASE}/v1/unites-associatives?foyer=${encodeURIComponent(foyerId)}`,
+      {
+        method: 'POST',
+        headers: entetes(true),
+        body: JSON.stringify(saisie),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<EngagementUaVue>(r));
+  },
+
+  /** Note un créneau déjà réservé — `POST /v1/unites-associatives/sessions?foyer=`. */
+  ajouterSessionUa(
+    foyerId: string,
+    saisie: AjouterSessionUa,
+    opts: RequeteOptions = {},
+  ): Promise<SessionUaVue> {
+    return requete(
+      `${BASE}/v1/unites-associatives/sessions?foyer=${encodeURIComponent(foyerId)}`,
+      {
+        method: 'POST',
+        headers: entetes(true),
+        body: JSON.stringify(saisie),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<SessionUaVue>(r));
+  },
+
+  /** Marque une session réalisée / annulée — `PUT …/sessions/:id?foyer=`. */
+  modifierSessionUa(
+    foyerId: string,
+    sessionId: string,
+    saisie: ModifierSessionUa,
+    opts: RequeteOptions = {},
+  ): Promise<SessionUaVue> {
+    return requete(
+      `${BASE}/v1/unites-associatives/sessions/${encodeURIComponent(sessionId)}` +
+        `?foyer=${encodeURIComponent(foyerId)}`,
+      {
+        method: 'PUT',
+        headers: entetes(true),
+        body: JSON.stringify(saisie),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<SessionUaVue>(r));
+  },
+
+  /**
+   * Supprime une session saisie par erreur — `DELETE …/sessions/:id?foyer=` (204).
+   * `requete` et non `requeteIdempotente` : un second appel répond 404, et un
+   * rejeu automatique transformerait une suppression réussie en « introuvable ».
+   */
+  supprimerSessionUa(
+    foyerId: string,
+    sessionId: string,
+    opts: RequeteOptions = {},
+  ): Promise<void> {
+    return requete(
+      `${BASE}/v1/unites-associatives/sessions/${encodeURIComponent(sessionId)}` +
+        `?foyer=${encodeURIComponent(foyerId)}`,
+      {
+        method: 'DELETE',
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<undefined>(r));
   },
 
   /** Établissements (entité libre) d'un foyer — `GET /v1/foyers/:foyerId/etablissements`. */

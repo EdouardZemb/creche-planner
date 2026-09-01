@@ -221,6 +221,26 @@ const documentEcrit = {
               'messagesInApp',
             ],
           },
+          engagementAssociatif: {
+            type: 'object',
+            description:
+              'Engagement de bénévolat déclaré par le foyer (unités ' +
+              'associatives), ses sessions saisies et la piste d’audit de ces ' +
+              'saisies. Section AJOUTÉE au format : additive, `versionFormat` ' +
+              'ne bouge pas.',
+            properties: {
+              foyerId: { type: 'string', format: 'uuid' },
+              engagements: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+              pisteAudit: {
+                type: 'array',
+                items: { $ref: '#/components/schemas/LigneExport' },
+              },
+            },
+            required: ['foyerId', 'engagements', 'pisteAudit'],
+          },
         },
         required: [
           'versionFormat',
@@ -229,6 +249,146 @@ const documentEcrit = {
           'situationFoyer',
           'gardeEtPlanning',
           'communications',
+          'engagementAssociatif',
+        ],
+      },
+      CoutProjeteUaVue: {
+        type: 'object',
+        description:
+          'Un coût projeté d’unités associatives AVEC son hypothèse (RM-40-05) : ' +
+          'un montant affiché sans dire s’il suppose les créneaux réservés ' +
+          'réalisés est un chiffre qui ment par omission.',
+        properties: {
+          montantCentimes: { type: 'integer' },
+          hypothese: {
+            type: 'string',
+            enum: ['SI_TU_TARRETES_LA', 'SI_TU_REALISES_TES_RESERVATIONS'],
+          },
+        },
+        required: ['montantCentimes', 'hypothese'],
+      },
+      CompteursUaVue: {
+        type: 'object',
+        description:
+          'Les trois compteurs du suivi des unités associatives (SFD 40 §3.1) — ' +
+          'réalisé, réservé, restant — plus les heures « à confirmer » (session ' +
+          'passée encore prévue), l’échéance et les deux coûts projetés.',
+        properties: {
+          quotaHeures: { type: 'number' },
+          heuresRealisees: { type: 'number' },
+          heuresReservees: { type: 'number' },
+          heuresAConfirmer: { type: 'number' },
+          heuresRestantes: { type: 'number' },
+          quotaAtteint: { type: 'boolean' },
+          joursAvantEcheance: { type: 'integer' },
+          coutSiArret: { $ref: '#/components/schemas/CoutProjeteUaVue' },
+          coutSiReservationsRealisees: {
+            $ref: '#/components/schemas/CoutProjeteUaVue',
+          },
+          alerteEcheance: { type: 'boolean' },
+        },
+        required: [
+          'quotaHeures',
+          'heuresRealisees',
+          'heuresReservees',
+          'heuresAConfirmer',
+          'heuresRestantes',
+          'quotaAtteint',
+          'joursAvantEcheance',
+          'coutSiArret',
+          'coutSiReservationsRealisees',
+          'alerteEcheance',
+        ],
+      },
+      EngagementUaVue: {
+        type: 'object',
+        description:
+          'Engagement de bénévolat d’un foyer pour une période. Quota, valeur ' +
+          'de l’UA, bornes et caution sont des DONNÉES saisies (RM-40-02), ' +
+          'jamais des constantes du code.',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          foyerId: { type: 'string', format: 'uuid' },
+          debut: { type: 'string', format: 'date' },
+          fin: { type: 'string', format: 'date' },
+          quotaHeures: { type: 'number' },
+          valeurUaCentimes: { type: 'integer' },
+          cautionCentimes: { type: ['integer', 'null'] },
+        },
+        required: [
+          'id',
+          'foyerId',
+          'debut',
+          'fin',
+          'quotaHeures',
+          'valeurUaCentimes',
+          'cautionCentimes',
+        ],
+      },
+      SessionUaVue: {
+        type: 'object',
+        description:
+          'Une session de bénévolat — la RECOPIE d’un créneau pris sur le site ' +
+          'travaux de l’association (RM-40-01). `aConfirmer` est dérivé : une ' +
+          'session passée encore `PREVUE` n’est jamais comptée d’office comme ' +
+          'réalisée (RM-40-06).',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          engagementId: { type: 'string', format: 'uuid' },
+          date: { type: 'string', format: 'date' },
+          dureeHeures: { type: 'number' },
+          type: { type: 'string' },
+          realisePar: { type: ['string', 'null'] },
+          etablissementId: { type: ['string', 'null'] },
+          etat: { type: 'string', enum: ['PREVUE', 'REALISEE', 'ANNULEE'] },
+          aConfirmer: { type: 'boolean' },
+        },
+        required: [
+          'id',
+          'engagementId',
+          'date',
+          'dureeHeures',
+          'type',
+          'realisePar',
+          'etablissementId',
+          'etat',
+          'aConfirmer',
+        ],
+      },
+      SuiviUaVue: {
+        type: 'object',
+        description:
+          'Suivi des unités associatives d’un foyer : engagement courant, ' +
+          'sessions et compteurs. `engagement: null` = aucune période déclarée — ' +
+          'l’écran propose alors la déclaration au lieu d’afficher trois zéros.',
+        properties: {
+          foyerId: { type: 'string', format: 'uuid' },
+          aujourdhui: { type: 'string', format: 'date' },
+          engagement: {
+            oneOf: [
+              { $ref: '#/components/schemas/EngagementUaVue' },
+              { type: 'null' },
+            ],
+          },
+          compteurs: {
+            oneOf: [
+              { $ref: '#/components/schemas/CompteursUaVue' },
+              { type: 'null' },
+            ],
+          },
+          sessions: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/SessionUaVue' },
+          },
+          seuilAlerteJours: { type: 'integer' },
+        },
+        required: [
+          'foyerId',
+          'aujourdhui',
+          'engagement',
+          'compteurs',
+          'sessions',
+          'seuilAlerteJours',
         ],
       },
       EnfantVue: {
@@ -2716,6 +2876,212 @@ const documentEcrit = {
         responses: {
           '204': { description: 'Besoins enregistrés (pas de contenu).' },
           '400': { description: 'Semaine ISO invalide (format `YYYY-Www`).' },
+        },
+      },
+    },
+    '/api/v1/unites-associatives': {
+      get: {
+        summary: 'Suivi des unités associatives du foyer (SFD 40)',
+        description:
+          'Les trois compteurs (réalisé, réservé, restant), l’échéance et les ' +
+          'deux coûts projetés. **Martha ne réserve rien** : les créneaux se ' +
+          'prennent sur le site travaux de l’association, cette API en tient le ' +
+          'compte (RM-40-01).',
+        parameters: [
+          {
+            name: 'foyer',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': {
+            description:
+              'Suivi du foyer (engagement `null` si rien de déclaré).',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SuiviUaVue' },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        summary: 'Déclarer l’engagement d’une période',
+        parameters: [
+          {
+            name: 'foyer',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Quota, valeur de l’UA, bornes de période et caution — TOUS ' +
+                  'saisis. Les valeurs de la doc 02 §4.5 (20 h, 31,25 €, ' +
+                  '1er juin → 31 mai) sont une proposition d’écran, pas un défaut ' +
+                  'de service.',
+                properties: {
+                  debut: { type: 'string', format: 'date' },
+                  fin: { type: 'string', format: 'date' },
+                  quotaHeures: { type: 'number', minimum: 0 },
+                  valeurUaCentimes: { type: 'integer', minimum: 0 },
+                  cautionCentimes: { type: 'integer', minimum: 0 },
+                },
+                required: ['debut', 'fin', 'quotaHeures', 'valeurUaCentimes'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Engagement déclaré.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/EngagementUaVue' },
+              },
+            },
+          },
+          '409': {
+            description:
+              'Une période déjà déclarée couvre ces dates (US-40-01 CA2) : deux ' +
+              'périodes qui se recouvrent rendraient le reste-à-faire ambigu.',
+          },
+        },
+      },
+    },
+    '/api/v1/unites-associatives/sessions': {
+      post: {
+        summary: 'Noter un créneau pris sur le site travaux',
+        description:
+          'La session est créée à l’état `PREVUE` et compte immédiatement au ' +
+          'compteur « réservé » (US-40-02 CA2). Martha n’a rien réservé.',
+        parameters: [
+          {
+            name: 'foyer',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  engagementId: { type: 'string', format: 'uuid' },
+                  date: { type: 'string', format: 'date' },
+                  dureeHeures: { type: 'number', exclusiveMinimum: 0 },
+                  type: { type: 'string' },
+                  realisePar: { type: 'string' },
+                  etablissementId: { type: 'string', format: 'uuid' },
+                },
+                required: ['engagementId', 'date', 'dureeHeures', 'type'],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Session enregistrée (état `PREVUE`).',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SessionUaVue' },
+              },
+            },
+          },
+          '409': {
+            description: 'La date est hors de la période déclarée.',
+          },
+        },
+      },
+    },
+    '/api/v1/unites-associatives/sessions/{sessionId}': {
+      put: {
+        summary: 'Marquer une session réalisée ou annulée, ou la corriger',
+        description:
+          'Aucune transition n’est automatique : le temps qui passe ne marque ' +
+          'pas une session réalisée, il la rend « à confirmer » (RM-40-06).',
+        parameters: [
+          {
+            name: 'sessionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'foyer',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                description:
+                  'Tous les champs sont facultatifs : `{ "etat": "REALISEE" }` ' +
+                  'doit suffire à marquer un créneau fait.',
+                properties: {
+                  etat: {
+                    type: 'string',
+                    enum: ['PREVUE', 'REALISEE', 'ANNULEE'],
+                  },
+                  date: { type: 'string', format: 'date' },
+                  dureeHeures: { type: 'number', exclusiveMinimum: 0 },
+                  type: { type: 'string' },
+                  realisePar: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Session mise à jour.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SessionUaVue' },
+              },
+            },
+          },
+          '404': { description: 'Session inconnue pour ce foyer.' },
+        },
+      },
+      delete: {
+        summary: 'Supprimer une session saisie par erreur',
+        description:
+          'À distinguer d’une ANNULATION (`etat: ANNULEE`), qui garde la trace ' +
+          'd’un créneau qui a existé.',
+        parameters: [
+          {
+            name: 'sessionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'foyer',
+            in: 'query',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '204': { description: 'Session supprimée.' },
+          '404': { description: 'Session inconnue pour ce foyer.' },
         },
       },
     },

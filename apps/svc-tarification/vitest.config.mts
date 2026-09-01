@@ -9,6 +9,15 @@ export default defineConfig(() => ({
     globals: true,
     environment: 'node',
     include: ['{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    // Fichiers SÉRIALISÉS en CI (parallélisme conservé en local), pour la même
+    // raison que côté passerelle, et pour une seconde propre à ce service :
+    // DEUX specs y touchent désormais la MÊME base Postgres — la vérification
+    // Pact (qui démarre le bundle, lequel applique les migrations au boot) et
+    // l'intégration SFD 40 (qui les applique elle-même). Jouées en parallèle,
+    // les deux migrations concurrentes se disputent `__drizzle_migrations` et
+    // l'une échoue sur une table déjà créée. Un seul fichier à la fois ⇒ la
+    // fenêtre n'existe plus, et aucun des deux n'a besoin de connaître l'autre.
+    fileParallelism: !process.env['CI'],
     reporters: process.env['CI']
       ? [
           'default',

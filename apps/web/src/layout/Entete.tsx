@@ -108,7 +108,7 @@ export function Entete() {
   const plusActif =
     PAGES_GLOBALES_DU_PANNEAU.includes(pathname) ||
     (id !== null &&
-      ['contrats', 'etablissements', 'modifier'].some(
+      ['contrats', 'etablissements', 'unites-associatives', 'modifier'].some(
         (segment) => pathname === `/foyers/${id}/${segment}`,
       ));
   return (
@@ -186,6 +186,16 @@ export function Entete() {
               </NavLink>
               <NavLink to={`/foyers/${id}/etablissements`} onClick={fermerPlus}>
                 Crèches & écoles
+              </NavLink>
+              {/* SFD 40 — suivi des unités associatives. Consultation
+                  ÉPISODIQUE (on y va après avoir réservé sur le site travaux,
+                  ou quand l'échéance approche) : sa place est le panneau
+                  « Plus », pas la barre d'onglets du pouce. */}
+              <NavLink
+                to={`/foyers/${id}/unites-associatives`}
+                onClick={fermerPlus}
+              >
+                Unités associatives
               </NavLink>
               {/* Catalogue tarifaire GLOBAL (SFD 30, US-30-02) : saisie des grilles
                   de l'association. Accessible à tout parent authentifié (pas de

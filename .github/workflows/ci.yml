@@ -194,7 +194,7 @@ jobs:
       # d'une façon particulière : il ne casse pas. On ajoute une table, on
       # oublie de l'exporter, et le document continue de répondre 200 en ayant
       # l'air complet — pire que vert, rassurant, puisqu'il affirme rendre les
-      # données de la personne. Ce step exige que les 46 tables des cinq services
+      # données de la personne. Ce step exige que les 49 tables des cinq services
       # soient TOUTES classées (exportée / copie / technique / hors périmètre),
       # qu'une table dite exportée soit réellement lue par le code d'export de
       # son service, et qu'une copie nomme une source elle-même exportée.
@@ -210,7 +210,7 @@ jobs:
       # mutation, elle n'écrit rien, et la piste continue de répondre — cohérente,
       # simplement muette sur ce qui vient d'arriver. Sur le seul artefact dont
       # toute la valeur est d'être exhaustif, c'est pire que vert. Ce step exige
-      # que les 30 routes de mutation des cinq services soient TOUTES classées
+      # que les 34 routes de mutation des cinq services soient TOUTES classées
       # (auditée / journal seul / exemptée / hors périmètre / différée), qu'une
       # route dite auditée nomme une action réellement consignée par du code de
       # production ET reçoive son acteur (`@ActeurCourant()` sur son handler — ce

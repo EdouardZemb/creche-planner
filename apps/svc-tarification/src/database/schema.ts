@@ -367,7 +367,142 @@ export const deadLetter = pgTable(
   (table) => [index('dead_letter_created_at_idx').on(table.createdAt)],
 );
 
+// --- Unités associatives (SFD 40) — source de vérité, pas une projection ------
+
+/**
+ * **Engagement de bénévolat** d'un foyer pour une période (SFD 40, US-40-01).
+ * Première table de ce service qui n'est PAS un read model : les unités
+ * associatives se **saisissent** ici, et elles vivent dans Tarification parce que
+ * c'est le seul contexte autorisé à appeler le domaine qui en dérive le coût
+ * (doc 02 §4.5, `UnitesAssociativesAbcm`) — cf. les frontières de contexte
+ * d'`eslint.config.mjs`.
+ *
+ * Quota, valeur d'UA, bornes de période et caution sont des **données**
+ * (`RM-40-02`) : un quota qui change à l'assemblée générale suivante se saisit, il
+ * ne se déploie pas. Les défauts « 20 h / 31,25 € » du domaine ne sont plus qu'une
+ * **proposition d'écran**.
+ *
+ * Pas de clé étrangère vers `foyer` : cette table-là est une projection, qui peut
+ * être froide au moment où le parent déclare son engagement. La cascade
+ * d'effacement est donc **explicite**, dans le consommateur de
+ * `foyer.FoyerSupprime.v1` (`ProjectionService`), aux côtés des autres tables.
+ */
+export const engagementUa = pgTable(
+  'engagement_ua',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    foyerId: uuid('foyer_id').notNull(),
+    /** Début de la période de comptage ISO `YYYY-MM-DD` (inclus ; typiquement 1er juin). */
+    debut: varchar('debut', { length: 10 }).notNull(),
+    /** Fin de la période ISO `YYYY-MM-DD` **incluse** — c'est l'échéance affichée. */
+    fin: varchar('fin', { length: 10 }).notNull(),
+    /**
+     * Quota d'unités associatives dues (1 UA = 1 h). `numeric` et non `integer` :
+     * la variante « double accès portail » du RI vaut 10 UA par parent (`Q-40-02`),
+     * et rien n'interdit un demi-quota au prorata d'une inscription en cours d'année.
+     */
+    quotaHeures: numeric('quota_heures').notNull(),
+    /** Valeur d'une UA non réalisée, en centimes (comme tout montant du dépôt). */
+    valeurUaCentimes: integer('valeur_ua_centimes').notNull(),
+    /**
+     * Caution déposée, en centimes. **Informative** : Martha ne touche à aucun
+     * paiement (SFD 40 §2), elle affiche ce qui est en jeu. `null` si non saisie.
+     */
+    cautionCentimes: integer('caution_centimes'),
+    creeLe: timestamp('cree_le', { withTimezone: true }).notNull().defaultNow(),
+    majLe: timestamp('maj_le', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // Une seule période par (foyer, début) : le non-chevauchement complet est vérifié
+    // par le service (une contrainte d'exclusion sur des `varchar` n'existe pas), mais
+    // le doublon exact, lui, est refusé par la base — un rejeu de formulaire ne crée
+    // pas deux engagements identiques.
+    unique('engagement_ua_foyer_debut_uq').on(table.foyerId, table.debut),
+    index('engagement_ua_foyer_idx').on(table.foyerId),
+  ],
+);
+
+/**
+ * **Une session de bénévolat** — une ligne par créneau (SFD 40, US-40-02). C'est
+ * une **recopie** d'un engagement pris sur le site travaux de l'association
+ * (`RM-40-01`) : Martha ne réserve rien, elle tient le compte.
+ *
+ * `foyer_id` est dénormalisé depuis l'engagement : il porte la portée
+ * (`@FoyerScope`) et la cascade d'effacement sans jointure.
+ */
+export const sessionUa = pgTable(
+  'session_ua',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagementUa.id, { onDelete: 'cascade' }),
+    /** Foyer propriétaire, dénormalisé de l'engagement (portée + purge). */
+    foyerId: uuid('foyer_id').notNull(),
+    /** Date du créneau ISO `YYYY-MM-DD`. */
+    date: varchar('date', { length: 10 }).notNull(),
+    /** Durée en heures ; décimale (une demi-heure de ménage existe). */
+    dureeHeures: numeric('duree_heures').notNull(),
+    /**
+     * Type de créneau, pris dans `TYPES_SESSION_UA` du domaine. Colonne **libre**
+     * (`varchar`) et non `enum` : le catalogue est une donnée (SFD 40 §3), et un
+     * type ajouté au RI ne doit pas demander une migration.
+     */
+    type: varchar('type', { length: 32 }).notNull(),
+    /** Qui s'y colle — prénom libre : ce service ne projette pas les parents. */
+    realisePar: varchar('realise_par', { length: 200 }),
+    /** Établissement concerné (Mulhouse / Lutterbach…), facultatif. */
+    etablissementId: uuid('etablissement_id'),
+    /** `PREVUE` | `REALISEE` | `ANNULEE` (`ETATS_SESSION_UA`). */
+    etat: varchar('etat', { length: 16 }).notNull(),
+    creeLe: timestamp('cree_le', { withTimezone: true }).notNull().defaultNow(),
+    majLe: timestamp('maj_le', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // Le suivi lit toujours « les sessions d'un engagement, par date » ; l'export de
+    // portabilité et la purge balaient par foyer. Deux index, deux lectures réelles.
+    index('session_ua_engagement_date_idx').on(table.engagementId, table.date),
+    index('session_ua_foyer_idx').on(table.foyerId),
+  ],
+);
+
+/**
+ * **Piste d'audit acteur** de `svc-tarification` (doc 37 §7). Elle naît avec les
+ * premières routes de mutation du service (`RM-40-08` : « dès le premier commit,
+ * jamais en différé ») — jusqu'ici, Tarification n'écrivait rien qu'un humain ait
+ * demandé, et n'avait donc rien à tracer.
+ *
+ * Copie **structurelle** de `svc-foyer.journal_audit`, à une différence près et
+ * elle est délibérée : **aucune clé étrangère** vers `foyer`, qui n'est ici qu'une
+ * projection possiblement froide. La ligne d'audit ne peut donc pas dépendre de
+ * l'arrivée d'un événement pour être écrite.
+ */
+export const journalAudit = pgTable(
+  'journal_audit',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    foyerId: uuid('foyer_id').notNull(),
+    /** Action consignée, prise dans `ACTIONS_AUDIT` (`audit/journal-audit.actions.ts`). */
+    action: varchar('action', { length: 64 }).notNull(),
+    /** Nature de la ressource visée (`engagement_ua`, `session_ua`). */
+    cibleType: varchar('cible_type', { length: 32 }).notNull(),
+    /** Identifiant de la ressource visée ; nul quand l'action porte le foyer entier. */
+    cibleId: uuid('cible_id'),
+    /** `parent` | `service` | `inconnu` — la forme de l'acteur, toujours connue. */
+    acteurType: varchar('acteur_type', { length: 16 }).notNull(),
+    /** E-mail du parent ou nom du service ; **nul** si `acteur_type = 'inconnu'`. */
+    acteur: varchar('acteur', { length: 320 }),
+    creeLe: timestamp('cree_le', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('journal_audit_foyer_date_idx').on(table.foyerId, table.creeLe),
+  ],
+);
+
 export type FoyerRow = typeof foyer.$inferSelect;
+export type EngagementUaRow = typeof engagementUa.$inferSelect;
+export type SessionUaRow = typeof sessionUa.$inferSelect;
+export type JournalAuditRow = typeof journalAudit.$inferSelect;
 export type FoyerVersionRow = typeof foyerVersion.$inferSelect;
 export type EnfantRow = typeof enfant.$inferSelect;
 export type ContratRow = typeof contrat.$inferSelect;

@@ -13,6 +13,7 @@ import { DashboardJourPage } from './dashboard/DashboardJourPage';
 import { ContratsPage } from './foyer/ContratsPage';
 import { PlanningPage } from './planning/PlanningPage';
 import { CoutsAnnuelsPage } from './couts/CoutsAnnuelsPage';
+import { UnitesAssociativesPage } from './unites-associatives/UnitesAssociativesPage';
 import { EtablissementsPage } from './etablissements/EtablissementsPage';
 import { MonProfilPage } from './profil/MonProfilPage';
 import { TarifsPage } from './tarifs/TarifsPage';
@@ -102,6 +103,11 @@ function Coquille() {
               <Route path="contrats" element={<ContratsPage />} />
               <Route path="planning" element={<PlanningPage />} />
               <Route path="couts" element={<CoutsAnnuelsPage />} />
+              {/* SFD 40 — suivi de l'engagement de bénévolat du foyer. */}
+              <Route
+                path="unites-associatives"
+                element={<UnitesAssociativesPage />}
+              />
               <Route path="etablissements" element={<EtablissementsPage />} />
               <Route path="modifier" element={<FoyerModifierPage />} />
             </Route>

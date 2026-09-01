@@ -18,7 +18,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
   // (lot D6), qui confronte le document au graphe de modules Nest et exige l'égalité
   // dans les deux sens. C'est lui qui a montré que 12 opérations servies — dont les
   // 6 routes `/notifications/*` — n'étaient documentées nulle part.
-  it('expose exactement les 39 routes attendues', () => {
+  it('expose exactement les 42 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -58,6 +58,9 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         '/api/v1/contrats/{id}/plannings/semaine/{semaineIso}',
         '/api/v1/couts',
         '/api/v1/couts/annuel',
+        '/api/v1/unites-associatives',
+        '/api/v1/unites-associatives/sessions',
+        '/api/v1/unites-associatives/sessions/{sessionId}',
         '/api/v1/referentiel/grilles',
         '/api/v1/referentiel/baremes/psu',
         '/api/v1/referentiel/baremes/tranches',
@@ -70,7 +73,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
   // contrat lisible par un humain qui ouvre le fichier, et un renommage silencieux
   // casserait tout export déjà téléchargé sans qu'aucun type ne s'en aperçoive
   // (les lignes, elles, sont volontairement libres).
-  it('expose l’export de portabilité avec ses trois sections nommées', () => {
+  it('expose l’export de portabilité avec ses quatre sections nommées', () => {
     const route = gatewayOpenApiDocument.paths['/api/v1/foyers/{id}/export'];
     expect(
       route.get.responses['200'].content['application/json'].schema,
@@ -85,6 +88,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
       'situationFoyer',
       'gardeEtPlanning',
       'communications',
+      'engagementAssociatif',
     ]);
     expect(schema.properties.situationFoyer.required).toContain('parents');
     expect(schema.properties.gardeEtPlanning.required).toEqual([
@@ -94,6 +98,36 @@ describe('gateway.openapi (BFF Phase 7)', () => {
     expect(schema.properties.communications.required).toContain(
       'envoisEtablissement',
     );
+    // Section ajoutée par la SFD 40 — ajout ADDITIF : `versionFormat` ne bouge pas.
+    expect(schema.properties.engagementAssociatif.required).toEqual([
+      'foyerId',
+      'engagements',
+      'pisteAudit',
+    ]);
+  });
+
+  // SFD 40 — le suivi des unités associatives. On fige ici ce qu'un écran ne doit
+  // pas pouvoir confondre : les TROIS compteurs sont distincts, et un coût projeté
+  // ne voyage jamais sans son hypothèse (RM-40-05).
+  it('expose le suivi des unités associatives, compteurs distincts et hypothèse portée', () => {
+    const route = gatewayOpenApiDocument.paths['/api/v1/unites-associatives'];
+    expect(
+      route.get.responses['200'].content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/SuiviUaVue' });
+    expect(route.post.responses['409']).toBeDefined();
+    const compteurs = gatewayOpenApiDocument.components.schemas.CompteursUaVue;
+    expect(compteurs.required).toContain('heuresRealisees');
+    expect(compteurs.required).toContain('heuresReservees');
+    expect(compteurs.required).toContain('heuresRestantes');
+    expect(compteurs.required).toContain('heuresAConfirmer');
+    expect(
+      gatewayOpenApiDocument.components.schemas.CoutProjeteUaVue.required,
+    ).toEqual(['montantCentimes', 'hypothese']);
+    const sessions =
+      gatewayOpenApiDocument.paths[
+        '/api/v1/unites-associatives/sessions/{sessionId}'
+      ];
+    expect(sessions.delete.responses['204']).toBeDefined();
   });
 
   it('expose la publication de grille (GET/POST /referentiel/grilles) + 409 chevauchement', () => {

@@ -15,6 +15,7 @@ import * as schema from './database/schema.js';
 import { FallbackModule } from './fallback/fallback.module.js';
 import { ConsumersModule } from './consumers/consumers.module.js';
 import { TarificationModule } from './tarification/tarification.module.js';
+import { UnitesAssociativesModule } from './unites-associatives/unites-associatives.module.js';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { TarificationModule } from './tarification/tarification.module.js';
     FallbackModule,
     ConsumersModule,
     TarificationModule,
+    UnitesAssociativesModule,
     // Bornes temporelles de rétention (lot 2b). `outbox: null` **délibérément** : la
     // table existe dans le schéma (infra latente) mais aucun `OutboxModule` n'est
     // enregistré ici et rien n'y insère — y borner ferait tourner un DELETE stérile.

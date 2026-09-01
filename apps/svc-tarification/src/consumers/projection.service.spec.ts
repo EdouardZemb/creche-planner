@@ -22,9 +22,12 @@ import {
   contrat,
   deadLetter,
   enfant,
+  engagementUa,
   foyer,
   foyerVersion,
+  journalAudit,
   prestationMois,
+  sessionUa,
 } from '../database/schema.js';
 
 /**
@@ -521,11 +524,16 @@ describe('ProjectionService.traiter', () => {
     // Liste exhaustive et volontairement figée : ajouter une table au read model
     // sans l'ajouter à la cascade ferait passer un résidu de donnée personnelle.
     // `processed_event` (anti-rejeu) et `outbox` (file vivante) en sont exclues.
+    // L'ORDRE compte pour les deux tables SFD 40 : `session_ua` référence
+    // `engagement_ua`, elle part donc avant.
     expect(tablesSupprimees).toEqual([
       prestationMois,
       contrat,
       enfant,
       foyerVersion,
+      sessionUa,
+      engagementUa,
+      journalAudit,
       foyer,
       deadLetter,
     ]);

@@ -8,6 +8,7 @@ import { EtablissementsFoyerController } from './etablissements-foyer.controller
 import { FoyersController } from './foyers.controller.js';
 import { MoiController } from './moi.controller.js';
 import { ReferentielBffController } from './referentiel.controller.js';
+import { UnitesAssociativesController } from './unites-associatives.controller.js';
 import { ValidationsController } from './validations.controller.js';
 
 /**
@@ -30,6 +31,7 @@ import { ValidationsController } from './validations.controller.js';
     EtablissementsFoyerController,
     ValidationsController,
     ReferentielBffController,
+    UnitesAssociativesController,
   ],
 })
 export class BffModule {}

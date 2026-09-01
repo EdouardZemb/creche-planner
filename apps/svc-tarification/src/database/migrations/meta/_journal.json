@@ -71,6 +71,13 @@
       "when": 1786968060000,
       "tag": "0009_fin_de_version",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788609600000,
+      "tag": "0010_unites_associatives",
+      "breakpoints": true
     }
   ]
 }

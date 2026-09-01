@@ -29,12 +29,13 @@ function parts(overrides: Partial<PartsExport> = {}): PartsExport {
       envoisEtablissement: [],
       messagesInApp: [],
     },
+    unitesAssociatives: { foyerId: FOYER_ID, engagements: [], pisteAudit: [] },
     ...overrides,
   };
 }
 
 describe('assemblerExport', () => {
-  it('range les trois parts sous les sections nommées du document', () => {
+  it('range les quatre parts sous les sections nommées du document', () => {
     const vue = assemblerExport(parts());
 
     expect(vue.versionFormat).toBe(VERSION_FORMAT_EXPORT);
@@ -50,7 +51,35 @@ describe('assemblerExport', () => {
       'situationFoyer',
       'gardeEtPlanning',
       'communications',
+      'engagementAssociatif',
     ]);
+  });
+
+  // SFD 40 : la section ajoutée est ADDITIVE — un lecteur du fichier trouve une
+  // section de plus, aucune n'est renommée ni retirée, donc le format ne change
+  // pas de version (cf. l'en-tête de `VERSION_FORMAT_EXPORT`).
+  it('ajoute l’engagement associatif sans faire bouger la version du format', () => {
+    const vue = assemblerExport(
+      parts({
+        unitesAssociatives: {
+          foyerId: FOYER_ID,
+          engagements: [
+            {
+              debut: '2026-06-01',
+              fin: '2027-05-31',
+              quotaHeures: 20,
+              valeurUaCentimes: 3125,
+              cautionCentimes: 62500,
+              declareLe: '2026-06-02T08:00:00.000Z',
+              sessions: [],
+            },
+          ],
+          pisteAudit: [],
+        },
+      }),
+    );
+    expect(vue.versionFormat).toBe(VERSION_FORMAT_EXPORT);
+    expect(vue.engagementAssociatif.engagements[0]?.quotaHeures).toBe(20);
   });
 
   // Pureté : aucune horloge, aucune I/O. L'instant vient de l'appelant — c'est ce

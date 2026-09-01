@@ -7,6 +7,7 @@ import type {
 } from '../clients/foyer.client.js';
 import type { NotificationsClient } from '../clients/notifications.client.js';
 import type { PlanificationClient } from '../clients/planification.client.js';
+import type { TarificationClient } from '../clients/tarification.client.js';
 import { FoyersController } from './foyers.controller.js';
 
 const FOYER: FoyerVue = {
@@ -32,19 +33,22 @@ const parent = (p: Partial<ParentVue> & Pick<ParentVue, 'id'>): ParentVue => ({
 });
 
 /**
- * Construit le contrôleur avec des clients doublés. `PlanificationClient` et
- * `NotificationsClient` ne servent qu'à l'export de portabilité (lot 3) : les
- * tests qui ne le visent pas les laissent vides.
+ * Construit le contrôleur avec des clients doublés. `PlanificationClient`,
+ * `NotificationsClient` et `TarificationClient` ne servent qu'à l'export de
+ * portabilité (lot 3, étendu par la SFD 40) : les tests qui ne le visent pas les
+ * laissent vides.
  */
 function controleur(
   foyers: Partial<FoyerClient>,
   planification: Partial<PlanificationClient> = {},
   notifications: Partial<NotificationsClient> = {},
+  tarification: Partial<TarificationClient> = {},
 ): FoyersController {
   return new FoyersController(
     foyers as FoyerClient,
     planification as PlanificationClient,
     notifications as NotificationsClient,
+    tarification as TarificationClient,
   );
 }
 
@@ -580,15 +584,24 @@ describe('FoyersController · export de portabilité', () => {
     envoisEtablissement: [],
     messagesInApp: [],
   };
+  // SFD 40 : la part `svc-tarification` de l'export — ses deux seules tables qui
+  // ne soient pas des copies (saisies du parent, projetées de nulle part).
+  const PART_UA = {
+    foyerId: 'foyer-1',
+    engagements: [{ debut: '2026-06-01', fin: '2027-05-31', quotaHeures: 20 }],
+    pisteAudit: [],
+  };
 
-  it('agrège les trois services sources en un seul document', async () => {
+  it('agrège les quatre services sources en un seul document', async () => {
     const exporterFoyer = vi.fn().mockResolvedValue(PART_FOYER);
     const exporterPlanif = vi.fn().mockResolvedValue(PART_PLANIF);
     const exporterNotif = vi.fn().mockResolvedValue(PART_NOTIF);
+    const exporterUa = vi.fn().mockResolvedValue(PART_UA);
     const controller = controleur(
       { exporter: exporterFoyer },
       { exporter: exporterPlanif },
       { exporter: exporterNotif },
+      { exporter: exporterUa },
     );
 
     const vue = await controller.exporter('foyer-1');
@@ -596,10 +609,12 @@ describe('FoyersController · export de portabilité', () => {
     expect(exporterFoyer).toHaveBeenCalledWith('foyer-1');
     expect(exporterPlanif).toHaveBeenCalledWith('foyer-1');
     expect(exporterNotif).toHaveBeenCalledWith('foyer-1');
+    expect(exporterUa).toHaveBeenCalledWith('foyer-1');
     expect(vue.foyerId).toBe('foyer-1');
     expect(vue.situationFoyer.enfants).toEqual([{ prenom: 'Mia' }]);
     expect(vue.gardeEtPlanning.contrats).toEqual([{ id: 'c1' }]);
     expect(vue.communications.messagesInApp).toEqual([]);
+    expect(vue.engagementAssociatif.engagements).toHaveLength(1);
     expect(vue.genereLe).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
@@ -610,6 +625,7 @@ describe('FoyersController · export de portabilité', () => {
   it.each([
     ['svc-planification', 1],
     ['svc-notifications', 2],
+    ['svc-tarification', 3],
   ])(
     'échoue si %s ne répond pas, plutôt que de livrer un export amputé',
     async (_service, rang) => {
@@ -617,6 +633,7 @@ describe('FoyersController · export de portabilité', () => {
         vi.fn().mockResolvedValue(PART_FOYER),
         vi.fn().mockResolvedValue(PART_PLANIF),
         vi.fn().mockResolvedValue(PART_NOTIF),
+        vi.fn().mockResolvedValue(PART_UA),
       ];
       doubles[rang] = vi
         .fn()
@@ -625,6 +642,7 @@ describe('FoyersController · export de portabilité', () => {
         { exporter: doubles[0] } as unknown as FoyerClient,
         { exporter: doubles[1] } as unknown as PlanificationClient,
         { exporter: doubles[2] } as unknown as NotificationsClient,
+        { exporter: doubles[3] } as unknown as TarificationClient,
       );
 
       await expect(controller.exporter('foyer-1')).rejects.toMatchObject({
@@ -640,6 +658,7 @@ describe('FoyersController · export de portabilité', () => {
       },
       { exporter: vi.fn().mockResolvedValue(PART_PLANIF) },
       { exporter: vi.fn().mockResolvedValue(PART_NOTIF) },
+      { exporter: vi.fn().mockResolvedValue(PART_UA) },
     );
 
     await expect(controller.exporter('inconnu')).rejects.toMatchObject({

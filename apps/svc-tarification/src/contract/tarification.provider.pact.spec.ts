@@ -22,6 +22,18 @@ import postgres, { type Sql } from 'postgres';
 const ETAT_FOYER_COUT =
   'un foyer avec des prestations cantine en octobre 2026 existe';
 
+/**
+ * SFD 40 — suivi des unités associatives. Le seed ne pose que des sessions
+ * **RÉALISÉES** : « réservé » et « à confirmer » se trient par rapport au jour
+ * courant, et les figer rendrait le contrat faux au premier changement de date.
+ */
+const ETAT_FOYER_UA =
+  'un foyer avec un engagement d’unités associatives 2026/27 existe';
+
+const ENGAGEMENT_UA_ID = '99999999-9999-4999-8999-999999999999';
+const SESSION_UA_1 = '88888888-8888-4888-8888-888888888888';
+const SESSION_UA_2 = '88888888-8888-4888-8888-888888888889';
+
 /** Identifiants figés (alignés avec le pact consumer). */
 const FOYER_ID = '22222222-2222-2222-2222-222222222222';
 const CONTRAT_ID = '33333333-3333-3333-3333-333333333333';
@@ -199,6 +211,35 @@ describe('Pact provider · svc-tarification honore le contrat api-gateway', () =
             ) values (
               ${CONTRAT_ID}, ${FOYER_ID}, 'Zoé', 'CANTINE', '2026-10', false,
               ${JSON.stringify(PRESTATION_CANTINE)}::jsonb
+            )
+          `;
+        },
+        [ETAT_FOYER_UA]: async (): Promise<void> => {
+          // Engagement de référence de la doc 02 §4.5 (20 UA à 31,25 €, caution
+          // 625 €, 1er juin → 31 mai) et deux créneaux DÉJÀ RÉALISÉS : 4 h + 2 h.
+          // Ni foyer ni contrat requis — ces deux tables ne sont pas un read model
+          // et ne référencent rien.
+          await db`delete from session_ua where foyer_id = ${FOYER_ID}`;
+          await db`delete from engagement_ua where foyer_id = ${FOYER_ID}`;
+          await db`
+            insert into engagement_ua (
+              id, foyer_id, debut, fin, quota_heures, valeur_ua_centimes,
+              caution_centimes
+            ) values (
+              ${ENGAGEMENT_UA_ID}, ${FOYER_ID}, '2026-06-01', '2027-05-31',
+              20, 3125, 62500
+            )
+          `;
+          await db`
+            insert into session_ua (
+              id, engagement_id, foyer_id, date, duree_heures, type,
+              realise_par, etat
+            ) values (
+              ${SESSION_UA_1}, ${ENGAGEMENT_UA_ID}, ${FOYER_ID}, '2026-09-12',
+              4, 'MENAGE', 'Camille', 'REALISEE'
+            ), (
+              ${SESSION_UA_2}, ${ENGAGEMENT_UA_ID}, ${FOYER_ID}, '2026-09-20',
+              2, 'CANTINE', 'Camille', 'REALISEE'
             )
           `;
         },

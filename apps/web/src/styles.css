@@ -2082,6 +2082,46 @@ button:disabled,
 }
 
 /* ---- Impression / export PDF (window.print) ------------------------------ */
+/* --- Unités associatives (SFD 40) ----------------------------------------- */
+
+/* Les trois compteurs, et les deux coûts projetés : une grille qui s'empile
+   naturellement sous 640 px (mobile d'abord, aucune media query nécessaire).
+   `minmax(0, …)` et non `minmax(12rem, …)` : sans le 0, une carte dont le
+   contenu est plus large que la piste déborde et fait défiler la PAGE. */
+.cartes-compteurs-ua {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.75rem;
+}
+
+.cartes-compteurs-ua .carte {
+  margin-bottom: 0;
+}
+
+.cartes-compteurs-ua h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.cartes-compteurs-ua p {
+  margin: 0.25rem 0;
+}
+
+.liste-sessions-ua {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.liste-sessions-ua li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--bordure);
+}
+
 @media print {
   /* On masque tout ce qui n'a pas de sens sur papier. */
   .app-header,
