@@ -99,8 +99,7 @@ le site tarifaire sont deux notions séparées** (`RM-41-13`). Confondre les deu
 troisième colonne à la grille — donc une combinaison sans tarif, donc un calcul refusé sur un cas
 parfaitement normal. Les dimensions de la clé de grille sont donc, définitivement :
 
-> **tranche** × **site tarifaire** `{ Mulhouse | Lutterbach }` × **niveau** `{ maternelle |
-élémentaire }` × **date d'effet**
+> **tranche** × **site tarifaire** × **niveau** × **date d'effet** — deux sites, et deux seulement.
 
 ### 7. Ce qui est déjà décidé et qu'il suffit de confirmer
 
