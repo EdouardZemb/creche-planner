@@ -21,7 +21,7 @@ renumérotés — trop de liens existants en dépendent.
 | Contribuer du code            | [CONTRIBUTING.md](../CONTRIBUTING.md), [CONVENTIONS.md](../CONVENTIONS.md), [doc 03](03-standards-developpement.md) |
 | Reprendre le projet           | [doc 06](06-etat-davancement.md) (état d'avancement & guide de reprise)                                             |
 | Déployer / exploiter          | [doc 24](exploitation/24-plan-deploiement-serveur-ct-qdo.md) + [runbook](exploitation/runbook-deploiement.md)       |
-| Comprendre un choix technique | [ADR](adr/) (0001 → 0009)                                                                                           |
+| Comprendre un choix technique | [ADR](adr/) (0001 → 0010)                                                                                           |
 | Écrire ou revoir un document  | [doc 35](35-politique-documentation.md) (politique de documentation)                                                |
 
 ## Spécification fonctionnelle & produit
@@ -56,24 +56,29 @@ Le prestataire ABCM / La Regio Schule, ses services et ses obligations de membre
 La note d'architecture « deux moteurs de tarification » (crèche PSU vs forfaits ABCM par tranche)
 vit au §7 de la doc 41, et les quatre autres y renvoient.
 
-| Doc                                                                                | Contenu                                                                                                                                                                      |
-| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [40 — SFD Unités associatives](40-sfd-unites-associatives.md)                      | L'engagement de bénévolat du foyer : quota, période du 1ᵉʳ juin au 31 mai, reste-à-faire, échéance — le calcul existe déjà, il n'est branché nulle part                      |
-| [41 — SFD Cantine, périscolaire & ALSH](41-sfd-cantine-periscolaire-alsh-abcm.md)  | Réservation avant le jeudi 12 h, absences et carence, barème à trois tranches par site et par niveau, matière du rapprochement de facture — **porte la note d'architecture** |
-| [42 — SFD Vacances & ALSH](42-sfd-vacances-alsh.md)                                | Inscription par période plutôt que jour par jour, six créneaux, formule tarifaire dérivée                                                                                    |
-| [43 — SFD Calendrier scolaire ABCM](43-sfd-calendrier-scolaire-abcm.md)            | Les dates 2026/27 injectées dans le calendrier versionné — et la réponse à `Q-31-01` : la zone B donne les vacances, jamais les ouvertures d'ALSH                            |
-| [44 — SFD Inscription & réinscription](44-sfd-inscription-reinscription-pieces.md) | Dossier annuel, pièces et péremptions, RFR renouvelé chaque année — **sans jamais stocker de pièce médicale**                                                                |
+> **Trois arbitrages PO du 2026-09-01** y sont consignés : le **site tarifaire** est distinct du
+> **lieu** (Dornach facture en Mulhouse) ; la **carence de 48 h** se lit dans le règlement voté,
+> pas dans le flyer ; et le stockage des **pièces médicales** est autorisé, ce qui a demandé une
+> **révision de l'ADR-0007** — voir l'[ADR-0010](adr/0010-donnees-de-sante-du-dossier-conditions-de-stockage.md).
+
+| Doc                                                                                | Contenu                                                                                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [40 — SFD Unités associatives](40-sfd-unites-associatives.md)                      | L'engagement de bénévolat du foyer : quota, période du 1ᵉʳ juin au 31 mai, reste-à-faire, échéance — le calcul existe déjà, il n'est branché nulle part                                                                                    |
+| [41 — SFD Cantine, périscolaire & ALSH](41-sfd-cantine-periscolaire-alsh-abcm.md)  | Réservation avant le jeudi 12 h, absences et carence, barème à trois tranches par site et par niveau, matière du rapprochement de facture — **porte la note d'architecture**                                                               |
+| [42 — SFD Vacances & ALSH](42-sfd-vacances-alsh.md)                                | Inscription par période plutôt que jour par jour, six créneaux, formule tarifaire dérivée                                                                                                                                                  |
+| [43 — SFD Calendrier scolaire ABCM](43-sfd-calendrier-scolaire-abcm.md)            | Les dates 2026/27 injectées dans le calendrier versionné — et la réponse à `Q-31-01` : la zone B donne les vacances, jamais les ouvertures d'ALSH                                                                                          |
+| [44 — SFD Inscription & réinscription](44-sfd-inscription-reinscription-pieces.md) | Dossier annuel, pièces et péremptions, RFR renouvelé chaque année — et, depuis l'[ADR-0010](adr/0010-donnees-de-sante-du-dossier-conditions-de-stockage.md), **les pièces médicales stockées dans la GED sous cinq conditions opposables** |
 
 ## Architecture & conception
 
-| Doc                                                                                    | Contenu                                                                                                                                                                                  |
-| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [04 — Architecture & technologies](04-architecture-et-technos.md)                      | Comparatif techno, choix justifiés, découpage en microservices                                                                                                                           |
-| [09 — Spec : découplage & maturité microservices](09-spec-decouplage-microservices.md) | Décisions DEC-xx (contrats, projections, résilience)                                                                                                                                     |
-| [10 — Plan d'implémentation du découplage](10-plan-implementation-decouplage.md)       | Sessions d'exécution de la doc 09                                                                                                                                                        |
-| [14 — Peuplement BDD & API contrats](14-peuplement-bdd-et-api-contrats.md)             | Jeu de données de référence, consommation de l'API par le front                                                                                                                          |
-| [37 — Registre des traitements, tiers et durées](37-registre-des-traitements.md)       | Quelles données personnelles vivent où, chez quels tiers, et combien de temps on les garde                                                                                               |
-| [ADR 0001 → 0009](adr/)                                                                | Microservices, grain des services, toolchain, contrats décentralisés, registre de contrats, préférences de notification, exemption domestique, écarts de sémantique HTTP, nom du produit |
+| Doc                                                                                    | Contenu                                                                                                                                                                                                               |
+| -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [04 — Architecture & technologies](04-architecture-et-technos.md)                      | Comparatif techno, choix justifiés, découpage en microservices                                                                                                                                                        |
+| [09 — Spec : découplage & maturité microservices](09-spec-decouplage-microservices.md) | Décisions DEC-xx (contrats, projections, résilience)                                                                                                                                                                  |
+| [10 — Plan d'implémentation du découplage](10-plan-implementation-decouplage.md)       | Sessions d'exécution de la doc 09                                                                                                                                                                                     |
+| [14 — Peuplement BDD & API contrats](14-peuplement-bdd-et-api-contrats.md)             | Jeu de données de référence, consommation de l'API par le front                                                                                                                                                       |
+| [37 — Registre des traitements, tiers et durées](37-registre-des-traitements.md)       | Quelles données personnelles vivent où, chez quels tiers, et combien de temps on les garde                                                                                                                            |
+| [ADR 0001 → 0010](adr/)                                                                | Microservices, grain des services, toolchain, contrats décentralisés, registre de contrats, préférences de notification, exemption domestique, écarts de sémantique HTTP, nom du produit, données de santé du dossier |
 
 ## Développement (standards & avancement)
 

@@ -1,18 +1,21 @@
 # 41 — SFD Cantine, périscolaire & ALSH : réserver, tarifer, rapprocher (ABCM)
 
-> Statut : **BROUILLON — NE PAS DÉMARRER · en attente de validation PO** · Version 0.1 · 2026-09-01
+> Statut : **BROUILLON — NE PAS DÉMARRER · en attente de validation PO** · Version 0.2 · 2026-09-01
 > Pièce centrale du domaine associatif ABCM (40 → 44). Étend le
 > [modèle de coût](02-modele-de-cout.md) §4, s'appuie sur le versionnement à date d'effet
 > ([doc 30](30-sfd-versionnement-dates-effet.md)) et sur le calendrier d'ouverture
 > ([SFD 31](31-sfd-calendriers-vacances-scolaires.md)). **Porte la note d'architecture
 > « deux moteurs de tarification » (§7)**, à laquelle les quatre autres SFD renvoient.
+> **Amendée le 2026-09-01 par deux décisions PO** : le **site tarifaire** est distinct du **lieu**
+> (§0, décision 6), et la **carence de 48 h** est tranchée en faveur du règlement (§0, décision 5).
 > Consigne `AM-110`, `AM-111`, `AM-113`, `AM-114`, `AM-115`, `AM-116`, `AM-117`
 > ([doc 34](34-registre-ameliorations.md)).
 
 ## 0. Ce que ça demande au PO
 
-Cinq décisions. La première renverse la prémisse du chantier ; les quatre autres bornent le
-périmètre.
+Sept décisions. La première renverse la prémisse du chantier ; les suivantes bornent le périmètre.
+**Les décisions 5 et 6 ont été tranchées par le PO le 2026-09-01** et sont conservées écrites avec
+leur réponse — une question effacée redevient une question six mois plus tard.
 
 ### 1. Le « second moteur de tarification » n'est pas à écrire — il tourne en production
 
@@ -63,13 +66,46 @@ d'office produirait des montants que personne n'a prononcés.
 transmise, l'écran dit ce que le règlement prévoit. Le montant, lui, n'entre dans le coût que
 s'il apparaît sur une facture (chantier facture, décision 3).
 
-### 5. Ce qui est déjà décidé et qu'il suffit de confirmer
+### 5. ✅ Tranchée — la carence de 48 h se lit dans le règlement, pas dans le flyer
+
+Les deux sources se contredisaient : le **règlement intérieur** (voté en CA le 11/12/2025) écrit
+que les 48 premières heures **restent dues** ; le flyer écrit qu'une annulation prévenue 48 h à
+l'avance **annule la facturation**. Les deux ne donnent pas le même montant.
+
+**Décision PO du 2026-09-01 : la source de vérité est le RÈGLEMENT**, en tant que texte voté par
+le conseil d'administration. La règle canonique du produit est donc :
+
+> **Réservé ⇒ facturé**, sauf **maladie de l'enfant** ou **force majeure** — appréciées par le
+> responsable — avec un **délai de carence de 48 h** : **les 48 premières heures restent dues**,
+> la déduction ne porte que sur la suite. Une **interruption totale du service** exonère sans
+> carence.
+
+C'est ce que le produit implémente déjà (doc 02 §4.4 bis) : la décision **confirme** le
+comportement au lieu de le changer. Elle ne clôt pourtant pas complètement la question, et c'est
+délibéré (`Q-41-04` reformulée, `AM-117`) : **la facture est le seul témoin de ce qui est
+réellement appliqué**. Un règlement dit ce qui devrait se passer ; deux ou trois factures Delta
+Enfance réelles diront ce qui se passe. C'est précisément l'usage du rapprochement réservé /
+facturé de cette SFD — et si l'écart apparaît, c'est la **pratique** qu'il faudra écrire, pas le
+règlement qu'il faudra corriger.
+
+### 6. ✅ Tranchée — Dornach n'est pas un site tarifaire
+
+**Décision PO du 2026-09-01 : il n'y a que deux sites tarifaires — Mulhouse et Lutterbach.**
+Dornach est un **lieu** (une classe, un événement, une adresse), pas une structure au tarif propre :
+ce qui s'y passe **facture en Mulhouse**.
+
+La conséquence de modèle est nette, et elle évite une erreur qui aurait été coûteuse : **le lieu et
+le site tarifaire sont deux notions séparées** (`RM-41-13`). Confondre les deux aurait ajouté une
+troisième colonne à la grille — donc une combinaison sans tarif, donc un calcul refusé sur un cas
+parfaitement normal. Les dimensions de la clé de grille sont donc, définitivement :
+
+> **tranche** × **site tarifaire** `{ Mulhouse | Lutterbach }` × **niveau** `{ maternelle |
+élémentaire }` × **date d'effet**
+
+### 7. Ce qui est déjà décidé et qu'il suffit de confirmer
 
 - **« Réservé ⇒ facturé »** est déjà la règle du produit (doc 02 §4.4 bis) et déjà implémentée.
 - **Le PAI panier-repas** est déjà modélisé : seule la part « garde » est facturée.
-- **La carence 48 h** est implémentée comme une **interprétation par défaut** jamais confrontée à
-  une facture réelle. C'est le seul de ces trois points qui reste à trancher (`Q-41-04`,
-  `AM-117`).
 
 ### Ce que cette spécification ne décide pas
 
@@ -144,8 +180,9 @@ vérification par-dessus Delta Enfance et le site travaux. Voir [SFD 40](40-sfd-
 ### 3.1 Ce que le modèle gagne
 
 ```
-Etablissement (entité libre, existante)
+Etablissement (entité libre, existante) = un LIEU                     ← Dornach en est un
    ├─ servicesOfferts : [CANTINE, PERI_MATIN?, PERI_SOIR, ALSH]     ← nouveau (AM-114)
+   ├─ siteTarifaire : MULHOUSE | LUTTERBACH                          ← nouveau (décision 6)
    └─ horaires par service (informatif, affiché)
 
 Enfant (existant) ──< NiveauScolaireVersion                          ← nouveau (AM-115)
@@ -153,7 +190,7 @@ Enfant (existant) ──< NiveauScolaireVersion                          ← nou
 
 GrilleAbcm (existante) — clé élargie                                 ← nouveau (AM-110)
    avant : (tranche, valideDu → valideAu)
-   après : (tranche, etablissementId, niveau, valideDu → valideAu)
+   après : (tranche, siteTarifaire, niveau, valideDu → valideAu)
 
 SemaineReservation                                                   ← nouveau (AM-113)
    ├─ (foyer, enfant, semaine ISO)
@@ -162,9 +199,18 @@ SemaineReservation                                                   ← nouveau
    └─ transmiseLe (horodatage déclaré par le parent)
 ```
 
+> **Pourquoi `siteTarifaire` est un attribut du lieu, et non le lieu lui-même.** Un foyer peut
+> avoir affaire à plus de lieux qu'il n'y a de tarifs : Dornach en est la preuve immédiate. Faire
+> porter la grille par l'établissement aurait exigé une grille par lieu — donc une combinaison
+> vide, donc un calcul refusé, pour une classe qui facture normalement. Le lieu dit **où**, le site
+> tarifaire dit **selon quel barème** ; l'un se multiplie librement, l'autre est une énumération
+> fermée à deux valeurs (`RM-41-13`).
+
 Trois principes, hérités et non renégociés ici :
 
-1. **Aucun tarif, aucun horaire, aucun nom d'établissement en dur** (doc 30 §4, `RM-31-05`).
+1. **Aucun tarif, aucun horaire, aucun nom d'établissement en dur** (doc 30 §4, `RM-31-05`). Le
+   site tarifaire est une **énumération de données**, pas une constante de code : ses deux valeurs
+   se saisissent au Référentiel comme le reste du barème.
 2. **Le passé facturé est intouchable** : une grille corrigée s'applique à sa date d'effet, jamais
    rétroactivement (doc 30).
 3. **Réservé ⇒ facturé** reste la règle de base, et le produit la tient déjà.
@@ -311,14 +357,18 @@ En tant que parent, quand une présence n'a pas été transmise, je sais ce que 
 - **RM-41-01 — Réservé ⇒ facturé.** Règle de base, déjà en vigueur (doc 02 §4.4 bis). L'absence ne
   déduit rien par défaut.
 - **RM-41-02 — L'exonération est un paramètre à motif et à carence**, appréciée par le
-  responsable. La carence de 48 h est une **valeur de paramétrage**, pas une constante
-  (`Q-41-04`).
+  responsable. **Décision PO du 2026-09-01** : la source de vérité est le **règlement intérieur**
+  voté en CA, pas le flyer — donc **les 48 premières heures restent dues** et la déduction ne
+  porte que sur la suite ; l'interruption totale du service exonère **sans** carence. La valeur
+  « 48 h » reste un **paramètre**, jamais une constante de code, pour que la pratique constatée
+  puisse la corriger sans déploiement (`Q-41-04`, `AM-117`).
 - **RM-41-03 — L'échéance est dérivée, jamais saisie** : jeudi 12 h de la semaine précédant la
   semaine réservée, calculée sur le calendrier de l'établissement.
 - **RM-41-04 — Martha ne bloque jamais une saisie tardive.** Elle la qualifie (« hors délai ») et
   rappelle la voie de dérogation.
-- **RM-41-05 — La grille est indexée par (tranche, établissement, niveau, date d'effet).** Une
-  combinaison sans grille **refuse** le calcul ; aucun repli sur une autre combinaison.
+- **RM-41-05 — La grille est indexée par (tranche, site tarifaire, niveau, date d'effet).** Une
+  combinaison sans grille **refuse** le calcul ; aucun repli sur une autre combinaison. Le site
+  tarifaire vaut `Mulhouse` ou `Lutterbach`, et rien d'autre (`RM-41-13`).
 - **RM-41-06 — Le niveau scolaire est une donnée à date d'effet** de l'enfant, jamais déduite de
   son âge : un maintien ou un saut de classe est un fait, pas un calcul.
 - **RM-41-07 — Les services offerts sont déclarés par établissement.** Ce que le site n'offre pas
@@ -335,6 +385,12 @@ En tant que parent, quand une présence n'a pas été transmise, je sais ce que 
 - **RM-41-12 — Traçabilité.** Toute mutation d'inscription, de grille ou d'état de transmission
   s'inscrit à la piste d'audit acteur dès le premier commit — la mémoire du projet relève déjà
   que les mutations de contrat ne sont **auditées nulle part**, cette SFD n'aggrave pas le cas.
+- **RM-41-13 — Le lieu n'est pas le site tarifaire.** Un établissement est un **lieu** et porte un
+  **attribut** `siteTarifaire` valant `Mulhouse` ou `Lutterbach`. Les lieux se multiplient
+  librement (Dornach en est un) ; les sites tarifaires sont **deux**, et la grille n'est indexée
+  que sur eux. Un lieu sans site tarifaire déclaré **refuse** le calcul plutôt que d'en deviner un
+  — la sonde négative de la règle est là : ajouter un lieu ne doit **jamais** créer une
+  combinaison de grille vide.
 
 ## 7. Note d'architecture — deux moteurs de tarification, et un seul à écrire
 
@@ -356,10 +412,11 @@ et depuis longtemps.
 
 Trois écarts, tous de **forme de données**, aucun de moteur :
 
-1. **La grille ABCM n'a qu'une clé** — la tranche. Les tarifs 2026 en exigent trois de plus :
-   l'établissement, le niveau scolaire, et la date d'effet (déjà présente). Sans cet
-   élargissement, un foyer à cheval sur Mulhouse et Lutterbach ne peut pas être tarifé
-   correctement, et l'erreur serait **silencieuse** : la grille de l'un s'appliquerait à l'autre.
+1. **La grille ABCM n'a qu'une clé** — la tranche. Les tarifs 2026 en exigent deux de plus, la
+   date d'effet étant déjà présente : le **site tarifaire** (`Mulhouse` ou `Lutterbach`, décision
+   PO du 2026-09-01) et le **niveau scolaire**. Sans cet élargissement, un foyer à cheval sur les
+   deux sites ne peut pas être tarifé correctement, et l'erreur serait **silencieuse** : la grille
+   de l'un s'appliquerait à l'autre.
 2. **Le niveau scolaire n'existe pas** dans le modèle. Il change deux tarifs sur trois.
 3. **Les frais fixes restent codés** : le service les instancie sans paramètres, donc 286 € et
    150 € vivent encore dans le domaine — le dernier endroit où `RM-30-04` n'est pas tenue.
@@ -373,8 +430,14 @@ des grilles décoratives. Le remède est le même qu'alors : **une seule source,
 
 **Modéliser le site comme une variante de tarif** (« tarif Lutterbach ») plutôt que comme une
 dimension de la grille reviendrait à écrire un nom d'établissement dans une clé de barème —
-exactement ce que `RM-31-05` interdit. L'établissement est déjà une **entité libre** du produit :
-la grille doit le référencer, pas le nommer.
+exactement ce que `RM-31-05` interdit. Le **site tarifaire** est une dimension à deux valeurs, et
+l'établissement le **porte** comme attribut : la grille référence la dimension, pas le lieu.
+
+**Indexer la grille sur l'établissement lui-même** est l'autre faute, et c'est celle que la
+décision du 2026-09-01 vient d'éviter. Dornach est un lieu réel qui facture en Mulhouse ; une
+grille par établissement lui aurait demandé son propre barème, donc aurait refusé le calcul sur un
+cas parfaitement normal. La règle générale, valable au-delà de ce cas : **ce qui se multiplie
+librement (les lieux) n'indexe jamais ce qui est fermé (les barèmes)**.
 
 ### 7.4 Conséquence de découpage
 
@@ -400,15 +463,15 @@ multi-site produit des montants faux sans rien signaler.
 
 ## 9. Découpage en lots
 
-| Lot   | Contenu                                                                                                             | Ce qui le clôt                                                                                          |
-| ----- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **0** | Trancher `Q-41-01` à `Q-41-05`. Zéro code.                                                                          | Les cinq questions sont closes ou explicitement reportées.                                              |
-| **1** | **Élargir la clé de grille** (tranche × établissement × niveau × date) : schéma, projection, reprise, contrat Pact. | Deux établissements aux tarifs distincts coexistent, et une combinaison manquante **refuse** le calcul. |
-| **2** | Niveau scolaire de l'enfant à date d'effet ; services offerts par établissement.                                    | Un passage en élémentaire change le tarif à sa date, sans toucher aux mois passés.                      |
-| **3** | Frais fixes versionnés (cotisation selon le nombre d'enfants, première inscription).                                | Plus aucune valeur monétaire ABCM dans le domaine — `RM-30-04` tenue sur tout le chemin.                |
-| **4** | Semaine de réservation : état, échéance dérivée, rappel dans le récapitulatif existant.                             | Une semaine non transmise à J−1 de l'échéance est visible sans ouvrir l'application.                    |
-| **5** | Détail réservé d'un mois, exportable ligne à ligne pour le rapprochement.                                           | Le chantier facture peut le consommer sans rien recalculer.                                             |
-| **6** | Absences : catalogue de motifs, carence paramétrée, affichage du règlement des sanctions.                           | Une absence maladie déclarée produit le bon montant **et** dit que l'exonération n'est pas acquise.     |
+| Lot   | Contenu                                                                                                              | Ce qui le clôt                                                                                                                                      |
+| ----- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **0** | Trancher `Q-41-01` à `Q-41-05`. Zéro code.                                                                           | Les cinq questions sont closes ou explicitement reportées.                                                                                          |
+| **1** | **Élargir la clé de grille** (tranche × site tarifaire × niveau × date) : schéma, projection, reprise, contrat Pact. | Deux sites aux tarifs distincts coexistent, une combinaison manquante **refuse** le calcul, et **ajouter un lieu ne crée aucune combinaison vide**. |
+| **2** | Niveau scolaire de l'enfant à date d'effet ; attribut de site tarifaire et services offerts par établissement.       | Un passage en élémentaire change le tarif à sa date, sans toucher aux mois passés ; Dornach facture en Mulhouse.                                    |
+| **3** | Frais fixes versionnés (cotisation selon le nombre d'enfants, première inscription).                                 | Plus aucune valeur monétaire ABCM dans le domaine — `RM-30-04` tenue sur tout le chemin.                                                            |
+| **4** | Semaine de réservation : état, échéance dérivée, rappel dans le récapitulatif existant.                              | Une semaine non transmise à J−1 de l'échéance est visible sans ouvrir l'application.                                                                |
+| **5** | Détail réservé d'un mois, exportable ligne à ligne pour le rapprochement.                                            | Le chantier facture peut le consommer sans rien recalculer.                                                                                         |
+| **6** | Absences : catalogue de motifs, carence paramétrée, affichage du règlement des sanctions.                            | Une absence maladie déclarée produit le bon montant **et** dit que l'exonération n'est pas acquise.                                                 |
 
 > Les lots 1 à 3 sont des lots de **fondation tarifaire** : ils bénéficient aussi aux
 > [SFD 42](42-sfd-vacances-alsh.md) et [43](43-sfd-calendrier-scolaire-abcm.md), qui ne les
@@ -426,10 +489,15 @@ multi-site produit des montants faux sans rien signaler.
 - **Q-41-03** — Le périscolaire du soir est-il **forfaitaire** ou **horaire** ? Le tarif est
   libellé « 2 h » pour deux amplitudes différentes (1 h 45 à Mulhouse, 2 h 15 à Lutterbach).
   Hypothèse par défaut : forfait par séance, ce que fait déjà le produit.
-- **Q-41-04** — La **carence de 48 h** se lit-elle « les 48 premières heures restent dues » ou
-  « prévenir 48 h à l'avance annule la facturation » ? Les deux lectures existent dans les
-  sources — le règlement dit la première, le flyer la seconde. Elles ne donnent pas le même
-  montant. À trancher sur **trois factures réelles** (`AM-117`).
+- ~~**Q-41-04** — La **carence de 48 h** se lit-elle « les 48 premières heures restent dues » ou
+  « prévenir 48 h à l'avance annule la facturation » ?~~ → **tranchée le 2026-09-01** : la source
+  de vérité est le **règlement intérieur** voté en CA, donc **les 48 premières heures restent
+  dues** (§0, décision 5). Le flyer est écarté comme source.
+  **Reste ouverte, volontairement, la vérification** : confronter la règle à **deux ou trois
+  factures Delta Enfance réelles**, parce que la facture est le seul témoin de ce qui est
+  **réellement appliqué** — c'est l'objet du rapprochement réservé / facturé de cette SFD
+  (`AM-117`). Si la pratique diffère du texte, c'est la **pratique** qu'on écrit, et le paramètre
+  de carence est fait pour ça (`RM-41-02`).
 - **Q-41-05** — La **facture individualisée en garde alternée** (demande signée des deux parents)
   est-elle un besoin du foyer ? Si non, écarter par écrit : le modèle de foyer actuel n'a qu'un
   redevable, et l'ouvrir aurait des effets bien au-delà de cette SFD.
@@ -439,6 +507,10 @@ multi-site produit des montants faux sans rien signaler.
 - **Une migration de la clé de grille**, avec reprise des données existantes et rejeu de
   projection — le geste le moins réversible du lot.
 - **Une donnée nouvelle sur l'enfant** (niveau scolaire), versionnée.
+- **Une donnée nouvelle sur l'établissement** (`siteTarifaire`, deux valeurs), et la règle qui va
+  avec : ajouter un lieu ne crée jamais une combinaison de grille vide (`RM-41-13`).
+- **Une règle d'absence tranchée, mais pas close** : la carence suit le règlement, et sa
+  vérification sur factures réelles reste due (`Q-41-04`, `AM-117`).
 - **La fin d'une exception à `RM-30-04`** : plus aucun montant ABCM dans le domaine.
 - **Aucun appel, aucun envoi vers l'association** — dans aucune version.
 - **Une dépendance ferme au calendrier d'ouverture** ([SFD 31](31-sfd-calendriers-vacances-scolaires.md)) :

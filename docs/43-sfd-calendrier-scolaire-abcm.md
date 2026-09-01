@@ -1,6 +1,6 @@
 # 43 — SFD Calendrier scolaire ABCM : les dates qui décident de ce qui est réservable
 
-> Statut : **BROUILLON — NE PAS DÉMARRER · en attente de validation PO** · Version 0.1 · 2026-09-01
+> Statut : **BROUILLON — NE PAS DÉMARRER · en attente de validation PO** · Version 0.2 · 2026-09-01
 > Quatrième des cinq spécifications du domaine associatif ABCM (40 → 44). **N'invente aucun
 > modèle** : elle instancie le calendrier d'ouverture versionné de la
 > [SFD 31](31-sfd-calendriers-vacances-scolaires.md) avec les dates réelles de l'année 2026/27, et
@@ -10,7 +10,8 @@
 
 ## 0. Ce que ça demande au PO
 
-Trois décisions, et une réponse à une question qui traînait depuis juillet.
+Trois décisions, une réponse à une question qui traînait depuis juillet — et, depuis le
+2026-09-01, **un arbitrage PO qui referme `Q-43-01`**.
 
 ### La réponse d'abord — `Q-31-01` est tranchée par les faits
 
@@ -28,6 +29,17 @@ l'une ni l'autre :
 elles ne peuvent pas être dérivées d'une source publique. C'est exactement ce que l'architecture
 « import plus retouches » de la SFD 31 prévoyait — cette SFD confirme que la moitié « retouches »
 n'est pas une soupape, c'est le travail annuel principal (`AM-120`).
+
+### ✅ Tranchée le 2026-09-01 — Dornach est un lieu, pas un site tarifaire
+
+`Q-43-01` demandait si Dornach était un troisième établissement. **Non** : il n'y a que **deux
+sites tarifaires**, Mulhouse et Lutterbach, et ce qui se passe à Dornach **facture en Mulhouse**.
+
+Ce que ça change ici : un **lieu** peut entrer au calendrier sans qu'aucune grille tarifaire ne
+lui soit due. Un établissement porte donc deux choses distinctes — son **calendrier d'ouverture**
+(qui lui est propre) et son **site tarifaire** (qui ne prend que deux valeurs). La règle vit en
+[SFD 41](41-sfd-cantine-periscolaire-alsh-abcm.md) `RM-41-13` ; elle est rappelée ici parce que
+c'est **au moment de saisir les établissements** (lot 1) qu'on peut encore se tromper.
 
 ### Les trois décisions
 
@@ -161,6 +173,9 @@ services et leurs horaires.
   pour être corrigé plus tard (§0, décision 2 ; `AM-106`).
 - **CA2** : les services offerts diffèrent (pas de périscolaire du matin à Lutterbach), et cette
   différence est **portée par la donnée**, pas par un écran.
+- **CA3** : chaque établissement déclare son **site tarifaire** (`Mulhouse` ou `Lutterbach`) — un
+  lieu supplémentaire, Dornach compris, se rattache à l'un des deux et n'appelle **aucune grille
+  nouvelle** (`RM-43-07`).
 
 ### US-43-02 — Poser l'année 2026/27
 
@@ -206,6 +221,11 @@ En tant que parent, je vois la kermesse et les portes ouvertes dans le calendrie
   ouvert.
 - **RM-43-06 — La saisie est annuelle et manuelle, et c'est assumé.** Aucune tâche de fond
   n'interroge de source externe (décision PO du 2026-08-16, `Q-31-02`).
+- **RM-43-07 — Un lieu n'est pas un site tarifaire.** Le calendrier est propre à un
+  établissement ; le **barème**, lui, n'est indexé que sur deux sites tarifaires. Saisir un lieu
+  de plus ne doit jamais créer une combinaison de grille vide — la règle vit en
+  [SFD 41](41-sfd-cantine-periscolaire-alsh-abcm.md) `RM-41-13`, et c'est **à la saisie** qu'elle
+  se respecte ou se perd (décision PO du 2026-09-01).
 
 ## 7. Cadre de sécurité & données personnelles
 
@@ -228,10 +248,11 @@ En tant que parent, je vois la kermesse et les portes ouvertes dans le calendrie
 
 ## 9. Questions ouvertes
 
-- **Q-43-01** — **Dornach est-il un site distinct de Mulhouse ?** Les sources écrivent « Mulhouse /
-  Dornach » pour une réunion et « Dornach » seul pour la Saint-Martin des primaires. S'il s'agit
-  d'un troisième établissement, il lui faut sa propre grille tarifaire — donc un impact direct sur
-  la [SFD 41](41-sfd-cantine-periscolaire-alsh-abcm.md) lot 1.
+- ~~**Q-43-01** — **Dornach est-il un site distinct de Mulhouse ?**~~ → **tranchée le
+  2026-09-01** : **non**. Deux sites tarifaires seulement — Mulhouse et Lutterbach ; Dornach est
+  un **lieu** qui facture en Mulhouse. La clé de grille de la
+  [SFD 41](41-sfd-cantine-periscolaire-alsh-abcm.md) ne gagne donc **pas** de troisième valeur, et
+  la distinction lieu / site tarifaire devient une règle opposable (`RM-41-13`).
 - **Q-43-02** — Les **deux sites ferment-ils aux mêmes dates** ? Les fenêtres d'ALSH fournies ne
   sont pas attribuées à un site en particulier. Si elles diffèrent, la double saisie du §0 devient
   une nécessité et non un choix.

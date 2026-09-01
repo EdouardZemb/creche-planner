@@ -1,6 +1,6 @@
 # 38 — SFD Rattachement documentaire : la GED du foyer branchée sur l'app
 
-> Statut : **Validée** · Version 1.0 · 2026-08-17
+> Statut : **Validée** · Version 1.1 · 2026-09-01
 > Instruit la piste `AM-65` ([doc 34](34-registre-ameliorations.md)) et tranche la décision
 > laissée ouverte par la note de vision (`.claude/plans/vision-plateforme-foyer-2026-08.md` §2 :
 > « probablement via l'API de la GED, décision à instruire le moment venu »).
@@ -35,10 +35,11 @@ rediscuterait.
 
 ### Options par défaut confirmées sans changement
 
-- **Aucun type médical au catalogue de types** (`Q-38-01`) — et, par conséquent, la cible
-  `ENFANT` reste **fermée** en v1. L'`ADR-0009` du lot 0 prend donc la **position (b)** du §7.1 :
-  l'exemption domestique est maintenue par écrit, avec ces deux fermetures pour contrepartie, et
-  ses propres seuils de réouverture.
+- ⚠️ **RENVERSÉE le 2026-09-01 — voir §0.2.** ~~**Aucun type médical au catalogue de types**
+  (`Q-38-01`) — et, par conséquent, la cible `ENFANT` reste **fermée** en v1.~~ La position (b)
+  du §7.1 (maintenir l'exemption au prix de ces deux fermetures) est abandonnée au profit de la
+  position **(a)** — rouvrir et faire le travail. L'écrit n'est pas l'`ADR-0009`, numéro pris
+  depuis par le nom du produit, mais l'[ADR-0010](adr/0010-donnees-de-sante-du-dossier-conditions-de-stockage.md).
 - **La suppression d'un foyer ne vide pas le coffre** (`Q-38-02`) : la cascade emporte les
   **rattachements**, jamais les documents. Le coffre est le classeur du foyer, antérieur et
   extérieur à l'application.
@@ -46,6 +47,40 @@ rediscuterait.
   proxy Cloudflare est **abandonné**, métadonnées documentaires comprises.
 - **Ordre de livraison inchangé** (`Q-38-04`) : dépôt → recherche → rattachement, le rattachement
   restant **engagé** et non optionnel.
+
+### 0.2 Amendement 2 — le médical entre, sous cinq conditions (décision PO du 2026-09-01)
+
+La décision du 2026-08-17 fermait le type médical et la cible `ENFANT` (`Q-38-01`), en
+contrepartie du maintien de l'exemption domestique. **Le PO l'a renversée le 2026-09-01**, à
+l'occasion de la [SFD 44](44-sfd-inscription-reinscription-pieces.md) : le dossier d'inscription
+ABCM exige une fiche sanitaire, une copie des vaccins et un PAI, et ces pièces seront rangées dans
+le coffre.
+
+L'écrit qui porte la décision est l'[ADR-0010](adr/0010-donnees-de-sante-du-dossier-conditions-de-stockage.md),
+qui révise l'[ADR-0007](adr/0007-exemption-domestique-et-demarche-volontaire.md) sur son seul
+quatrième seuil. Ce qu'il change pour **cette** spécification :
+
+- un **type médical restreint** entre au catalogue (`RM-38-06`) et la cible `ENFANT` s'ouvre —
+  **pour ce type-là seulement**, et pour trois pièces limitativement énumérées (fiche sanitaire,
+  vaccins, PAI) ;
+- la variante **`a1`** cesse d'être un choix d'ergonomie pour devenir une **condition de
+  sécurité**. Sans le second bord tailnet, la condition (a) de l'ADR-0010 est invérifiable, donc
+  aucune pièce médicale n'entre. La partition de routes de `RM-38-02` s'étend aux **métadonnées**
+  des pièces restreintes, avec sa sonde négative ;
+- le **préalable utilisateur** ci-dessous passe de bloquant à **doublement bloquant** : sans la
+  seconde personne du foyer sur le tailnet, un parent n'accède pas au dossier médical de son propre
+  enfant ;
+- quatre exigences nouvelles, absentes de toutes les versions précédentes : **chiffrement au
+  repos** du volume du coffre, **type restreint** hors catalogue commun, **consentement des deux
+  parents tracé et révocable**, **conservation bornée avec purge effective**. Elles sont écrites en
+  [SFD 44](44-sfd-inscription-reinscription-pieces.md) §6 (`RM-44-09` → `RM-44-13`), parce que
+  c'est ce chantier-là qui les livre.
+
+⚠️ **Ce que l'amendement ne change pas.** `RM-38-01` reste intacte : creche-planner ne stocke
+aucun octet de document. Ce qui est autorisé l'est **au coffre**, jamais à l'application. Et le
+§7.5 reste vrai sur un point qui devient critique — la GED **ne purge rien**, une suppression y est
+une corbeille : une conservation bornée exige donc un mécanisme qui n'existe pas encore
+(`AM-124`), au même titre que le chiffrement au repos que le projet amont a **retiré** (`AM-122`).
 
 ### Préalable utilisateur — écrit ici parce qu'il conditionne tout le reste
 
@@ -128,7 +163,8 @@ un PAI. C'est ce fait, et lui seul, qui déclenche les réouvertures du §7.
   téléchargement — **toujours relayés par la passerelle**, jamais par un accès direct à Paperless.
 - **Rattachement** d'un document à un objet métier du foyer (contrat, mois facturé) — livré en
   **dernier lot**, mais **engagé** : ce n'est pas une option (`Q-38-04`, tranchée §0). La cible
-  `ENFANT` est **fermée en v1** (`Q-38-01`, tranchée §0).
+  `ENFANT` était **fermée en v1** (`Q-38-01`, tranchée §0) — ⚠️ **rouverte le 2026-09-01**
+  pour un type médical **restreint**, sous les cinq conditions de l'ADR-0010 (§0.2).
 
 ### Hors périmètre (v1) — et pourquoi
 
@@ -334,6 +370,11 @@ au minimum « un type médical entre au catalogue » et « la cible `ENFANT` est
 ⚠️ Ce que (b) **ne** rend **pas** vrai : le drapeau `pai` reste sans pièce jointe **seulement
 tant que la cible `ENFANT` reste fermée**. Le lot 3 rouvre mécaniquement la qualification de la
 doc 37 §1 s'il ouvre cette cible.
+
+> ⚠️ **Dépassé le 2026-09-01 (§0.2).** C'est la position **(a)**, et non (b), qui a été retenue :
+> l'ADR-0010 rouvre l'ADR-0007 et autorise le médical sous cinq conditions. La conséquence que
+> cette note annonçait est donc **advenue et assumée** — la qualification du drapeau `pai` en doc 37
+> est rouverte, et sa mise à jour est due **avant le premier commit** du volet médical.
 
 ### 7.2 `ADR-0008` (pagination, concurrence) — un seuil franchi, un évité
 
@@ -687,10 +728,12 @@ Cinq des sept sont **tranchées** par la décision PO du 2026-08-17 (§0). Elles
 avec leur réponse : une question effacée redevient une question, six mois plus tard.
 
 - ~~**Q-38-01** — Le catalogue de types comporte-t-il un type médical, et la cible `ENFANT`
-  est-elle ouverte ?~~ → **tranchée le 2026-08-17** : **non** aux deux. L'`ADR-0009` prend donc
-  la **position (b)** du §7.1, avec ces deux fermetures pour contrepartie explicite et ses
-  propres seuils de réouverture. ⚠️ Ouvrir l'une ou l'autre plus tard n'est pas un ajout de
-  fonctionnalité : c'est une **réouverture d'ADR**.
+  est-elle ouverte ?~~ → **tranchée le 2026-08-17** : non aux deux. → ⚠️ **RENVERSÉE le
+  2026-09-01** : **oui aux deux**, pour un type médical **restreint** et trois pièces
+  limitativement énumérées, sous les cinq conditions cumulatives de l'[ADR-0010](adr/0010-donnees-de-sante-du-dossier-conditions-de-stockage.md)
+  (§0.2). Les deux réponses sont conservées : la première explique la forme de la v1.0, la
+  seconde ce qu'il faudra construire. ⚠️ Le renversement n'est pas un ajout de fonctionnalité —
+  c'est une **révision d'ADR**, et elle a été écrite comme telle.
 - ~~**Q-38-02** — L'effacement d'un foyer doit-il emporter ses documents du coffre ?~~ →
   **tranchée le 2026-08-17** : **non**. Seuls les rattachements partent ; les documents restent
   dans le coffre, qui est antérieur et extérieur à l'application. À écrire comme limite visible
