@@ -28,7 +28,10 @@
  *   5. anti-péremption : tout chemin de dépôt et toute fiche de mémoire cités
  *      doivent exister ;
  *   6. ratchet des portes sans sonde négative rejouable : le nombre ne peut que
- *      baisser (même contrat que `lint-baseline.json`).
+ *      baisser (même contrat que `lint-baseline.json`) ;
+ *   7. sous `--autotest`, **aucune sonde ne nomme un identifiant du registre en
+ *      dur** — trois fois, une cible littérale est devenue réelle et la sonde a
+ *      cessé de mordre sans rien dire (`LE-22`, `LE-33`, `LE-99`).
  *
  * Il publie enfin le backlog ouvert dans `GITHUB_STEP_SUMMARY` : les sujets à
  * traiter passent sous les yeux à chaque run, au lieu d'attendre un audit.
@@ -534,12 +537,37 @@ const SONDES = [
   {
     nom: 'identifiant dupliqué',
     code: 'identifiant-duplique',
-    abimer: (texte) => texte.replace(/\|\s*AM-02\s*\|/, '| AM-01 |'),
+    // Cible **dérivée** : les deux premières pistes du §2, la seconde renumérotée
+    // avec le numéro de la première. La version d'origine nommait `AM-02` et
+    // `AM-01` en dur — vrai par chance, tant que la famille commence à 01 et que
+    // ces deux lignes-là ne bougent pas.
+    abimer: (texte) => {
+      const ids = [...texte.matchAll(/^\|\s*(AM-\d+)\s*\|/gm)].map((m) => m[1]);
+      if (ids.length < 2) return texte;
+      return texte.replace(
+        new RegExp(`^\\|(\\s*)${ids[1]}(\\s*)\\|`, 'm'),
+        `|$1${ids[0]}$2|`,
+      );
+    },
   },
   {
     nom: 'séquence trouée',
     code: 'sequence-trouee',
-    abimer: (texte) => texte.replace(/\|\s*AM-03\s*\|/, '| AM-42 |'),
+    // Cible **dérivée des deux côtés** : la DERNIÈRE piste du §2, renumérotée deux
+    // crans au-dessus du maximum — le trou est garanti quel que soit l'état du
+    // tableau. La version d'origine visait `AM-03` → `AM-42` : la famille a depuis
+    // dépassé 100, `AM-42` existe, et la mutation fabriquait un DOUBLON qui ne
+    // trouait la séquence que par effet de bord (le trou laissé en 03).
+    abimer: (texte) => {
+      const trouvees = [...texte.matchAll(/^\|\s*AM-(\d+)\s*\|/gm)];
+      if (trouvees.length === 0) return texte;
+      const max = Math.max(...trouvees.map((m) => Number(m[1])));
+      const derniere = trouvees[trouvees.length - 1][0];
+      return texte.replace(
+        derniere,
+        derniere.replace(/AM-\d+/, `AM-${max + 2}`),
+      );
+    },
   },
   {
     nom: 'piste close sans preuve',
@@ -606,14 +634,22 @@ const SONDES = [
   {
     nom: 'leçon rattachée à un motif inexistant',
     code: 'motif-inconnu',
-    // Cible **dérivée** : le motif de la première leçon, quels que soient l'un et
-    // l'autre. La version d'origine visait `MO-1` **suivi de « Lot D2 »**, donc à la
-    // fois le motif et l'origine d'une leçon précise.
-    abimer: (texte) =>
-      texte.replace(
+    // Cible **dérivée des deux côtés** : le motif de la première leçon, quels que
+    // soient l'un et l'autre, remplacé par un motif pris **un cran au-dessus** du
+    // dernier existant. La version d'origine visait `MO-1` **suivi de « Lot D2 »**,
+    // donc à la fois le motif et l'origine d'une leçon précise ; la correction
+    // d'alors a laissé littéral le fantôme `MO-9`, qui deviendra réel à la
+    // neuvième famille de récurrences — même panne que `LE-97`, en sursis.
+    abimer: (texte) => {
+      const numeros = [...texte.matchAll(/^\|\s*`?MO-(\d+)`?\s*\|/gm)].map(
+        (m) => Number(m[1]),
+      );
+      const fantome = `MO-${Math.max(0, ...numeros) + 1}`;
+      return texte.replace(
         /(\|\s*LE-\d+\s*\|[^|\n]*\|[^|\n]*\|)\s*`MO-\d+`\s*\|/,
-        '$1 `MO-9` |',
-      ),
+        `$1 \`${fantome}\` |`,
+      );
+    },
   },
   {
     nom: 'compteur de motif faux',
@@ -722,6 +758,52 @@ const SONDES = [
 ];
 
 // ---------------------------------------------------------------------------
+// Garde structurelle — une sonde ne code pas en dur un identifiant du registre
+// ---------------------------------------------------------------------------
+
+/**
+ * Les deux fichiers qui portent des sondes mutant ce registre. Une sonde vise
+ * une CIBLE dans le document ; quand cette cible est un identifiant écrit en
+ * clair, elle a exactement la durée de vie du hasard qui rend ce numéro absent
+ * — puis elle s'éteint sans un mot.
+ */
+const FICHIERS_DE_SONDES = [
+  'scripts/verifier-registre.mjs',
+  'scripts/verifier-empechements.mjs',
+];
+
+/**
+ * Identifiants du registre écrits **en dur** dans le corps du tableau `SONDES`
+ * d'un fichier de sondes. Les commentaires en sont retirés d'abord : ils
+ * doivent rester libres de raconter l'histoire d'une sonde (`LE-33`, `LE-97`)
+ * sans que la garde la confonde avec une cible.
+ *
+ * Un motif de regex (`AM-\d+`, `LE-${…}`) n'est PAS un littéral : la garde ne
+ * cherche que le préfixe d'une famille suivi de chiffres réels.
+ *
+ * @param {string} brut
+ * @returns {string[] | null} les littéraux trouvés, ou `null` si le tableau
+ *   `SONDES` est introuvable — une garde qui ne trouve pas sa cible ne balaie
+ *   pas le vide, elle échoue.
+ */
+function litterauxDeSondes(brut) {
+  // L'arbre de travail Windows est en CRLF (`core.autocrlf`) : sans cette
+  // normalisation la garde jugerait un texte différent en local et en CI.
+  const source = brut.replace(/\r\n/g, '\n');
+  const debut = source.indexOf('\nconst SONDES = [');
+  if (debut === -1) return null;
+  const fin = source.indexOf('\n];', debut);
+  if (fin === -1) return null;
+  const corps = source
+    .slice(debut, fin)
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+  return [
+    ...new Set([...corps.matchAll(/\b(?:AM|EM|LE|MO)-\d+/g)].map((m) => m[0])),
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // Exécution
 // ---------------------------------------------------------------------------
 
@@ -762,7 +844,57 @@ if (process.argv.includes('--autotest')) {
     );
     echecs += 1;
   }
-  console.log(`\n${SONDES.length} sonde(s) rejouée(s), ${echecs} échec(s).`);
+
+  // Garde structurelle (`LE-99`) : trois fois, une sonde a cessé de mordre parce
+  // qu'elle nommait un identifiant que le registre a fini par créer. La règle des
+  // trois du dépôt dit qu'à ce stade on n'écrit plus une leçon, on écrit une
+  // porte — la voici, avec sa propre sonde négative juste en dessous.
+  for (const fichier of FICHIERS_DE_SONDES) {
+    const source = lireTexte(path.join(RACINE, fichier));
+    if (source === null) {
+      console.error(`❌ garde « sondes littérales » : ${fichier} illisible.`);
+      echecs += 1;
+      continue;
+    }
+    const litteraux = litterauxDeSondes(source);
+    if (litteraux === null) {
+      console.error(
+        `❌ garde « sondes littérales » : aucun tableau \`SONDES\` lisible dans ${fichier} — la garde ne juge rien.`,
+      );
+      echecs += 1;
+      continue;
+    }
+    if (litteraux.length > 0) {
+      console.error(
+        `❌ garde « sondes littérales » : ${fichier} nomme ${litteraux.join(', ')} en dur dans ses sondes — un identifiant absent aujourd'hui sera réel demain, et la sonde s'éteindra en silence. Dériver la cible du document du jour.`,
+      );
+      echecs += 1;
+    } else {
+      console.log(
+        `✅ garde « sondes littérales » — ${fichier} : aucune cible littérale.`,
+      );
+    }
+
+    // Sonde négative de la garde : un littéral injecté DOIT être vu.
+    const temoin = source.replace(
+      '\nconst SONDES = [',
+      '\nconst SONDES = [\n  { nom: "témoin", code: "t", abimer: (t) => t.replace("LE-01", "") },',
+    );
+    if (temoin === source) {
+      console.error(
+        `❌ sonde de la garde « sondes littérales » : rien à injecter dans ${fichier}.`,
+      );
+      echecs += 1;
+    } else if (!(litterauxDeSondes(temoin) ?? []).includes('LE-01')) {
+      console.error(
+        `❌ sonde de la garde « sondes littérales » : le littéral injecté dans ${fichier} n'est pas vu — la garde ne mord pas.`,
+      );
+      echecs += 1;
+    }
+  }
+  console.log(
+    `\n${SONDES.length} sonde(s) rejouée(s) + garde « sondes littérales » sur ${FICHIERS_DE_SONDES.length} fichier(s), ${echecs} échec(s).`,
+  );
   process.exit(echecs === 0 ? 0 : 1);
 }
 
