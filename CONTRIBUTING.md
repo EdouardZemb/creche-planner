@@ -135,6 +135,11 @@ orpheline — c'est ce qui empêche « à connaître » de redevenir « pour tou
   (« provider non prêt après 40000 ms ») recouvre un second mode d’échec que
   rien ne peut détecter d’avance : la **saturation machine** (231 s rien qu’en
   imports sous `--parallel=3`). En local, `--parallel=1` pour un verdict fiable.
+- **Deux sessions ne partagent jamais un clone : une session = un worktree.**
+  (`EM-21`) `git add -A` (ou un `git stash pop` pendant un rebase) dans un arbre
+  partagé emporte le travail de l'autre session dans la mauvaise PR — c'est
+  arrivé. Ouvrir `git worktree add`, et construire l'index par **chemins
+  explicites**.
 - **Ne jamais retirer `/pacts` de `.prettierignore`** (`EM-05`) — lint-staged
   casserait `pact-drift`.
 - **Migrations drizzle : `drop` vs `rename` se décide dans un prompt TTY**
