@@ -151,12 +151,113 @@ const etablissementVueSchema = z.object({
   telephone: z.string().nullable(),
   contact: z.string().nullable(),
   actif: z.boolean(),
+  /**
+   * Zone de vacances scolaires (SFD 31) — `null` = pas de calendrier scolaire.
+   *
+   * `nullish` **en entrée** par tolérance (un provider pas encore à niveau ne doit
+   * pas faire échouer la lecture, patron de `premiereInscription`), mais **normalisé
+   * en sortie** : le document OpenAPI déclare ces deux champs *requis*, et le type
+   * web en est généré. Relayer un `undefined` rendrait un 200 qui viole le contrat
+   * de la gateway elle-même, sans qu'aucune erreur ne le dise.
+   */
+  zoneScolaire: z
+    .enum(['A', 'B', 'C'])
+    .nullish()
+    .transform((v) => v ?? null),
+  /** Régime de fériés **actuellement connu**, `FR` à défaut (D7). */
+  regimeFeries: z
+    .enum(['FR', 'FR_ALSACE_MOSELLE'])
+    .nullish()
+    .transform((v) => v ?? 'FR'),
 });
 
 export type EtablissementVue = z.infer<typeof etablissementVueSchema>;
 
 /** Corps de création/édition d'un établissement, relayé tel quel (validé en amont). */
 export type SaisieEtablissement = Readonly<Record<string, unknown>>;
+
+/**
+ * ## Calendrier d'ouverture (SFD 31, lot 2) — le contrat **gelé**
+ *
+ * ⚠️ La forme de `calendrierResoluSchema` ne bougera plus : le plan 33 la
+ * consommera par client REST inter-services **sans pact**, donc sans porte qui
+ * sonne si elle change. Les schémas ci-dessous sont **stricts sur ce qui compte**
+ * (les quatre clés de la réponse, les quatre du jour résolu) et volontairement
+ * tolérants ailleurs — un `z.object` strippe ce qu'il ne connaît pas, et c'est
+ * précisément ainsi qu'un champ ajouté en amont disparaît en silence (`LE-48`).
+ * `aLaDate` est donc listé ici **explicitement**, à la même place que dans la
+ * requête, pour que son absence se voie en revue.
+ */
+const jourResoluSchema = z.object({
+  jour: z.string(),
+  contexte: z.enum(['PERIODE_SCOLAIRE', 'VACANCES', 'FERIE', 'FERMETURE']),
+  libelle: z.string(),
+  servicesOuverts: z.array(z.string()),
+});
+
+const calendrierResoluSchema = z.object({
+  du: z.string(),
+  au: z.string(),
+  /** Instant de connaissance **réellement employé** (echo du défaut si omis). */
+  aLaDate: z.string(),
+  jours: z.array(jourResoluSchema),
+});
+
+export type CalendrierResoluVue = z.infer<typeof calendrierResoluSchema>;
+
+const recurrenceVueSchema = z.object({
+  id: z.string(),
+  regime: z.enum(['SCOLAIRE', 'VACANCES']),
+  jourSemaine: z.string(),
+  services: z.array(z.string()),
+  connuDepuis: z.string(),
+});
+
+const recurrencesSchema = z.object({
+  aLaDate: z.string(),
+  recurrences: z.array(recurrenceVueSchema),
+});
+
+export type RecurrencesVue = z.infer<typeof recurrencesSchema>;
+
+const periodeVueSchema = z.object({
+  id: z.string(),
+  type: z.enum(['PERIODE_SCOLAIRE', 'VACANCES', 'FERMETURE_ANNUELLE']),
+  libelle: z.string(),
+  du: z.string(),
+  au: z.string(),
+  source: z.enum(['IMPORT', 'MANUEL']),
+  anneeScolaire: z.string().nullable(),
+  connuDepuis: z.string(),
+});
+
+const periodesSchema = z.object({
+  aLaDate: z.string(),
+  periodes: z.array(periodeVueSchema),
+});
+
+export type PeriodeVue = z.infer<typeof periodeVueSchema>;
+export type PeriodesVue = z.infer<typeof periodesSchema>;
+
+const exceptionVueSchema = z.object({
+  id: z.string(),
+  jour: z.string(),
+  type: z.enum(['FERMETURE', 'OUVERTURE', 'JOURNEE_PEDAGOGIQUE', 'PONT']),
+  libelle: z.string(),
+  services: z.array(z.string()).nullable(),
+  connuDepuis: z.string(),
+});
+
+const exceptionsSchema = z.object({
+  aLaDate: z.string(),
+  exceptions: z.array(exceptionVueSchema),
+});
+
+export type ExceptionVue = z.infer<typeof exceptionVueSchema>;
+export type ExceptionsVue = z.infer<typeof exceptionsSchema>;
+
+/** Corps d'écriture du calendrier, relayé tel quel (validé à la frontière BFF). */
+export type SaisieCalendrier = Readonly<Record<string, unknown>>;
 
 /**
  * Réponse `GET /api/contrats/:id/plannings/:mois` : la saisie enregistrée du
@@ -468,6 +569,172 @@ export class PlanificationClient {
       methode: 'DELETE',
       chemin: `/api/etablissements/${encodeURIComponent(id)}`,
     });
+  }
+
+  /**
+   * GET `/api/etablissements/:id/calendrier?du=&au=&aLaDate=` — jours résolus.
+   *
+   * `aLaDate` n'est ajouté à la query **que s'il est fourni** : la sémantique du
+   * contrat est « omis = maintenant », et transmettre un `aLaDate=` vide ferait
+   * échouer la validation amont au lieu d'exprimer le défaut.
+   */
+  async lireCalendrier(
+    etablissementId: string,
+    du: string,
+    au: string,
+    aLaDate?: string,
+  ): Promise<CalendrierResoluVue> {
+    return this.appel({
+      methode: 'GET',
+      chemin:
+        `/api/etablissements/${encodeURIComponent(etablissementId)}/calendrier` +
+        `?du=${encodeURIComponent(du)}&au=${encodeURIComponent(au)}` +
+        this.suffixeALaDate(aLaDate),
+      schema: calendrierResoluSchema,
+    });
+  }
+
+  /** GET `…/calendrier/recurrences` — récurrence hebdomadaire connue à `aLaDate`. */
+  async lireRecurrencesCalendrier(
+    etablissementId: string,
+    aLaDate?: string,
+  ): Promise<RecurrencesVue> {
+    return this.appel({
+      methode: 'GET',
+      chemin:
+        `/api/etablissements/${encodeURIComponent(etablissementId)}` +
+        `/calendrier/recurrences${this.premierParamALaDate(aLaDate)}`,
+      schema: recurrencesSchema,
+    });
+  }
+
+  /** PUT `…/calendrier/recurrences` — remplace la semaine type (append-only). */
+  async remplacerRecurrencesCalendrier(
+    etablissementId: string,
+    saisie: SaisieCalendrier,
+  ): Promise<RecurrencesVue> {
+    return this.appel({
+      methode: 'PUT',
+      chemin:
+        `/api/etablissements/${encodeURIComponent(etablissementId)}` +
+        `/calendrier/recurrences`,
+      corps: saisie,
+      schema: recurrencesSchema,
+    });
+  }
+
+  /** GET `…/calendrier/periodes` — périodes connues à `aLaDate`. */
+  async lirePeriodesCalendrier(
+    etablissementId: string,
+    aLaDate?: string,
+  ): Promise<PeriodesVue> {
+    return this.appel({
+      methode: 'GET',
+      chemin:
+        `/api/etablissements/${encodeURIComponent(etablissementId)}` +
+        `/calendrier/periodes${this.premierParamALaDate(aLaDate)}`,
+      schema: periodesSchema,
+    });
+  }
+
+  /** POST `…/calendrier/periodes` — ouvre une période saisie manuellement (201). */
+  async saisirPeriodeCalendrier(
+    etablissementId: string,
+    saisie: SaisieCalendrier,
+  ): Promise<PeriodeVue> {
+    return this.appel({
+      methode: 'POST',
+      chemin:
+        `/api/etablissements/${encodeURIComponent(etablissementId)}` +
+        `/calendrier/periodes`,
+      corps: saisie,
+      schema: periodeVueSchema,
+    });
+  }
+
+  /** PUT `…/calendrier/periodes/:periodeId` — retouche (clôt puis rouvre). */
+  async retoucherPeriodeCalendrier(
+    etablissementId: string,
+    periodeId: string,
+    saisie: SaisieCalendrier,
+  ): Promise<PeriodeVue> {
+    return this.appel({
+      methode: 'PUT',
+      chemin:
+        `/api/etablissements/${encodeURIComponent(etablissementId)}` +
+        `/calendrier/periodes/${encodeURIComponent(periodeId)}`,
+      corps: saisie,
+      schema: periodeVueSchema,
+    });
+  }
+
+  /** DELETE `…/calendrier/periodes/:periodeId` — clôt la période (204). */
+  async clorePeriodeCalendrier(
+    etablissementId: string,
+    periodeId: string,
+  ): Promise<void> {
+    await this.appel({
+      methode: 'DELETE',
+      chemin:
+        `/api/etablissements/${encodeURIComponent(etablissementId)}` +
+        `/calendrier/periodes/${encodeURIComponent(periodeId)}`,
+    });
+  }
+
+  /** GET `…/calendrier/exceptions` — exceptions connues à `aLaDate`. */
+  async lireExceptionsCalendrier(
+    etablissementId: string,
+    aLaDate?: string,
+  ): Promise<ExceptionsVue> {
+    return this.appel({
+      methode: 'GET',
+      chemin:
+        `/api/etablissements/${encodeURIComponent(etablissementId)}` +
+        `/calendrier/exceptions${this.premierParamALaDate(aLaDate)}`,
+      schema: exceptionsSchema,
+    });
+  }
+
+  /** POST `…/calendrier/exceptions` — pose une exception, upsert par jour (201). */
+  async poserExceptionCalendrier(
+    etablissementId: string,
+    saisie: SaisieCalendrier,
+  ): Promise<ExceptionVue> {
+    return this.appel({
+      methode: 'POST',
+      chemin:
+        `/api/etablissements/${encodeURIComponent(etablissementId)}` +
+        `/calendrier/exceptions`,
+      corps: saisie,
+      schema: exceptionVueSchema,
+    });
+  }
+
+  /** DELETE `…/calendrier/exceptions/:exceptionId` — clôt l'exception (204). */
+  async cloreExceptionCalendrier(
+    etablissementId: string,
+    exceptionId: string,
+  ): Promise<void> {
+    await this.appel({
+      methode: 'DELETE',
+      chemin:
+        `/api/etablissements/${encodeURIComponent(etablissementId)}` +
+        `/calendrier/exceptions/${encodeURIComponent(exceptionId)}`,
+    });
+  }
+
+  /** `&aLaDate=…` si fourni, chaîne vide sinon (le défaut est « maintenant »). */
+  private suffixeALaDate(aLaDate: string | undefined): string {
+    return aLaDate === undefined
+      ? ''
+      : `&aLaDate=${encodeURIComponent(aLaDate)}`;
+  }
+
+  /** Idem, mais en **premier** paramètre de la query (`?` au lieu de `&`). */
+  private premierParamALaDate(aLaDate: string | undefined): string {
+    return aLaDate === undefined
+      ? ''
+      : `?aLaDate=${encodeURIComponent(aLaDate)}`;
   }
 
   /** GET `/api/prestations` — prestations générées d'un (contrat, mois). */

@@ -708,6 +708,22 @@ const documentEcrit = {
           telephone: { type: ['string', 'null'] },
           contact: { type: ['string', 'null'] },
           actif: { type: 'boolean' },
+          zoneScolaire: {
+            type: ['string', 'null'],
+            enum: ['A', 'B', 'C', null],
+            description:
+              'Zone de vacances scolaires (SFD 31) ; null = pas de calendrier ' +
+              'scolaire. Sert à savoir OÙ importer les périodes, pas ce qu’un ' +
+              'jour vaut — elle n’est donc pas historisée.',
+          },
+          regimeFeries: {
+            type: 'string',
+            enum: ['FR', 'FR_ALSACE_MOSELLE'],
+            description:
+              'Régime de jours fériés actuellement connu (défaut FR). ' +
+              'Historisé côté service : le corriger ne change PAS ' +
+              'l’interprétation des mois déjà facturés.',
+          },
         },
         required: [
           'id',
@@ -720,6 +736,8 @@ const documentEcrit = {
           'telephone',
           'contact',
           'actif',
+          'zoneScolaire',
+          'regimeFeries',
         ],
       },
       CreerEtablissementCorps: {
@@ -748,8 +766,254 @@ const documentEcrit = {
           telephone: { type: ['string', 'null'] },
           contact: { type: ['string', 'null'] },
           actif: { type: 'boolean' },
+          zoneScolaire: {
+            type: ['string', 'null'],
+            enum: ['A', 'B', 'C', null],
+          },
+          regimeFeries: { type: 'string', enum: ['FR', 'FR_ALSACE_MOSELLE'] },
         },
         required: ['nom'],
+      },
+      JourResolu: {
+        type: 'object',
+        description:
+          'Ce qu’un jour vaut pour un établissement : son contexte, son ' +
+          'libellé affichable et les services réservables. Forme GELÉE — ' +
+          'consommée sans pact par le plan 33 (SFD 33).',
+        properties: {
+          jour: { type: 'string', format: 'date' },
+          contexte: {
+            type: 'string',
+            enum: ['PERIODE_SCOLAIRE', 'VACANCES', 'FERIE', 'FERMETURE'],
+          },
+          libelle: {
+            type: 'string',
+            description: 'Libellé affichable, chaîne vide si aucun.',
+          },
+          servicesOuverts: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+            },
+          },
+        },
+        required: ['jour', 'contexte', 'libelle', 'servicesOuverts'],
+      },
+      CalendrierResolu: {
+        type: 'object',
+        description:
+          'Jours résolus d’une plage. `aLaDate` est réverbéré : c’est ' +
+          'l’instant de connaissance RÉELLEMENT employé, y compris quand ' +
+          'l’appelant l’a omis — le défaut « maintenant » est donc observable ' +
+          'et non supposé.',
+        properties: {
+          du: { type: 'string', format: 'date' },
+          au: { type: 'string', format: 'date' },
+          aLaDate: { type: 'string', format: 'date-time' },
+          jours: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/JourResolu' },
+          },
+        },
+        required: ['du', 'au', 'aLaDate', 'jours'],
+      },
+      RecurrenceCalendrier: {
+        type: 'object',
+        description:
+          'Une ligne de récurrence hebdomadaire ouverte. `connuDepuis` date ' +
+          'son entrée en connaissance, pas sa validité métier.',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          regime: { type: 'string', enum: ['SCOLAIRE', 'VACANCES'] },
+          jourSemaine: {
+            type: 'string',
+            enum: [
+              'LUNDI',
+              'MARDI',
+              'MERCREDI',
+              'JEUDI',
+              'VENDREDI',
+              'SAMEDI',
+              'DIMANCHE',
+            ],
+          },
+          services: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+            },
+          },
+          connuDepuis: { type: 'string', format: 'date-time' },
+        },
+        required: ['id', 'regime', 'jourSemaine', 'services', 'connuDepuis'],
+      },
+      RecurrencesCalendrier: {
+        type: 'object',
+        properties: {
+          aLaDate: { type: 'string', format: 'date-time' },
+          recurrences: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/RecurrenceCalendrier' },
+          },
+        },
+        required: ['aLaDate', 'recurrences'],
+      },
+      RemplacerRecurrencesCorps: {
+        type: 'object',
+        description:
+          'Remplace la semaine type d’un bloc. Append-only : les lignes ' +
+          'antérieures sont CLOSES, jamais écrasées.',
+        properties: {
+          recurrences: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                regime: { type: 'string', enum: ['SCOLAIRE', 'VACANCES'] },
+                jourSemaine: {
+                  type: 'string',
+                  enum: [
+                    'LUNDI',
+                    'MARDI',
+                    'MERCREDI',
+                    'JEUDI',
+                    'VENDREDI',
+                    'SAMEDI',
+                    'DIMANCHE',
+                  ],
+                },
+                services: {
+                  type: 'array',
+                  items: {
+                    type: 'string',
+                    enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+                  },
+                },
+              },
+              required: ['regime', 'jourSemaine', 'services'],
+            },
+          },
+        },
+        required: ['recurrences'],
+      },
+      PeriodeCalendrier: {
+        type: 'object',
+        description:
+          'Période datée (bornes `du`/`au` INCLUSIVES, axe métier). `source` ' +
+          'distingue l’import open data de la saisie du parent.',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          type: {
+            type: 'string',
+            enum: ['PERIODE_SCOLAIRE', 'VACANCES', 'FERMETURE_ANNUELLE'],
+          },
+          libelle: { type: 'string' },
+          du: { type: 'string', format: 'date' },
+          au: { type: 'string', format: 'date' },
+          source: { type: 'string', enum: ['IMPORT', 'MANUEL'] },
+          anneeScolaire: { type: ['string', 'null'] },
+          connuDepuis: { type: 'string', format: 'date-time' },
+        },
+        required: [
+          'id',
+          'type',
+          'libelle',
+          'du',
+          'au',
+          'source',
+          'anneeScolaire',
+          'connuDepuis',
+        ],
+      },
+      PeriodesCalendrier: {
+        type: 'object',
+        properties: {
+          aLaDate: { type: 'string', format: 'date-time' },
+          periodes: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/PeriodeCalendrier' },
+          },
+        },
+        required: ['aLaDate', 'periodes'],
+      },
+      SaisirPeriodeCorps: {
+        type: 'object',
+        description:
+          'Saisie d’une période. `source` n’est PAS dans le corps : cette ' +
+          'route est celle du parent et pose toujours MANUEL — sinon un ' +
+          'réimport pourrait balayer une saisie qui s’est déclarée importée.',
+        properties: {
+          type: {
+            type: 'string',
+            enum: ['PERIODE_SCOLAIRE', 'VACANCES', 'FERMETURE_ANNUELLE'],
+          },
+          libelle: { type: 'string', minLength: 1, maxLength: 200 },
+          du: { type: 'string', format: 'date' },
+          au: { type: 'string', format: 'date' },
+          anneeScolaire: { type: 'string', pattern: '^\\d{4}-\\d{4}$' },
+        },
+        required: ['type', 'libelle', 'du', 'au'],
+      },
+      ExceptionCalendrier: {
+        type: 'object',
+        description:
+          'Exception ponctuelle (couche la plus forte). `services: null` = ' +
+          'TOUS les services — à ne pas confondre avec une liste vide.',
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          jour: { type: 'string', format: 'date' },
+          type: {
+            type: 'string',
+            enum: ['FERMETURE', 'OUVERTURE', 'JOURNEE_PEDAGOGIQUE', 'PONT'],
+          },
+          libelle: { type: 'string' },
+          services: {
+            type: ['array', 'null'],
+            items: {
+              type: 'string',
+              enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+            },
+          },
+          connuDepuis: { type: 'string', format: 'date-time' },
+        },
+        required: ['id', 'jour', 'type', 'libelle', 'services', 'connuDepuis'],
+      },
+      ExceptionsCalendrier: {
+        type: 'object',
+        properties: {
+          aLaDate: { type: 'string', format: 'date-time' },
+          exceptions: {
+            type: 'array',
+            items: { $ref: '#/components/schemas/ExceptionCalendrier' },
+          },
+        },
+        required: ['aLaDate', 'exceptions'],
+      },
+      PoserExceptionCorps: {
+        type: 'object',
+        description:
+          'Pose une exception sur un jour. UPSERT par jour : une exception ' +
+          'déjà ouverte ce jour-là est close et remplacée — d’où l’absence de ' +
+          'PUT sur cette collection.',
+        properties: {
+          jour: { type: 'string', format: 'date' },
+          type: {
+            type: 'string',
+            enum: ['FERMETURE', 'OUVERTURE', 'JOURNEE_PEDAGOGIQUE', 'PONT'],
+          },
+          libelle: { type: 'string', minLength: 1, maxLength: 200 },
+          services: {
+            type: 'array',
+            description: 'Omis = TOUS les services.',
+            items: {
+              type: 'string',
+              enum: ['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE', 'ALSH'],
+            },
+          },
+        },
+        required: ['jour', 'type', 'libelle'],
       },
       Ligne: {
         type: 'object',
@@ -3236,6 +3500,430 @@ const documentEcrit = {
         },
       },
     },
+    /**
+     * ## Le calendrier d'ouverture — SFD 31, lot 2
+     *
+     * ⚠️ La forme de `GET …/calendrier` est **gelée** : le plan 33 la consommera
+     * par client REST inter-services **sans pact**, donc sans porte qui sonne si
+     * elle change. `aLaDate` y entre dès cette première publication, avec sa
+     * sémantique écrite — l'ajouter après coup casserait un consommateur
+     * silencieux, et c'est le seul point du chantier où l'erreur ne se verrait
+     * qu'à retardement.
+     */
+    '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier': {
+      get: {
+        summary: 'Lire le calendrier résolu d’un établissement sur une plage',
+        description:
+          'Rend, pour chaque jour de [du, au] (bornes INCLUSIVES), son ' +
+          'contexte, son libellé et les services réservables — tels qu’ils ' +
+          'étaient connus à `aLaDate`. Deux axes de temps distincts : `du`/`au` ' +
+          'disent QUAND, `aLaDate` dit CE QU’ON EN SAVAIT.',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'du',
+            in: 'query',
+            required: true,
+            description: 'Premier jour de la plage, INCLUS.',
+            schema: { type: 'string', format: 'date' },
+          },
+          {
+            name: 'au',
+            in: 'query',
+            required: true,
+            description: 'Dernier jour de la plage, INCLUS. 366 jours au plus.',
+            schema: { type: 'string', format: 'date' },
+          },
+          {
+            name: 'aLaDate',
+            in: 'query',
+            required: false,
+            description:
+              'Instant de CONNAISSANCE auquel lire le calendrier — « que ' +
+              'disait-il à ce moment-là ». OMIS = MAINTENANT : le défaut est ' +
+              'explicite, et l’instant réellement employé est réverbéré dans ' +
+              'la réponse. Sert à régénérer un mois déjà facturé sans que les ' +
+              'retouches postérieures du calendrier le modifient (RM-31-03). ' +
+              'Horodatage UTC de largeur fixe : YYYY-MM-DDTHH:MM:SS.sssZ ' +
+              '(un offset horaire est refusé).',
+            schema: { type: 'string', format: 'date-time' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Jours résolus de la plage.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CalendrierResolu' },
+              },
+            },
+          },
+          '400': {
+            description:
+              'Plage inversée, plage de plus de 366 jours, ou `aLaDate` mal formé.',
+          },
+          '404': { description: 'Établissement inconnu.' },
+        },
+      },
+    },
+    '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/recurrences': {
+      get: {
+        summary: 'Lire la récurrence hebdomadaire connue à un instant',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'aLaDate',
+            in: 'query',
+            required: false,
+            description: 'Instant de connaissance ; omis = maintenant.',
+            schema: { type: 'string', format: 'date-time' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Récurrences ouvertes à cet instant.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/RecurrencesCalendrier' },
+              },
+            },
+          },
+          '404': { description: 'Établissement inconnu.' },
+        },
+      },
+      put: {
+        summary: 'Remplacer la récurrence hebdomadaire (append-only)',
+        description:
+          'Clôt toutes les lignes ouvertes et ouvre les nouvelles au MÊME ' +
+          'instant, dans une transaction : une semaine type s’édite d’un bloc ' +
+          'et ne se relit jamais à moitié retouchée. Rien n’est écrasé.',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                $ref: '#/components/schemas/RemplacerRecurrencesCorps',
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Récurrences après remplacement.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/RecurrencesCalendrier' },
+              },
+            },
+          },
+          '400': { description: 'Corps invalide (service inconnu, régime…).' },
+          '404': { description: 'Établissement inconnu.' },
+        },
+      },
+    },
+    '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/periodes': {
+      get: {
+        summary: 'Lister les périodes connues à un instant',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'aLaDate',
+            in: 'query',
+            required: false,
+            description: 'Instant de connaissance ; omis = maintenant.',
+            schema: { type: 'string', format: 'date-time' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Périodes ouvertes à cet instant.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PeriodesCalendrier' },
+              },
+            },
+          },
+          '404': { description: 'Établissement inconnu.' },
+        },
+      },
+      post: {
+        summary: 'Ouvrir une période saisie manuellement',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/SaisirPeriodeCorps' },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Période créée (source MANUEL).',
+            headers: { Location: { $ref: '#/components/headers/Location' } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PeriodeCalendrier' },
+              },
+            },
+          },
+          '400': { description: 'Corps invalide (fin antérieure au début…).' },
+          '404': { description: 'Établissement inconnu.' },
+        },
+      },
+    },
+    '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/periodes/{periodeId}':
+      {
+        put: {
+          summary:
+            'Retoucher une période (clôt l’ancienne, en ouvre une neuve)',
+          description:
+            'La ligne d’origine reste lisible : c’est elle que rendra une ' +
+            'lecture à un `aLaDate` antérieur. La retouche d’une période ' +
+            'importée la fait passer en MANUEL, donc protégée du prochain ' +
+            'réimport.',
+          parameters: [
+            {
+              name: 'foyerId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'periodeId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SaisirPeriodeCorps' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Nouvelle ligne ouverte.',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/PeriodeCalendrier' },
+                },
+              },
+            },
+            '404': { description: 'Période inconnue ou déjà close.' },
+          },
+        },
+        delete: {
+          summary: 'Clore une période',
+          description:
+            'CLÔTURE, pas suppression : la ligne reste en base et reste ' +
+            'lisible à tout `aLaDate` antérieur. Rien n’est effacé, jamais.',
+          parameters: [
+            {
+              name: 'foyerId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'periodeId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '204': { description: 'Période close (pas de contenu).' },
+            '404': { description: 'Période inconnue ou déjà close.' },
+          },
+        },
+      },
+    '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/exceptions': {
+      get: {
+        summary: 'Lister les exceptions connues à un instant',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'aLaDate',
+            in: 'query',
+            required: false,
+            description: 'Instant de connaissance ; omis = maintenant.',
+            schema: { type: 'string', format: 'date-time' },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Exceptions ouvertes à cet instant.',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ExceptionsCalendrier' },
+              },
+            },
+          },
+          '404': { description: 'Établissement inconnu.' },
+        },
+      },
+      post: {
+        summary: 'Poser une exception sur un jour (upsert par jour)',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/PoserExceptionCorps' },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description:
+              'Exception posée. Une exception déjà ouverte ce jour-là a été ' +
+              'close, pas remplacée en place.',
+            headers: { Location: { $ref: '#/components/headers/Location' } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ExceptionCalendrier' },
+              },
+            },
+          },
+          '400': {
+            description: 'Corps invalide (jour, type, service inconnu).',
+          },
+          '404': { description: 'Établissement inconnu.' },
+        },
+      },
+    },
+    '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/exceptions/{exceptionId}':
+      {
+        delete: {
+          summary: 'Clore une exception',
+          description:
+            'CLÔTURE, pas suppression — même règle que les périodes.',
+          parameters: [
+            {
+              name: 'foyerId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'exceptionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '204': { description: 'Exception close (pas de contenu).' },
+            '404': { description: 'Exception inconnue ou déjà close.' },
+          },
+        },
+      },
     '/api/v1/foyers/{foyerId}/etablissements/{id}': {
       put: {
         summary:
@@ -3284,6 +3972,18 @@ const documentEcrit = {
                   telephone: { type: ['string', 'null'] },
                   contact: { type: ['string', 'null'] },
                   actif: { type: 'boolean' },
+                  zoneScolaire: {
+                    type: ['string', 'null'],
+                    enum: ['A', 'B', 'C', null],
+                  },
+                  regimeFeries: {
+                    type: 'string',
+                    enum: ['FR', 'FR_ALSACE_MOSELLE'],
+                    description:
+                      'Change le régime de fériés à partir de MAINTENANT. La ' +
+                      'valeur antérieure reste lisible : les mois déjà ' +
+                      'facturés gardent leurs fériés (RM-31-03).',
+                  },
                 },
               },
             },

@@ -22,6 +22,7 @@ import {
 } from '@creche-planner/nest-commons';
 import { PlanificationController } from '../planification/planification.controller.js';
 import { EtablissementController } from '../etablissement/etablissement.controller.js';
+import { CalendrierController } from '../calendrier/calendrier.controller.js';
 import { PortabiliteController } from '../portabilite/portabilite.controller.js';
 
 /**
@@ -104,6 +105,7 @@ const RESOLVEUR = fakeResolveur({
 const PC = PlanificationController.prototype;
 const EC = EtablissementController.prototype;
 const XC = PortabiliteController.prototype;
+const CC = CalendrierController.prototype;
 
 describe('svc-planification · scoping enforce', () => {
   describe('GET /contrats/:id (résolution contrat → foyer)', () => {
@@ -269,6 +271,64 @@ describe('svc-planification · scoping enforce', () => {
       await expect(
         chaine(ctx(EtablissementController, EC.parId, req), RESOLVEUR),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  /**
+   * Calendrier d'ouverture (SFD 31, lot 2). Toutes ses routes se résolvent par la
+   * MÊME ressource que le CRUD établissement (`etablissement → foyer`), sans
+   * nouveau résolveur — c'est le patron du chantier fondations, réutilisé.
+   *
+   * On balaye ici **toutes** les méthodes du contrôleur, énumérées depuis son
+   * prototype : le verdict porte donc aussi sur les routes qu'on ajouterait
+   * demain. Une liste écrite à la main ne dirait rien de celle qu'on aurait
+   * oublié d'y mettre, et c'est précisément la route oubliée qui ouvrirait le
+   * calendrier d'un foyer étranger.
+   */
+  describe('… /etablissements/:id/calendrier* (mêmes résolution et verdicts)', () => {
+    const handlers = CC as unknown as Record<string, () => unknown>;
+    const routes = Object.getOwnPropertyNames(CalendrierController.prototype)
+      .filter((nom) => nom !== 'constructor')
+      .flatMap((nom) => {
+        const methode = handlers[nom];
+        return methode === undefined ? [] : [[nom, methode] as const];
+      });
+
+    it('voit bien les dix routes du calendrier (sonde de la sonde)', () => {
+      expect(routes).toHaveLength(10);
+    });
+
+    it.each(routes)('%s — foyer autorisé → passe', async (_nom, methode) => {
+      const req = requete({
+        originalUrl: '/api/etablissements/x/calendrier',
+        params: { id: ETAB },
+        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+      });
+      await expect(
+        chaine(ctx(CalendrierController, methode, req), RESOLVEUR),
+      ).resolves.toBe(true);
+    });
+
+    it.each(routes)('%s — foyer étranger → 403', async (_nom, methode) => {
+      const req = requete({
+        originalUrl: '/api/etablissements/x/calendrier',
+        params: { id: ETAB },
+        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+      });
+      await expect(
+        chaine(ctx(CalendrierController, methode, req), RESOLVEUR),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('établissement inexistant → le guard laisse le handler rendre son 404', async () => {
+      const req = requete({
+        originalUrl: '/api/etablissements/x/calendrier',
+        params: { id: 'ffffffff-ffff-4fff-8fff-ffffffffffff' },
+        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+      });
+      await expect(
+        chaine(ctx(CalendrierController, CC.lire, req), RESOLVEUR),
+      ).resolves.toBe(true);
     });
   });
 });

@@ -40,6 +40,8 @@ const ETABLISSEMENTS: EtablissementFoyerVue[] = [
     telephone: null,
     contact: null,
     actif: true,
+    zoneScolaire: null,
+    regimeFeries: 'FR',
   },
   {
     id: 'et-2',
@@ -52,6 +54,8 @@ const ETABLISSEMENTS: EtablissementFoyerVue[] = [
     telephone: null,
     contact: null,
     actif: true,
+    zoneScolaire: null,
+    regimeFeries: 'FR',
   },
 ];
 

@@ -652,17 +652,28 @@ const SONDES = [
   {
     nom: 'occurrence fantôme',
     code: 'occurrence-fantome',
-    // Cible **dérivée** : le premier motif du tableau, quels que soient son
-    // identifiant et sa liste d'occurrences. Cette sonde visait `LE-11, LE-12
-    // (×2)` en dur et a cessé de mordre au lot 2b, dès que MO-2 a gagné deux
-    // occurrences. C'est la deuxième fois que ce mode de défaillance frappe ici
-    // (`LE-33`) : la première correction avait dérivé la sonde qui avait échoué,
-    // et laissé littérales ses sœurs, écrites de la même main.
-    abimer: (texte) =>
-      texte.replace(
+    // Cible **dérivée des deux côtés** : le premier motif du tableau, quels que
+    // soient son identifiant et sa liste d'occurrences, **et** un numéro de leçon
+    // pris au-dessus du dernier existant — un fantôme ne peut pas se contenter
+    // d'être écrit, il doit être absent du §3.
+    //
+    // Cette sonde visait `LE-11, LE-12 (×2)` en dur et a cessé de mordre au lot 2b,
+    // dès que MO-2 a gagné deux occurrences (`LE-33`). La correction d'alors n'a
+    // dérivé que le **motif**, et a laissé littéral le fantôme `LE-97` : le lot 2
+    // des calendriers, en consignant `LE-94` → `LE-98`, l'a rendu **réel**, et la
+    // sonde s'est tue une **troisième** fois. Le mode de défaillance n'est pas « ce
+    // littéral-ci » mais « un littéral » : il ne meurt qu'en dérivant les deux
+    // bouts de la mutation.
+    abimer: (texte) => {
+      const numeros = [...texte.matchAll(/^\|\s*LE-(\d+)\s*\|/gm)].map((m) =>
+        Number(m[1]),
+      );
+      const fantome = `LE-${Math.max(0, ...numeros) + 1}`;
+      return texte.replace(
         /(\|\s*`MO-\d+`\s*\|[^|\n]*\|[^|\n]*?)(\(×\d+\))/,
-        '$1LE-97 $2',
-      ),
+        `$1${fantome} $2`,
+      );
+    },
   },
   {
     nom: 'motif au-delà du seuil sans porte',

@@ -71,6 +71,13 @@
       "when": 1786518195672,
       "tag": "0009_purge_bornes_temporelles",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787000000000,
+      "tag": "0010_calendrier_ouverture",
+      "breakpoints": true
     }
   ]
 }

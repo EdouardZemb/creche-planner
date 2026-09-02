@@ -55,6 +55,27 @@ const ETAB_SEED_ID = '99999999-9999-4999-8999-999999999999';
 /** Identifiant figé du contrat (seedé par le stateHandler provider). */
 const CONTRAT_ID = '11111111-1111-1111-1111-111111111111';
 
+/**
+ * État calendrier (SFD 31, lot 2) : un établissement dont les trois couches sont
+ * seedées **et dont la récurrence du lundi a été retouchée**, la ligne antérieure
+ * restant ouverte jusqu'au 1er avril. C'est cette retouche qui donne son sens à
+ * l'interaction : le même jour, lu à deux instants de connaissance, doit rendre
+ * deux réponses. Un état sans retouche laisserait passer une implémentation qui
+ * ignore `aLaDate` — le contrat serait vert et faux.
+ */
+const ETAT_CALENDRIER =
+  'un établissement avec un calendrier d’ouverture retouché existe';
+
+/** Établissement porteur du calendrier seedé (aligné stateHandler provider). */
+const ETAB_CALENDRIER_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+
+/**
+ * Instants de connaissance encadrant la retouche du 1er avril (elle-même seedée
+ * par le provider). Format `Instant` : UTC de largeur fixe, sans offset.
+ */
+const AVANT_RETOUCHE = '2026-02-01T00:00:00.000Z';
+const APRES_RETOUCHE = '2026-05-01T00:00:00.000Z';
+
 /** Foyer figé porteur des contrats listés (seedé par le stateHandler provider). */
 const FOYER_LISTE_ID = '22222222-2222-2222-2222-222222222222';
 
@@ -755,6 +776,122 @@ describe(
           },
         );
         expect(reponse.status).toBe(204);
+      });
+    });
+
+    /**
+     * ⚠️ **Le contrat gelé du chantier.** La forme de cette réponse sera
+     * consommée par le plan 33 via un client REST inter-services **sans pact** —
+     * un consommateur silencieux. Le pact ci-dessous est donc la seule garde qui
+     * la surveille, et il porte délibérément sur le cas qui compte : `aLaDate`
+     * **explicite**, encadrant une retouche seedée.
+     */
+    it('lit le calendrier résolu d’un établissement à un instant de connaissance', async () => {
+      provider
+        .given(ETAT_CALENDRIER)
+        .uponReceiving('une lecture du calendrier résolu d’un établissement')
+        .withRequest({
+          method: 'GET',
+          path: `/api/etablissements/${ETAB_CALENDRIER_ID}/calendrier`,
+          query: {
+            du: '2026-03-02',
+            au: '2026-03-03',
+            aLaDate: APRES_RETOUCHE,
+          },
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            du: '2026-03-02',
+            au: '2026-03-03',
+            // Réverbéré tel quel : c'est ce qui rend l'instant employé
+            // observable par l'appelant, y compris quand il l'omet.
+            aLaDate: APRES_RETOUCHE,
+            jours: [
+              {
+                jour: '2026-03-02',
+                contexte: 'PERIODE_SCOLAIRE',
+                libelle: '',
+                // La retouche du 1er avril a retiré PERISCOLAIRE : lu APRÈS,
+                // le lundi n'ouvre plus que la cantine.
+                servicesOuverts: ['CANTINE'],
+              },
+              {
+                jour: '2026-03-03',
+                contexte: 'FERMETURE',
+                libelle: MatchersV3.string('Fermeture exceptionnelle'),
+                servicesOuverts: [],
+              },
+            ],
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/etablissements/${ETAB_CALENDRIER_ID}/calendrier` +
+            `?du=2026-03-02&au=2026-03-03&aLaDate=${encodeURIComponent(APRES_RETOUCHE)}`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          aLaDate: string;
+          jours: { jour: string; servicesOuverts: string[] }[];
+        };
+        expect(corps.aLaDate).toBe(APRES_RETOUCHE);
+        expect(corps.jours[0]?.servicesOuverts).toEqual(['CANTINE']);
+      });
+    });
+
+    /**
+     * Le pendant du précédent, et sa **sonde négative** : même établissement,
+     * même jour, instant de connaissance ANTÉRIEUR à la retouche → l'ancienne
+     * réponse. Une implémentation qui ignorerait `aLaDate` rendrait ici la
+     * réponse d'aujourd'hui et ferait rougir la vérification provider.
+     */
+    it('rend l’ancienne réponse pour un instant antérieur à la retouche', async () => {
+      provider
+        .given(ETAT_CALENDRIER)
+        .uponReceiving('une lecture du calendrier résolu avant retouche')
+        .withRequest({
+          method: 'GET',
+          path: `/api/etablissements/${ETAB_CALENDRIER_ID}/calendrier`,
+          query: {
+            du: '2026-03-02',
+            au: '2026-03-02',
+            aLaDate: AVANT_RETOUCHE,
+          },
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            du: '2026-03-02',
+            au: '2026-03-02',
+            aLaDate: AVANT_RETOUCHE,
+            jours: [
+              {
+                jour: '2026-03-02',
+                contexte: 'PERIODE_SCOLAIRE',
+                libelle: '',
+                servicesOuverts: ['CANTINE', 'PERISCOLAIRE'],
+              },
+            ],
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/etablissements/${ETAB_CALENDRIER_ID}/calendrier` +
+            `?du=2026-03-02&au=2026-03-02&aLaDate=${encodeURIComponent(AVANT_RETOUCHE)}`,
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          jours: { servicesOuverts: string[] }[];
+        };
+        expect(corps.jours[0]?.servicesOuverts).toEqual([
+          'CANTINE',
+          'PERISCOLAIRE',
+        ]);
       });
     });
 

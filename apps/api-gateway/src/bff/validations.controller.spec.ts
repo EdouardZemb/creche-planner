@@ -21,6 +21,8 @@ const HIRONDELLES: EtablissementVue = {
   telephone: null,
   contact: null,
   actif: true,
+  zoneScolaire: null,
+  regimeFeries: 'FR' as const,
 };
 
 const contrat = (
