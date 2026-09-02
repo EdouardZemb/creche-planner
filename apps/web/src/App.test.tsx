@@ -886,15 +886,22 @@ describe('App — mode borné par identité (PR6)', () => {
     resoudreMoi({ email: 'parent@test.fr', admin: false, foyers: [FOYER_ID] });
 
     // À la résolution, la barre se cale sur le foyer réellement autorisé.
+    // Le lien et l'appel scopé sont deux effets **indépendants** : attendre le
+    // premier ne fait pas arriver le second. L'assertion sur l'appel était écrite
+    // en synchrone après le `waitFor` du lien, et passait par la seule grâce de
+    // l'ordonnancement — sous charge, elle observait zéro appel. On attend donc
+    // ce qu'on assert, effet par effet.
     await waitFor(() => {
       expect(
         within(nav).getByRole('link', { name: 'Aujourd’hui' }),
       ).toHaveAttribute('href', `/foyers/${FOYER_ID}/dashboard`);
     });
-    expect(mockedApi.listerAValider).toHaveBeenCalledWith(
-      FOYER_ID,
-      expect.anything(),
-    );
+    await waitFor(() => {
+      expect(mockedApi.listerAValider).toHaveBeenCalledWith(
+        FOYER_ID,
+        expect.anything(),
+      );
+    });
     expect(mockedApi.listerAValider).not.toHaveBeenCalledWith(
       'foyer-interdit',
       expect.anything(),
