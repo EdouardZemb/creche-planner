@@ -367,3 +367,237 @@ describe('client API — avenants, historique, correction (SFD 30)', () => {
     expect(init.method).toBe('PUT');
   });
 });
+
+// --- Unités associatives (SFD 40) -------------------------------------------
+//
+// Les cinq appels UA sont MOCKÉS dans le test de l'écran (`UnitesAssociativesPage`) :
+// c'est ici, et nulle part ailleurs, que leur URL, leur verbe et leur corps sont
+// réellement vérifiés. Deux choix de conception sont en jeu, et se testent :
+//   — le foyer voyage en QUERY (`?foyer=`), encodé, sur les cinq appels ;
+//   — seul le GET est idempotent. La suppression, en particulier, ne doit JAMAIS
+//     être rejouée : un second appel répond 404 et transformerait une suppression
+//     réussie en « introuvable » (cf. le commentaire de `supprimerSessionUa`).
+
+describe('client API — unités associatives (SFD 40)', () => {
+  const engagement = {
+    id: 'eng-1',
+    foyerId: 'f-1',
+    debut: '2026-06-01',
+    fin: '2027-05-31',
+    quotaHeures: 20,
+    valeurUaCentimes: 3125,
+    cautionCentimes: 62500,
+  };
+
+  const session = {
+    id: 's-1',
+    engagementId: 'eng-1',
+    date: '2026-11-07',
+    dureeHeures: 3,
+    type: 'MENAGE',
+    realisePar: 'Camille',
+    etablissementId: null,
+    etat: 'PREVUE',
+    aConfirmer: false,
+  };
+
+  it('lireSuiviUnitesAssociatives : GET /v1/unites-associatives?foyer=', async () => {
+    const vue = {
+      foyerId: 'f-1',
+      aujourdhui: '2026-10-01',
+      engagement,
+      compteurs: null,
+      sessions: [],
+      seuilAlerteJours: 56,
+    };
+    fetchMock.mockResolvedValue(reponse(200, vue));
+
+    await expect(api.lireSuiviUnitesAssociatives('f-1')).resolves.toEqual(vue);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/unites-associatives?foyer=f-1');
+    // Lecture : pas de corps, donc pas de Content-Type.
+    expect(init.method).toBeUndefined();
+    expect(init.headers).not.toHaveProperty('Content-Type');
+  });
+
+  it('lireSuiviUnitesAssociatives : le foyer est ENCODÉ dans la query', async () => {
+    fetchMock.mockResolvedValue(reponse(200, { sessions: [] }));
+
+    await api.lireSuiviUnitesAssociatives('f/1 & 2');
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/unites-associatives?foyer=f%2F1%20%26%202');
+  });
+
+  it('lireSuiviUnitesAssociatives : lecture idempotente → rejouée sur 503', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock
+        .mockResolvedValueOnce(reponse(503, undefined))
+        .mockResolvedValueOnce(reponse(200, { sessions: [] }));
+
+      const p = api.lireSuiviUnitesAssociatives('f-1');
+      const attente = expect(p).resolves.toEqual({ sessions: [] });
+      await vi.advanceTimersByTimeAsync(500);
+      await attente;
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('declarerEngagementUa : POST avec le corps JSON et son Content-Type', async () => {
+    fetchMock.mockResolvedValue(reponse(201, engagement));
+
+    const saisie = {
+      debut: '2026-06-01',
+      fin: '2027-05-31',
+      quotaHeures: 20,
+      valeurUaCentimes: 3125,
+      cautionCentimes: 62500,
+    };
+    await expect(api.declarerEngagementUa('f-1', saisie)).resolves.toEqual(
+      engagement,
+    );
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/unites-associatives?foyer=f-1');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBe(JSON.stringify(saisie));
+    expect(init.headers).toMatchObject({ 'Content-Type': 'application/json' });
+  });
+
+  it('declarerEngagementUa : un 409 (période qui se recouvre) remonte en ApiError', async () => {
+    fetchMock.mockResolvedValue(
+      reponse(409, { code: 'PERIODE_DEJA_DECLAREE' }),
+    );
+
+    await expect(
+      api.declarerEngagementUa('f-1', {
+        debut: '2026-06-01',
+        fin: '2027-05-31',
+        quotaHeures: 20,
+        valeurUaCentimes: 3125,
+      }),
+    ).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 409,
+      corps: { code: 'PERIODE_DEJA_DECLAREE' },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('declarerEngagementUa : une 503 n’est PAS rejouée (écriture non idempotente)', async () => {
+    fetchMock.mockResolvedValue(reponse(503, undefined));
+
+    await expect(
+      api.declarerEngagementUa('f-1', {
+        debut: '2026-06-01',
+        fin: '2027-05-31',
+        quotaHeures: 20,
+        valeurUaCentimes: 3125,
+      }),
+    ).rejects.toMatchObject({ name: 'ApiError', status: 503 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('ajouterSessionUa : POST /v1/unites-associatives/sessions?foyer=', async () => {
+    fetchMock.mockResolvedValue(reponse(201, session));
+
+    const saisie = {
+      engagementId: 'eng-1',
+      date: '2026-11-07',
+      dureeHeures: 3,
+      type: 'MENAGE',
+      realisePar: 'Camille',
+    };
+    await expect(api.ajouterSessionUa('f-1', saisie)).resolves.toEqual(session);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/unites-associatives/sessions?foyer=f-1');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual(saisie);
+  });
+
+  it('ajouterSessionUa : un 422 (date hors période) remonte en ApiError', async () => {
+    fetchMock.mockResolvedValue(reponse(422, { code: 'DATE_HORS_PERIODE' }));
+
+    await expect(
+      api.ajouterSessionUa('f-1', {
+        engagementId: 'eng-1',
+        date: '2028-01-01',
+        dureeHeures: 3,
+        type: 'MENAGE',
+      }),
+    ).rejects.toMatchObject({ name: 'ApiError', status: 422 });
+  });
+
+  it('modifierSessionUa : PUT …/sessions/:id?foyer= (l’id est encodé)', async () => {
+    fetchMock.mockResolvedValue(reponse(200, { ...session, etat: 'REALISEE' }));
+
+    await expect(
+      api.modifierSessionUa('f-1', 's/1', { etat: 'REALISEE' }),
+    ).resolves.toMatchObject({ etat: 'REALISEE' });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/unites-associatives/sessions/s%2F1?foyer=f-1');
+    expect(init.method).toBe('PUT');
+    expect(init.body).toBe(JSON.stringify({ etat: 'REALISEE' }));
+    expect(init.headers).toMatchObject({ 'Content-Type': 'application/json' });
+  });
+
+  it('modifierSessionUa : un 404 (session inconnue pour ce foyer) remonte tel quel', async () => {
+    fetchMock.mockResolvedValue(reponse(404, undefined));
+
+    await expect(
+      api.modifierSessionUa('f-1', 's-1', { etat: 'ANNULEE' }),
+    ).rejects.toMatchObject({ name: 'ApiError', status: 404 });
+  });
+
+  it('supprimerSessionUa : DELETE …/sessions/:id?foyer=, 204 → undefined', async () => {
+    fetchMock.mockResolvedValue(reponse(204, undefined));
+
+    await expect(api.supprimerSessionUa('f-1', 's-1')).resolves.toBeUndefined();
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/unites-associatives/sessions/s-1?foyer=f-1');
+    expect(init.method).toBe('DELETE');
+    // Pas de corps → pas de Content-Type.
+    expect(init.headers).not.toHaveProperty('Content-Type');
+  });
+
+  it('supprimerSessionUa : JAMAIS rejouée — un rejeu ferait un 404 d’un succès', async () => {
+    fetchMock.mockResolvedValue(reponse(503, undefined));
+
+    await expect(api.supprimerSessionUa('f-1', 's-1')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 503,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // `requete` et non `requeteIdempotente` : aucun signal de délai n’est câblé
+    // d’office — seul celui de l’appelant, s’il en fournit un, est transmis.
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(init.signal).toBeUndefined();
+  });
+
+  it('une écriture UA transmet l’abandon de l’appelant à fetch', async () => {
+    const ctrl = new AbortController();
+    fetchMock.mockResolvedValue(reponse(200, session));
+
+    await api.ajouterSessionUa(
+      'f-1',
+      {
+        engagementId: 'eng-1',
+        date: '2026-11-07',
+        dureeHeures: 3,
+        type: 'MENAGE',
+      },
+      { signal: ctrl.signal },
+    );
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(init.signal).toBe(ctrl.signal);
+  });
+});

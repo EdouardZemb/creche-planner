@@ -509,3 +509,77 @@ describe('UnitesAssociativesPage · déclarer avec d’autres valeurs (RM-40-02)
     });
   });
 });
+
+// La période proposée à la déclaration est calée sur l'année ASSOCIATIVE
+// (1er juin → 31 mai), pas sur l'année civile. Le seul test existant tombait en
+// octobre, du bon côté du 1er juin : la branche « on est avant juin, donc la
+// période a commencé l'an dernier » n'était jamais prise — et c'est justement
+// celle qui décide de l'échéance affichée à un parent qui déclare en mars.
+describe('UnitesAssociativesPage · la période proposée court du 1er juin au 31 mai', () => {
+  beforeEach(() => {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockReset();
+    vi.mocked(api.declarerEngagementUa).mockReset();
+  });
+
+  /** Déclare sans rien changer, et rend le corps envoyé au BFF. */
+  async function declarerDepuis(aujourdhui: string) {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockResolvedValue(
+      suivi({ aujourdhui, engagement: null, compteurs: null, sessions: [] }),
+    );
+    vi.mocked(api.declarerEngagementUa).mockResolvedValue({} as never);
+    rendre();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Déclarer cette période' }),
+    );
+
+    await waitFor(() => {
+      expect(api.declarerEngagementUa).toHaveBeenCalled();
+    });
+    return vi.mocked(api.declarerEngagementUa).mock.calls[0]?.[1];
+  }
+
+  it('en mars, propose la période OUVERTE l’an dernier (échéance au 31/05 qui vient)', async () => {
+    // Mars 2027 : la période courante a commencé le 1er juin 2026 et s'achève
+    // dans moins de trois mois. Proposer « 2027-06-01 → 2028-05-31 » ferait
+    // déclarer la période SUIVANTE et rendrait l'échéance muette.
+    expect(await declarerDepuis('2027-03-15')).toMatchObject({
+      debut: '2026-06-01',
+      fin: '2027-05-31',
+    });
+  });
+
+  it('le 31 mai, la période court toujours — elle s’achève ce jour-là', async () => {
+    expect(await declarerDepuis('2027-05-31')).toMatchObject({
+      debut: '2026-06-01',
+      fin: '2027-05-31',
+    });
+  });
+
+  it('le 1er juin, la période bascule sur la suivante (bord inclus)', async () => {
+    expect(await declarerDepuis('2027-06-01')).toMatchObject({
+      debut: '2027-06-01',
+      fin: '2028-05-31',
+    });
+  });
+});
+
+describe('UnitesAssociativesPage · un type de créneau inconnu du catalogue', () => {
+  beforeEach(() => {
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockReset();
+  });
+
+  it('affiche le code brut plutôt qu’une ligne amputée de son type', async () => {
+    // Le catalogue de l'écran est une COPIE de `TYPES_SESSION_UA` : le jour où
+    // le domaine en ajoute un, l'écran ne doit pas afficher un créneau sans
+    // libellé — il montre le code, qui reste lisible.
+    vi.mocked(api.lireSuiviUnitesAssociatives).mockResolvedValue(
+      suivi({
+        sessions: [{ ...PREMIERE_SESSION, type: 'JARDINAGE' }],
+      }),
+    );
+    rendre();
+
+    expect(await screen.findByText(/JARDINAGE/)).toBeTruthy();
+  });
+});
