@@ -65,6 +65,7 @@ function armer({
   zone = 'B' as string | null,
   periodes = [] as unknown[],
   exceptions = [] as unknown[],
+  recurrences = [] as unknown[],
 } = {}) {
   m('listerEtablissements').mockResolvedValue([etablissement(zone)]);
   m('lirePeriodesCalendrier').mockResolvedValue({
@@ -77,7 +78,7 @@ function armer({
   });
   m('lireRecurrencesCalendrier').mockResolvedValue({
     aLaDate: '2026-06-01T00:00:00.000Z',
-    recurrences: [],
+    recurrences,
   });
 }
 
@@ -268,5 +269,133 @@ describe('CalendrierPage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(
       /reste lisible dans l’historique/,
     );
+  });
+  it('montre la semaine type par régime, services compris', async () => {
+    armer({
+      recurrences: [
+        {
+          id: 'r1',
+          regime: 'SCOLAIRE',
+          jourSemaine: 'LUNDI',
+          services: ['CANTINE', 'PERISCOLAIRE'],
+        },
+        {
+          id: 'r2',
+          regime: 'VACANCES',
+          jourSemaine: 'MERCREDI',
+          services: ['ALSH'],
+        },
+        // Un jour explicitement fermé : la liste doit le DIRE, pas l'omettre —
+        // une absence se lit « pas encore saisi », une fermeture se lit « fermé ».
+        {
+          id: 'r3',
+          regime: 'SCOLAIRE',
+          jourSemaine: 'MERCREDI',
+          services: [],
+        },
+      ],
+    });
+    rendre();
+
+    expect(await screen.findByText('En période scolaire')).toBeInTheDocument();
+    expect(screen.getByText('Pendant les vacances')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Lundi\s*:\s*CANTINE, PERISCOLAIRE/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Mercredi\s*:\s*fermé/)).toBeInTheDocument();
+    expect(screen.getByText(/Mercredi\s*:\s*ALSH/)).toBeInTheDocument();
+  });
+
+  it('dit « aucun service ouvert déclaré » quand un régime est vide', async () => {
+    armer({
+      recurrences: [
+        {
+          id: 'r1',
+          regime: 'SCOLAIRE',
+          jourSemaine: 'LUNDI',
+          services: ['CANTINE'],
+        },
+      ],
+    });
+    rendre();
+
+    expect(
+      await screen.findByText('Aucun service ouvert déclaré.'),
+    ).toBeInTheDocument();
+  });
+
+  it('enregistre un changement de zone sur l’établissement', async () => {
+    armer({ zone: null });
+    m('modifierEtablissement').mockResolvedValue({});
+    rendre();
+
+    await userEvent.selectOptions(
+      await screen.findByLabelText('Zone de vacances'),
+      'B',
+    );
+
+    await waitFor(() => {
+      expect(m('modifierEtablissement')).toHaveBeenCalledWith(
+        FOYER,
+        ETAB,
+        expect.objectContaining({ zoneScolaire: 'B' }),
+      );
+    });
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      /Zone B enregistrée/,
+    );
+  });
+
+  it('retirer la zone est possible, et l’écran le dit', async () => {
+    armer({ zone: 'B' });
+    m('modifierEtablissement').mockResolvedValue({});
+    rendre();
+
+    await userEvent.selectOptions(
+      await screen.findByLabelText('Zone de vacances'),
+      '',
+    );
+
+    await waitFor(() => {
+      expect(m('modifierEtablissement')).toHaveBeenCalledWith(
+        FOYER,
+        ETAB,
+        expect.objectContaining({ zoneScolaire: null }),
+      );
+    });
+  });
+
+  it('signale un échec de chargement sans se figer sur le spinner', async () => {
+    m('listerEtablissements').mockRejectedValue(new ApiError(500, {}));
+    m('lirePeriodesCalendrier').mockRejectedValue(new ApiError(500, {}));
+    m('lireExceptionsCalendrier').mockRejectedValue(new ApiError(500, {}));
+    m('lireRecurrencesCalendrier').mockRejectedValue(new ApiError(500, {}));
+    rendre();
+
+    // Un écran qui reste en chargement est indiscernable d'un écran mort : le
+    // `finally` doit rendre la main même quand tout a échoué.
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+  });
+
+  it('affiche un état vide explicite quand il n’y a rien', async () => {
+    armer();
+    rendre();
+
+    expect(await screen.findByText('Aucune période')).toBeInTheDocument();
+    expect(screen.getByText('Aucune journée particulière')).toBeInTheDocument();
+  });
+
+  it('remonte l’erreur si la pose d’une exception échoue', async () => {
+    armer();
+    m('poserExceptionCalendrier').mockRejectedValue(
+      new ApiError(409, { message: 'exception déjà posée ce jour-là' }),
+    );
+    rendre();
+
+    await userEvent.type(await screen.findByLabelText('Jour'), '2027-03-13');
+    await userEvent.type(screen.getByLabelText('Intitulé'), 'Doublon');
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter' }));
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
   });
 });
