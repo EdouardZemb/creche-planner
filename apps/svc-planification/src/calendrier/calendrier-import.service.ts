@@ -119,7 +119,7 @@ export class CalendrierImportService {
     if (ligne === undefined) {
       throw new ZoneScolaireAbsenteException(etablissementId);
     }
-    if (ligne.zone === null || ligne.zone === undefined) {
+    if (ligne.zone === null) {
       throw new ZoneScolaireAbsenteException(etablissementId);
     }
     return ligne.zone;
@@ -155,7 +155,7 @@ export class CalendrierImportService {
     }
     if (!reponse.ok) {
       throw new ImportIndisponibleException(
-        `calendrier scolaire indisponible : l'open data a répondu ${reponse.status}`,
+        `calendrier scolaire indisponible : l'open data a répondu ${String(reponse.status)}`,
       );
     }
     let corps: unknown;
@@ -167,7 +167,7 @@ export class CalendrierImportService {
         cause,
       );
     }
-    const resultats = (corps as { results?: unknown })?.results;
+    const resultats = (corps as { results?: unknown }).results;
     if (!Array.isArray(resultats)) {
       throw new ImportIndisponibleException(
         'réponse inattendue de l’open data : aucun tableau `results`',
@@ -301,7 +301,7 @@ function veille(jour: string): string {
 
 function describeCause(cause: unknown): string {
   if (cause instanceof Error) {
-    return cause.name === 'TimeoutError' ? `délai de ${DELAI_MS} ms dépassé` : cause.message;
+    return cause.name === 'TimeoutError' ? `délai de ${String(DELAI_MS)} ms dépassé` : cause.message;
   }
   return 'cause inconnue';
 }

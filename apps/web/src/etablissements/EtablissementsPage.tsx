@@ -371,6 +371,7 @@ function EtablissementForm({
 // ---- Carte d'une crèche / école (affichage + actions) -----------------------
 
 interface CarteEtablissementProps {
+  foyerId: string;
   etablissement: EtablissementFoyerVue;
   onModifier: () => void;
   onSupprimer: () => void;
@@ -379,6 +380,7 @@ interface CarteEtablissementProps {
 }
 
 function CarteEtablissement({
+  foyerId,
   etablissement: e,
   onModifier,
   onSupprimer,
@@ -425,6 +427,15 @@ function CarteEtablissement({
       )}
 
       <div className="etab-actions">
+        {/* Le calendrier vit sur son propre écran : il porte quatre couches et
+            un import, et l'entasser dans la carte rendrait les deux illisibles. */}
+        <BoutonLien
+          to={`/foyers/${foyerId}/etablissements/${e.id}/calendrier`}
+          variante="secondaire"
+          aria-label={`Calendrier de ${e.nom}`}
+        >
+          Calendrier
+        </BoutonLien>
         <Bouton
           variante="secondaire"
           onClick={onModifier}
@@ -591,6 +602,7 @@ export function EtablissementsPage() {
       {data?.map((e) => (
         <CarteEtablissement
           key={e.id}
+          foyerId={id}
           etablissement={e}
           onModifier={() => {
             ouvrirEdition(e);

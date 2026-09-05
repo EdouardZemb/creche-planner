@@ -194,21 +194,33 @@ function fakeEcriture(zone: 'A' | 'B' | 'C' | null): {
   return { db, clotures, ouvertures, aSupprime: () => aSupprime };
 }
 
-/** Remplace `fetch` par une réponse canned. */
-function stubFetch(reponse: Partial<Response> | (() => never)): void {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => {
-      if (typeof reponse === 'function') reponse();
-      return reponse as Response;
-    }),
+/**
+ * Remplace `fetch` par une réponse canned, ou par un échec de transport.
+ *
+ * On construit une VRAIE `Response` plutôt qu'un objet partiel casté : le service
+ * lit `ok`, `status` et `json()`, et un faux partiel finirait par diverger de ce
+ * que la plateforme rend réellement.
+ */
+function stubFetch(corps: unknown, status = 200): void {
+  vi.stubGlobal('fetch', () =>
+    Promise.resolve(
+      new Response(JSON.stringify(corps), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ),
   );
+}
+
+/** Remplace `fetch` par un échec de transport (DNS, egress bloqué, timeout). */
+function stubFetchEnEchec(message: string): void {
+  vi.stubGlobal('fetch', () => Promise.reject(new Error(message)));
 }
 
 describe('CalendrierImportService.importerAnnee', () => {
   it('importe les cinq périodes et ne SUPPRIME jamais rien', async () => {
     const { db, clotures, ouvertures, aSupprime } = fakeEcriture('B');
-    stubFetch({ ok: true, status: 200, json: async () => FIXTURE } as Response);
+    stubFetch(FIXTURE);
     const service = new CalendrierImportService(db, horloge);
 
     const resultat = await service.importerAnnee(ETAB, '2026-2027');
@@ -230,7 +242,7 @@ describe('CalendrierImportService.importerAnnee', () => {
 
   it('clôt et rouvre au MÊME instant — aucun trou de connaissance', async () => {
     const { db, clotures, ouvertures } = fakeEcriture('B');
-    stubFetch({ ok: true, status: 200, json: async () => FIXTURE } as Response);
+    stubFetch(FIXTURE);
 
     await new CalendrierImportService(db, horloge).importerAnnee(
       ETAB,
@@ -245,7 +257,7 @@ describe('CalendrierImportService.importerAnnee', () => {
 
   it('refuse en 422 codé quand l’établissement n’a pas de zone', async () => {
     const { db } = fakeEcriture(null);
-    stubFetch({ ok: true, status: 200, json: async () => FIXTURE } as Response);
+    stubFetch(FIXTURE);
     const service = new CalendrierImportService(db, horloge);
 
     const erreur = await service
@@ -272,9 +284,7 @@ describe('CalendrierImportService.importerAnnee', () => {
 
   it('rend un 422 actionnable quand l’open data est injoignable (CA3)', async () => {
     const { db, ouvertures } = fakeEcriture('B');
-    stubFetch(() => {
-      throw new Error('getaddrinfo ENOTFOUND data.education.gouv.fr');
-    });
+    stubFetchEnEchec('getaddrinfo ENOTFOUND data.education.gouv.fr');
 
     const erreur = await new CalendrierImportService(db, horloge)
       .importerAnnee(ETAB, '2026-2027')
@@ -295,7 +305,7 @@ describe('CalendrierImportService.importerAnnee', () => {
 
   it('rend un 422 quand l’open data répond 500', async () => {
     const { db } = fakeEcriture('B');
-    stubFetch({ ok: false, status: 500 } as Response);
+    stubFetch({}, 500);
 
     const erreur = await new CalendrierImportService(db, horloge)
       .importerAnnee(ETAB, '2026-2027')
@@ -308,11 +318,7 @@ describe('CalendrierImportService.importerAnnee', () => {
 
   it('rend un 422 quand l’année demandée n’est pas encore publiée', async () => {
     const { db, ouvertures } = fakeEcriture('B');
-    stubFetch({
-      ok: true,
-      status: 200,
-      json: async () => ({ results: [] }),
-    } as Response);
+    stubFetch({ results: [] });
 
     const erreur = await new CalendrierImportService(db, horloge)
       .importerAnnee(ETAB, '2030-2031')
@@ -332,7 +338,7 @@ describe('CalendrierImportService.importerAnnee', () => {
     // le fait que l'écriture ne PEUT PAS atteindre autre chose : le `where` porte
     // `source = IMPORT` et `annee_scolaire = $1`. On vérifie donc la table visée.
     const { db, ouvertures } = fakeEcriture('B');
-    stubFetch({ ok: true, status: 200, json: async () => FIXTURE } as Response);
+    stubFetch(FIXTURE);
 
     await new CalendrierImportService(db, horloge).importerAnnee(
       ETAB,

@@ -14,6 +14,7 @@ import { ContratsPage } from './foyer/ContratsPage';
 import { PlanningPage } from './planning/PlanningPage';
 import { CoutsAnnuelsPage } from './couts/CoutsAnnuelsPage';
 import { UnitesAssociativesPage } from './unites-associatives/UnitesAssociativesPage';
+import { CalendrierPage } from './etablissements/CalendrierPage';
 import { EtablissementsPage } from './etablissements/EtablissementsPage';
 import { MonProfilPage } from './profil/MonProfilPage';
 import { TarifsPage } from './tarifs/TarifsPage';
@@ -109,6 +110,13 @@ function Coquille() {
                 element={<UnitesAssociativesPage />}
               />
               <Route path="etablissements" element={<EtablissementsPage />} />
+              {/* Route ENFANT : le garde foyer est gratuit par imbrication —
+                  `GardeFoyer` couvre déjà tout ce qui vit sous /foyers/:foyerId.
+                  Une route plate ici aurait exigé de le reposer à la main. */}
+              <Route
+                path="etablissements/:etabId/calendrier"
+                element={<CalendrierPage />}
+              />
               <Route path="modifier" element={<FoyerModifierPage />} />
             </Route>
             <Route path="*" element={<PageIntrouvable />} />

@@ -47,6 +47,15 @@ import type {
   DeclarerEngagementUa,
   AjouterSessionUa,
   ModifierSessionUa,
+  PeriodesCalendrierVue,
+  PeriodeCalendrierVue,
+  ExceptionsCalendrierVue,
+  ExceptionCalendrierVue,
+  ImportCalendrierVue,
+  SaisirPeriodeCalendrier,
+  PoserExceptionCalendrier,
+  RecurrencesCalendrierVue,
+  RemplacerRecurrencesCalendrier,
 } from '../types/bff';
 
 // Client HTTP du BFF. Base URL configurable via VITE_API_BASE_URL (défaut '/api',
@@ -809,6 +818,175 @@ export const api = {
       { headers: entetes(false) },
       opts,
     ).then((r) => lire<EtablissementFoyerVue[]>(r));
+  },
+
+  /**
+   * Calendrier d'ouverture d'un établissement (SFD 31).
+   *
+   * Les quatre lectures ci-dessous rendent les **couches brutes** (récurrences,
+   * périodes, exceptions), pas le calendrier résolu : l'écran de saisie montre ce
+   * que le parent a posé, pas ce que le domaine en déduit. La résolution
+   * (`GET …/calendrier`) est le contrat gelé que consommera le plan 33 — l'écran
+   * de saisie n'a rien à y faire.
+   */
+  lirePeriodesCalendrier(
+    foyerId: string,
+    etablissementId: string,
+    opts: RequeteOptions = {},
+  ): Promise<PeriodesCalendrierVue> {
+    return requeteIdempotente(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(etablissementId)}/calendrier/periodes`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<PeriodesCalendrierVue>(r));
+  },
+
+  lireExceptionsCalendrier(
+    foyerId: string,
+    etablissementId: string,
+    opts: RequeteOptions = {},
+  ): Promise<ExceptionsCalendrierVue> {
+    return requeteIdempotente(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(etablissementId)}/calendrier/exceptions`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<ExceptionsCalendrierVue>(r));
+  },
+
+  /**
+   * Importe une année scolaire — `POST …/calendrier/import`.
+   *
+   * **Pas** `requeteIdempotente` : le rejeu automatique d'une écriture doublerait
+   * l'action sur un réseau capricieux. L'import est idempotent en base, mais
+   * c'est au serveur de le garantir, pas au client de le supposer.
+   */
+  importerCalendrier(
+    foyerId: string,
+    etablissementId: string,
+    anneeScolaire: string,
+    opts: RequeteOptions = {},
+  ): Promise<ImportCalendrierVue> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(etablissementId)}/calendrier/import`,
+      {
+        method: 'POST',
+        headers: entetes(true),
+        body: JSON.stringify({ anneeScolaire }),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<ImportCalendrierVue>(r));
+  },
+
+  /** Semaine type par régime — `GET …/calendrier/recurrences`. */
+  lireRecurrencesCalendrier(
+    foyerId: string,
+    etablissementId: string,
+    opts: RequeteOptions = {},
+  ): Promise<RecurrencesCalendrierVue> {
+    return requeteIdempotente(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(etablissementId)}/calendrier/recurrences`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<RecurrencesCalendrierVue>(r));
+  },
+
+  /**
+   * Remplace la semaine type d'un régime — `PUT …/calendrier/recurrences`.
+   *
+   * « Remplace » au sens append-only : le service clôt les lignes du régime et en
+   * ouvre de nouvelles. La semaine d'avant reste lisible à un instant antérieur.
+   */
+  remplacerRecurrencesCalendrier(
+    foyerId: string,
+    etablissementId: string,
+    saisie: RemplacerRecurrencesCalendrier,
+    opts: RequeteOptions = {},
+  ): Promise<RecurrencesCalendrierVue> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(etablissementId)}/calendrier/recurrences`,
+      {
+        method: 'PUT',
+        headers: entetes(true),
+        body: JSON.stringify(saisie),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<RecurrencesCalendrierVue>(r));
+  },
+
+  /** Ouvre une période saisie à la main — `POST …/calendrier/periodes` (201). */
+  saisirPeriodeCalendrier(
+    foyerId: string,
+    etablissementId: string,
+    saisie: SaisirPeriodeCalendrier,
+    opts: RequeteOptions = {},
+  ): Promise<PeriodeCalendrierVue> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(etablissementId)}/calendrier/periodes`,
+      {
+        method: 'POST',
+        headers: entetes(true),
+        body: JSON.stringify(saisie),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<PeriodeCalendrierVue>(r));
+  },
+
+  /** Pose une exception ponctuelle — `POST …/calendrier/exceptions` (201). */
+  poserExceptionCalendrier(
+    foyerId: string,
+    etablissementId: string,
+    saisie: PoserExceptionCalendrier,
+    opts: RequeteOptions = {},
+  ): Promise<ExceptionCalendrierVue> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(etablissementId)}/calendrier/exceptions`,
+      {
+        method: 'POST',
+        headers: entetes(true),
+        body: JSON.stringify(saisie),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then((r) => lire<ExceptionCalendrierVue>(r));
+  },
+
+  /**
+   * Clôt une exception — `DELETE …/calendrier/exceptions/:id`.
+   *
+   * « Supprimer » est une **clôture** : la ligne reste lisible à un instant de
+   * connaissance antérieur. L'écran dit donc « retirer », jamais « supprimer
+   * définitivement » — le mot compte, il décrit ce qui se passe.
+   */
+  cloreExceptionCalendrier(
+    foyerId: string,
+    etablissementId: string,
+    exceptionId: string,
+    opts: RequeteOptions = {},
+  ): Promise<void> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(etablissementId)}/calendrier/exceptions/${encodeURIComponent(exceptionId)}`,
+      {
+        method: 'DELETE',
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then(() => undefined);
+  },
+
+  /** Clôt une période — `DELETE …/calendrier/periodes/:id` (clôture, pas effacement). */
+  clorePeriodeCalendrier(
+    foyerId: string,
+    etablissementId: string,
+    periodeId: string,
+    opts: RequeteOptions = {},
+  ): Promise<void> {
+    return requete(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(etablissementId)}/calendrier/periodes/${encodeURIComponent(periodeId)}`,
+      {
+        method: 'DELETE',
+        headers: entetes(false),
+        ...(opts.signal ? { signal: opts.signal } : {}),
+      },
+    ).then(() => undefined);
   },
 
   /** Crée un établissement dans le foyer — `POST /v1/foyers/:foyerId/etablissements` (201). */

@@ -14,6 +14,12 @@ export function titreDepuisPathname(pathname: string): string {
   if (pathname === '/mon-profil') return 'Mon profil';
   if (pathname === '/desabonnement') return 'Désabonnement';
   if (pathname === '/mentions') return 'Informations sur vos données';
+  // La liste blanche ci-dessous ne matche QUE des segments simples : elle ne
+  // pourra jamais reconnaître un chemin profond. Étendre la regex l'aurait rendue
+  // illisible pour un gain nul — un cas dédié dit mieux ce qu'il fait.
+  if (/^\/foyers\/[^/]+\/etablissements\/[^/]+\/calendrier$/.test(pathname)) {
+    return 'Calendrier';
+  }
   const foyer =
     /^\/foyers\/[^/]+\/(dashboard|contrats|planning|couts|etablissements|unites-associatives|modifier)$/.exec(
       pathname,
