@@ -66,6 +66,15 @@ const CONTRAT_ID = '11111111-1111-1111-1111-111111111111';
 const ETAT_CALENDRIER =
   'un établissement avec un calendrier d’ouverture retouché existe';
 
+/**
+ * État d'import (SFD 31, lot 3) : même établissement, zone B, ET **l'open data
+ * neutralisé côté provider**. La vérification provider tourne contre une vraie
+ * base ; elle ne doit pour autant jamais sortir sur Internet — un contrat qui
+ * dépend d'une API tierce rougit un jour sans qu'une ligne ait bougé.
+ */
+const ETAT_CALENDRIER_IMPORTABLE =
+  'un établissement de zone B dont l’open data scolaire est neutralisé';
+
 /** Établissement porteur du calendrier seedé (aligné stateHandler provider). */
 const ETAB_CALENDRIER_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 
@@ -892,6 +901,53 @@ describe(
           'CANTINE',
           'PERISCOLAIRE',
         ]);
+      });
+    });
+
+    /**
+     * L'import (US-31-01, lot 3). Le contrat porte sur le **compte rendu**, pas
+     * sur les périodes : celles-ci se relisent par `GET …/calendrier/periodes`,
+     * seule source de vérité. Deux vues de la même chose finiraient par diverger.
+     */
+    it('importe une année scolaire et rend un compte rendu (200)', async () => {
+      provider
+        .given(ETAT_CALENDRIER_IMPORTABLE)
+        .uponReceiving('un import du calendrier scolaire pour 2026-2027')
+        .withRequest({
+          method: 'POST',
+          path: `/api/etablissements/${ETAB_CALENDRIER_ID}/calendrier/import`,
+          headers: { 'Content-Type': 'application/json' },
+          body: { anneeScolaire: '2026-2027' },
+        })
+        .willRespondWith({
+          status: 200,
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: {
+            anneeScolaire: '2026-2027',
+            zoneScolaire: 'B',
+            importees: MatchersV3.integer(5),
+            // 0 au premier import : le champ existe pour que l'écran puisse dire
+            // « rafraîchi » plutôt que « importé » au second.
+            remplacees: MatchersV3.integer(0),
+          },
+        });
+
+      await provider.executeTest(async (mockServer) => {
+        const reponse = await fetch(
+          `${mockServer.url}/api/etablissements/${ETAB_CALENDRIER_ID}/calendrier/import`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ anneeScolaire: '2026-2027' }),
+          },
+        );
+        expect(reponse.status).toBe(200);
+        const corps = (await reponse.json()) as {
+          zoneScolaire: string;
+          importees: number;
+        };
+        expect(corps.zoneScolaire).toBe('B');
+        expect(corps.importees).toBeGreaterThan(0);
       });
     });
 

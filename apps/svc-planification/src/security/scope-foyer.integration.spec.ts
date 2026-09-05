@@ -294,8 +294,11 @@ describe('svc-planification · scoping enforce', () => {
         return methode === undefined ? [] : [[nom, methode] as const];
       });
 
-    it('voit bien les dix routes du calendrier (sonde de la sonde)', () => {
-      expect(routes).toHaveLength(10);
+    it('voit bien les onze routes du calendrier (sonde de la sonde)', () => {
+      // 10 au lot 2, + `POST import` au lot 3. Ce compte est la SONDE de la suite
+      // ci-dessous : sans lui, ajouter une route non scopée passerait inaperçu —
+      // `it.each` ne testerait simplement pas ce qu'il ne voit pas.
+      expect(routes).toHaveLength(11);
     });
 
     it.each(routes)('%s — foyer autorisé → passe', async (_nom, methode) => {

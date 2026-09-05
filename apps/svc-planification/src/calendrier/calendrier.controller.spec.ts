@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { HTTP_CODE_METADATA } from '@nestjs/common/constants';
 import { SCOPE_FOYER_KEY } from '@creche-planner/nest-commons';
 import { CalendrierController } from './calendrier.controller.js';
+import type { CalendrierImportService } from './calendrier-import.service.js';
 import type { CalendrierService } from './calendrier.service.js';
 
 /**
@@ -25,6 +26,7 @@ const INSTANT = '2026-05-01T00:00:00.000Z';
 function faux(): {
   controleur: CalendrierController;
   service: Record<string, ReturnType<typeof vi.fn>>;
+  imports: Record<string, ReturnType<typeof vi.fn>>;
 } {
   const service = {
     lireResolu: vi.fn().mockResolvedValue({ jours: [] }),
@@ -38,11 +40,23 @@ function faux(): {
     poserException: vi.fn().mockResolvedValue({ id: 'e' }),
     cloreException: vi.fn().mockResolvedValue(undefined),
   };
+  // Le service d'import (lot 3) est un collaborateur distinct : le contrôleur
+  // ne fait que lui passer l'année, et c'est ce passage-là qu'on veut voir.
+  const imports = {
+    importerAnnee: vi.fn().mockResolvedValue({
+      anneeScolaire: '2026-2027',
+      zoneScolaire: 'B',
+      importees: 5,
+      remplacees: 0,
+    }),
+  };
   return {
     controleur: new CalendrierController(
       service as unknown as CalendrierService,
+      imports as unknown as CalendrierImportService,
     ),
     service,
+    imports,
   };
 }
 
@@ -133,8 +147,8 @@ describe('CalendrierController — métadonnées de route', () => {
     CalendrierController.prototype,
   ).filter((nom) => nom !== 'constructor');
 
-  it('voit bien les dix routes du contrôleur (sonde de la sonde)', () => {
-    expect(methodes).toHaveLength(10);
+  it('voit bien les onze routes du contrôleur (sonde de la sonde)', () => {
+    expect(methodes).toHaveLength(11);
   });
 
   it('porte le scoping foyer sur CHAQUE route, dès le premier commit', () => {
@@ -161,5 +175,19 @@ describe('CalendrierController — métadonnées de route', () => {
     expect(code('cloreException')).toBe(204);
     expect(code('saisirPeriode')).toBe(201);
     expect(code('poserException')).toBe(201);
+  });
+});
+
+describe('CalendrierController — import d’une année (lot 3)', () => {
+  it('passe l’année au service d’import, et rien d’autre', async () => {
+    const { controleur, imports } = faux();
+    const resultat = await controleur.importerAnnee(ETAB, {
+      anneeScolaire: '2026-2027',
+    });
+    // La ZONE n'est pas un paramètre de la route : elle vient de
+    // l'établissement. Si elle apparaissait ici, un import « zone A » sur un
+    // établissement de zone B deviendrait possible.
+    expect(imports['importerAnnee']).toHaveBeenCalledWith(ETAB, '2026-2027');
+    expect(resultat.importees).toBe(5);
   });
 });

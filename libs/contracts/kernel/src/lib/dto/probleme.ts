@@ -38,6 +38,10 @@ export const CODES_PROBLEME = {
     'la semaine est trop ancienne pour qu’un récapitulatif parte vers l’établissement',
   RECAP_SANS_MODIFICATION:
     'aucune modification à transmettre : le récapitulatif n’a rien à dire',
+  ZONE_SCOLAIRE_ABSENTE:
+    'aucune zone de vacances scolaires n’est renseignée pour cet établissement',
+  IMPORT_CALENDRIER_INDISPONIBLE:
+    'le calendrier scolaire officiel n’a pas pu être importé — la saisie manuelle reste possible',
 } as const;
 
 /** Code métier d'un problème, tel que le front peut le discriminer. */

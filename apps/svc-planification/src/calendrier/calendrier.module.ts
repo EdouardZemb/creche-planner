@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CLOCK, horlogeSysteme } from '@creche-planner/nest-commons';
 import { CalendrierController } from './calendrier.controller.js';
+import { CalendrierImportService } from './calendrier-import.service.js';
 import { CalendrierService } from './calendrier.service.js';
 
 /**
@@ -25,7 +26,11 @@ import { CalendrierService } from './calendrier.service.js';
    posé entre les deux ne s'applique pas (le nœud signalé commence à `@Module`). */
 @Module({
   controllers: [CalendrierController],
-  providers: [CalendrierService, { provide: CLOCK, useValue: horlogeSysteme }],
+  providers: [
+    CalendrierService,
+    CalendrierImportService,
+    { provide: CLOCK, useValue: horlogeSysteme },
+  ],
   exports: [CalendrierService],
 })
 export class CalendrierModule {}

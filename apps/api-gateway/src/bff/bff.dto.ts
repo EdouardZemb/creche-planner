@@ -309,6 +309,18 @@ export const poserExceptionSchema = z.object({
 });
 
 /** Saisie d'une période (`source` n'est pas dans le corps : toujours `MANUEL`). */
+/**
+ * Corps de `POST …/calendrier/import` (SFD 31, lot 3). La **zone** n'y figure
+ * pas : elle est une propriété de l'établissement. L'accepter ici permettrait
+ * d'importer un calendrier de zone A sur un établissement de zone B, c'est-à-dire
+ * de fabriquer un calendrier faux que plus rien ne signalerait ensuite.
+ */
+export const importerAnneeCalendrierSchema = z.object({
+  anneeScolaire: z
+    .string()
+    .regex(/^\d{4}-\d{4}$/, 'année scolaire attendue au format 2026-2027'),
+});
+
 export const saisirPeriodeSchema = z.object({
   type: z.enum(['PERIODE_SCOLAIRE', 'VACANCES', 'FERMETURE_ANNUELLE']),
   libelle: z.string().min(1).max(200),

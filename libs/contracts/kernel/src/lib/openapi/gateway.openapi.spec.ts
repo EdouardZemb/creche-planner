@@ -18,7 +18,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
   // (lot D6), qui confronte le document au graphe de modules Nest et exige l'égalité
   // dans les deux sens. C'est lui qui a montré que 12 opérations servies — dont les
   // 6 routes `/notifications/*` — n'étaient documentées nulle part.
-  it('expose exactement les 48 routes attendues', () => {
+  it('expose exactement les 49 routes attendues', () => {
     const paths = Object.keys(gatewayOpenApiDocument.paths).sort();
     expect(paths).toEqual(
       [
@@ -40,6 +40,7 @@ describe('gateway.openapi (BFF Phase 7)', () => {
         // la lecture résolue (contrat GELÉ, consommé sans pact par le plan 33)
         // et les trois couches en append-only — « supprimer » y est une clôture.
         '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier',
+        '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/import',
         '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/recurrences',
         '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/periodes',
         '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/periodes/{periodeId}',

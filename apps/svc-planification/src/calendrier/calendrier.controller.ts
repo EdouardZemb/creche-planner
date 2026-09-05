@@ -18,13 +18,19 @@ import {
   lireCoucheQuerySchema,
   poserExceptionSchema,
   remplacerRecurrencesSchema,
+  importerAnneeSchema,
   saisirPeriodeSchema,
   type LireCalendrierQuery,
   type LireCoucheQuery,
   type PoserExceptionDto,
   type RemplacerRecurrencesDto,
+  type ImporterAnneeDto,
   type SaisirPeriodeDto,
 } from './calendrier.dto.js';
+import {
+  CalendrierImportService,
+  type ResultatImport,
+} from './calendrier-import.service.js';
 import {
   CalendrierService,
   type CalendrierResoluVue,
@@ -58,7 +64,10 @@ import {
  */
 @Controller('etablissements/:id/calendrier')
 export class CalendrierController {
-  constructor(private readonly calendrier: CalendrierService) {}
+  constructor(
+    private readonly calendrier: CalendrierService,
+    private readonly imports: CalendrierImportService,
+  ) {}
 
   /**
    * Jours résolus de `[du, au]` (bornes **inclusives**), tels que connus à
@@ -103,6 +112,25 @@ export class CalendrierController {
     @Query(new ZodValidationPipe(lireCoucheQuerySchema)) query: LireCoucheQuery,
   ): Promise<{ aLaDate: string; periodes: PeriodeVue[] }> {
     return this.calendrier.lirePeriodes(id, query.aLaDate);
+  }
+
+  /**
+   * Importe une année scolaire depuis l'open data (US-31-01, lot 3).
+   *
+   * `POST` et non `PUT` : l'appel n'est pas idempotent au sens HTTP — il **date**
+   * un import, et le rejouer clôt les lignes précédentes pour en ouvrir de
+   * nouvelles. Il l'est en revanche au sens métier : rejouer ne cumule rien. La
+   * distinction compte — c'est elle qui rend le double-clic inoffensif sans rendre
+   * l'historique faux.
+   */
+  @ScopeFoyerInterServices({ resoudre: 'etablissement', param: 'id' })
+  @Post('import')
+  @HttpCode(HttpStatus.OK)
+  importerAnnee(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(importerAnneeSchema)) dto: ImporterAnneeDto,
+  ): Promise<ResultatImport> {
+    return this.imports.importerAnnee(id, dto.anneeScolaire);
   }
 
   /** Ouvre une période saisie manuellement (`source: MANUEL` imposé). */
