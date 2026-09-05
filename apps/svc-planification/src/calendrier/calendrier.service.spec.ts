@@ -6,6 +6,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
+import { instant } from '@creche-planner/shared-kernel';
 import type { Clock } from '@creche-planner/nest-commons';
 import { CalendrierService } from './calendrier.service.js';
 import type { Database } from '../database/database.types.js';
@@ -754,5 +755,246 @@ describe('CalendrierService — sonde négative : aucune suppression en source',
 
   it('voit bien un fragment `sql` quand il y en a un (sonde de la sonde)', () => {
     expect('or(isNull(c), sql`${c} > ${borne}`)').toMatch(/sql`/);
+  });
+});
+
+/**
+ * **`joursFermesPourService` — la liste que la génération des prestations
+ * consomme depuis le lot 4 (RM-31-04).**
+ *
+ * Ce qu'on prouve ici, et qui n'était vrai d'aucune version antérieure : le
+ * filtre est **par service**. La liste qu'elle remplace venait du Référentiel,
+ * était **globale**, et fermait donc l'ALSH les jours où la crèche fermait — alors
+ * que l'ALSH est précisément le service ouvert quand l'école ne l'est pas. C'est
+ * le bug le plus facile à écrire de ce lot, d'où un test qui le vise directement.
+ */
+describe('CalendrierService.joursFermesPourService', () => {
+  const OUVRES = ['LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI'] as const;
+
+  /** Semaine scolaire : crèche/cantine/péri ouverts. Vacances : ALSH seul. */
+  function recurrencesEcole(): Record<string, unknown>[] {
+    return OUVRES.flatMap((jourSemaine, i) => [
+      {
+        ...ligneRecurrence(['CRECHE_PSU', 'CANTINE', 'PERISCOLAIRE']),
+        id: `55555555-5555-4555-8555-00000000000${String(i)}`,
+        regime: 'SCOLAIRE',
+        jourSemaine,
+      },
+      {
+        ...ligneRecurrence(['ALSH']),
+        id: `66666666-6666-4666-8666-00000000000${String(i)}`,
+        regime: 'VACANCES',
+        jourSemaine,
+      },
+    ]);
+  }
+
+  /** Novembre 2026 : la semaine du 02 au 06 est en vacances (Toussaint). */
+  function service(
+    exceptions: Record<string, unknown>[] = [],
+  ): CalendrierService {
+    const db = fakeLecture(
+      new Map<unknown, unknown[]>([
+        [etablissement, [{ id: ETAB }]],
+        [calendrierRecurrence, recurrencesEcole()],
+        [
+          calendrierPeriode,
+          [
+            lignePeriode({
+              type: 'VACANCES',
+              libelle: 'Vacances de la Toussaint',
+              du: '2026-11-02',
+              au: '2026-11-06',
+            }),
+          ],
+        ],
+        [calendrierException, exceptions],
+        [calendrierRegimeFeries, []],
+      ]),
+    );
+    return new CalendrierService(db, horloge);
+  }
+
+  const ANCRE = instant('2026-10-01T00:00:00.000Z');
+
+  it('ferme la cantine pendant les vacances', async () => {
+    const fermes = await service().joursFermesPourService(
+      ETAB,
+      '2026-11',
+      'CANTINE',
+      ANCRE,
+    );
+    for (const jour of [
+      '2026-11-02',
+      '2026-11-03',
+      '2026-11-04',
+      '2026-11-05',
+      '2026-11-06',
+    ]) {
+      expect(fermes).toContain(jour);
+    }
+  });
+
+  it('laisse l’ALSH OUVERT sur ces mêmes jours — le filtre est par service', async () => {
+    const fermes = await service().joursFermesPourService(
+      ETAB,
+      '2026-11',
+      'ALSH',
+      ANCRE,
+    );
+    for (const jour of [
+      '2026-11-02',
+      '2026-11-03',
+      '2026-11-04',
+      '2026-11-05',
+      '2026-11-06',
+    ]) {
+      expect(fermes).not.toContain(jour);
+    }
+    // …et il reste fermé en période scolaire, où la récurrence ne l'ouvre pas.
+    expect(fermes).toContain('2026-11-09');
+  });
+
+  it('ferme tous les services un jour férié (RM-31-02)', async () => {
+    const cantine = await service().joursFermesPourService(
+      ETAB,
+      '2026-11',
+      'CANTINE',
+      ANCRE,
+    );
+    // 11 novembre 2026 : mercredi, Armistice.
+    expect(cantine).toContain('2026-11-11');
+  });
+
+  it('ferme les week-ends, qu’aucune récurrence n’ouvre', async () => {
+    const fermes = await service().joursFermesPourService(
+      ETAB,
+      '2026-11',
+      'CRECHE_PSU',
+      ANCRE,
+    );
+    expect(fermes).toContain('2026-11-07'); // samedi
+    expect(fermes).toContain('2026-11-08'); // dimanche
+  });
+
+  /**
+   * **L'axe de connaissance, vu depuis la consommatrice (RM-31-03).** Une
+   * exception posée le 20 novembre n'existe pas pour qui interroge le calendrier
+   * tel qu'il était connu le 1er octobre. C'est ce qui rend un mois arrêté
+   * intouchable — et c'est ici, pas dans le domaine, que le service doit le
+   * transmettre sans le diluer.
+   */
+  it('ignore une exception postérieure à l’ancre de connaissance', async () => {
+    const posteriere = [
+      ligneException({
+        jour: '2026-11-09',
+        type: 'FERMETURE',
+        services: null,
+        connuDepuis: new Date('2026-11-20T00:00:00.000Z'),
+      }),
+    ];
+    const fermes = await service(posteriere).joursFermesPourService(
+      ETAB,
+      '2026-11',
+      'CANTINE',
+      ANCRE,
+    );
+    expect(fermes).not.toContain('2026-11-09');
+  });
+
+  it('la voit quand on interroge APRÈS sa pose (sonde de la sonde)', async () => {
+    const posteriere = [
+      ligneException({
+        jour: '2026-11-09',
+        type: 'FERMETURE',
+        services: null,
+        connuDepuis: new Date('2026-11-20T00:00:00.000Z'),
+      }),
+    ];
+    const fermes = await service(posteriere).joursFermesPourService(
+      ETAB,
+      '2026-11',
+      'CANTINE',
+      instant('2026-12-01T00:00:00.000Z'),
+    );
+    expect(fermes).toContain('2026-11-09');
+  });
+});
+
+/**
+ * **La garde « calendrier inconnu ≠ établissement fermé ».**
+ *
+ * C'est le défaut que ce lot aurait introduit sans elle, et il est silencieux :
+ * la couche 3 étant la seule qui ouvre, un établissement sans récurrence rend
+ * `servicesOuverts: []` pour chaque jour — donc un mois entièrement non
+ * facturable, pour tous les contrats, sans erreur ni journal. Or c'est l'état de
+ * la production au moment où ce lot arrive : aucune semaine type n'y est encore
+ * saisie.
+ */
+describe('CalendrierService.joursFermesPourService — calendrier vide', () => {
+  function sansRecurrence(
+    recurrences: Record<string, unknown>[],
+  ): CalendrierService {
+    return new CalendrierService(
+      fakeLecture(
+        new Map<unknown, unknown[]>([
+          [etablissement, [{ id: ETAB }]],
+          [calendrierRecurrence, recurrences],
+          [calendrierPeriode, []],
+          [calendrierException, []],
+          [calendrierRegimeFeries, []],
+        ]),
+      ),
+      horloge,
+    );
+  }
+
+  it('n’exclut AUCUN jour quand aucune récurrence n’existe', async () => {
+    const fermes = await sansRecurrence([]).joursFermesPourService(
+      ETAB,
+      '2026-11',
+      'CRECHE_PSU',
+      instant('2026-10-01T00:00:00.000Z'),
+    );
+    expect(fermes).toEqual([]);
+  });
+
+  it('n’exclut aucun jour si les récurrences sont postérieures à l’ancre', async () => {
+    const fermes = await sansRecurrence([
+      {
+        ...ligneRecurrence(['CRECHE_PSU']),
+        connuDepuis: new Date('2026-12-01T00:00:00.000Z'),
+      },
+    ]).joursFermesPourService(
+      ETAB,
+      '2026-11',
+      'CRECHE_PSU',
+      instant('2026-10-01T00:00:00.000Z'),
+    );
+    expect(fermes).toEqual([]);
+  });
+
+  /**
+   * **La sonde de la sonde.** Sans elle, la garde ci-dessus rendrait la liste vide
+   * pour toujours et les deux tests précédents passeraient pour la mauvaise
+   * raison. Dès qu'UNE récurrence est connue, le calendrier fait autorité — y
+   * compris pour fermer les jours qu'elle n'ouvre pas.
+   */
+  it('reprend autorité dès qu’une seule récurrence est connue', async () => {
+    const fermes = await sansRecurrence([
+      {
+        ...ligneRecurrence(['CRECHE_PSU']),
+        regime: 'SCOLAIRE',
+        jourSemaine: 'LUNDI',
+      },
+    ]).joursFermesPourService(
+      ETAB,
+      '2026-11',
+      'CRECHE_PSU',
+      instant('2026-10-01T00:00:00.000Z'),
+    );
+    // Seuls les lundis sont ouverts : le mardi 10 novembre est fermé.
+    expect(fermes).toContain('2026-11-10');
+    expect(fermes).not.toContain('2026-11-09');
   });
 });

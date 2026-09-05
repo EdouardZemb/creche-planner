@@ -1,14 +1,11 @@
 // Calendrier / jours
 export type { JourSemaine } from './lib/jour-semaine.js';
-export {
-  JOURS_OUVERTURE_ECOLE,
-  jourSemaineDeIso,
-  estJourOuvertureEcole,
-} from './lib/jour-semaine.js';
+export { jourSemaineDeIso } from './lib/jour-semaine.js';
 export { joursDuMois } from './lib/mois.js';
 
 // Calendrier d'ouverture versionné (SFD 31 — 3 couches + axe de connaissance)
 export {
+  estConnuA,
   SERVICES_CALENDRIER,
   ancreDeConnaissance,
   clore,

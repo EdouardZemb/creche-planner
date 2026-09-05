@@ -3,6 +3,7 @@ import { CLOCK, horlogeSysteme } from '@creche-planner/nest-commons';
 import { CalendrierController } from './calendrier.controller.js';
 import { CalendrierImportService } from './calendrier-import.service.js';
 import { CalendrierService } from './calendrier.service.js';
+import { RepriseFermeturesService } from './reprise-fermetures.service.js';
 
 /**
  * Calendrier d'ouverture des établissements (SFD 31, lot 2).
@@ -29,6 +30,10 @@ import { CalendrierService } from './calendrier.service.js';
   providers: [
     CalendrierService,
     CalendrierImportService,
+    // Reprise de données du lot 4 : les fermetures crèche 2026 deviennent des
+    // exceptions de calendrier, pour que RM-31-04 ait sa source unique dès le
+    // premier mois généré après le déploiement.
+    RepriseFermeturesService,
     { provide: CLOCK, useValue: horlogeSysteme },
   ],
   exports: [CalendrierService],

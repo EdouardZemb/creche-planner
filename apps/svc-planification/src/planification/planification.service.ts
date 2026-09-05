@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import {
+  ancreDeConnaissance,
   ContratCreche,
   genererPrestationMoisSegments,
   semaineTypeDepuisJson,
@@ -15,9 +16,11 @@ import {
   type PlanningMensuel,
   type SemaineTypeAbcm,
   type SemaineTypeJson,
+  type ServiceCalendrier,
 } from '@creche-planner/planification-domain';
 import {
   depuisSuite,
+  instant,
   selectionnerVersionApplicable,
 } from '@creche-planner/shared-kernel';
 import {
@@ -35,7 +38,12 @@ import {
   type ModeContrat,
   type PlanningModifiePayload,
 } from '@creche-planner/contracts-planification';
-import { DRIZZLE, traceIdCourant } from '@creche-planner/nest-commons';
+import {
+  CLOCK,
+  DRIZZLE,
+  traceIdCourant,
+  type Clock,
+} from '@creche-planner/nest-commons';
 import type { Database } from '../database/database.types.js';
 import {
   contrat,
@@ -53,7 +61,7 @@ import {
   messageCoherenceHeures,
   moisDeLaSemaine,
 } from '@creche-planner/shared-semaine';
-import { ReferentielClient } from './referentiel.client.js';
+import { CalendrierService } from '../calendrier/calendrier.service.js';
 import {
   fusionnerSemaineDansMois,
   type BesoinsSemaine,
@@ -184,7 +192,8 @@ function moisEntre(du: string, au: string | null): string[] {
 export class PlanificationService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
-    private readonly referentiel: ReferentielClient,
+    private readonly calendrier: CalendrierService,
+    @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
   /**
@@ -1362,8 +1371,28 @@ export class PlanificationService {
 
   /**
    * Génère les **prestations du mois** d'un contrat (cœur de la DoD). Lit la saisie
-   * enregistrée (réelle ou simulée), récupère les jours non facturables du
-   * Référentiel (INV-04) et délègue la génération au domaine pur.
+   * enregistrée (réelle ou simulée), dérive les jours non facturables du
+   * **calendrier d'ouverture de l'établissement du contrat** (RM-31-04, lot 4) et
+   * délègue la génération au domaine pur.
+   *
+   * **Ce que ce lot a changé, et pourquoi c'est plus qu'un changement de source.**
+   * La liste venait du Référentiel par un appel HTTP *dégradable* : injoignable,
+   * il rendait `[]`, et le mois se facturait alors **jours de fermeture compris**,
+   * sans que rien ne le dise. Elle vient désormais de la base locale, du
+   * calendrier de l'établissement de ce contrat — donc plus de repli silencieux,
+   * plus de liste globale, et une source unique conforme à RM-30-04.
+   *
+   * **Le filtre est par service, pas par jour.** L'ancienne liste était globale :
+   * un jour de fermeture crèche fermait aussi cantine, périscolaire et ALSH. Or
+   * l'ALSH est précisément ouvert quand l'école ferme. On ne retient donc que les
+   * jours où **le mode de ce contrat** n'est pas dans les services ouverts.
+   *
+   * **L'axe de connaissance (RM-31-03).** La résolution prend
+   * `ancreDeConnaissance(maintenant, factureLe)` : un mois arrêté garde
+   * l'interprétation qu'il avait à son arrêté, un mois non arrêté suit le
+   * calendrier d'aujourd'hui. Passer « maintenant » sans regarder `factureLe`
+   * compilerait, passerait la table de vérité du domaine, et annulerait en silence
+   * l'amendement PO du 2026-08-16 — d'où le test de non-régression dédié.
    */
   async prestationsMois(
     contratId: string,
@@ -1391,7 +1420,21 @@ export class PlanificationService {
       );
     const saisie =
       (plannings[0]?.saisie as EcrirePlanningDto | undefined) ?? {};
-    const joursNonFacturables = await this.referentiel.joursNonFacturables();
+
+    // L'ancre : l'instant d'arrêté du mois s'il existe, « maintenant » sinon.
+    // `facture_le` n'a pas encore d'écrivain (chantier « factures réelles »,
+    // `AM-121`) — tant qu'il vaut `null`, le comportement est celui d'avant.
+    const factureLe = plannings[0]?.factureLe ?? null;
+    const aLaDate = ancreDeConnaissance(
+      instant(this.clock.maintenant().toISOString()),
+      factureLe === null ? undefined : instant(factureLe.toISOString()),
+    );
+    const joursNonFacturables = await this.calendrier.joursFermesPourService(
+      ligne.etablissementId,
+      mois,
+      ligne.mode as ServiceCalendrier,
+      aLaDate,
+    );
 
     // Résolution temporelle (SFD 30 lot 4) : construit les **segments** (versions)
     // couvrant le mois, chacun restreint à sa période effective, puis délègue la

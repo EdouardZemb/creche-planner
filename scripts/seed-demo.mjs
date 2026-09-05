@@ -188,6 +188,35 @@ const ETABLISSEMENT_DEFAUT = 'Établissement';
  * emprunte exactement le chemin du produit, validation comprise. Un seed SQL
  * poserait sans effort des données que l'API refuserait.
  */
+/**
+ * Les 18 fermetures crèche 2026 — **même liste** que
+ * `apps/svc-planification/src/calendrier/reprise-fermetures.service.ts` et que le
+ * seed du Référentiel. Recopiée ici parce qu'un script de seed ne peut pas
+ * importer le code d'un service : la divergence éventuelle se verrait au premier
+ * écart de facturation entre la pile locale et la production, ce que le test
+ * différentiel du lot 4 est précisément là pour attraper.
+ */
+const FERMETURES_2026 = [
+  '2026-01-01',
+  '2026-01-02',
+  '2026-01-03',
+  '2026-01-04',
+  '2026-04-06',
+  '2026-05-01',
+  '2026-05-08',
+  '2026-05-14',
+  '2026-05-15',
+  '2026-05-16',
+  '2026-05-17',
+  '2026-05-25',
+  '2026-07-14',
+  '2026-07-27',
+  '2026-07-28',
+  '2026-07-29',
+  '2026-07-30',
+  '2026-07-31',
+];
+
 const CALENDRIERS = {
   'École ABCM': {
     zoneScolaire: 'B',
@@ -219,11 +248,22 @@ const CALENDRIERS = {
         services: ['CRECHE_PSU'],
       }),
     ),
-    // Fermetures annuelles de la crèche, en exceptions ponctuelles. Sous-ensemble
-    // représentatif des 18 dates seedées par le Référentiel (`FERMETURES_2026`) —
-    // leur reprise complète est le sujet du lot 4, pas de celui-ci.
+    // Fermetures annuelles de la crèche, en exceptions ponctuelles.
+    //
+    // **Lot 4 : la liste est désormais COMPLÈTE.** Le lot 2 n'en posait qu'un
+    // sous-ensemble représentatif, en renvoyant la reprise intégrale ici. Le
+    // service la joue au démarrage sur les bases réelles
+    // (`RepriseFermeturesService`) ; le seed fait la même chose en dev et en CI,
+    // par l'API, pour que la pile locale et `e2e-stack` voient exactement le
+    // calendrier que la production verra — sans quoi un écart de facturation ne
+    // se découvrirait qu'après le déploiement.
     exceptions: [
-      { jour: '2026-05-15', type: 'FERMETURE', libelle: 'Pont de l’Ascension' },
+      ...FERMETURES_2026.map((jour) => ({
+        jour,
+        type: 'FERMETURE',
+        libelle: 'Fermeture crèche 2026',
+      })),
+      // Trois fermetures propres au jeu de démonstration, hors liste Référentiel.
       { jour: '2026-08-03', type: 'FERMETURE', libelle: 'Fermeture d’été' },
       { jour: '2026-08-04', type: 'FERMETURE', libelle: 'Fermeture d’été' },
       {

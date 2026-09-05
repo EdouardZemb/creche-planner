@@ -291,7 +291,9 @@ const jourAlshSchema = z.object({
 /**
  * Saisie d'un planning mensuel : paramètres dépendants du mode (complément et
  * absences pour la crèche, PAI pour la cantine, jours pour l'ALSH). Les jours non
- * facturables ne sont PAS saisis : ils sont récupérés du Référentiel à la lecture.
+ * facturables ne sont PAS saisis : ils sont dérivés à la lecture du calendrier
+ * d'ouverture de l'établissement du contrat (SFD 31 lot 4, RM-31-04) — ils
+ * venaient du Référentiel avant ce lot.
  */
 export const ecrirePlanningSchema = z.object({
   /** Dépassement horaire du mois (crèche), en minutes. */

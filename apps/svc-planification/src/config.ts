@@ -10,8 +10,6 @@ export interface ServiceConfig {
   readonly port: number;
   readonly databaseUrl: string;
   readonly natsUrl: string;
-  /** URL du service Référentiel (jours non facturables du calendrier). */
-  readonly referentielUrl: string;
   /** Assertion d'identité inter-services (secret + enforce) — fondations lot 3. */
   readonly assertion: ConfigAssertion;
 }
@@ -28,7 +26,6 @@ export const CHAMPS_ENV = {
     'postgres://planification:planification@localhost:5435/planification',
   ),
   NATS_URL: champEnv.urlNats('nats://localhost:4222'),
-  REFERENTIEL_URL: champEnv.urlService('http://localhost:3001'),
   ...CHAMPS_ASSERTION,
 } as const;
 
@@ -46,7 +43,6 @@ export function loadConfig(
     port: valeurs.PORT,
     databaseUrl: valeurs.DATABASE_URL,
     natsUrl: valeurs.NATS_URL,
-    referentielUrl: valeurs.REFERENTIEL_URL,
     assertion: configAssertion(valeurs),
   };
 }

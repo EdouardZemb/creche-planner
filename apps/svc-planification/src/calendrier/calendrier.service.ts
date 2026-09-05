@@ -19,7 +19,10 @@ import {
 } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import {
+  estConnuA,
+  joursDuMois,
   resoudreJour,
+  resoudreMois,
   type CalendrierOuverture,
   type ExceptionCalendrier,
   type JourResolu,
@@ -257,6 +260,78 @@ export class CalendrierService {
       jours.push(resoudreJour(calendrier, jour, ancre));
     }
     return { du, au, aLaDate: ancre, jours };
+  }
+
+  /**
+   * Jours d'un mois `YYYY-MM` où `service` **n'est pas ouvert** — la liste que la
+   * génération des prestations attend sous le nom `joursNonFacturables`
+   * (RM-31-04, lot 4).
+   *
+   * **Le filtre est par SERVICE, jamais par jour entier.** C'est la règle qui
+   * distingue cette liste de celle qu'elle remplace : l'ancienne venait du
+   * Référentiel, était **globale**, et fermait donc l'ALSH les jours où la crèche
+   * était fermée — alors que l'ALSH est précisément le service ouvert quand
+   * l'école ferme. Un mercredi de vacances ferme cantine et périscolaire, pas
+   * l'ALSH.
+   *
+   * `aLaDate` est **obligatoire** ici, sans valeur par défaut : c'est l'axe de
+   * connaissance de RM-31-03, et un défaut « maintenant » suffirait à recalculer
+   * un mois déjà facturé avec le calendrier d'aujourd'hui — exactement ce que
+   * l'amendement PO du 2026-08-16 interdit. L'appelant l'obtient par
+   * `ancreDeConnaissance`, jamais d'une horloge lue ici.
+   */
+  async joursFermesPourService(
+    etablissementId: string,
+    mois: string,
+    service: ServiceCalendrier,
+    aLaDate: Instant,
+  ): Promise<string[]> {
+    const jours = joursDuMois(mois);
+    const premier = jours[0];
+    const dernier = jours.at(-1);
+    // `joursDuMois` lève sur un mois invalide ; la garde protège le typage, pas
+    // un cas atteignable.
+    if (premier === undefined || dernier === undefined) {
+      return [];
+    }
+    const calendrier = await this.chargerCalendrier(
+      etablissementId,
+      premier,
+      dernier,
+      aLaDate,
+    );
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // **Calendrier INCONNU ≠ établissement FERMÉ.** La garde qui évite de mettre
+    // toutes les factures à zéro le jour du déploiement.
+    //
+    // La couche 3 est la seule qui ouvre quoi que ce soit : sans récurrence, la
+    // résolution rend `servicesOuverts: []` pour **chaque** jour du mois. Un
+    // établissement dont personne n'a encore saisi la semaine type verrait donc
+    // ses 30 jours déclarés non facturables — soit un mois entièrement vidé, en
+    // silence, et pour tous les contrats à la fois.
+    //
+    // Or c'est exactement l'état de la production au moment où ce lot arrive :
+    // l'écran de saisie du calendrier existe depuis le lot 3, et **aucun
+    // établissement réel n'a encore de récurrence**. Fermer par défaut serait
+    // lire une absence de donnée comme une donnée.
+    //
+    // Règle retenue, et elle est étroite : **aucune récurrence connue à cette
+    // ancre ⇒ aucune exclusion**, soit rigoureusement le comportement d'avant ce
+    // lot. Dès qu'une seule récurrence existe, le calendrier fait autorité, y
+    // compris pour fermer. La règle ne peut donc pas masquer une fermeture
+    // saisie : elle ne s'applique qu'au calendrier vide.
+    // ─────────────────────────────────────────────────────────────────────────
+    const recurrencesConnues = calendrier.recurrences.filter((ligne) =>
+      estConnuA(ligne, aLaDate),
+    );
+    if (recurrencesConnues.length === 0) {
+      return [];
+    }
+
+    return resoudreMois(calendrier, mois, aLaDate)
+      .filter((jour) => !jour.servicesOuverts.includes(service))
+      .map((jour) => jour.jour);
   }
 
   /**

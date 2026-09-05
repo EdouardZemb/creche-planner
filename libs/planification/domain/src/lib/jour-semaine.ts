@@ -2,13 +2,7 @@ import { DateInvalideError } from './planification-error.js';
 
 /** Jour de la semaine (ubiquitous language, doc 02 §7). */
 export type JourSemaine =
-  | 'LUNDI'
-  | 'MARDI'
-  | 'MERCREDI'
-  | 'JEUDI'
-  | 'VENDREDI'
-  | 'SAMEDI'
-  | 'DIMANCHE';
+  'LUNDI' | 'MARDI' | 'MERCREDI' | 'JEUDI' | 'VENDREDI' | 'SAMEDI' | 'DIMANCHE';
 
 /** Index 0 = dimanche (aligné sur `Date#getUTCDay`) → `JourSemaine`. */
 const JOURS_PAR_INDEX: readonly JourSemaine[] = [
@@ -19,17 +13,6 @@ const JOURS_PAR_INDEX: readonly JourSemaine[] = [
   'JEUDI',
   'VENDREDI',
   'SAMEDI',
-];
-
-/**
- * Jours d'ouverture de l'école ABCM (doc 02 §4.4 bis) : lundi, mardi, jeudi,
- * vendredi. Le mercredi (et les vacances) relèvent de l'ALSH.
- */
-export const JOURS_OUVERTURE_ECOLE: readonly JourSemaine[] = [
-  'LUNDI',
-  'MARDI',
-  'JEUDI',
-  'VENDREDI',
 ];
 
 const FORMAT_ISO_JOUR = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -59,9 +42,4 @@ export function jourSemaineDeIso(iso: string): JourSemaine {
   }
   // getUTCDay : 0 (dimanche) → 6 (samedi). L'index est toujours valide.
   return JOURS_PAR_INDEX[date.getUTCDay()]!;
-}
-
-/** Vrai si le jour est un jour d'ouverture de l'école ABCM (doc 02 §4.4 bis). */
-export function estJourOuvertureEcole(jour: JourSemaine): boolean {
-  return JOURS_OUVERTURE_ECOLE.includes(jour);
 }

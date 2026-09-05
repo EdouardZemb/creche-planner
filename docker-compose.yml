@@ -552,7 +552,6 @@ services:
       PORT: '3004'
       DATABASE_URL: postgres://planification:planification@postgres-planification:5432/planification
       NATS_URL: nats://nats:4222
-      REFERENTIEL_URL: http://svc-referentiel:3001
       OTEL_SERVICE_NAME: svc-planification
       # Assertion d'identité inter-services (fondations lot 3) : le chemin
       # signature/vérification est réellement exercé en dev/e2e-stack (observe).
