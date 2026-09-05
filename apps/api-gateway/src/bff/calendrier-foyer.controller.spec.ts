@@ -208,7 +208,7 @@ describe('CalendrierFoyerController — import d’une année (lot 3)', () => {
     expect(vue.importees).toBe(5);
   });
 
-  it('refuse une année mal formée AVANT d’appeler l’aval', async () => {
+  it('refuse une année mal formée AVANT d’appeler l’aval', () => {
     const { controleur, client } = faux();
     // `valider` lève AVANT tout `await` : la méthode n'est pas `async`, donc
     // l'exception est synchrone. L'attendre en `rejects` la manquerait.

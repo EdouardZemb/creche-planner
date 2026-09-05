@@ -402,11 +402,13 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
           ) as unknown;
           // Le service appelle `fetch(...)` sans le qualifier : il résout donc
           // `globalThis.fetch` À L'APPEL, et ce remplacement le couvre.
-          globalThis.fetch = (async () =>
-            new Response(JSON.stringify(fixture), {
-              status: 200,
-              headers: { 'content-type': 'application/json' },
-            })) as typeof fetch;
+          globalThis.fetch = () =>
+            Promise.resolve(
+              new Response(JSON.stringify(fixture), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+              }),
+            );
         },
         [ETAT_CONTRAT_CRECHE]: async (): Promise<void> => {
           // Contrat crèche PSU de Mia (doc 02 §7) : 763 h / 7 mensualités.

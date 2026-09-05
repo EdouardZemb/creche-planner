@@ -43,7 +43,8 @@ const FIXTURE = JSON.parse(
 /** Enregistrement `i` de la fixture, sans assertion non nulle (lint du dépôt). */
 function ligneFixture(i: number): EnregistrementOds {
   const ligne = FIXTURE.results[i];
-  if (ligne === undefined) throw new Error(`fixture sans enregistrement ${i}`);
+  if (ligne === undefined)
+    throw new Error(`fixture sans enregistrement ${String(i)}`);
   return ligne;
 }
 
@@ -166,7 +167,9 @@ function fakeEcriture(zone: 'A' | 'B' | 'C' | null): {
         return {
           returning: () =>
             Promise.resolve(
-              (lignes as unknown[]).map((_, i) => ({ id: `neuve-${i}` })),
+              (lignes as unknown[]).map((_, i) => ({
+                id: `neuve-${String(i)}`,
+              })),
             ),
         };
       },
