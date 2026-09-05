@@ -200,6 +200,24 @@ export const planningMois = pgTable(
     simule: boolean('simule').notNull().default(false),
     /** Paramètres mensuels de saisie (forme dépendante du mode). */
     saisie: jsonb('saisie').notNull(),
+    /**
+     * **Instant d'arrêté du mois — l'ancre de connaissance de RM-31-03 (lot 4).**
+     *
+     * `null` = mois non encore facturé : sa génération suit le calendrier
+     * **courant**, ce qui est le comportement voulu (le parent retouche
+     * précisément pour que le futur soit juste). Une fois posé, il ne rebouge
+     * plus : la génération résout alors le calendrier **tel qu'il était connu à
+     * cet instant**, et une retouche postérieure ne peut plus déplacer le montant
+     * d'un mois déjà facturé.
+     *
+     * ⚠️ **Aucun chemin ne l'écrit encore** : l'arrêté mensuel appartient au
+     * chantier « factures réelles », qui n'est pas démarré. La colonne est donc
+     * **lue** à chaque génération et posée à la main en test — ce n'est pas une
+     * colonne décorative, c'est une colonne sans écrivain, et l'écart est consigné
+     * en `AM-121`. Tant qu'elle vaut `null` partout, le comportement est
+     * rigoureusement identique à celui d'avant ce lot.
+     */
+    factureLe: timestamp('facture_le', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -537,6 +555,9 @@ export type OutboxRow = typeof outbox.$inferSelect;
 export type DeadLetterRow = typeof deadLetter.$inferSelect;
 export type CalendrierPeriodeRow = typeof calendrierPeriode.$inferSelect;
 export type CalendrierExceptionRow = typeof calendrierException.$inferSelect;
+/** Ligne d'exception **à insérer** (reprise du lot 4). */
+export type NouvelleCalendrierExceptionRow =
+  typeof calendrierException.$inferInsert;
 export type CalendrierRecurrenceRow = typeof calendrierRecurrence.$inferSelect;
 export type CalendrierRegimeFeriesRow =
   typeof calendrierRegimeFeries.$inferSelect;

@@ -78,6 +78,13 @@
       "when": 1787000000000,
       "tag": "0010_calendrier_ouverture",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787200000000,
+      "tag": "0011_planning_mois_facture_le",
+      "breakpoints": true
     }
   ]
 }

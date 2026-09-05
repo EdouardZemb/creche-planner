@@ -13,24 +13,21 @@ describe('loadConfig (svc-planification)', () => {
       databaseUrl:
         'postgres://planification:planification@localhost:5435/planification',
       natsUrl: 'nats://localhost:4222',
-      referentielUrl: 'http://localhost:3001',
       assertion: { secret: undefined, enforce: false },
     });
   });
 
-  it("lit PORT / DATABASE_URL / NATS_URL / REFERENTIEL_URL depuis l'environnement", () => {
+  it("lit PORT / DATABASE_URL / NATS_URL depuis l'environnement", () => {
     expect(
       loadConfig({
         PORT: '4004',
         DATABASE_URL: 'postgres://u:p@db:5432/planif',
         NATS_URL: 'nats://broker:4222',
-        REFERENTIEL_URL: 'http://svc-referentiel:3001',
       }),
     ).toEqual({
       port: 4004,
       databaseUrl: 'postgres://u:p@db:5432/planif',
       natsUrl: 'nats://broker:4222',
-      referentielUrl: 'http://svc-referentiel:3001',
       assertion: { secret: undefined, enforce: false },
     });
   });
@@ -50,7 +47,7 @@ describe('loadConfig (svc-planification)', () => {
     } catch (erreur) {
       message = (erreur as Error).message;
     }
-    for (const nom of ['DATABASE_URL', 'NATS_URL', 'REFERENTIEL_URL']) {
+    for (const nom of ['DATABASE_URL', 'NATS_URL']) {
       expect(message).toContain(nom);
     }
   });

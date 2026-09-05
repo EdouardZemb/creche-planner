@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  JOURS_OUVERTURE_ECOLE,
-  jourSemaineDeIso,
-  estJourOuvertureEcole,
-} from './jour-semaine.js';
+import { jourSemaineDeIso } from './jour-semaine.js';
 import { DateInvalideError } from './planification-error.js';
 
 describe('jourSemaineDeIso', () => {
@@ -26,29 +22,5 @@ describe('jourSemaineDeIso', () => {
   it('rejette une date inexistante', () => {
     expect(() => jourSemaineDeIso('2026-02-30')).toThrow(DateInvalideError);
     expect(() => jourSemaineDeIso('2026-13-01')).toThrow(DateInvalideError);
-  });
-});
-
-describe('estJourOuvertureEcole', () => {
-  it('reconnaît lundi/mardi/jeudi/vendredi comme jours d ouverture école (doc 02 §4.4bis)', () => {
-    expect(estJourOuvertureEcole('LUNDI')).toBe(true);
-    expect(estJourOuvertureEcole('MARDI')).toBe(true);
-    expect(estJourOuvertureEcole('JEUDI')).toBe(true);
-    expect(estJourOuvertureEcole('VENDREDI')).toBe(true);
-  });
-
-  it('exclut mercredi, samedi et dimanche', () => {
-    expect(estJourOuvertureEcole('MERCREDI')).toBe(false);
-    expect(estJourOuvertureEcole('SAMEDI')).toBe(false);
-    expect(estJourOuvertureEcole('DIMANCHE')).toBe(false);
-  });
-
-  it('expose les jours d ouverture école', () => {
-    expect(JOURS_OUVERTURE_ECOLE).toEqual([
-      'LUNDI',
-      'MARDI',
-      'JEUDI',
-      'VENDREDI',
-    ]);
   });
 });

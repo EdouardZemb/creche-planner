@@ -275,8 +275,18 @@ export function verifierUniciteOuverte(calendrier: CalendrierOuverture): void {
   }
 }
 
-/** Vrai si la ligne était connue à `aLaDate` (intervalle semi-ouvert). */
-function connuA(ligne: Connaissance, aLaDate: Instant): boolean {
+/**
+ * Vrai si la ligne était connue à `aLaDate` (intervalle semi-ouvert
+ * `[connuDepuis, connuJusqua)`).
+ *
+ * **Exporté depuis le lot 4** : l'infrastructure a besoin de la même règle que la
+ * résolution pour distinguer « calendrier vide à cette date » de « calendrier
+ * fermé à cette date » — deux états que le résultat de la résolution rend
+ * identiques (aucun service ouvert), alors qu'ils n'ont pas du tout la même
+ * conséquence sur une facture. Redire la règle côté service l'aurait fait dériver
+ * du jour où l'un des deux bords changerait de sens.
+ */
+export function estConnuA(ligne: Connaissance, aLaDate: Instant): boolean {
   if (ligne.connuDepuis > aLaDate) {
     return false;
   }
@@ -356,10 +366,12 @@ function reduireAuConnu(
     }
   }
   return {
-    periodes: calendrier.periodes.filter((ligne) => connuA(ligne, aLaDate)),
-    exceptions: calendrier.exceptions.filter((ligne) => connuA(ligne, aLaDate)),
+    periodes: calendrier.periodes.filter((ligne) => estConnuA(ligne, aLaDate)),
+    exceptions: calendrier.exceptions.filter((ligne) =>
+      estConnuA(ligne, aLaDate),
+    ),
     recurrences: calendrier.recurrences.filter((ligne) =>
-      connuA(ligne, aLaDate),
+      estConnuA(ligne, aLaDate),
     ),
     feries,
   };

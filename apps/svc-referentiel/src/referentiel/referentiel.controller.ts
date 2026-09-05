@@ -45,7 +45,24 @@ export class ReferentielController {
     return this.referentiel.grilleApplicable(dateOk, mode, trancheNum);
   }
 
-  /** Jours non facturables (fériés/fermetures/vacances). */
+  /**
+   * Jours non facturables (fériés/fermetures/vacances).
+   *
+   * @deprecated **Depuis le 2026-09-05 (SFD 31, lot 4), plus aucun appelant.**
+   * `svc-planification` dérive désormais ses jours non facturables du calendrier
+   * d'ouverture de l'établissement du contrat (RM-31-04, source unique) : cette
+   * route ne sert plus la génération des prestations.
+   *
+   * Elle est **gardée comme filet de repli du déploiement**, pas par oubli : tant
+   * que le train qui porte le lot 4 n'est pas passé et vérifié en production, les
+   * images précédentes doivent pouvoir refonctionner telles quelles — c'est ce qui
+   * rend le retour arrière viable. Pendant la reprise, ne toucher NI cette route
+   * NI la table `jour_non_facturable`.
+   *
+   * **Échéance de suppression : au train suivant celui qui déploie le lot 4**, et
+   * au plus tard le **2026-12-31**. La retirer emporte aussi
+   * `listerJoursNonFacturables`, la table et son seed.
+   */
   @Get('calendrier/jours-non-facturables')
   joursNonFacturables(): Promise<JourNonFacturableVue[]> {
     return this.referentiel.listerJoursNonFacturables();

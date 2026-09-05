@@ -330,8 +330,6 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
         PORT: String(PORT),
         DATABASE_URL,
         NATS_URL: process.env['NATS_URL'] ?? 'nats://localhost:4222',
-        // Référentiel injoignable pendant la vérif → client dégradé (aucun jour exclu).
-        REFERENTIEL_URL: 'http://localhost:65535',
         OTEL_SDK_DISABLED: 'true',
         // Secret d'assertion inter-services ÉPINGLÉ (fondations lot 3) : byte-identique
         // à celui dont le requestFilter signe l'en-tête x-assertion-identite ci-dessous.

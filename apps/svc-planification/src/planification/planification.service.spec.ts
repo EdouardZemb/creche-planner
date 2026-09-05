@@ -29,7 +29,7 @@ import {
   planningMois,
 } from '../database/schema.js';
 import type { ContratRow, ContratVersionRow } from '../database/schema.js';
-import type { ReferentielClient } from './referentiel.client.js';
+import type { CalendrierService } from '../calendrier/calendrier.service.js';
 import type {
   CorrigerVersionDto,
   CreerAvenantDto,
@@ -39,8 +39,8 @@ import type {
 
 /**
  * Tests unitaires du `PlanificationService` SANS infra (Postgres mocké). On
- * construit `new PlanificationService(fakeDb, fakeReferentiel)` avec un faux `db`
- * renvoyant des lignes canned et un faux référentiel. La projection effective
+ * construit `new PlanificationService(fakeDb, fakeCalendrier, horloge)` avec un faux
+ * `db` renvoyant des lignes canned et un faux calendrier. La projection effective
  * (SQL réel) reste couverte par la vérification Pact provider (base réelle en CI).
  */
 
@@ -126,9 +126,22 @@ function fakeDbLecture(...reponses: unknown[][]): Database {
   return { select } as unknown as Database;
 }
 
-const referentielVide = {
-  joursNonFacturables: vi.fn(async () => [] as string[]),
-} as unknown as ReferentielClient;
+/**
+ * Faux calendrier : **aucun** jour fermé. C'est le remplaçant du faux Référentiel
+ * d'avant le lot 4 — même rôle, autre source (RM-31-04). Le vrai service est
+ * couvert par ses propres specs et par la vérification Pact sur base réelle.
+ */
+const calendrierVide = {
+  joursFermesPourService: vi.fn(async () => [] as string[]),
+} as unknown as CalendrierService;
+
+/**
+ * Horloge figée. La génération lit « maintenant » pour l'axe de connaissance
+ * (RM-31-03) : un test qui laisserait l'horloge système décider ne prouverait
+ * rien de reproductible.
+ */
+const MAINTENANT = new Date('2026-10-20T09:00:00.000Z');
+const horlogeFigee = { maintenant: () => MAINTENANT };
 
 describe('PlanificationService.prestationsMois (crèche)', () => {
   it('mappe une plage cohérente en durée (jour sup) → agrégée au complément', async () => {
@@ -145,7 +158,7 @@ describe('PlanificationService.prestationsMois (crèche)', () => {
       ],
     };
     const db = fakeDbLecture([ligneCreche()], [{ saisie }]);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCreche;
@@ -167,7 +180,7 @@ describe('PlanificationService.prestationsMois (crèche)', () => {
       ],
     };
     const db = fakeDbLecture([ligneCreche()], [{ saisie }]);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCreche;
@@ -190,7 +203,7 @@ describe('PlanificationService.prestationsMois (crèche)', () => {
       ],
     };
     const db = fakeDbLecture([ligneCreche()], [{ saisie }]);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCreche;
@@ -212,20 +225,24 @@ describe('PlanificationService.prestationsMois (crèche)', () => {
       ],
     };
     const db = fakeDbLecture([ligneCreche()], [{ saisie }]);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCreche;
     expect(presta.heuresDeduites.enMinutes).toBe(0);
   });
 
-  it('exclut un jour non facturable des heures réservées (référentiel)', async () => {
-    const refUnJour = {
-      joursNonFacturables: vi.fn(async () => ['2026-10-05']),
-    } as unknown as ReferentielClient;
+  it('exclut un jour non facturable des heures réservées (calendrier)', async () => {
+    const calendrierUnJourFerme = {
+      joursFermesPourService: vi.fn(async () => ['2026-10-05']),
+    } as unknown as CalendrierService;
     // Sans saisie : seules les heures réservées de la semaine type comptent.
     const db = fakeDbLecture([ligneCreche()], []);
-    const service = new PlanificationService(db, refUnJour);
+    const service = new PlanificationService(
+      db,
+      calendrierUnJourFerme,
+      horlogeFigee,
+    );
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCreche;
@@ -236,7 +253,7 @@ describe('PlanificationService.prestationsMois (crèche)', () => {
 
   it('lève NotFoundException si le contrat est introuvable', async () => {
     const db = fakeDbLecture([]); // aucune ligne contrat.
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
     await expect(
       service.prestationsMois(CONTRAT_ID, MOIS, false),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -250,7 +267,7 @@ describe('PlanificationService.prestationsMois (ABCM / exceptions)', () => {
       [ligneAbcm('CANTINE', {})],
       [{ saisie: { exceptions: [{ date: '2026-10-05', cantine: true }] } }],
     );
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCantine;
@@ -264,7 +281,7 @@ describe('PlanificationService.prestationsMois (ABCM / exceptions)', () => {
       [ligneAbcm('CANTINE', { LUNDI: { cantine: true } })],
       [{ saisie: { exceptions: [{ date: '2026-10-05', cantine: false }] } }],
     );
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCantine;
@@ -279,7 +296,7 @@ describe('PlanificationService.prestationsMois (ABCM / exceptions)', () => {
       [ligneAbcm('PERISCOLAIRE', { LUNDI: { periMatin: true } })],
       [{ saisie: { exceptions: [{ date: '2026-10-05', periSoir: true }] } }],
     );
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisPeriscolaire;
@@ -306,7 +323,7 @@ describe('PlanificationService.prestationsMois (résolution temporelle, SFD 30 l
       }),
     ];
     const db = fakeDbLecture([ligneCreche()], [], versions);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCreche;
@@ -328,7 +345,7 @@ describe('PlanificationService.prestationsMois (résolution temporelle, SFD 30 l
       }),
     ];
     const db = fakeDbLecture([ligneCreche()], [], versions);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCreche;
@@ -339,7 +356,7 @@ describe('PlanificationService.prestationsMois (résolution temporelle, SFD 30 l
 
   it('contrat sans version (repli défensif) : colonnes-projection en un seul segment', async () => {
     const db = fakeDbLecture([ligneCreche()], [], []);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCreche;
@@ -354,7 +371,7 @@ describe('PlanificationService.prestationsMois (résolution temporelle, SFD 30 l
       [],
       versions,
     );
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCreche;
@@ -370,7 +387,7 @@ describe('PlanificationService.lirePlanning', () => {
       absences: [],
     };
     const db = fakeDbLecture([ligneCreche()], [{ saisie }]);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const lu = await service.lirePlanning(CONTRAT_ID, MOIS, false);
     expect(lu).toEqual(saisie);
@@ -378,7 +395,7 @@ describe('PlanificationService.lirePlanning', () => {
 
   it('renvoie null si aucune saisie n’est enregistrée', async () => {
     const db = fakeDbLecture([ligneCreche()], []);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const lu = await service.lirePlanning(CONTRAT_ID, MOIS, false);
     expect(lu).toBeNull();
@@ -386,7 +403,7 @@ describe('PlanificationService.lirePlanning', () => {
 
   it('lève NotFoundException si le contrat est introuvable', async () => {
     const db = fakeDbLecture([]);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
     await expect(
       service.lirePlanning(CONTRAT_ID, MOIS, false),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -396,7 +413,7 @@ describe('PlanificationService.lirePlanning', () => {
 describe('PlanificationService.listerContrats', () => {
   it('projette les lignes en ContratDetailVue (lecture seule, triée)', async () => {
     const db = fakeDbLecture([ligneCreche(), ligneAbcm('CANTINE', {})]);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vues = await service.listerContrats(FOYER_ID);
     expect(vues).toHaveLength(2);
@@ -413,7 +430,7 @@ describe('PlanificationService.listerContrats', () => {
 describe('PlanificationService.lireContrat (résolution contrat → foyer, authz)', () => {
   it('projette le cœur du contrat (id, foyer, enfant, mode, dates)', async () => {
     const db = fakeDbLecture([ligneCreche()]);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.lireContrat(CONTRAT_ID);
 
@@ -429,7 +446,7 @@ describe('PlanificationService.lireContrat (résolution contrat → foyer, authz
 
   it('lève NotFoundException si le contrat est introuvable', async () => {
     const db = fakeDbLecture([]);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await expect(service.lireContrat(CONTRAT_ID)).rejects.toBeInstanceOf(
       NotFoundException,
@@ -442,7 +459,7 @@ describe('PlanificationService.supprimerContrat', () => {
     const { db, transaction, deleteWhere, insertValues } = fakeDbModif({
       contratPresent: true,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await service.supprimerContrat(CONTRAT_ID);
 
@@ -462,7 +479,7 @@ describe('PlanificationService.supprimerContrat', () => {
     const { db, deleteWhere, insertValues } = fakeDbModif({
       contratPresent: false,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await expect(service.supprimerContrat(CONTRAT_ID)).rejects.toBeInstanceOf(
       NotFoundException,
@@ -515,7 +532,7 @@ function fakeDbTransaction(contratPresent: boolean): {
 describe('PlanificationService.ecrirePlanning', () => {
   it('upsert le planning + insère l’outbox PlanningModifie (même transaction)', async () => {
     const { db, insertValues, onConflictDoUpdate } = fakeDbTransaction(true);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
     const dto: EcrirePlanningDto = { complementMinutes: 15 };
 
     await service.ecrirePlanning(CONTRAT_ID, MOIS, false, dto);
@@ -546,7 +563,7 @@ describe('PlanificationService.ecrirePlanning', () => {
 
   it('lève NotFoundException si le contrat est introuvable', async () => {
     const { db } = fakeDbTransaction(false);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
     await expect(
       service.ecrirePlanning(CONTRAT_ID, MOIS, false, {}),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -643,7 +660,7 @@ describe('PlanificationService.ecrireSemaine', () => {
     const { db, transaction, planningUpserts, outboxEvents } = fakeDbSemaine({
       contratPresent: true,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await service.ecrireSemaine(
       CONTRAT_ID,
@@ -675,7 +692,7 @@ describe('PlanificationService.ecrireSemaine', () => {
     const { db, transaction, planningUpserts, outboxEvents } = fakeDbSemaine({
       contratPresent: true,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     // 2026-W14 = 30,31 mars | 01→05 avril. Besoins sur les deux mois.
     const besoins: EcrirePlanningDto = {
@@ -717,7 +734,7 @@ describe('PlanificationService.ecrireSemaine', () => {
       contratPresent: true,
       echecSurMois: '2026-04',
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const besoins: EcrirePlanningDto = {
       joursSupplementaires: [
@@ -750,7 +767,7 @@ describe('PlanificationService.ecrireSemaine', () => {
     const { db, transaction, planningUpserts, outboxEvents } = fakeDbSemaine({
       contratPresent: false,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await expect(
       service.ecrireSemaine(CONTRAT_ID, '2026-W11', false, {}),
@@ -766,7 +783,7 @@ describe('PlanificationService.ecrireSemaine', () => {
 describe('PlanificationService.creerContrat', () => {
   it('insère le contrat + l’outbox ContratCree (même transaction)', async () => {
     const { db, insertValues } = fakeDbTransaction(true);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.creerContrat({
       mode: 'CRECHE_PSU',
@@ -915,7 +932,7 @@ function outboxDeType(
 describe('PlanificationService.creerContrat (lien établissement, P2)', () => {
   it('etablissementId existant : le valide (foyer) et le stocke + payload ContratCree', async () => {
     const { db, inserts } = fakeCreerAvecEtab(true);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await service.creerContrat({
       ...DTO_CRECHE_BASE,
@@ -933,7 +950,7 @@ describe('PlanificationService.creerContrat (lien établissement, P2)', () => {
 
   it('etablissementId hors foyer / inconnu : 400, aucun contrat inséré', async () => {
     const { db, inserts } = fakeCreerAvecEtab(false);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await expect(
       service.creerContrat({ ...DTO_CRECHE_BASE, etablissementId: ETAB_ID }),
@@ -945,7 +962,7 @@ describe('PlanificationService.creerContrat (lien établissement, P2)', () => {
     // Établissement existant/du bon foyer mais archivé (actif=false) → refus à la
     // création (il n'y a pas de lien « actuel » à tolérer).
     const { db, inserts } = fakeCreerAvecEtab(true, false);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await expect(
       service.creerContrat({ ...DTO_CRECHE_BASE, etablissementId: ETAB_ID }),
@@ -955,7 +972,7 @@ describe('PlanificationService.creerContrat (lien établissement, P2)', () => {
 
   it('nouvelEtablissement : crée l’établissement (+EtablissementCree) ET le contrat dans la même transaction', async () => {
     const { db, inserts } = fakeCreerAvecEtab(false);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await service.creerContrat({
       ...DTO_CRECHE_BASE,
@@ -1124,7 +1141,7 @@ describe('PlanificationService.creerContrat (idempotence de création, Lot 3 —
     const { db, lignesDe } = fakeBaseEnMemoire({
       etablissements: [etabSeed()],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
     const dto = {
       ...DTO_CRECHE_BASE,
       id: CONTRAT_ID,
@@ -1151,7 +1168,7 @@ describe('PlanificationService.creerContrat (idempotence de création, Lot 3 —
     const { db, lignesDe } = fakeBaseEnMemoire({
       etablissements: [etabSeed()],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.creerContrat({
       ...DTO_CRECHE_BASE,
@@ -1176,7 +1193,7 @@ describe('PlanificationService.creerContrat (idempotence de création, Lot 3 —
   it('nouvelEtablissement inédit → crée l’établissement (+EtablissementCree) ET le contrat', async () => {
     // Foyer vierge : la création à la volée insère réellement l'établissement.
     const { db, lignesDe } = fakeBaseEnMemoire();
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await service.creerContrat({
       ...DTO_CRECHE_BASE,
@@ -1218,7 +1235,7 @@ describe('PlanificationService (première inscription ABCM, lot 4a)', () => {
 
   it('création ABCM cochée : colonne + payload ContratCree + vue avec premiereInscription: true', async () => {
     const { db, inserts } = fakeCreerAvecEtab(true);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.creerContrat({
       ...DTO_ABCM_BASE,
@@ -1234,7 +1251,7 @@ describe('PlanificationService (première inscription ABCM, lot 4a)', () => {
 
   it('création ABCM sans le champ : défaut false (colonne, événement, vue)', async () => {
     const { db, inserts } = fakeCreerAvecEtab(true);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.creerContrat(DTO_ABCM_BASE);
 
@@ -1249,7 +1266,7 @@ describe('PlanificationService (première inscription ABCM, lot 4a)', () => {
 
   it('création crèche : toujours false (le DTO crèche n’expose pas le champ)', async () => {
     const { db, inserts } = fakeCreerAvecEtab(true);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.creerContrat({
       ...DTO_CRECHE_BASE,
@@ -1492,7 +1509,7 @@ describe('PlanificationService.creerAvenant (SFD 30 lot 4)', () => {
       versions: [versionRow()],
       plannings: [{ contratId: CONTRAT_ID, mois: '2026-03', saisie: {} }],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await service.creerAvenant(CONTRAT_ID, AVENANT_CRECHE);
 
@@ -1513,7 +1530,7 @@ describe('PlanificationService.creerAvenant (SFD 30 lot 4)', () => {
       contrat: ligneCreche(),
       versions: [versionRow()],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
     await expect(
       service.creerAvenant(CONTRAT_ID, {
         mode: 'CANTINE',
@@ -1528,7 +1545,7 @@ describe('PlanificationService.creerAvenant (SFD 30 lot 4)', () => {
       contrat: ligneCreche({ valideDu: '2026-01-01' }),
       versions: [versionRow()],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
     await expect(
       service.creerAvenant(CONTRAT_ID, {
         ...AVENANT_CRECHE,
@@ -1542,7 +1559,7 @@ describe('PlanificationService.creerAvenant (SFD 30 lot 4)', () => {
       contrat: ligneCreche(),
       versions: [versionRow({ dateEffet: '2026-09-01' })],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
     await expect(
       service.creerAvenant(CONTRAT_ID, AVENANT_CRECHE),
     ).rejects.toBeInstanceOf(ConflictException);
@@ -1550,7 +1567,7 @@ describe('PlanificationService.creerAvenant (SFD 30 lot 4)', () => {
 
   it('lève NotFoundException si le contrat est introuvable', async () => {
     const { db } = fakeDbVersionnee({ versions: [] });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
     await expect(
       service.creerAvenant(CONTRAT_ID, AVENANT_CRECHE),
     ).rejects.toBeInstanceOf(NotFoundException);
@@ -1565,7 +1582,7 @@ describe('PlanificationService.corrigerVersion / corrigerVersionCourante', () =>
       versions: [version],
       plannings: [{ contratId: CONTRAT_ID, mois: '2026-03', saisie: {} }],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const dto: CorrigerVersionDto = {
       mode: 'CRECHE_PSU',
@@ -1600,7 +1617,7 @@ describe('PlanificationService.corrigerVersion / corrigerVersionCourante', () =>
       contrat: ligneCreche(),
       versions: [],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
     await expect(
       service.corrigerVersion(
         CONTRAT_ID,
@@ -1626,7 +1643,7 @@ describe('PlanificationService.corrigerVersion / corrigerVersionCourante', () =>
       versions: [versionRow({ dateEffet: '2026-01-01' })],
       plannings: [{ contratId: CONTRAT_ID, mois: '2026-03', saisie: {} }],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const corps: ModifierContratDto = {
       mode: 'CRECHE_PSU',
@@ -1665,7 +1682,7 @@ describe('PlanificationService.corrigerVersion / corrigerVersionCourante', () =>
       contrat: ligneCreche(),
       versions: [versionRow()],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
     await expect(
       service.corrigerVersionCourante(CONTRAT_ID, {
         mode: 'CANTINE',
@@ -1696,7 +1713,7 @@ describe('PlanificationService (versionnement ABCM + cas limites)', () => {
         }),
       ],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await service.creerAvenant(CONTRAT_ID, {
       mode: 'CANTINE',
@@ -1721,7 +1738,7 @@ describe('PlanificationService (versionnement ABCM + cas limites)', () => {
       contrat: ligneCreche({ valideDu: '2099-01-01', valideAu: null }),
       versions: [versionRow({ dateEffet: '2099-01-01' })],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await service.creerAvenant(CONTRAT_ID, {
       ...AVENANT_CRECHE,
@@ -1758,7 +1775,7 @@ describe('PlanificationService (versionnement ABCM + cas limites)', () => {
       [],
       versions,
     );
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
     const presta = resultat.prestations[0] as PrestationsMoisCantine;
@@ -1782,7 +1799,7 @@ describe('PlanificationService.listerVersions / apercuImpactVersion', () => {
         }),
       ],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const historique = await service.listerVersions(CONTRAT_ID);
     expect(historique.map((v) => v.dateEffet)).toEqual([
@@ -1814,7 +1831,7 @@ describe('PlanificationService.listerVersions / apercuImpactVersion', () => {
         version,
       ],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const impact = await service.apercuImpactVersion(CONTRAT_ID, version.id);
     expect(impact.moisCouverts).toEqual(['2026-12']);
@@ -1835,7 +1852,7 @@ describe('PlanificationService.listerVersions / apercuImpactVersion', () => {
         version,
       ],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const impact = await service.apercuImpactVersion(CONTRAT_ID, version.id);
     // Version ouverte plafonnée à valideAu 2027-01-31 → décembre puis janvier.
@@ -1857,7 +1874,7 @@ describe('PlanificationService.listerVersions / apercuImpactVersion', () => {
         version,
       ],
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const impact = await service.apercuImpactVersion(CONTRAT_ID, version.id);
     // Version [2026-06-01, ouverte] plafonnée à valideAu 2026-07-31 → juin, juillet.
@@ -1928,7 +1945,7 @@ describe('PlanificationService.rattacherEtablissement (back-fill P5)', () => {
       contratLigne: ligneCreche({ etablissementId: AUTRE_ETAB_ID }),
       etabPresent: true,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.rattacherEtablissement(CONTRAT_ID, ETAB_ID);
 
@@ -1954,7 +1971,7 @@ describe('PlanificationService.rattacherEtablissement (back-fill P5)', () => {
       contratLigne: ligneCreche({ etablissementId: ETAB_ID }),
       etabPresent: true,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.rattacherEtablissement(CONTRAT_ID, ETAB_ID);
 
@@ -1968,7 +1985,7 @@ describe('PlanificationService.rattacherEtablissement (back-fill P5)', () => {
       contratLigne: ligneCreche({ etablissementId: AUTRE_ETAB_ID }),
       etabPresent: false,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await expect(
       service.rattacherEtablissement(CONTRAT_ID, ETAB_ID),
@@ -1985,7 +2002,7 @@ describe('PlanificationService.rattacherEtablissement (back-fill P5)', () => {
       etabPresent: true,
       etabActif: false,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await expect(
       service.rattacherEtablissement(CONTRAT_ID, ETAB_ID),
@@ -1999,7 +2016,7 @@ describe('PlanificationService.rattacherEtablissement (back-fill P5)', () => {
       contratLigne: null,
       etabPresent: true,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await expect(
       service.rattacherEtablissement(CONTRAT_ID, ETAB_ID),
@@ -2015,7 +2032,7 @@ describe('PlanificationService.rattacherEnfant (back-fill enfant_id)', () => {
       contratLigne: ligneCreche({ enfantId: null }),
       etabPresent: true,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.rattacherEnfant(CONTRAT_ID, ENFANT_ID);
 
@@ -2054,7 +2071,7 @@ describe('PlanificationService.rattacherEnfant (back-fill enfant_id)', () => {
       },
       etabPresent: true,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.rattacherEnfant(CONTRAT_ID, ENFANT_ID);
 
@@ -2072,7 +2089,7 @@ describe('PlanificationService.rattacherEnfant (back-fill enfant_id)', () => {
       contratLigne: ligneCreche({ enfantId: AUTRE_ENFANT_ID }),
       etabPresent: true,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.rattacherEnfant(CONTRAT_ID, ENFANT_ID);
 
@@ -2086,7 +2103,7 @@ describe('PlanificationService.rattacherEnfant (back-fill enfant_id)', () => {
       contratLigne: ligneCreche({ enfantId: ENFANT_ID }),
       etabPresent: true,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     const vue = await service.rattacherEnfant(CONTRAT_ID, ENFANT_ID);
 
@@ -2100,7 +2117,7 @@ describe('PlanificationService.rattacherEnfant (back-fill enfant_id)', () => {
       contratLigne: null,
       etabPresent: true,
     });
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await expect(
       service.rattacherEnfant(CONTRAT_ID, ENFANT_ID),
@@ -2150,7 +2167,7 @@ describe('PlanificationService — cohérence des heures annuelles', () => {
 
   it('REFUSE 1607 h pour 27 h/semaine, et n’insère aucun contrat', async () => {
     const { db, inserts } = fakeCreerAvecEtab(true);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await expect(
       service.creerContrat({
@@ -2163,7 +2180,7 @@ describe('PlanificationService — cohérence des heures annuelles', () => {
 
   it('rattache le refus au champ, avec un message sans jargon ni identifiant', async () => {
     const { db } = fakeCreerAvecEtab(true);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await expect(
       service.creerContrat({
@@ -2198,7 +2215,7 @@ describe('PlanificationService — cohérence des heures annuelles', () => {
 
   it('ACCEPTE la même saisie ramenée sous une année de garde (1260 h)', async () => {
     const { db, inserts } = fakeCreerAvecEtab(true);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await service.creerContrat({
       ...DTO_RENTREE,
@@ -2212,7 +2229,7 @@ describe('PlanificationService — cohérence des heures annuelles', () => {
     // données de référence (`seed-demo.mjs`) porte 885,5 h sur janvier→juillet, et
     // quatre specs e2e assertent les coûts qui en découlent.
     const { db, inserts } = fakeCreerAvecEtab(true);
-    const service = new PlanificationService(db, referentielVide);
+    const service = new PlanificationService(db, calendrierVide, horlogeFigee);
 
     await service.creerContrat({
       ...DTO_CRECHE_BASE,
@@ -2222,5 +2239,114 @@ describe('PlanificationService — cohérence des heures annuelles', () => {
       heuresAnnuellesContractualisees: 885.5,
     });
     expect(inserts.find((i) => i['mode'] === 'CRECHE_PSU')).toBeDefined();
+  });
+});
+
+/**
+ * **RM-31-03 vue depuis le montant — le test que ce lot ne peut pas ne pas
+ * avoir.**
+ *
+ * L'amendement PO du 2026-08-16 dit qu'une retouche de calendrier ne déplace pas
+ * l'interprétation d'un mois **déjà facturé**. Tout le travail du domaine (l'axe
+ * de connaissance) et du schéma (`facture_le`) ne vaut rien si la génération
+ * appelle la résolution avec « maintenant » : le code compilerait, la table de
+ * vérité du domaine resterait verte, et le passé se recalculerait en silence avec
+ * le calendrier d'aujourd'hui. C'est un mode de défaillance **muet**, donc il lui
+ * faut un test qui le regarde en face.
+ *
+ * Le faux calendrier ci-dessous joue la retouche : il ne ferme le lundi 05 que si
+ * on l'interroge APRÈS l'instant de la retouche. Le montant devient alors le
+ * témoin direct de l'ancre choisie par le service.
+ */
+describe('PlanificationService.prestationsMois — axe de connaissance (RM-31-03)', () => {
+  const RETOUCHE = '2026-11-01T00:00:00.000Z';
+  /** Toutes les heures du mois : 4 lundis × 8h30. */
+  const SANS_FERMETURE = 4 * 510;
+  /** Le 05 retiré : 3 lundis. */
+  const AVEC_FERMETURE = 3 * 510;
+
+  /** Ferme le 2026-10-05, mais seulement pour qui regarde après la retouche. */
+  function calendrierRetouche(): {
+    calendrier: CalendrierService;
+    ancres: string[];
+  } {
+    const ancres: string[] = [];
+    const calendrier = {
+      // Volontairement NON `async` : la fonction ne rend qu'une promesse déjà
+      // résolue, et un `async` sans `await` coûterait un warning au ratchet.
+      joursFermesPourService: vi.fn(
+        (
+          _etablissementId: string,
+          _mois: string,
+          _service: string,
+          aLaDate: string,
+        ) => {
+          ancres.push(aLaDate);
+          return Promise.resolve(aLaDate >= RETOUCHE ? ['2026-10-05'] : []);
+        },
+      ),
+    } as unknown as CalendrierService;
+    return { calendrier, ancres };
+  }
+
+  it('un mois NON arrêté suit le calendrier d’aujourd’hui', async () => {
+    const { calendrier } = calendrierRetouche();
+    // `facture_le` absent = mois jamais arrêté.
+    const db = fakeDbLecture([ligneCreche()], [{ saisie: {} }]);
+    const horlogeApres = { maintenant: () => new Date('2026-11-15T00:00:00Z') };
+    const service = new PlanificationService(db, calendrier, horlogeApres);
+
+    const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
+    const presta = resultat.prestations[0] as PrestationsMoisCreche;
+    // La retouche s'applique : c'est le comportement voulu, le parent retouche
+    // précisément pour que le futur soit juste.
+    expect(presta.heuresReservees.enMinutes).toBe(AVEC_FERMETURE);
+  });
+
+  it('un mois ARRÊTÉ garde l’interprétation qu’il avait à son arrêté', async () => {
+    const { calendrier } = calendrierRetouche();
+    const db = fakeDbLecture(
+      [ligneCreche()],
+      // Arrêté le 31 octobre : AVANT la retouche du 1er novembre.
+      [{ saisie: {}, factureLe: new Date('2026-10-31T00:00:00.000Z') }],
+    );
+    const horlogeApres = { maintenant: () => new Date('2026-11-15T00:00:00Z') };
+    const service = new PlanificationService(db, calendrier, horlogeApres);
+
+    const resultat = await service.prestationsMois(CONTRAT_ID, MOIS, false);
+    const presta = resultat.prestations[0] as PrestationsMoisCreche;
+    // Le montant NE BOUGE PAS, alors même que l'horloge est postérieure à la
+    // retouche. C'est toute la règle, en un chiffre.
+    expect(presta.heuresReservees.enMinutes).toBe(SANS_FERMETURE);
+  });
+
+  it('interroge le calendrier à l’instant d’arrêté, pas à maintenant', async () => {
+    const { calendrier, ancres } = calendrierRetouche();
+    const db = fakeDbLecture(
+      [ligneCreche()],
+      [{ saisie: {}, factureLe: new Date('2026-10-31T00:00:00.000Z') }],
+    );
+    const service = new PlanificationService(db, calendrier, {
+      maintenant: () => new Date('2026-11-15T00:00:00Z'),
+    });
+
+    await service.prestationsMois(CONTRAT_ID, MOIS, false);
+    expect(ancres).toEqual(['2026-10-31T00:00:00.000Z']);
+  });
+
+  it('résout le calendrier de l’établissement DU CONTRAT, pour SON mode', async () => {
+    const { calendrier } = calendrierRetouche();
+    const db = fakeDbLecture([ligneCreche()], [{ saisie: {} }]);
+    const service = new PlanificationService(db, calendrier, {
+      maintenant: () => new Date('2026-10-01T00:00:00Z'),
+    });
+
+    await service.prestationsMois(CONTRAT_ID, MOIS, false);
+    expect(calendrier.joursFermesPourService).toHaveBeenCalledWith(
+      ETAB_ID,
+      MOIS,
+      'CRECHE_PSU',
+      expect.any(String),
+    );
   });
 });
