@@ -680,8 +680,7 @@ export type PoserExceptionCalendrier = CorpsRequeteJson<
 >;
 
 /** Semaine type d'ouverture, par régime (couche 3). */
-export type RecurrencesCalendrierVue =
-  SchemaComposant<'RecurrencesCalendrier'>;
+export type RecurrencesCalendrierVue = SchemaComposant<'RecurrencesCalendrier'>;
 
 /** Corps de remplacement de la semaine type d'un régime. */
 export type RemplacerRecurrencesCalendrier = CorpsRequeteJson<

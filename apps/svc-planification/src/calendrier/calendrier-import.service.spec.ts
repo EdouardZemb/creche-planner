@@ -77,7 +77,11 @@ describe('mapperPeriodes — les deux conventions du lot 3', () => {
   it('mappe les cinq périodes de l’année avec leurs libellés officiels', () => {
     const periodes = mapperPeriodes(FIXTURE.results, 'B', '2026-2027');
     expect(periodes).toEqual([
-      { libelle: 'Vacances de la Toussaint', du: '2026-10-17', au: '2026-11-01' },
+      {
+        libelle: 'Vacances de la Toussaint',
+        du: '2026-10-17',
+        au: '2026-11-01',
+      },
       { libelle: 'Vacances de Noël', du: '2026-12-19', au: '2027-01-03' },
       { libelle: "Vacances d'hiver", du: '2027-02-13', au: '2027-02-28' },
       { libelle: 'Vacances de printemps', du: '2027-04-17', au: '2027-05-02' },

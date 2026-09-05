@@ -390,7 +390,13 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
           `;
           const fixture = JSON.parse(
             readFileSync(
-              join(__dirname, '..', 'calendrier', 'fixtures', 'ods-zone-b-2026-2027.json'),
+              join(
+                __dirname,
+                '..',
+                'calendrier',
+                'fixtures',
+                'ods-zone-b-2026-2027.json',
+              ),
               'utf8',
             ),
           ) as unknown;

@@ -209,34 +209,34 @@ function ZoneEtImport({
 
       <ChampFormulaire id={idZone} libelle="Zone de vacances">
         {(controle) => (
-        <select
-          {...controle}
-          value={zone}
-          onChange={(e) => void changerZone(e.target.value)}
-        >
-          <option value="">Aucune (pas de calendrier scolaire)</option>
-          <option value="A">Zone A</option>
-          <option value="B">Zone B</option>
-          <option value="C">Zone C</option>
-        </select>
+          <select
+            {...controle}
+            value={zone}
+            onChange={(e) => void changerZone(e.target.value)}
+          >
+            <option value="">Aucune (pas de calendrier scolaire)</option>
+            <option value="A">Zone A</option>
+            <option value="B">Zone B</option>
+            <option value="C">Zone C</option>
+          </select>
         )}
       </ChampFormulaire>
 
       <ChampFormulaire id={idAnnee} libelle="Année à importer">
         {(controle) => (
-        <select
-          {...controle}
-          value={annee}
-          onChange={(e) => {
-            setAnnee(e.target.value);
-          }}
-        >
-          {ANNEES.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
+          <select
+            {...controle}
+            value={annee}
+            onChange={(e) => {
+              setAnnee(e.target.value);
+            }}
+          >
+            {ANNEES.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
         )}
       </ChampFormulaire>
 
@@ -369,49 +369,49 @@ function Exceptions({
 
       <form onSubmit={(e) => void poser(e)}>
         <ChampFormulaire id={idJour} libelle="Jour">
-        {(controle) => (
-          <input
-            {...controle}
-            type="date"
-            value={jour}
-            required
-            onChange={(e) => {
-            setJour(e.target.value);
-          }}
-          />
-        )}
-      </ChampFormulaire>
+          {(controle) => (
+            <input
+              {...controle}
+              type="date"
+              value={jour}
+              required
+              onChange={(e) => {
+                setJour(e.target.value);
+              }}
+            />
+          )}
+        </ChampFormulaire>
         <ChampFormulaire id={idType} libelle="Nature">
-        {(controle) => (
-          <select
-            {...controle}
-            value={type}
-            onChange={(e) => {
-            setType(e.target.value);
-          }}
-          >
-            {TYPES_EXCEPTION.map((t) => (
-              <option key={t.valeur} value={t.valeur}>
-                {t.libelle}
-              </option>
-            ))}
-          </select>
-        )}
-      </ChampFormulaire>
+          {(controle) => (
+            <select
+              {...controle}
+              value={type}
+              onChange={(e) => {
+                setType(e.target.value);
+              }}
+            >
+              {TYPES_EXCEPTION.map((t) => (
+                <option key={t.valeur} value={t.valeur}>
+                  {t.libelle}
+                </option>
+              ))}
+            </select>
+          )}
+        </ChampFormulaire>
         <ChampFormulaire id={idLibelle} libelle="Intitulé">
-        {(controle) => (
-          <input
-            {...controle}
-            type="text"
-            value={libelle}
-            required
-            maxLength={200}
-            onChange={(e) => {
-            setLibelle(e.target.value);
-          }}
-          />
-        )}
-      </ChampFormulaire>
+          {(controle) => (
+            <input
+              {...controle}
+              type="text"
+              value={libelle}
+              required
+              maxLength={200}
+              onChange={(e) => {
+                setLibelle(e.target.value);
+              }}
+            />
+          )}
+        </ChampFormulaire>
         <Bouton type="submit" disabled={enCours}>
           Ajouter
         </Bouton>
@@ -479,7 +479,11 @@ function SemaineType({
         const lignes = parRegime(regime);
         return (
           <div key={regime}>
-            <h3>{regime === 'SCOLAIRE' ? 'En période scolaire' : 'Pendant les vacances'}</h3>
+            <h3>
+              {regime === 'SCOLAIRE'
+                ? 'En période scolaire'
+                : 'Pendant les vacances'}
+            </h3>
             {lignes.length === 0 ? (
               <p className="aide">Aucun service ouvert déclaré.</p>
             ) : (
@@ -515,9 +519,7 @@ function formaterJour(iso: string): string {
 }
 
 function libelleType(type: string): string {
-  return (
-    TYPES_EXCEPTION.find((t) => t.valeur === type)?.libelle ?? type
-  );
+  return TYPES_EXCEPTION.find((t) => t.valeur === type)?.libelle ?? type;
 }
 
 function libelleJourSemaine(jour: string): string {

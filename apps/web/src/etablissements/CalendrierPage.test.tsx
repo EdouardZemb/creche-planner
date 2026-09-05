@@ -18,9 +18,8 @@ import { api, ApiError } from '../api/client';
  */
 
 vi.mock('../api/client', async () => {
-  const reel = await vi.importActual<typeof import('../api/client')>(
-    '../api/client',
-  );
+  const reel =
+    await vi.importActual<typeof import('../api/client')>('../api/client');
   return {
     ...reel,
     api: {

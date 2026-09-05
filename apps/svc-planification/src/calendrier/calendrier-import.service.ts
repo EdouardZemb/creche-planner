@@ -301,7 +301,9 @@ function veille(jour: string): string {
 
 function describeCause(cause: unknown): string {
   if (cause instanceof Error) {
-    return cause.name === 'TimeoutError' ? `délai de ${String(DELAI_MS)} ms dépassé` : cause.message;
+    return cause.name === 'TimeoutError'
+      ? `délai de ${String(DELAI_MS)} ms dépassé`
+      : cause.message;
   }
   return 'cause inconnue';
 }
