@@ -24,3 +24,31 @@
 # Ajouté 2026-07-28 — retirer à la migration react-router v8.
 # https://github.com/advisories/GHSA-qwww-vcr4-c8h2
 GHSA-qwww-vcr4-c8h2
+
+# ── util-linux, image de base `nginxinc/nginx-unprivileged:alpine` ───────────
+#
+# Sept CVE HIGH apparues dans la base de Trivy entre le 2026-09-02 et le
+# 2026-09-05. ORIGINE : le paquet `util-linux` de l'image de base du service
+# `web`, PAS notre code ni nos dépendances — la même image se construisait en
+# vert le 2026-09-02 (`eed2f90`, `09068bb`) sans qu'aucun commit ne touche
+# `apps/web/Dockerfile`, `package.json` ni le lockfile. C'est le motif `MO-4` :
+# un rouge de CI sans diff correspondant vient de l'extérieur.
+#
+# POURQUOI UNE ALLOWLIST ET PAS LE VRAI CORRECTIF : le correctif est un bump de
+# l'image de base, qui change l'image de PRODUCTION. Le faire à l'intérieur d'un
+# lot fonctionnel mêlerait deux risques sans rapport, et il faut revalider le
+# durcissement (`read_only`, `cap_drop`) que `LE-58` a déjà fait tomber une fois.
+# Reporté à une PR d'infra dédiée : **`AM-120`**.
+#
+# Ajouté le 2026-09-05 — ⚠️ **DATE DE REVUE : 2026-10-05**.
+# Une entrée d'allowlist ne se périme pas toute seule (`AM-45`, `LE-45`) : à
+# cette date, soit `AM-120` est livrée et ces sept lignes partent avec, soit on
+# réexamine et on redate. Ne pas laisser filer sans décision.
+# https://avd.aquasec.com/nvd/cve-2026-53612 (et suivantes)
+CVE-2026-53612
+CVE-2026-53613
+CVE-2026-53614
+CVE-2026-76642
+CVE-2026-78408
+CVE-2026-78409
+CVE-2026-78410
