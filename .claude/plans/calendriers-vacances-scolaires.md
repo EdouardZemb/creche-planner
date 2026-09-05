@@ -179,6 +179,21 @@ Le calendrier existe en base sous une forme historisée conforme au lot 1, et se
 
 ## Lot 3 — Import open data + écran calendrier
 
+> **LIVRÉ le 2026-09-05.** Trois écarts avec l'énoncé ci-dessous, tous documentés :
+>
+> 1. **Aucune migration** — le lot 2 avait déjà posé `source`, `annee_scolaire` et
+>    `importe_le` ; il n'y avait rien à ajouter.
+> 2. **Clôture, pas `DELETE`** — l'énoncé prescrivait un `delete … where
+>    source='IMPORT'`, incompatible avec l'append-only construit au lot 2
+>    (`LE-102`). Le réimport clôt et rouvre au même instant, en transaction.
+> 3. **L'éditeur de semaine type est reporté au lot 5** — il est en LECTURE ici.
+>    La grille jours × services n'a de sens qu'une fois la sélectionnabilité
+>    branchée. Consigné `AM-118`.
+>
+> Les repères de ligne de cet énoncé sont **périmés** : `App.tsx` fait 147 lignes
+> (pas 670) et `titreDepuisPathname` vit dans `layout/`, pas dans `App.tsx`.
+
+
 **Modèle : Opus 4.8.** Dépend du lot 2. **Préalable : lot C0 de consolidation mergé** (le chantier nav mobile non commité touche `App.tsx`/`styles.css`, exactement la zone de ce lot).
 
 ### Objectif
