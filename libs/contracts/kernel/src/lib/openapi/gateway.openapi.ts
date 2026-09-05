@@ -1184,6 +1184,8 @@ const documentEcrit = {
               'RESSOURCES_INCONNUES_AU_MOIS',
               'SEMAINE_HORS_FENETRE_ENVOI',
               'RECAP_SANS_MODIFICATION',
+              'ZONE_SCOLAIRE_ABSENTE',
+              'IMPORT_CALENDRIER_INDISPONIBLE',
             ],
           },
           erreurs: {
@@ -3654,6 +3656,101 @@ const documentEcrit = {
           },
           '400': { description: 'Corps invalide (service inconnu, régime…).' },
           '404': { description: 'Établissement inconnu.' },
+        },
+      },
+    },
+    /**
+     * Import du calendrier scolaire officiel (US-31-01, lot 3).
+     *
+     * La **zone** n'est pas un paramètre : elle appartient à l'établissement.
+     * L'exposer ici permettrait d'importer un calendrier de zone A sur un
+     * établissement de zone B — un calendrier faux que plus rien ne signalerait.
+     */
+    '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/import': {
+      post: {
+        summary: 'Importer une année scolaire depuis l’open data',
+        description:
+          'Matérialise les périodes de vacances de la zone de l’établissement ' +
+          'pour l’année demandée. Rejouable : les périodes importées ' +
+          'précédemment pour la même année sont **closes** (jamais supprimées — ' +
+          'le calendrier est append-only), les périodes SAISIES à la main et les ' +
+          'exceptions ne sont pas touchées.',
+        parameters: [
+          {
+            name: 'foyerId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['anneeScolaire'],
+                properties: {
+                  anneeScolaire: {
+                    type: 'string',
+                    pattern: '^\\d{4}-\\d{4}$',
+                    example: '2026-2027',
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description:
+              'Compte rendu de l’import. Les périodes elles-mêmes se relisent ' +
+              'par `GET …/calendrier/periodes` — une seule source de vérité.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: [
+                    'anneeScolaire',
+                    'zoneScolaire',
+                    'importees',
+                    'remplacees',
+                  ],
+                  properties: {
+                    anneeScolaire: { type: 'string', example: '2026-2027' },
+                    zoneScolaire: { type: 'string', enum: ['A', 'B', 'C'] },
+                    importees: { type: 'integer', minimum: 0 },
+                    remplacees: {
+                      type: 'integer',
+                      minimum: 0,
+                      description:
+                        'Périodes d’un import précédent closes par celui-ci ; ' +
+                        '0 au premier import.',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '404': { description: 'Établissement inconnu.' },
+          '422': {
+            description:
+              'Import impossible : `ZONE_SCOLAIRE_ABSENTE` (aucune zone posée ' +
+              'sur l’établissement) ou `IMPORT_CALENDRIER_INDISPONIBLE` ' +
+              '(open data injoignable, ou année non publiée). Dans les deux ' +
+              'cas l’écran reste utilisable en saisie manuelle.',
+            content: {
+              'application/problem+json': {
+                schema: { $ref: '#/components/schemas/Probleme' },
+              },
+            },
+          },
         },
       },
     },

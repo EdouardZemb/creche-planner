@@ -1,0 +1,87 @@
+{
+  "_lisez_moi": [
+    "Réponse RÉELLE de l'API Opendata Soft de data.education.gouv.fr, jeu",
+    "`fr-en-calendrier-scolaire`, zone B, année 2026-2027 — capturée une fois et",
+    "COMMITÉE. Aucun test n'appelle l'API réelle : elle n'exige aucun secret, mais",
+    "elle est hors de notre contrôle, et un test qui sort sur Internet est un test",
+    "qui rougira un jour sans que le code ait bougé.",
+    "",
+    "Cette fixture VERROUILLE les deux conventions de mapping du lot 3 :",
+    "  1. `start_date`/`end_date` sont des datetimes UTC qui valent MINUIT à Paris",
+    "     (ex. `2026-10-16T22:00:00+00:00` = 2026-10-17T00:00 en CEST). Les lire en",
+    "     UTC décalerait d'un jour — c'est le défaut que la conversion Europe/Paris",
+    "     empêche, et que le test `mappe les bornes en dates locales` exerce.",
+    "  2. `end_date` est le jour de REPRISE, exclu. La borne `au` du domaine étant",
+    "     INCLUSE, elle vaut la veille.",
+    "",
+    "Le jeu contient aussi le piège documenté du dataset : des lignes en double",
+    "pour la population « Enseignants », et des lignes d'autres zones. Elles sont",
+    "présentes ici EXPRÈS — sans elles, le filtre ne serait pas testé."
+  ],
+  "total_count": 7,
+  "results": [
+    {
+      "description": "Vacances de la Toussaint",
+      "start_date": "2026-10-16T22:00:00+00:00",
+      "end_date": "2026-11-01T23:00:00+00:00",
+      "zones": "Zone B",
+      "annee_scolaire": "2026-2027",
+      "location": "Strasbourg",
+      "population": "-"
+    },
+    {
+      "description": "Vacances de Noël",
+      "start_date": "2026-12-18T23:00:00+00:00",
+      "end_date": "2027-01-03T23:00:00+00:00",
+      "zones": "Zone B",
+      "annee_scolaire": "2026-2027",
+      "location": "Strasbourg",
+      "population": "-"
+    },
+    {
+      "description": "Vacances d'hiver",
+      "start_date": "2027-02-12T23:00:00+00:00",
+      "end_date": "2027-02-28T23:00:00+00:00",
+      "zones": "Zone B",
+      "annee_scolaire": "2026-2027",
+      "location": "Strasbourg",
+      "population": "-"
+    },
+    {
+      "description": "Vacances de printemps",
+      "start_date": "2027-04-16T22:00:00+00:00",
+      "end_date": "2027-05-02T22:00:00+00:00",
+      "zones": "Zone B",
+      "annee_scolaire": "2026-2027",
+      "location": "Strasbourg",
+      "population": "-"
+    },
+    {
+      "description": "Vacances d'été",
+      "start_date": "2027-07-06T22:00:00+00:00",
+      "end_date": "2027-08-31T22:00:00+00:00",
+      "zones": "Zone B",
+      "annee_scolaire": "2026-2027",
+      "location": "Strasbourg",
+      "population": "-"
+    },
+    {
+      "description": "Vacances de la Toussaint",
+      "start_date": "2026-10-16T22:00:00+00:00",
+      "end_date": "2026-11-01T23:00:00+00:00",
+      "zones": "Zone B",
+      "annee_scolaire": "2026-2027",
+      "location": "Strasbourg",
+      "population": "Enseignants"
+    },
+    {
+      "description": "Vacances de la Toussaint",
+      "start_date": "2026-10-16T22:00:00+00:00",
+      "end_date": "2026-11-01T23:00:00+00:00",
+      "zones": "Zone A",
+      "annee_scolaire": "2026-2027",
+      "location": "Lyon",
+      "population": "-"
+    }
+  ]
+}

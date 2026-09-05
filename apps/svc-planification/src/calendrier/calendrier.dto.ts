@@ -139,5 +139,21 @@ export const saisirPeriodeSchema = z
 
 export type SaisirPeriodeDto = z.infer<typeof saisirPeriodeSchema>;
 
+/**
+ * Corps de `POST …/calendrier/import` (US-31-01, lot 3).
+ *
+ * Une seule donnée : l'année scolaire. La **zone** n'est pas dans le corps — elle
+ * est une propriété de l'établissement, pas de l'import. La passer ici
+ * autoriserait un import « zone A » sur un établissement de zone B, c'est-à-dire
+ * un calendrier faux que rien ne signalerait ensuite.
+ */
+export const importerAnneeSchema = z.object({
+  anneeScolaire: z
+    .string()
+    .regex(/^\d{4}-\d{4}$/, 'année scolaire attendue au format 2026-2027'),
+});
+
+export type ImporterAnneeDto = z.infer<typeof importerAnneeSchema>;
+
 /** Régime de fériés d'un établissement (`FR` par défaut — D7). */
 export const regimeFeriesSchema = z.enum(REGIMES_FERIES);

@@ -15,6 +15,7 @@ import {
   type CalendrierResoluVue,
   type ExceptionVue,
   type ExceptionsVue,
+  type ImportCalendrierVue,
   type PeriodeVue,
   type PeriodesVue,
   type RecurrencesVue,
@@ -25,6 +26,7 @@ import {
   lireCoucheCalendrierQuerySchema,
   poserExceptionSchema,
   remplacerRecurrencesSchema,
+  importerAnneeCalendrierSchema,
   saisirPeriodeSchema,
   valider,
 } from './bff.dto.js';
@@ -131,6 +133,27 @@ export class CalendrierFoyerController {
         id,
         saisie as SaisieCalendrier,
       ),
+    );
+  }
+
+  /**
+   * Importe une année scolaire depuis l'open data (US-31-01, lot 3).
+   *
+   * Le BFF ne parle PAS à data.education.gouv.fr : il relaie vers
+   * `svc-planification`, qui seul sort sur Internet. La passerelle est exposée au
+   * navigateur — lui donner une dépendance sortante de plus élargirait sa surface
+   * pour rien, et le service est déjà celui qui écrit ce que l'import produit.
+   */
+  @Post('import')
+  @FoyerScope('param:foyerId')
+  @HttpCode(HttpStatus.OK)
+  importerAnnee(
+    @Param('id') id: string,
+    @Body() corps: unknown,
+  ): Promise<ImportCalendrierVue> {
+    const { anneeScolaire } = valider(importerAnneeCalendrierSchema, corps);
+    return relayer(() =>
+      this.planification.importerCalendrier(id, anneeScolaire),
     );
   }
 

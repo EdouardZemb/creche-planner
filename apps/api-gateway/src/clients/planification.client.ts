@@ -256,6 +256,25 @@ const exceptionsSchema = z.object({
 export type ExceptionVue = z.infer<typeof exceptionVueSchema>;
 export type ExceptionsVue = z.infer<typeof exceptionsSchema>;
 
+/**
+ * Réponse de `POST …/calendrier/import` (SFD 31, US-31-01).
+ *
+ * Un COMPTE RENDU, pas la liste des périodes : l'écran relit ensuite
+ * `GET …/calendrier/periodes`, seule source de vérité de ce qui est en base. Un
+ * import qui renverrait les périodes créerait une seconde vue de la même chose,
+ * qui divergerait le jour où une retouche s'intercale.
+ */
+const importCalendrierSchema = z.object({
+  anneeScolaire: z.string(),
+  zoneScolaire: z.enum(['A', 'B', 'C']),
+  /** Périodes posées par cet import. */
+  importees: z.number().int().nonnegative(),
+  /** Périodes d'un import précédent, closes par celui-ci (0 au premier import). */
+  remplacees: z.number().int().nonnegative(),
+});
+
+export type ImportCalendrierVue = z.infer<typeof importCalendrierSchema>;
+
 /** Corps d'écriture du calendrier, relayé tel quel (validé à la frontière BFF). */
 export type SaisieCalendrier = Readonly<Record<string, unknown>>;
 
@@ -649,6 +668,21 @@ export class PlanificationClient {
         `/calendrier/periodes`,
       corps: saisie,
       schema: periodeVueSchema,
+    });
+  }
+
+  /** POST `…/calendrier/import` — importe une année scolaire (200, compte rendu). */
+  async importerCalendrier(
+    etablissementId: string,
+    anneeScolaire: string,
+  ): Promise<ImportCalendrierVue> {
+    return this.appel({
+      methode: 'POST',
+      chemin:
+        `/api/etablissements/${encodeURIComponent(etablissementId)}` +
+        `/calendrier/import`,
+      corps: { anneeScolaire },
+      schema: importCalendrierSchema,
     });
   }
 

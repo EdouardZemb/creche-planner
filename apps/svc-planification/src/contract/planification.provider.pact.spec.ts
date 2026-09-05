@@ -1,6 +1,8 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { Verifier } from '@pact-foundation/pact';
 import { signerAssertion } from '@creche-planner/nest-commons';
@@ -63,6 +65,20 @@ const CONTRAT_ID = '11111111-1111-1111-1111-111111111111';
  */
 const ETAT_CALENDRIER =
   'un établissement avec un calendrier d’ouverture retouché existe';
+
+/**
+ * État d'import (SFD 31, lot 3). Même seed, plus **la neutralisation de
+ * l'open data** : le handler remplace `globalThis.fetch` par la fixture
+ * commitée du service.
+ *
+ * Ce n'est pas une commodité de test, c'est une règle : cette vérification
+ * tourne en CI contre une vraie base, et un contrat qui dépendrait de
+ * data.education.gouv.fr rougirait un jour sans qu'une ligne du dépôt ait bougé.
+ * Ce qui reste vérifié est ce qui nous appartient — le contrôleur, le scoping,
+ * la transaction, la forme de la réponse.
+ */
+const ETAT_CALENDRIER_IMPORTABLE =
+  'un établissement de zone B dont l’open data scolaire est neutralisé';
 
 /** Établissement porteur du calendrier seedé (aligné consumer). */
 const ETAB_CALENDRIER_ID = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
@@ -365,6 +381,34 @@ describe('Pact provider · svc-planification honore le contrat api-gateway', () 
         },
         [ETAT_CALENDRIER]: async (): Promise<void> => {
           await seedCalendrier(db);
+        },
+        [ETAT_CALENDRIER_IMPORTABLE]: async (): Promise<void> => {
+          await seedCalendrier(db);
+          await db`
+            delete from calendrier_periode
+            where etablissement_id = ${ETAB_CALENDRIER_ID} and source = 'IMPORT'
+          `;
+          const fixture = JSON.parse(
+            readFileSync(
+              join(
+                __dirname,
+                '..',
+                'calendrier',
+                'fixtures',
+                'ods-zone-b-2026-2027.json',
+              ),
+              'utf8',
+            ),
+          ) as unknown;
+          // Le service appelle `fetch(...)` sans le qualifier : il résout donc
+          // `globalThis.fetch` À L'APPEL, et ce remplacement le couvre.
+          globalThis.fetch = () =>
+            Promise.resolve(
+              new Response(JSON.stringify(fixture), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+              }),
+            );
         },
         [ETAT_CONTRAT_CRECHE]: async (): Promise<void> => {
           // Contrat crèche PSU de Mia (doc 02 §7) : 763 h / 7 mensualités.

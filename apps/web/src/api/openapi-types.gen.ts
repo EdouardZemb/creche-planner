@@ -2679,6 +2679,81 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Importer une année scolaire depuis l’open data
+         * @description Matérialise les périodes de vacances de la zone de l’établissement pour l’année demandée. Rejouable : les périodes importées précédemment pour la même année sont **closes** (jamais supprimées — le calendrier est append-only), les périodes SAISIES à la main et les exceptions ne sont pas touchées.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    foyerId: string;
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @example 2026-2027 */
+                        anneeScolaire: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Compte rendu de l’import. Les périodes elles-mêmes se relisent par `GET …/calendrier/periodes` — une seule source de vérité. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example 2026-2027 */
+                            anneeScolaire: string;
+                            /** @enum {string} */
+                            zoneScolaire: "A" | "B" | "C";
+                            importees: number;
+                            /** @description Périodes d’un import précédent closes par celui-ci ; 0 au premier import. */
+                            remplacees: number;
+                        };
+                    };
+                };
+                /** @description Établissement inconnu. */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
+                };
+                /** @description Import impossible : `ZONE_SCOLAIRE_ABSENTE` (aucune zone posée sur l’établissement) ou `IMPORT_CALENDRIER_INDISPONIBLE` (open data injoignable, ou année non publiée). Dans les deux cas l’écran reste utilisable en saisie manuelle. */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Probleme"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/periodes": {
         parameters: {
             query?: never;
@@ -3858,7 +3933,7 @@ export interface components {
              * @description Code métier distinguant la CAUSE d’un statut qui, seul, n’en dit rien — trois 409 différents ne se traitent pas de la même façon à l’écran. Absent quand le statut se suffit.
              * @enum {string}
              */
-            code?: "EMAIL_DEJA_UTILISE" | "PARENT_PRINCIPAL_EXISTANT" | "DERNIER_PARENT_ACTIF" | "PERIODE_CHEVAUCHANTE" | "RESSOURCES_INCONNUES_AU_MOIS" | "SEMAINE_HORS_FENETRE_ENVOI" | "RECAP_SANS_MODIFICATION";
+            code?: "EMAIL_DEJA_UTILISE" | "PARENT_PRINCIPAL_EXISTANT" | "DERNIER_PARENT_ACTIF" | "PERIODE_CHEVAUCHANTE" | "RESSOURCES_INCONNUES_AU_MOIS" | "SEMAINE_HORS_FENETRE_ENVOI" | "RECAP_SANS_MODIFICATION" | "ZONE_SCOLAIRE_ABSENTE" | "IMPORT_CALENDRIER_INDISPONIBLE";
             /** @description Détail par champ d’une erreur de validation. Absent hors validation. */
             erreurs?: {
                 champ: string;

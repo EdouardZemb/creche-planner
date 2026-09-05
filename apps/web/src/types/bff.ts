@@ -641,3 +641,49 @@ export type ModifierSessionUa = CorpsRequeteJson<
   '/api/v1/unites-associatives/sessions/{sessionId}',
   'put'
 >;
+
+// ── Calendrier d'ouverture (SFD 31) ─────────────────────────────────────────
+
+/** Les périodes connues (couche 2), telles que l'écran de saisie les liste. */
+export type PeriodesCalendrierVue = SchemaComposant<'PeriodesCalendrier'>;
+
+/** Une période : bornes INCLUSES, et sa provenance (`IMPORT` ou `MANUEL`). */
+export type PeriodeCalendrierVue = SchemaComposant<'PeriodeCalendrier'>;
+
+/** Les exceptions ponctuelles connues (couche 1, la plus forte). */
+export type ExceptionsCalendrierVue = SchemaComposant<'ExceptionsCalendrier'>;
+
+/** Une exception ponctuelle : un jour, un type, un libellé. */
+export type ExceptionCalendrierVue = SchemaComposant<'ExceptionCalendrier'>;
+
+/**
+ * Compte rendu d'import (US-31-01). Volontairement PAS la liste des périodes :
+ * l'écran relit `…/calendrier/periodes` ensuite. Deux vues de la même chose
+ * finiraient par diverger le jour où une retouche s'intercale.
+ */
+export type ImportCalendrierVue = ReponseJson<
+  '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/import',
+  'post',
+  200
+>;
+
+/** Corps de saisie d'une période à la main. */
+export type SaisirPeriodeCalendrier = CorpsRequeteJson<
+  '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/periodes',
+  'post'
+>;
+
+/** Corps de pose d'une exception ponctuelle. */
+export type PoserExceptionCalendrier = CorpsRequeteJson<
+  '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/exceptions',
+  'post'
+>;
+
+/** Semaine type d'ouverture, par régime (couche 3). */
+export type RecurrencesCalendrierVue = SchemaComposant<'RecurrencesCalendrier'>;
+
+/** Corps de remplacement de la semaine type d'un régime. */
+export type RemplacerRecurrencesCalendrier = CorpsRequeteJson<
+  '/api/v1/foyers/{foyerId}/etablissements/{id}/calendrier/recurrences',
+  'put'
+>;

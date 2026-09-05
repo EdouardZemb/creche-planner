@@ -4,6 +4,56 @@
   },
   "interactions": [
     {
+      "description": "un import du calendrier scolaire pour 2026-2027",
+      "providerStates": [
+        {
+          "name": "un établissement de zone B dont l’open data scolaire est neutralisé"
+        }
+      ],
+      "request": {
+        "body": {
+          "anneeScolaire": "2026-2027"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/api/etablissements/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/calendrier/import"
+      },
+      "response": {
+        "body": {
+          "anneeScolaire": "2026-2027",
+          "importees": 5,
+          "remplacees": 0,
+          "zoneScolaire": "B"
+        },
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "matchingRules": {
+          "body": {
+            "$.importees": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.remplacees": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "une correction de la version courante d’un contrat crèche",
       "providerStates": [
         {

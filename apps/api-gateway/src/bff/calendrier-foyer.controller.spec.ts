@@ -38,6 +38,12 @@ function faux(): {
     lireExceptionsCalendrier: vi.fn().mockResolvedValue({ exceptions: [] }),
     poserExceptionCalendrier: vi.fn().mockResolvedValue({ id: 'e' }),
     cloreExceptionCalendrier: vi.fn().mockResolvedValue(undefined),
+    importerCalendrier: vi.fn().mockResolvedValue({
+      anneeScolaire: '2026-2027',
+      zoneScolaire: 'B',
+      importees: 5,
+      remplacees: 0,
+    }),
   };
   return {
     controleur: new CalendrierFoyerController(
@@ -170,8 +176,8 @@ describe('CalendrierFoyerController — portée par foyer', () => {
     CalendrierFoyerController.prototype,
   ).filter((nom) => nom !== 'constructor');
 
-  it('voit bien les dix routes de la façade (sonde de la sonde)', () => {
-    expect(routes).toHaveLength(10);
+  it('voit bien les onze routes de la façade (sonde de la sonde)', () => {
+    expect(routes).toHaveLength(11);
   });
 
   it('porte @FoyerScope(param:foyerId) sur CHAQUE route', () => {
@@ -185,6 +191,46 @@ describe('CalendrierFoyerController — portée par foyer', () => {
         ? []
         : [Reflect.getMetadata(FOYER_SCOPE_KEY, handler)];
     });
-    expect(sources).toEqual(Array.from({ length: 10 }, () => 'param:foyerId'));
+    expect(sources).toEqual(Array.from({ length: 11 }, () => 'param:foyerId'));
+  });
+});
+
+describe('CalendrierFoyerController — import d’une année (lot 3)', () => {
+  it('valide l’année et relaie, sans jamais sortir sur Internet lui-même', async () => {
+    const { controleur, client } = faux();
+    const vue = await controleur.importerAnnee(ETAB, {
+      anneeScolaire: '2026-2027',
+    });
+    expect(client['importerCalendrier']).toHaveBeenCalledWith(
+      ETAB,
+      '2026-2027',
+    );
+    expect(vue.importees).toBe(5);
+  });
+
+  it('refuse une année mal formée AVANT d’appeler l’aval', () => {
+    const { controleur, client } = faux();
+    // `valider` lève AVANT tout `await` : la méthode n'est pas `async`, donc
+    // l'exception est synchrone. L'attendre en `rejects` la manquerait.
+    expect(() =>
+      controleur.importerAnnee(ETAB, { anneeScolaire: '2026' }),
+    ).toThrow(BadRequestException);
+    // La validation à la frontière n'a de valeur que si elle ARRÊTE l'appel :
+    // un 400 rendu après un aller-retour aval aurait déjà écrit.
+    expect(client['importerCalendrier']).not.toHaveBeenCalled();
+  });
+
+  it('ignore une zone glissée dans le corps — elle vient de l’établissement', async () => {
+    const { controleur, client } = faux();
+    await controleur.importerAnnee(ETAB, {
+      anneeScolaire: '2026-2027',
+      zoneScolaire: 'A',
+    });
+    // Si la zone traversait, on pourrait poser un calendrier de zone A sur un
+    // établissement de zone B — faux, et silencieux.
+    expect(client['importerCalendrier']).toHaveBeenCalledWith(
+      ETAB,
+      '2026-2027',
+    );
   });
 });
