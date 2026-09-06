@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { useAsync } from './useAsync';
+import { useAsync, invaliderCacheAsync } from './useAsync';
 
 // Le cache module-level est purgé entre les tests par `src/test-setup.ts`
 // (viderCacheAsync) — chaque test part d'un cache vide.
@@ -196,6 +196,73 @@ describe('useAsync — cache par clé', () => {
     await waitFor(() => {
       expect(second.result.current.data).toBe('rétabli');
     });
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * **L'invalidation ciblée — la moitié du lot 5 qu'on ne voit pas.**
+ *
+ * `reload()` n'invalide que l'instance qui l'appelle. Il suffit tant que la
+ * mutation et la lecture vivent dans le même écran ; le calendrier d'ouverture
+ * rompt cette hypothèse (on le retouche dans « Calendrier », on le lit dans le
+ * planning, jamais montés ensemble). Sans invalidation par préfixe, une fermeture
+ * posée resterait saisissable jusqu'au prochain rechargement complet — un défaut
+ * que rien ne signale.
+ */
+describe('invaliderCacheAsync', () => {
+  it('écarte les entrées du préfixe, et rend leur compte', async () => {
+    const fn = vi.fn(() => Promise.resolve('v1'));
+    const a = renderHook(() =>
+      useAsync(fn, [], { cle: 'calendrier:etab-1:2026-11-01:2026-11-30' }),
+    );
+    await waitFor(() => expect(a.result.current.data).toBe('v1'));
+    const b = renderHook(() =>
+      useAsync(fn, [], { cle: 'calendrier:etab-1:2026-12-01:2026-12-31' }),
+    );
+    await waitFor(() => expect(b.result.current.data).toBe('v1'));
+
+    // Une retouche périme TOUS les mois déjà chargés de cet établissement.
+    expect(invaliderCacheAsync('calendrier:etab-1:')).toBe(2);
+  });
+
+  it('ne touche pas les clés d’un AUTRE établissement — la contre-épreuve', async () => {
+    const fn = vi.fn(() => Promise.resolve('v1'));
+    const autre = renderHook(() =>
+      useAsync(fn, [], { cle: 'calendrier:etab-2:2026-11-01:2026-11-30' }),
+    );
+    await waitFor(() => expect(autre.result.current.data).toBe('v1'));
+
+    // Sans cette épreuve, une invalidation qui viderait tout passerait le test
+    // ci-dessus pour la mauvaise raison.
+    expect(invaliderCacheAsync('calendrier:etab-1:')).toBe(0);
+
+    const rappel = vi.fn(() => Promise.resolve('v2'));
+    const remonte = renderHook(() =>
+      useAsync(rappel, [], { cle: 'calendrier:etab-2:2026-11-01:2026-11-30' }),
+    );
+    // Toujours en cache : servi sans requête, dès le premier rendu.
+    expect(remonte.result.current.data).toBe('v1');
+    expect(rappel).not.toHaveBeenCalled();
+  });
+
+  it('force une vraie relecture après invalidation', async () => {
+    const fn = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce('avant')
+      .mockResolvedValueOnce('après');
+    const premier = renderHook(() =>
+      useAsync(fn, [], { cle: 'calendrier:etab-3:2026-11-01:2026-11-30' }),
+    );
+    await waitFor(() => expect(premier.result.current.data).toBe('avant'));
+    premier.unmount();
+
+    invaliderCacheAsync('calendrier:etab-3:');
+
+    const second = renderHook(() =>
+      useAsync(fn, [], { cle: 'calendrier:etab-3:2026-11-01:2026-11-30' }),
+    );
+    await waitFor(() => expect(second.result.current.data).toBe('après'));
     expect(fn).toHaveBeenCalledTimes(2);
   });
 });

@@ -47,6 +47,7 @@ import type {
   DeclarerEngagementUa,
   AjouterSessionUa,
   ModifierSessionUa,
+  CalendrierResoluVue,
   PeriodesCalendrierVue,
   PeriodeCalendrierVue,
   ExceptionsCalendrierVue,
@@ -829,6 +830,35 @@ export const api = {
    * (`GET …/calendrier`) est le contrat gelé que consommera le plan 33 — l'écran
    * de saisie n'a rien à y faire.
    */
+  /**
+   * Calendrier **RÉSOLU** d'un établissement sur une plage — contrat gelé du
+   * lot 2, consommé par la sélectionnabilité du planning (lot 5).
+   *
+   * C'est la seule lecture des cinq qui rend ce que le DOMAINE déduit des trois
+   * couches ; les quatre autres rendent les couches brutes, pour l'écran de
+   * saisie. Le web ne rejoue jamais la résolution : il la demande.
+   *
+   * `aLaDate` n'est volontairement PAS exposé ici. Le planning montre ce qui est
+   * réservable **aujourd'hui** ; interroger un instant de connaissance passé est
+   * le besoin de la facturation, pas celui de la saisie — et l'offrir inviterait
+   * à s'en servir pour « expliquer » un montant, ce que cet écran ne sait pas
+   * faire.
+   */
+  lireCalendrierResolu(
+    foyerId: string,
+    etablissementId: string,
+    du: string,
+    au: string,
+    opts: RequeteOptions = {},
+  ): Promise<CalendrierResoluVue> {
+    const plage = new URLSearchParams({ du, au });
+    return requeteIdempotente(
+      `${BASE}/v1/foyers/${encodeURIComponent(foyerId)}/etablissements/${encodeURIComponent(etablissementId)}/calendrier?${plage.toString()}`,
+      { headers: entetes(false) },
+      opts,
+    ).then((r) => lire<CalendrierResoluVue>(r));
+  },
+
   lirePeriodesCalendrier(
     foyerId: string,
     etablissementId: string,

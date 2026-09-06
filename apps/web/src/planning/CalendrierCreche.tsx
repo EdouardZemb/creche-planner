@@ -13,6 +13,7 @@ import { ListeJoursClavier, type LigneJourClavier } from './ListeJoursClavier';
 import { SaisieLotAbsences } from './SaisieLotAbsences';
 import { ModaleJourCreche, type NatureSaisieJour } from './ModaleJourCreche';
 import { useSaisieCreche } from './useSaisieCreche';
+import { useCalendrierOuverture } from './useCalendrierOuverture';
 import {
   etatsJoursGardes,
   evenementsCreche,
@@ -74,6 +75,14 @@ export function CalendrierCreche({
     demanderConfirmationDurable,
   } = calendrier;
 
+  // Calendrier d'ouverture de l'établissement du contrat (SFD 31, lot 5). Le web
+  // ne redérive rien : il lit les jours déjà résolus par le domaine.
+  const ouverture = useCalendrierOuverture(
+    contrat.foyerId,
+    contrat.etablissementId,
+    mois,
+  );
+
   const [selection, setSelection] = useState<Set<string>>(() => new Set());
 
   // Modale jour : « absence » (jour gardé) ou « ajout » (jour non gardé).
@@ -104,9 +113,24 @@ export function CalendrierCreche({
     [semaineType],
   );
 
+  /**
+   * Un jour est gardé s'il est dans la semaine type, DANS la période du contrat,
+   * ET ouvert à la crèche ce jour-là.
+   *
+   * ⚠️ Un jour fermé n'est pas une absence : il ne doit pas être proposé du tout,
+   * ni compter comme une garde qu'on pourrait « annuler ». Le confondre avec une
+   * absence ferait apparaître des déductions sur des jours qui n'ont jamais été
+   * réservés.
+   */
+  const jourGardable = useCallback(
+    (iso: string) =>
+      estDansPeriode(iso) && ouverture.serviceOuvert(iso, 'CRECHE_PSU'),
+    [estDansPeriode, ouverture],
+  );
+
   const joursGardes = useMemo(
-    () => joursGardesDuMois(mois, semaineType, estDansPeriode),
-    [mois, semaineType, estDansPeriode],
+    () => joursGardesDuMois(mois, semaineType, jourGardable),
+    [mois, semaineType, jourGardable],
   );
 
   const joursGardesListe = useMemo<string[]>(
@@ -158,6 +182,14 @@ export function CalendrierCreche({
         );
         return;
       }
+      // CA3 : un jour fermé n'est pas sélectionnable, ET il dit pourquoi. Un
+      // refus muet est indiscernable d'une panne — c'est la leçon qui a fait
+      // écrire l'annonce ci-dessus, et elle vaut ici pour la même raison.
+      const motif = ouverture.motifFermeture(iso, 'CRECHE_PSU');
+      if (motif !== null) {
+        annoncer(`Ce jour n’est pas ouvert à la crèche : ${motif}.`);
+        return;
+      }
       setPortee('mois');
       if (joursGardes.has(iso)) {
         const garde = plageContratJour(iso);
@@ -204,6 +236,7 @@ export function CalendrierCreche({
     [
       annoncer,
       estDansPeriode,
+      ouverture,
       joursGardes,
       absences,
       joursSup,

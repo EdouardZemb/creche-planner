@@ -645,6 +645,15 @@ export type ModifierSessionUa = CorpsRequeteJson<
 // ── Calendrier d'ouverture (SFD 31) ─────────────────────────────────────────
 
 /** Les périodes connues (couche 2), telles que l'écran de saisie les liste. */
+/**
+ * Calendrier RÉSOLU d'un établissement sur une plage — le contrat **gelé** du
+ * lot 2, consommé par la sélectionnabilité du planning (lot 5) et, plus tard,
+ * par le plan 33. Le web ne réimplémente PAS les trois couches : il lit ce que
+ * le domaine a tranché.
+ */
+export type CalendrierResoluVue = SchemaComposant<'CalendrierResolu'>;
+/** Un jour résolu : contexte, libellé affichable, services réservables. */
+export type JourResoluVue = SchemaComposant<'JourResolu'>;
 export type PeriodesCalendrierVue = SchemaComposant<'PeriodesCalendrier'>;
 
 /** Une période : bornes INCLUSES, et sa provenance (`IMPORT` ou `MANUEL`). */
