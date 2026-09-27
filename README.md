@@ -54,25 +54,25 @@ Five bounded contexts, each with **its own database and its own contracts**, beh
 single Backend-for-Frontend. The web app never talks to a service directly.
 
 ```mermaid
-flowchart TB
-    WEB["<b>apps/web</b><br/>React 19 · Vite · PWA<br/>Playwright E2E"]
+flowchart LR
+    WEB["<b>apps/web</b><br/>React 19 · Vite<br/>PWA"]
 
-    GW["<b>apps/api-gateway</b> — BFF<br/>screen-oriented /api/v1 aggregation<br/>OpenAPI · RFC 9457 problem+json<br/>auth · CORS · rate limiting"]
+    GW["<b>apps/api-gateway</b><br/>BFF · /api/v1<br/>OpenAPI · RFC 9457<br/>auth · rate limiting"]
 
     subgraph CTX["Five bounded contexts — one Postgres database each"]
-        FOY["<b>svc-foyer</b><br/>household, children, parents<br/>notification preferences<br/>versioned income bands"]
-        REF["<b>svc-referentiel</b><br/>versioned pricing catalogue<br/>grids · scales"]
-        PLA["<b>svc-planification</b><br/>schedules, contracts,<br/>amendments, facilities"]
+        FOY["<b>svc-foyer</b><br/>household · parents<br/>income bands"]
+        REF["<b>svc-referentiel</b><br/>versioned<br/>pricing catalogue"]
+        PLA["<b>svc-planification</b><br/>schedules · contracts<br/>amendments"]
         TAR["<b>svc-tarification</b><br/>cost read model<br/>+ calculation"]
-        NOT["<b>svc-notifications</b><br/>e-mail (SMTP) + in-app"]
+        NOT["<b>svc-notifications</b><br/>e-mail · in-app"]
     end
 
-    BUS[["<b>NATS JetStream</b> — integration events<br/>transactional outbox · idempotent durable consumers"]]
+    BUS[["<b>NATS JetStream</b><br/>integration events<br/>transactional outbox<br/>idempotent consumers"]]
 
-    OBS["<b>OpenTelemetry</b> → Tempo · Prometheus · Loki · Grafana<br/>distributed traces · metrics · correlated logs"]
+    OBS["<b>OpenTelemetry</b><br/>Tempo · Prometheus<br/>Loki · Grafana"]
 
-    WEB -->|"REST — the BFF, and nothing else"| GW
-    GW -->|"resilient REST clients<br/>timeout · retry · circuit breaker"| FOY
+    WEB -->|"REST — the BFF,<br/>and nothing else"| GW
+    GW -->|"resilient REST clients<br/>timeout · retry · breaker"| FOY
     GW --> REF
     GW --> PLA
     GW --> TAR
