@@ -3,8 +3,9 @@
 > 🇬🇧 **English version: [README.md](README.md)** — la page d'accueil du dépôt est en
 > anglais (langue de travail des lecteurs extérieurs). **Ce document-ci reste la
 > référence de travail** : c'est lui qui porte l'historique de livraison chantier par
-> chantier et l'inventaire complet de la pile locale. Les deux pages sont tenues par
-> la porte `pnpm readme`, qui juge `README.md`.
+> chantier et l'inventaire complet de la pile locale. ⚠️ Seul `README.md` est jugé
+> par les portes `pnpm readme` et `pnpm faits` : cette page-ci n'est gardée par
+> aucune porte, et peut périmer sans que la CI le signale.
 
 Application web personnelle pour **planifier les frais de garde** des enfants d'un
 foyer et **calculer le coût mensuel consolidé**. Premier lot d'une future
