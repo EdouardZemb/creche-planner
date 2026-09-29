@@ -1,0 +1,96 @@
+# MESURE (annexe de proposition, PAS un gate) — coût réel d'un mutation testing
+# limité au code modifié, rejoué sur des PR historiques. Ne tourne que sur la PR
+# qui l'introduit (filtre de chemins). À RETIRER avant toute fusion.
+# Tête = commit de squash de la PR sur main ; base = son parent (le main de l'époque).
+name: Mesure mutation delta
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/mesure-mutation-delta.yml'
+      - '.github/workflows/scripts/mesure-mutation-delta.sh'
+
+permissions:
+  contents: read
+
+jobs:
+  mesure:
+    name: Mesure ${{ matrix.cas.etiquette }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        cas:
+          - {
+              etiquette: pr371-petit,
+              base: de0b905327853c2c5fd1e0f90b4139452c49bddb,
+              tete: b5e298470c31be038f6e52ac347f239a0250c1b9,
+              projet: planification-domain,
+              lib: libs/planification/domain,
+            }
+          - {
+              etiquette: pr336-moyen,
+              base: 4be481ec0c75da98264516ccbab608149cce39af,
+              tete: c1086f7c8fb248b505f424bb9d1aecb9d08cb484,
+              projet: planification-domain,
+              lib: libs/planification/domain,
+            }
+          - {
+              etiquette: pr352-gros,
+              base: 647896dd8e4712d6ed89c2d0d7a3b7b82a757f11,
+              tete: df77ebf83367919bd046df20bff0bd8287de8734,
+              projet: planification-domain,
+              lib: libs/planification/domain,
+            }
+          - {
+              etiquette: pr367-tarif,
+              base: 80e2875a62b6c279223d4d6ae650df51cf2ef063,
+              tete: 11fd02320169c4b29134b402dcb4a46353add61c,
+              projet: tarification-domain,
+              lib: libs/tarification/domain,
+            }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Copier le script hors de l'arbre (les checkouts historiques l'effaceraient)
+        run: cp .github/workflows/scripts/mesure-mutation-delta.sh "$RUNNER_TEMP/mesure.sh"
+
+      - name: Mesurer
+        env:
+          ETIQ: ${{ matrix.cas.etiquette }}
+          BASE: ${{ matrix.cas.base }}
+          TETE: ${{ matrix.cas.tete }}
+          PROJET: ${{ matrix.cas.projet }}
+          LIB: ${{ matrix.cas.lib }}
+        run: bash "$RUNNER_TEMP/mesure.sh" "$ETIQ" "$BASE" "$TETE" "$PROJET" "$LIB"
+
+      - name: Résumé
+        if: always()
+        run: |
+          {
+            echo "### Mesure ${{ matrix.cas.etiquette }}"
+            echo '| cas | mode | secondes | code | mutants | score | statuts | incrémental |'
+            echo '| --- | --- | --- | --- | --- | --- | --- | --- |'
+            sed 's/\t/ | /g; s/^/| /; s/$/ |/' mesures-*.tsv
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: mesure-${{ matrix.cas.etiquette }}
+          path: |
+            mesures-*.tsv
+            log-*.txt
+            mutation-*.json
+          retention-days: 30
