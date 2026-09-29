@@ -12,7 +12,7 @@
   côté des deux qui existent, puis précisée par un cas d'usage arrivé après coup : une **veille de
   compétences**.
 - **Amendement** : 2026-09-29, arbitrages PO sur la première version — e-mail jamais identifiant
-  validé, avec sa **dette** côté Martha (`AM-125`) ; démonstration **liée à l'environnement de
+  validé, avec sa **dette** côté Martha (`AM-123`) ; démonstration **liée à l'environnement de
   qualification** (§3, avec un [point ouvert](#point-ouvert--quel-environnement-de-qualification))
   ; gates limités au module ajouté à une application existante (§4).
 
@@ -146,7 +146,7 @@ fixé par cet ADR : un export de fichier versionné suffit tant qu'il n'y a qu'u
   servait de clé, elle deviendrait l'annuaire central de fait — sans contrat, et en portant une
   donnée personnelle dans chaque table.
 - **Martha enfreint cette règle aujourd'hui, et c'est une dette inscrite, pas une règle pour
-  plus tard** ([`AM-125`](../34-registre-ameliorations.md)). L'e-mail validé par Cloudflare Access
+  plus tard** ([`AM-123`](../34-registre-ameliorations.md)). L'e-mail validé par Cloudflare Access
   y sert de clé d'identité de bout en bout, alors qu'un `parent` porte déjà un identifiant opaque :
   - la passerelle résout les foyers autorisés **par e-mail**
     ([`appartenance.guard.ts`](../../apps/api-gateway/src/security/appartenance.guard.ts)), par
@@ -287,7 +287,7 @@ démonstration ne tourne sur un environnement qui contient des données réelles
   Ce que Martha partage avec l'écosystème, à ce jour, c'est la discipline — pas des données.
 - **Martha cloisonne par foyer, pas par personne.** La règle du §2 parle d'un « propriétaire
   opaque » précisément pour cela : chez Martha, le propriétaire d'une donnée est le foyer.
-- **Martha porte une dette dès aujourd'hui, pas le jour d'une identité commune** (`AM-125`) : son
+- **Martha porte une dette dès aujourd'hui, pas le jour d'une identité commune** (`AM-123`) : son
   identité circule par e-mail de la passerelle jusqu'aux services (§2). Son schéma n'est pas en
   cause — `parent` a déjà un identifiant opaque — mais la passerelle, l'assertion propagée et le
   rôle d'administrateur sont à reprendre, par un lot à part.
@@ -309,7 +309,7 @@ démonstration ne tourne sur un environnement qui contient des données réelles
 
 - Aucune application existante n'est modifiée **par ce document**. Martha garde son cloisonnement
   par foyer ; son modèle d'identité ([ADR-0006](0006-preferences-notification-et-desabonnement.md))
-  évoluera par le lot qui soldera `AM-125`, pas par cet ADR.
+  évoluera par le lot qui soldera `AM-123`, pas par cet ADR.
 - L'exemption domestique de l'[ADR-0007](0007-exemption-domestique-et-demarche-volontaire.md)
   est une décision **de Martha** ; elle ne s'étend pas d'office aux autres applications.
 
