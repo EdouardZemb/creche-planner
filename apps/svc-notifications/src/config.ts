@@ -93,7 +93,7 @@ export interface ServiceConfig {
  * 2. être en **`https:`** (un lien `http:` casse la cible one-click et n'est pas
  *    fiable pour un client de messagerie),
  * 3. viser un **nom de domaine public** — jamais un littéral IP (IPv4 ou IPv6,
- *    typiquement l'IP LAN `192.168.1.129` du serveur, à certificat non fiable et
+ *    typiquement l'IP LAN `192.168.0.10` du serveur, à certificat non fiable et
  *    injoignable hors-LAN) ni `localhost`.
  *
  * Limite connue et **assumée** : un domaine interne non public (`creche.lan`)
@@ -102,7 +102,7 @@ export interface ServiceConfig {
  * pas le correctif. Parsing via `URL` natif, aucune dépendance IP.
  *
  * ⚠️ Cette règle est **métier**, pas syntaxique : un `champEnv.urlService()` (donc
- * un `z.url()`) accepterait `http://192.168.1.129` sans broncher. Elle reste donc
+ * un `z.url()`) accepterait `http://192.168.0.10` sans broncher. Elle reste donc
  * une règle de production explicite, jamais remplacée par la validation de forme.
  */
 export function estUrlEmailPublique(url: string): boolean {
@@ -123,7 +123,7 @@ export function estUrlEmailPublique(url: string): boolean {
   if (hote.includes(':')) {
     return false;
   }
-  // IPv4 littéral : quatre octets pointés (ex. 192.168.1.129).
+  // IPv4 littéral : quatre octets pointés (ex. 192.168.0.10).
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hote)) {
     return false;
   }

@@ -112,7 +112,7 @@ describe('svc-planification · scoping enforce', () => {
     it('contrat du foyer autorisé → passe (200)', async () => {
       const req = requete({
         params: { id: CONTRAT },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(PlanificationController, PC.lireContrat, req), RESOLVEUR),
@@ -122,7 +122,7 @@ describe('svc-planification · scoping enforce', () => {
     it('contrat d’un foyer étranger → 403', async () => {
       const req = requete({
         params: { id: CONTRAT },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(
         chaine(ctx(PlanificationController, PC.lireContrat, req), RESOLVEUR),
@@ -150,7 +150,7 @@ describe('svc-planification · scoping enforce', () => {
       const expiree = new Date(Date.now() - 200_000);
       const req = requete({
         params: { id: CONTRAT },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }, expiree),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }, expiree),
       });
       await expect(
         chaine(ctx(PlanificationController, PC.lireContrat, req), RESOLVEUR),
@@ -160,7 +160,7 @@ describe('svc-planification · scoping enforce', () => {
     it('contrat inexistant (résolveur → null) → passe (404 laissé au handler, pas 403)', async () => {
       const req = requete({
         params: { id: '99999999-9999-4999-8999-999999999999' },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(PlanificationController, PC.lireContrat, req), RESOLVEUR),
@@ -173,7 +173,7 @@ describe('svc-planification · scoping enforce', () => {
       const req = requete({
         originalUrl: '/api/prestations',
         query: { contrat: CONTRAT },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(
         chaine(ctx(PlanificationController, PC.prestations, req), RESOLVEUR),
@@ -185,7 +185,7 @@ describe('svc-planification · scoping enforce', () => {
     it('foyer autorisé → passe', async () => {
       const req = requete({
         query: { foyer: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(PlanificationController, PC.listerContrats, req), RESOLVEUR),
@@ -195,7 +195,7 @@ describe('svc-planification · scoping enforce', () => {
     it('foyer étranger → 403', async () => {
       const req = requete({
         query: { foyer: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(
         chaine(ctx(PlanificationController, PC.listerContrats, req), RESOLVEUR),
@@ -208,7 +208,7 @@ describe('svc-planification · scoping enforce', () => {
       const req = requete({
         method: 'POST',
         body: { foyerId: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(
         chaine(ctx(PlanificationController, PC.creerContrat, req), RESOLVEUR),
@@ -221,7 +221,7 @@ describe('svc-planification · scoping enforce', () => {
       const req = requete({
         originalUrl: `/api/foyers/${FOYER}/export`,
         params: { foyerId: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(PortabiliteController, XC.exporter, req), RESOLVEUR),
@@ -232,7 +232,7 @@ describe('svc-planification · scoping enforce', () => {
       const req = requete({
         originalUrl: `/api/foyers/${FOYER}/export`,
         params: { foyerId: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(
         chaine(ctx(PortabiliteController, XC.exporter, req), RESOLVEUR),
@@ -255,7 +255,7 @@ describe('svc-planification · scoping enforce', () => {
       const req = requete({
         originalUrl: '/api/etablissements/x',
         params: { id: ETAB },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(EtablissementController, EC.parId, req), RESOLVEUR),
@@ -266,7 +266,7 @@ describe('svc-planification · scoping enforce', () => {
       const req = requete({
         originalUrl: '/api/etablissements/x',
         params: { id: ETAB },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(
         chaine(ctx(EtablissementController, EC.parId, req), RESOLVEUR),
@@ -305,7 +305,7 @@ describe('svc-planification · scoping enforce', () => {
       const req = requete({
         originalUrl: '/api/etablissements/x/calendrier',
         params: { id: ETAB },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(CalendrierController, methode, req), RESOLVEUR),
@@ -316,7 +316,7 @@ describe('svc-planification · scoping enforce', () => {
       const req = requete({
         originalUrl: '/api/etablissements/x/calendrier',
         params: { id: ETAB },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(
         chaine(ctx(CalendrierController, methode, req), RESOLVEUR),
@@ -327,7 +327,7 @@ describe('svc-planification · scoping enforce', () => {
       const req = requete({
         originalUrl: '/api/etablissements/x/calendrier',
         params: { id: 'ffffffff-ffff-4fff-8fff-ffffffffffff' },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(CalendrierController, CC.lire, req), RESOLVEUR),

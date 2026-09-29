@@ -40,16 +40,20 @@ describe('IdentiteGuard (pose l’identité, ne refuse rien)', () => {
 
   it('laisse passer une route @Public() sans poser d’identité', async () => {
     const guard = new IdentiteGuard(fakeReflector(true));
-    const req = requete({ headers: { 'x-dev-user-email': 'parent@test.fr' } });
+    const req = requete({
+      headers: { 'x-dev-user-email': 'parent@test.example' },
+    });
     await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
     expect(req.identite).toBeUndefined();
   });
 
   it('pose request.identite depuis X-Dev-User-Email hors production', async () => {
     const guard = new IdentiteGuard(fakeReflector(false));
-    const req = requete({ headers: { 'x-dev-user-email': 'parent@test.fr' } });
+    const req = requete({
+      headers: { 'x-dev-user-email': 'parent@test.example' },
+    });
     await guard.canActivate(fakeContext(req));
-    expect(req.identite).toEqual({ email: 'parent@test.fr' });
+    expect(req.identite).toEqual({ email: 'parent@test.example' });
   });
 
   it('ignore X-Dev-User-Email en production (pas d’identité de dev spoofable)', async () => {
@@ -65,7 +69,9 @@ describe('IdentiteGuard (pose l’identité, ne refuse rien)', () => {
     process.env['TARIFICATION_URL'] = 'http://svc-tarification:3005';
     process.env['NOTIFICATIONS_URL'] = 'http://svc-notifications:3006';
     const guard = new IdentiteGuard(fakeReflector(false));
-    const req = requete({ headers: { 'x-dev-user-email': 'parent@test.fr' } });
+    const req = requete({
+      headers: { 'x-dev-user-email': 'parent@test.example' },
+    });
     const ok = await guard.canActivate(fakeContext(req));
     expect(ok).toBe(true);
     expect(req.identite).toBeUndefined();

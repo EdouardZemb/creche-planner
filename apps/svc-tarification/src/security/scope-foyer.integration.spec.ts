@@ -82,7 +82,7 @@ describe('svc-tarification · scoping enforce (GET /couts, /couts/annuel — ?fo
   it('foyer du parent → passe (200)', async () => {
     const req = requete(
       { foyer: FOYER },
-      entete({ email: 'p@x.fr', foyers: [FOYER] }),
+      entete({ email: 'p@x.example', foyers: [FOYER] }),
     );
     await expect(chaine(ctx(P.coutMois, req))).resolves.toBe(true);
     await expect(chaine(ctx(P.coutAnnuel, req))).resolves.toBe(true);
@@ -91,7 +91,7 @@ describe('svc-tarification · scoping enforce (GET /couts, /couts/annuel — ?fo
   it('foyer étranger → 403', async () => {
     const req = requete(
       { foyer: FOYER },
-      entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+      entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
     );
     await expect(chaine(ctx(P.coutMois, req))).rejects.toBeInstanceOf(
       ForbiddenException,
@@ -114,7 +114,7 @@ describe('svc-tarification · scoping enforce (GET /couts, /couts/annuel — ?fo
     const expiree = new Date(Date.now() - 200_000);
     const req = requete(
       { foyer: FOYER },
-      entete({ email: 'p@x.fr', foyers: [FOYER] }, expiree),
+      entete({ email: 'p@x.example', foyers: [FOYER] }, expiree),
     );
     await expect(chaine(ctx(P.coutMois, req))).rejects.toBeInstanceOf(
       UnauthorizedException,

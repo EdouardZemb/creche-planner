@@ -45,15 +45,15 @@ describe('emailDepuisJwtCf', () => {
   }
 
   it('extrait l’e-mail d’un JWT valide (signature + issuer + aud)', async () => {
-    const jwt = await signer({ email: 'parent@test.fr' });
+    const jwt = await signer({ email: 'parent@test.example' });
     await expect(emailDepuisJwtCf(jwt, OPTIONS, jwks)).resolves.toBe(
-      'parent@test.fr',
+      'parent@test.example',
     );
   });
 
   it('rejette un JWT dont l’audience ne correspond pas', async () => {
     const jwt = await signer(
-      { email: 'parent@test.fr' },
+      { email: 'parent@test.example' },
       { audience: 'autre-app' },
     );
     await expect(emailDepuisJwtCf(jwt, OPTIONS, jwks)).rejects.toThrow();
@@ -61,7 +61,7 @@ describe('emailDepuisJwtCf', () => {
 
   it('rejette un JWT dont l’issuer ne correspond pas', async () => {
     const jwt = await signer(
-      { email: 'parent@test.fr' },
+      { email: 'parent@test.example' },
       { issuer: 'https://pirate.cloudflareaccess.com' },
     );
     await expect(emailDepuisJwtCf(jwt, OPTIONS, jwks)).rejects.toThrow();

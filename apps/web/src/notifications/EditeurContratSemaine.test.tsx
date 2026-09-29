@@ -691,7 +691,7 @@ describe('EditeurContratSemaine (modes ABCM et ALSH)', () => {
  * **Non-régression du 404 rencontré en production le 2026-08-29.** Un parent a
  * créé le contrat de la rentrée, saisi sa semaine dans l'éditeur hebdomadaire
  * (trois écritures acceptées, 204), puis cliqué « Valider » — et reçu un 404 :
- * `aucune semaine 2026-W36 à valider pour le contrat f2899521…`.
+ * `aucune semaine 2026-W36 à valider pour le contrat 7c9e6679…`.
  *
  * Cause : l'éditeur propose « Valider » pour **tout** contrat couvrant la
  * semaine, alors que la validation n'existe que pour ceux qu'un rappel du mardi a
@@ -737,7 +737,7 @@ describe('EditeurContratSemaine — semaine jamais notifiée', () => {
             champ: 'semaineIso',
             message:
               'aucune semaine 2026-W36 à valider pour le contrat ' +
-              'f2899521-cffc-465f-96b0-43e59a5b7de8',
+              '7c9e6679-7425-40de-944b-e07fc1f90ae7',
           },
         ],
       }),
@@ -763,7 +763,7 @@ describe('EditeurContratSemaine — semaine jamais notifiée', () => {
             champ: 'semaineIso',
             message:
               'aucune semaine 2026-W36 à valider pour le contrat ' +
-              'f2899521-cffc-465f-96b0-43e59a5b7de8',
+              '7c9e6679-7425-40de-944b-e07fc1f90ae7',
           },
         ],
       }),
@@ -773,7 +773,7 @@ describe('EditeurContratSemaine — semaine jamais notifiée', () => {
     await user.click(screen.getByRole('button', { name: BOUTON_VALIDER }));
     await screen.findByText(/il n’y a rien à valider ici/i);
 
-    expect(container.textContent).not.toMatch(/f2899521/);
+    expect(container.textContent).not.toMatch(/7c9e6679/);
     expect(container.textContent).not.toMatch(/2026-W36/);
   });
 

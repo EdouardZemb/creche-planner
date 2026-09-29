@@ -416,7 +416,7 @@ function evenementParent(
     payload: {
       foyerId: FOYER_ID,
       parentId: PARENT_ID,
-      email: 'maman@test.fr',
+      email: 'maman@test.example',
       principal: true,
       actif: true,
       ...surcharge,
@@ -455,7 +455,7 @@ describe('Projection foyer_parent (parents du foyer, stream FOYER)', () => {
     expect(lignesDe(foyerParent)[0]).toMatchObject({
       parentId: PARENT_ID,
       foyerId: FOYER_ID,
-      email: 'maman@test.fr',
+      email: 'maman@test.example',
       principal: true,
       actif: true,
     });
@@ -470,11 +470,13 @@ describe('Projection foyer_parent (parents du foyer, stream FOYER)', () => {
 
     await projection.traiter(
       'FOYER',
-      evenementParent(PARENT_AJOUTE_TYPE, ID, { email: 'autre@test.fr' }),
+      evenementParent(PARENT_AJOUTE_TYPE, ID, { email: 'autre@test.example' }),
     );
 
     expect(lignesDe(foyerParent)).toHaveLength(1);
-    expect(lignesDe(foyerParent)[0]).toMatchObject({ email: 'maman@test.fr' });
+    expect(lignesDe(foyerParent)[0]).toMatchObject({
+      email: 'maman@test.example',
+    });
     expect(lignesDe(processedEvent)).toHaveLength(1);
   });
 
@@ -494,13 +496,13 @@ describe('Projection foyer_parent (parents du foyer, stream FOYER)', () => {
       evenementParent(
         PARENT_MODIFIE_TYPE,
         '22222222-2222-4222-8222-bbbbbbbbbbbb',
-        { email: 'maman.nouvelle@test.fr', principal: false },
+        { email: 'maman.nouvelle@test.example', principal: false },
       ),
     );
 
     expect(lignesDe(foyerParent)).toHaveLength(1);
     expect(lignesDe(foyerParent)[0]).toMatchObject({
-      email: 'maman.nouvelle@test.fr',
+      email: 'maman.nouvelle@test.example',
       principal: false,
     });
     expect(lignesDe(processedEvent)).toHaveLength(2);
@@ -552,7 +554,7 @@ function evenementEtablissement(
       etablissementId: ETAB_ID,
       foyerId: FOYER_ID,
       nom: 'Crèche du centre',
-      emailService: 'creche@test.fr',
+      emailService: 'creche@test.example',
       preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
       types: ['CRECHE_PSU'],
       actif: true,
@@ -717,7 +719,7 @@ describe('Projection établissement (fiche projetée, stream PLANIFICATION)', ()
       id: ETAB_ID,
       foyerId: FOYER_ID,
       nom: 'Crèche du centre',
-      emailService: 'creche@test.fr',
+      emailService: 'creche@test.example',
       preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
       types: ['CRECHE_PSU'],
       actif: true,
@@ -762,13 +764,13 @@ describe('Projection établissement (fiche projetée, stream PLANIFICATION)', ()
       evenementEtablissement(
         ETABLISSEMENT_MODIFIE_TYPE,
         '22222222-2222-4222-8222-eeeeeeeeeeee',
-        { emailService: 'nouveau@test.fr', actif: false },
+        { emailService: 'nouveau@test.example', actif: false },
       ),
     );
 
     expect(lignesDe(etablissement)).toHaveLength(1);
     expect(lignesDe(etablissement)[0]).toMatchObject({
-      emailService: 'nouveau@test.fr',
+      emailService: 'nouveau@test.example',
       actif: false,
     });
     expect(lignesDe(processedEvent)).toHaveLength(2);
@@ -937,21 +939,25 @@ describe('Garde de monotonie occurred_at (désordre / rattrapage)', () => {
     await projection.traiter(
       'FOYER',
       avecInstant(
-        evenementParent(PARENT_MODIFIE_TYPE, ID_X, { email: 'recent@test.fr' }),
+        evenementParent(PARENT_MODIFIE_TYPE, ID_X, {
+          email: 'recent@test.example',
+        }),
         T2,
       ),
     );
     await projection.traiter(
       'FOYER',
       avecInstant(
-        evenementParent(PARENT_MODIFIE_TYPE, ID_Y, { email: 'ancien@test.fr' }),
+        evenementParent(PARENT_MODIFIE_TYPE, ID_Y, {
+          email: 'ancien@test.example',
+        }),
         T1,
       ),
     );
 
     expect(lignesDe(foyerParent)).toHaveLength(1);
     expect(lignesDe(foyerParent)[0]).toMatchObject({
-      email: 'recent@test.fr',
+      email: 'recent@test.example',
       eventId: ID_X,
     });
   });
@@ -963,20 +969,24 @@ describe('Garde de monotonie occurred_at (désordre / rattrapage)', () => {
     await projection.traiter(
       'FOYER',
       avecInstant(
-        evenementParent(PARENT_MODIFIE_TYPE, ID_Y, { email: 'ancien@test.fr' }),
+        evenementParent(PARENT_MODIFIE_TYPE, ID_Y, {
+          email: 'ancien@test.example',
+        }),
         T1,
       ),
     );
     await projection.traiter(
       'FOYER',
       avecInstant(
-        evenementParent(PARENT_MODIFIE_TYPE, ID_X, { email: 'recent@test.fr' }),
+        evenementParent(PARENT_MODIFIE_TYPE, ID_X, {
+          email: 'recent@test.example',
+        }),
         T2,
       ),
     );
 
     expect(lignesDe(foyerParent)[0]).toMatchObject({
-      email: 'recent@test.fr',
+      email: 'recent@test.example',
       eventId: ID_X,
     });
   });
@@ -989,7 +999,7 @@ describe('Garde de monotonie occurred_at (désordre / rattrapage)', () => {
       'PLANIFICATION',
       avecInstant(
         evenementEtablissement(ETABLISSEMENT_MODIFIE_TYPE, ID_X, {
-          emailService: 'recent@test.fr',
+          emailService: 'recent@test.example',
         }),
         T2,
       ),
@@ -998,7 +1008,7 @@ describe('Garde de monotonie occurred_at (désordre / rattrapage)', () => {
       'PLANIFICATION',
       avecInstant(
         evenementEtablissement(ETABLISSEMENT_MODIFIE_TYPE, ID_Y, {
-          emailService: 'ancien@test.fr',
+          emailService: 'ancien@test.example',
         }),
         T1,
       ),
@@ -1006,7 +1016,7 @@ describe('Garde de monotonie occurred_at (désordre / rattrapage)', () => {
 
     expect(lignesDe(etablissement)).toHaveLength(1);
     expect(lignesDe(etablissement)[0]).toMatchObject({
-      emailService: 'recent@test.fr',
+      emailService: 'recent@test.example',
       eventId: ID_X,
     });
   });
@@ -1019,7 +1029,7 @@ describe('Garde de monotonie occurred_at (désordre / rattrapage)', () => {
       'PLANIFICATION',
       avecInstant(
         evenementEtablissement(ETABLISSEMENT_MODIFIE_TYPE, ID_Y, {
-          emailService: 'ancien@test.fr',
+          emailService: 'ancien@test.example',
         }),
         T1,
       ),
@@ -1028,14 +1038,14 @@ describe('Garde de monotonie occurred_at (désordre / rattrapage)', () => {
       'PLANIFICATION',
       avecInstant(
         evenementEtablissement(ETABLISSEMENT_MODIFIE_TYPE, ID_X, {
-          emailService: 'recent@test.fr',
+          emailService: 'recent@test.example',
         }),
         T2,
       ),
     );
 
     expect(lignesDe(etablissement)[0]).toMatchObject({
-      emailService: 'recent@test.fr',
+      emailService: 'recent@test.example',
       eventId: ID_X,
     });
   });
@@ -1162,21 +1172,21 @@ function peupler(
     semaineIso: '2026-W27',
     parentId,
     statut: 'ENVOYE',
-    email: `${marque}@test.fr`,
+    email: `${marque}@test.example`,
     essais: 0,
   });
   lignesDe(envoiRecapHebdo).push({
     foyerId,
     semaineIso: '2026-W27',
     statut: 'ENVOYE',
-    destinataires: [`${marque}@test.fr`],
+    destinataires: [`${marque}@test.example`],
   });
   lignesDe(envoiEtablissement).push({
     id: `e-${marque}`,
     foyerId,
     semaineIso: '2026-W27',
     etablissementId: ETAB_ID,
-    destinataire: 'creche@test.fr',
+    destinataire: 'creche@test.example',
     sujet: 'Récapitulatif de la semaine',
     corps: `Mia absente jeudi (${marque})`,
     statut: 'ENVOYE',
@@ -1202,13 +1212,13 @@ function peupler(
     id: `t-${marque}`,
     foyerId,
     nom: 'Crèche du centre',
-    emailService: 'creche@test.fr',
+    emailService: 'creche@test.example',
     actif: true,
   });
   lignesDe(foyerParent).push({
     parentId,
     foyerId,
-    email: `${marque}@test.fr`,
+    email: `${marque}@test.example`,
     principal: true,
     actif: true,
   });
@@ -1296,7 +1306,7 @@ describe('Effacement FoyerSupprime (résidu zéro + sonde négative)', () => {
     lignesDe(foyerParent).push({
       parentId: AUTRE_PARENT_ID,
       foyerId: FOYER_ID,
-      email: 'coparent@test.fr',
+      email: 'coparent@test.example',
       principal: false,
       actif: false, // parent RETIRÉ : c'est le cas que le payload seul rate
     });

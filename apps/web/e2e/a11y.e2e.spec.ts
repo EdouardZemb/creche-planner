@@ -230,7 +230,7 @@ async function auditer(
 const MON_PROFIL = {
   parentId: 'parent-a11y',
   foyerId: FOYER_ID,
-  email: 'parent@test.fr',
+  email: 'parent@test.example',
   prenom: 'Camille',
   nom: 'Martin',
   principal: true,
@@ -253,7 +253,7 @@ const MON_PROFIL = {
 };
 
 // `MoiVue` : email non-null ⇒ la cloche se monte (App.tsx `moi.email !== null`).
-const MOI = { email: 'parent@test.fr', admin: false, foyers: [FOYER_ID] };
+const MOI = { email: 'parent@test.example', admin: false, foyers: [FOYER_ID] };
 
 const INBOX = {
   notifications: [
