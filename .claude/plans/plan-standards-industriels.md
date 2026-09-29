@@ -238,7 +238,7 @@ mais la **règle de lecture** est partagée, et c'est le seul écart qui compte.
    désactivé en silence. Et **trois specs affirmaient le `NaN` de `PORT`**, motivé en
    commentaire (`LE-41`) : le défaut n'était pas ignoré, il avait rang de contrat.
 4. **`estUrlEmailPublique` reste une règle métier explicite**, pas un `z.url()` : la
-   validation de forme accepterait `https://192.168.1.129`, et les liens d'e-mail
+   validation de forme accepterait `https://<ip-lan>`, et les liens d'e-mail
    seraient injoignables hors-LAN. Sondée sur le bundle réel (piège `MO-2` désamorcé).
 5. **Le repli fail-safe de `RATE_LIMIT_PROXY_HOPS` disparaît** : `0` sur valeur illisible
    était sûr côté confiance, mais rouvrait `AN-15` sans le dire (fenêtre de rate-limit

@@ -43,13 +43,13 @@ describe('AssertionPropagationInterceptor', () => {
     const { handler, lu } = handlerCapture();
     const req: RequeteIdentifiable = {
       headers: {},
-      identite: { email: 'parent@test.fr' },
+      identite: { email: 'parent@test.example' },
       foyersAutorises: ['f-1', 'f-2'],
       estAdmin: true,
     };
     await firstValueFrom(interceptor.intercept(fakeContext(req), handler));
     expect(lu()).toEqual({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       foyers: ['f-1', 'f-2'],
       admin: true,
     });
@@ -59,11 +59,11 @@ describe('AssertionPropagationInterceptor', () => {
     const { handler, lu } = handlerCapture();
     const req: RequeteIdentifiable = {
       headers: {},
-      identite: { email: 'parent@test.fr' },
+      identite: { email: 'parent@test.example' },
     };
     await firstValueFrom(interceptor.intercept(fakeContext(req), handler));
     expect(lu()).toEqual({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       foyers: undefined,
       admin: undefined,
     });
@@ -73,7 +73,7 @@ describe('AssertionPropagationInterceptor', () => {
     const { handler } = handlerCapture();
     const req: RequeteIdentifiable = {
       headers: {},
-      identite: { email: 'parent@test.fr' },
+      identite: { email: 'parent@test.example' },
     };
     await firstValueFrom(interceptor.intercept(fakeContext(req), handler));
     expect(contexteAssertionCourant()).toBeUndefined();

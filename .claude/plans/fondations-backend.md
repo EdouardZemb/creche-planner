@@ -352,7 +352,7 @@ corepack pnpm@10.34.2 nx run-many -t build -p svc-foyer svc-planification svc-ta
 
 - **Ne pas dupliquer la logique de la gateway** : le service ne résout jamais « quels foyers a ce parent » (c'est le rôle de la gateway, transporté par l'assertion) ; il résout seulement « à quel foyer appartient cette ressource » dans ses propres tables.
 - La comparaison d'e-mails doit être insensible à la casse (`lower(email)` est la convention d'unicité du repo).
-- `POST /api/envois/etablissement` envoie un **vrai mail** — dans les tests, rester en dry-run (pattern existant des specs notifications) ; ne jamais pointer `jaudrey@cscpapin.asso.fr`.
+- `POST /api/envois/etablissement` envoie un **vrai mail** — dans les tests, rester en dry-run (pattern existant des specs notifications) ; ne jamais pointer `l'adresse réelle de la crèche (hors dépôt)`.
 - Le libellé des logs doit rester greppable conjointement avec ceux de la gateway (« AURAIT REFUSÉ »).
 
 ---

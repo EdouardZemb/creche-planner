@@ -42,7 +42,7 @@ describe('MoiContext', () => {
 
   it('expose les valeurs résolues par /api/v1/moi', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: ['f1', 'f2'],
     });
@@ -54,7 +54,7 @@ describe('MoiContext', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('moi')).toHaveTextContent(
-        'email=parent@test.fr admin=false foyers=f1,f2',
+        'email=parent@test.example admin=false foyers=f1,f2',
       );
     });
   });
@@ -87,9 +87,13 @@ describe('MoiContext', () => {
     // 1er appel : aucun foyer (état avant création). 2e appel (après recharger) :
     // un foyer rattaché — comme après la création d'un foyer.
     mockedApi.moi
-      .mockResolvedValueOnce({ email: 'p@test.fr', admin: false, foyers: [] })
       .mockResolvedValueOnce({
-        email: 'p@test.fr',
+        email: 'p@test.example',
+        admin: false,
+        foyers: [],
+      })
+      .mockResolvedValueOnce({
+        email: 'p@test.example',
         admin: false,
         foyers: ['f1'],
       });

@@ -18,6 +18,13 @@ playwright-report
 .coverage-baseline
 coverage-baseline
 
+# Mémoire de travail des sessions Claude — JAMAIS versionnée. Le dépôt est public,
+# et ce dossier a publié l'accès au serveur de prod (cible SSH, chemins, posture)
+# du 2026-08-02 au 2026-09-29. Il reste sur le poste, hors dépôt ; la porte
+# `pnpm confidentialite` refuse tout fichier suivi sous ce chemin, même forcé
+# par `git add -f`.
+.claude/memory/
+
 # Mutation testing (AQ-13) — bac à sable Stryker (les rapports vont dans test-output)
 .stryker-tmp
 

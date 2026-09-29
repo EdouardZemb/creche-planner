@@ -95,7 +95,7 @@ describe('client API — détection de session Access expirée', () => {
 
   it('302 visible vers une autre destination → ApiError (pas une session expirée)', async () => {
     fetchMock.mockResolvedValue(
-      reponse(302, undefined, { location: 'https://exemple.fr/ailleurs' }),
+      reponse(302, undefined, { location: 'https://exemple.example/ailleurs' }),
     );
 
     const echec = api.lireFoyer('f1');

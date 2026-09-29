@@ -1,0 +1,30 @@
+name: Confidentialité PR
+
+# Le job `ci` juge le titre et la description d'une PR à son ouverture et à
+# chaque push. Une description MODIFIÉE ensuite ne relance pas `ci` (trop
+# coûteux pour une retouche de texte) : ce workflow minimal la rejuge seul.
+# Dépôt public — cf. scripts/verifier-confidentialite.mjs.
+on:
+  pull_request:
+    types: [edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  texte-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Titre et description de la PR (bloquant)
+        env:
+          CRECHE_MOTIFS_INTERDITS: ${{ secrets.CRECHE_MOTIFS_INTERDITS }}
+          PR_TITRE: ${{ github.event.pull_request.title }}
+          PR_CORPS: ${{ github.event.pull_request.body }}
+        run: node scripts/verifier-confidentialite.mjs --texte-env PR_TITRE PR_CORPS

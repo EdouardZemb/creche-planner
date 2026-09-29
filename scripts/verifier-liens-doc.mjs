@@ -51,12 +51,12 @@ import path from 'node:path';
 const RACINE = path.resolve(import.meta.dirname, '..');
 
 /**
- * Répertoires balayés. `.claude/memory/` en fait partie — contrairement au
- * registre des pièges, où il est exclu parce qu'il arbitre des CONSIGNES : ici
- * on ne juge rien, on constate qu'un chemin existe. Un renvoi mort dans une
- * fiche de mémoire coûte le même détour qu'ailleurs.
+ * Répertoires balayés. `.claude/memory/` n'en fait plus partie depuis le
+ * 2026-09-29 : il est sorti du dépôt public (`pnpm confidentialite`), et la
+ * porte ne juge que ce qui est versionné — balayer le magasin local du poste
+ * principal donnerait un verdict différent en CI et sur le poste.
  */
-const REPERTOIRES = ['docs', '.claude/plans', '.claude/memory'];
+const REPERTOIRES = ['docs', '.claude/plans'];
 
 /** Documents de racine, hors `node_modules` et hors fichiers générés. */
 const DOCUMENTS_RACINE = [
@@ -80,13 +80,6 @@ const CIBLES_ABSENTES_ATTENDUES = [
     raison:
       'artefact EXPORTÉ du conteneur Caddy au déploiement (`docker compose cp caddy:… ./caddy-root.crt`, doc 24) ' +
       'et lu par `scripts/deploy.mjs` s’il existe : il n’a jamais sa place dans le dépôt.',
-  },
-  {
-    cible:
-      'creche-planner-public/libs/nest-commons/src/lib/security/scope-foyer.guard.ts',
-    raison:
-      'fiche de mémoire qui désigne le clone voisin du poste principal (cf. [[repo-clean-clone-location]]) : ' +
-      'le chemin est correct là-bas, et une session distante n’a pas ce répertoire.',
   },
 ];
 

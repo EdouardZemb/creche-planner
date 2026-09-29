@@ -813,8 +813,39 @@ if (texte === null) {
   process.exit(1);
 }
 
+// Depuis le 2026-09-29, le magasin des fiches de mémoire est HORS dépôt
+// (dépôt public : il avait publié l'accès au serveur — `pnpm confidentialite`).
+// Il existe sur le poste principal, jamais en CI. CHANGEMENT DE COMPORTEMENT :
+// là où il est absent, une fiche citée n'est plus vérifiable, et la porte le dit
+// au lieu de rougir sur un magasin qu'elle ne peut pas lire.
+const MAGASIN = '.claude/memory';
+const magasinPresent = existe(path.join(RACINE, MAGASIN));
+/** Fiches que cite le registre réel — même extraction que `verifier()`. */
+const fichesCitees = new Set(
+  [...texte.matchAll(/`([^`\n]+)`/g)]
+    .map(([, cite]) => cite.trim())
+    .filter(
+      (valeur) =>
+        PREFIXES_FICHES.some((prefixe) => valeur.startsWith(prefixe)) &&
+        /^[a-z0-9-]+$/.test(valeur),
+    )
+    .map((valeur) => `${MAGASIN}/${valeur}.md`),
+);
+
 const surDisque = (/** @type {string} */ chemin) =>
-  existe(path.join(RACINE, chemin));
+  chemin.startsWith(`${MAGASIN}/`) && !magasinPresent
+    ? true
+    : existe(path.join(RACINE, chemin));
+
+/**
+ * Pour les sondes : le magasin est SIMULÉ par les fiches que cite le registre
+ * réel, pour que la sonde `fiche-perimee` morde partout — CI comprise, où le
+ * vrai magasin n'existe pas.
+ */
+const magasinSimule = (/** @type {string} */ chemin) =>
+  chemin.startsWith(`${MAGASIN}/`)
+    ? fichesCitees.has(chemin)
+    : existe(path.join(RACINE, chemin));
 
 if (process.argv.includes('--autotest')) {
   let echecs = 0;
@@ -827,7 +858,7 @@ if (process.argv.includes('--autotest')) {
       echecs += 1;
       continue;
     }
-    const { constats } = verifier(abime, surDisque);
+    const { constats } = verifier(abime, magasinSimule);
     if (!constats.some((constat) => constat.code === sonde.code)) {
       console.error(
         `❌ sonde « ${sonde.nom} » : aucun constat « ${sonde.code} » — la porte ne mord pas.`,
@@ -927,6 +958,12 @@ if (resume) {
   } catch {
     /* le résumé est un confort, jamais une condition de succès */
   }
+}
+
+if (!magasinPresent && fichesCitees.size > 0) {
+  console.log(
+    `ℹ ${fichesCitees.size} fiche(s) de mémoire citée(s), NON vérifiées ici : le magasin \`${MAGASIN}/\` est hors dépôt (poste principal seulement).`,
+  );
 }
 
 console.log(

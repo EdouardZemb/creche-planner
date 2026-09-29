@@ -8,3 +8,7 @@ tmp
 **/test-output
 **/.vite
 **/out-tsc
+
+# Mémoire et plans de travail : jamais dans un contexte de build (dépôt public,
+# images publiques sur GHCR) — même si seule l'étape finale est publiée.
+.claude

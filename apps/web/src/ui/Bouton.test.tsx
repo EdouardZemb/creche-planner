@@ -119,12 +119,12 @@ describe('BoutonLien', () => {
   it('rend un <a href> pour une destination externe', () => {
     render(
       <MemoryRouter>
-        <BoutonLien to="https://exemple.fr">Aide</BoutonLien>
+        <BoutonLien to="https://exemple.example">Aide</BoutonLien>
       </MemoryRouter>,
     );
     expect(screen.getByRole('link', { name: 'Aide' })).toHaveAttribute(
       'href',
-      'https://exemple.fr',
+      'https://exemple.example',
     );
   });
 });

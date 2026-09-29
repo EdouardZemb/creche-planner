@@ -112,7 +112,7 @@ describe('MailerService', () => {
     // être neutralisée même si elle voyage avec une adresse autorisée.
     const resultat = await service.envoyer({
       ...MESSAGE,
-      to: 'parent1@test, jaudrey@cscpapin.asso.fr',
+      to: 'parent1@test, secretariat@creche.example',
     });
 
     expect(sendMail).toHaveBeenCalledTimes(1);
@@ -131,7 +131,7 @@ describe('MailerService', () => {
 
     const resultat = await service.envoyer({
       ...MESSAGE,
-      to: 'inconnu@test, jaudrey@cscpapin.asso.fr',
+      to: 'inconnu@test, secretariat@creche.example',
     });
 
     expect(sendMail).not.toHaveBeenCalled();

@@ -123,6 +123,6 @@ services:
     restart: unless-stopped
     ports:
       # Loopback uniquement (non exposé LAN). Inspecter depuis le poste de dev via
-      # un tunnel SSH : `ssh -L 4210:127.0.0.1:4210 edouard@192.168.1.129` puis
+      # un tunnel SSH : `ssh -L 4210:127.0.0.1:4210 <utilisateur>@<ip-lan>` puis
       # http://localhost:4210. La SPA proxifie /api vers api-gateway (même origine).
       - '127.0.0.1:4210:80'
