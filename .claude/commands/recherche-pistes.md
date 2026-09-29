@@ -69,7 +69,7 @@ converger. Exploite-la à fond, mais au bon moment :
      `svc-notifications`, `svc-planification`, `svc-referentiel`, `svc-tarification`) et
      `libs/` (dont `contracts`, `shared-kernel`, `resilience`, `observability`).
    - Les **chantiers passés** dans `.claude/plans/` et la **mémoire projet** (`MEMORY.md` et
-     les fiches liées) : ils disent ce qui a déjà été fait, décidé et déployé (prod actuelle
+     les fiches liées — poste principal seulement, hors dépôt) : ils disent ce qui a déjà été fait, décidé et déployé (prod actuelle
      `0.13.0`), et surtout les **pièges connus** du repo. Ne re-propose pas ce qui existe déjà.
 2. **Le produit tel qu'il tourne.** **Monte une instance locale** et parcours-la comme un
    parent, **à ~375px de large**, une main. Objectif : ancrer les pistes sur du vécu, pas

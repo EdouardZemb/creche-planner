@@ -274,9 +274,11 @@ régression silencieuse :
   front régénérés et comparés à l'octet ;
 - **E2E** web mocké, smoke stack et E2E stack réelle sur les images affectées ;
 - **sécurité** : Trivy (image + fs), CodeQL, Semgrep, scan de secrets,
-  `pnpm confidentialite` (le dépôt public ne suit rien sous `.claude/memory/`,
-  et n'ajoute aucune cible SSH littérale — des **renseignements** qu'aucun
-  scanner de secrets ne voit ; aussi en pre-commit), plus deux
+  `pnpm confidentialite` (le dépôt public ne suit rien sous `.claude/memory/`, et
+  n'accueille ni cible SSH, ni adresse e-mail hors domaine réservé, ni chemin
+  nommant un compte, ni valeur d'une liste privée tenue hors dépôt — des
+  **renseignements** qu'aucun scanner de secrets ne voit ; jugé aussi sur les
+  messages de commit et le texte des PR, en pre-commit comme en CI), plus deux
   veilles **quotidiennes** — les alertes ouvertes (CodeQL/Dependabot), et un
   **re-scan CVE des images déjà déployées** qui dit, pour chaque vulnérabilité,
   si le correctif est **déjà en source** (un redéploiement suffit) ou reste à

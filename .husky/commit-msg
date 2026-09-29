@@ -1,1 +1,3 @@
 pnpm exec commitlint --edit "$1"
+# Dépôt public : le message de commit est jugé comme un fichier (cf. scripts/verifier-confidentialite.mjs).
+node scripts/verifier-confidentialite.mjs --message "$1"

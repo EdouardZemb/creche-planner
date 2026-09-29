@@ -150,10 +150,24 @@ jobs:
       # SECRETS (entropie, formes de jetons), pas des RENSEIGNEMENTS. Ce step refuse
       # tout fichier suivi sous `.claude/memory/` et toute cible SSH littérale
       # nouvelle (cliquet, plafond qui ne peut que baisser). Sondes : `--autotest`.
-      - name: Confidentialité — mémoire hors dépôt, cibles SSH (bloquant)
+      # Fichiers, mais aussi les MESSAGES DE COMMIT de la plage et le TITRE +
+      # DESCRIPTION de la PR : une session sans hook (clone distant sans
+      # `pnpm install`, `--no-verify`) n'échappe pas ici. La liste privée (IP,
+      # prénoms réels, identifiants de prod) vient du secret — absente (PR
+      # Dependabot), la règle est annoncée « non jouée », pas réputée verte.
+      # Les textes passent par `env`, jamais interpolés dans le script.
+      - name: Confidentialité — fichiers, commits, titre et description de PR (bloquant)
+        env:
+          CRECHE_MOTIFS_INTERDITS: ${{ secrets.CRECHE_MOTIFS_INTERDITS }}
+          PR_TITRE: ${{ github.event.pull_request.title }}
+          PR_CORPS: ${{ github.event.pull_request.body }}
         run: |
           node scripts/verifier-confidentialite.mjs --autotest
           node scripts/verifier-confidentialite.mjs
+          node scripts/verifier-confidentialite.mjs --commits "$NX_BASE..$NX_HEAD"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            node scripts/verifier-confidentialite.mjs --texte-env PR_TITRE PR_CORPS
+          fi
 
       # Lot D4 — FRONTIÈRES. Le lint ci-dessus n'applique `enforce-module-boundaries`
       # qu'aux tags ENREGISTRÉS en `depConstraints` : un contexte oublié n'est pas

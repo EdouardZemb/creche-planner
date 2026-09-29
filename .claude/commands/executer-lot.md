@@ -10,7 +10,8 @@ Suivre ce rituel dans l'ordre. Il encode les leçons payées par les lots préc�
 
 ## 1. Lire avant d'agir
 
-- La fiche mémoire du chantier (via `.claude/memory/MEMORY.md`) et le plan dans
+- Sur le poste principal, la fiche mémoire du chantier (`.claude/memory/MEMORY.md`,
+  **hors dépôt** — absente d'une session distante, c'est normal) ; et le plan dans
   `.claude/plans/` : le plan est la source de vérité du découpage en lots.
 - CONTRIBUTING.md § « Pièges : ce que l'outillage garantit » — pour distinguer les pièges
   morts (encodés dans l'outillage) de ceux encore réels.
@@ -86,7 +87,11 @@ un arrivant, et le seul dont personne ne remarque le vieillissement.
   l'instant où on le subit. Écrire ce qu'il a **coûté au lot**, pas seulement ce qui
   manque : « les sondes prouvent le SQL, jamais qu'une ligne survit » se traite, « il
   n'y a pas de harnais » se contemple.
-- Faits durables d'un chantier (décision, état de prod, piège daté) → fiche du chantier
-  dans `.claude/memory/`, et entrée d'index **≤ 2 lignes** dans `MEMORY.md` (le journal
-  détaillé vit dans la fiche, jamais dans l'index).
+- Faits durables d'un chantier (décision, état de prod, piège daté) → **sur le poste
+  principal** : fiche du chantier dans `.claude/memory/` (hors dépôt, jamais versionnée),
+  entrée d'index **≤ 2 lignes** dans `MEMORY.md`. **En session distante** : une ligne du
+  registre (`/consigner`) ou la description de la PR — c'est versionné, relu, et ça
+  revient sur le poste au prochain `git pull`. Jamais d'identifiant, de cible SSH, de
+  chemin système ni de donnée d'une personne réelle, où que ce soit : la porte
+  `pnpm confidentialite` le refuse (fichiers, messages de commit, texte de PR).
 - Avancement fonctionnel → `docs/06-etat-davancement.md` si applicable.

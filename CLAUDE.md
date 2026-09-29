@@ -68,6 +68,26 @@ de cible SSH, de chemin système ni de posture de sécurité, sous aucune forme 
 une session distante ne peut pas joindre le serveur, ces détails ne lui
 servent à rien.
 
+## Ce qui ne va jamais dans ce dépôt
+
+Cette section **ne fait pas foi** : une consigne en prose est précisément ce qui
+a échoué ici. La liste qui fait foi est **la porte** —
+`scripts/verifier-confidentialite.mjs`, ses règles, ses exceptions motivées —,
+jouée en pre-commit, en `commit-msg` et dans le job `ci` (fichiers, messages de
+commit, titre et description de PR). En substance : la mémoire de travail ;
+une cible SSH, une IP ou un nom de machine du serveur ; une adresse e-mail hors
+domaine réservé (`example.com`, `*.example`, `*.test`, `*.invalid`) ; un
+chemin qui nomme un compte ; et toute donnée d'une **personne réelle** —
+enfant, parent, personnel de la crèche. Les valeurs réelles à proscrire vivent
+dans une **liste privée hors dépôt** (`~/.config/creche-planner/motifs-interdits.txt`,
+secret CI `CRECHE_MOTIFS_INTERDITS`), jamais ici, même hachées.
+
+**Si la porte refuse : retirer la valeur, ne jamais contourner** (`--no-verify`,
+exception ajoutée « pour passer »). Une exception nouvelle est une décision du
+propriétaire, écrite dans la porte avec sa raison. Une fixture s'écrit avec des
+valeurs **manifestement fictives** — et on n'écrit pas de test de masquage avec
+une vraie valeur.
+
 ## Ce qui n'est PAS faisable hors du réseau local
 
 - **Déploiement et vérification prod** : le serveur n'est joignable qu'en LAN

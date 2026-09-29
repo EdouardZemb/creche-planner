@@ -17,7 +17,8 @@ Dans cet ordre, sans sauter d'étape :
 
 1. `docs/34` — ce qui est déjà consigné. **Ne jamais re-signaler une ligne existante** ; la mettre
    à jour, ou la clore avec sa preuve.
-2. `.claude/memory/MEMORY.md` et les fiches `piege-*` — les faux positifs déjà tranchés.
+2. Sur le poste principal seulement (hors dépôt) : `.claude/memory/MEMORY.md` et les fiches
+   `piege-*` — les faux positifs déjà tranchés. En session distante, le registre en tient lieu.
 3. `.github/workflows/ci.yml` et `scripts/verifier-*.mjs` — les portes **telles qu'elles sont
    écrites**, pas telles qu'on les raconte. Le §5 du registre est la carte : vérifie qu'elle
    correspond encore.
