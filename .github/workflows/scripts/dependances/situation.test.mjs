@@ -497,3 +497,31 @@ test('récap : une high de développement ne notifie pas, une high livrée et un
     /1 alerte\(s\) high sur l’outillage de développement/,
   );
 });
+
+test('client : le jeton ne part jamais hors de l’API GitHub', async () => {
+  const { urlApi } = await import('./github.mjs');
+  assert.equal(
+    urlApi('repos/a/b/pulls'),
+    'https://api.github.com/repos/a/b/pulls',
+  );
+  assert.equal(urlApi('/repos/a/b'), 'https://api.github.com/repos/a/b');
+  assert.equal(
+    urlApi('https://api.github.com/repos/a/b?page=2'),
+    'https://api.github.com/repos/a/b?page=2',
+  );
+  for (const hostile of [
+    'https://api.github.com.evil.example/x',
+    'https://api.github.com@evil.example/x',
+    'https://user:pw@api.github.com/x',
+    'http://api.github.com/x',
+    'https://evil.example/https://api.github.com/x',
+    'javascript:alert(1)',
+  ]) {
+    assert.equal(urlApi(hostile), null, hostile);
+  }
+  // Un chemin « protocole-relatif » est lu comme un chemin DE l'API : il reste chez elle.
+  assert.equal(
+    new URL(urlApi('//evil.example/x') ?? '').origin,
+    'https://api.github.com',
+  );
+});

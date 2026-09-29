@@ -16,6 +16,33 @@ const PAGES_MAX = 10;
  */
 
 /**
+ * Résout un chemin en URL de l'API, ou `null` si elle sortirait de l'API.
+ *
+ * Le jeton part avec la requête : c'est ici que se joue la fuite. Une URL
+ * absolue n'est acceptée que si son ORIGINE est exactement celle de l'API — un
+ * test de préfixe laisserait passer `https://api.github.com.evil.example`
+ * (alerte CodeQL `js/incomplete-url-substring-sanitization`). Les URL absolues
+ * ne viennent que de l'en-tête `Link` de pagination, mais ce module ne présume
+ * pas de ses appelants.
+ *
+ * @param {string} chemin
+ * @returns {string | null}
+ */
+export function urlApi(chemin) {
+  let url;
+  try {
+    url = /^[a-z][a-z0-9+.-]*:/i.test(chemin)
+      ? new URL(chemin)
+      : new URL(chemin.replace(/^\/+/, ''), `${API}/`);
+  } catch {
+    return null;
+  }
+  return url.origin === API && url.username === '' && url.password === ''
+    ? url.href
+    : null;
+}
+
+/**
  * @param {string} jeton
  * @param {string} [agent]
  */
@@ -34,10 +61,8 @@ export function client(jeton, agent = 'creche-planner-dependances') {
    * @returns {Promise<{ ok: true, donnees: any, suivant: string } | { ok: false, statut: number | string, detail: string }>}
    */
   async function appeler(methode, chemin, corps) {
-    const url = chemin.startsWith(API)
-      ? chemin
-      : `${API}/${chemin.replace(/^\//, '')}`;
-    if (!url.startsWith(`${API}/`)) {
+    const url = urlApi(chemin);
+    if (url === null) {
       return {
         ok: false,
         statut: 'url',
