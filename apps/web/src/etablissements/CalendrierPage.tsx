@@ -8,6 +8,8 @@ import type {
   RecurrencesCalendrierVue,
 } from '../types/bff';
 import { messageErreur } from '../utils/erreurs';
+import { invaliderCacheAsync } from '../hooks/useAsync';
+import { clePlageCalendrier } from '../planning/useCalendrierOuverture';
 import { useTitrePage } from '../hooks/useTitrePage';
 import { Bouton, BoutonLien } from '../ui/Bouton';
 import { ChampFormulaire } from '../ui/ChampFormulaire';
@@ -53,6 +55,25 @@ export function CalendrierPage() {
 
   const charger = useCallback(async (): Promise<void> => {
     if (foyerId === undefined || etabId === undefined) return;
+    // ─────────────────────────────────────────────────────────────────────────
+    // INVALIDATION DU CALENDRIER RÉSOLU (SFD 31, lot 5).
+    //
+    // Cet écran RETOUCHE le calendrier ; le planning le LIT, résolu et mis en
+    // cache par `useCalendrierOuverture`. Les deux ne sont jamais montés en même
+    // temps : `reload()`, qui n'invalide que l'instance appelante, ne peut donc
+    // rien pour l'autre. Sans cette ligne, une fermeture posée ici resterait
+    // saisissable dans le planning jusqu'au prochain rechargement complet de
+    // l'application — et rien ne le signalerait.
+    //
+    // L'invalidation est par PRÉFIXE parce que la clé porte la plage demandée :
+    // une retouche périme tous les mois déjà chargés de cet établissement, pas
+    // seulement celui qu'on regarde.
+    //
+    // Placée ici plutôt que dans chaque handler : `charger` est le point de
+    // passage OBLIGÉ de toutes les mutations de l'écran (`surChangement`), y
+    // compris celles qu'on ajoutera. Un handler qui oublierait la ligne serait
+    // un bug silencieux ; ici, il n'y a rien à oublier.
+    invaliderCacheAsync(clePlageCalendrier(etabId));
     setChargement(true);
     try {
       const [etabs, vuePeriodes, vueExceptions, vueRecurrences] =

@@ -43,6 +43,40 @@ export function viderCacheAsync(): void {
   requetesEnVol.clear();
 }
 
+/**
+ * Invalide les entrées dont la clé commence par `prefixe`, et rend leur nombre.
+ *
+ * **Pourquoi un préfixe, et pourquoi depuis l'extérieur du hook.** `reload()`
+ * n'invalide que l'instance qui l'appelle : il suffit tant que la mutation et la
+ * lecture vivent dans le même écran. Le calendrier d'ouverture rompt cette
+ * hypothèse — on le retouche depuis l'écran « Calendrier » de l'établissement, et
+ * on le LIT depuis le planning, qui n'est pas monté à ce moment-là. Sans cette
+ * fonction, la sélectionnabilité resterait celle d'avant la retouche jusqu'au
+ * prochain rechargement complet de l'application, sans que rien ne le signale.
+ *
+ * Le préfixe est nécessaire parce que la clé porte la PLAGE demandée
+ * (`calendrier:<etab>:<du>:<au>`) : une retouche invalide tous les mois déjà
+ * chargés de cet établissement, pas seulement celui qu'on regarde.
+ *
+ * Rend le nombre d'entrées écartées : un test qui n'en vérifie pas le compte ne
+ * distingue pas « invalidé » de « préfixe qui ne correspond à rien ».
+ */
+export function invaliderCacheAsync(prefixe: string): number {
+  let ecartees = 0;
+  for (const cle of [...cacheValeurs.keys()]) {
+    if (cle.startsWith(prefixe)) {
+      cacheValeurs.delete(cle);
+      ecartees += 1;
+    }
+  }
+  // Les requêtes EN VOL comptent aussi : une lecture lancée avant la mutation
+  // rendrait une valeur périmée et la remettrait en cache après coup.
+  for (const cle of [...requetesEnVol.keys()]) {
+    if (cle.startsWith(prefixe)) requetesEnVol.delete(cle);
+  }
+  return ecartees;
+}
+
 export function useAsync<T>(
   fn: (signal: AbortSignal) => Promise<T>,
   deps: readonly unknown[],

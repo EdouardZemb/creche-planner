@@ -12,6 +12,7 @@ import { libelleAlsh } from '../notifications/besoinsSemaine';
 import { couleurDuMode } from '../utils/couleurs';
 import { couleurAjoute, couleurRetire } from './couleursPlanning';
 import { SocleCalendrier } from './SocleCalendrier';
+import { useCalendrierOuverture } from './useCalendrierOuverture';
 import { ListeJoursClavier, type LigneJourClavier } from './ListeJoursClavier';
 import { ModaleAjustementAbcm } from './ModaleAjustementAbcm';
 import { ModaleJourneeAlsh, type FormuleAlsh } from './ModaleJourneeAlsh';
@@ -101,6 +102,15 @@ export function CalendrierAbcm({
     demanderConfirmationDurable,
   } = calendrier;
 
+  // Calendrier d'ouverture de l'établissement (SFD 31, lot 5). Le mode DU
+  // CONTRAT est le service à interroger : un contrat cantine n'a que faire de
+  // savoir que l'ALSH ouvre ce mercredi-là.
+  const ouverture = useCalendrierOuverture(
+    contrat.foyerId,
+    contrat.etablissementId,
+    mois,
+  );
+
   // Changement de (contrat, mois, simulation) : la saisie du mois précédent
   // n'a plus de sens ; le serveur la remplacera à la réhydratation suivante.
   useEffect(() => {
@@ -154,10 +164,21 @@ export function CalendrierAbcm({
     [contrat.semaineAbcm, exceptions, joursAlsh],
   );
 
-  // Jours du mois compris dans la période de validité du contrat.
+  /**
+   * Jours du mois compris dans la période du contrat **ET** ouverts pour son
+   * mode.
+   *
+   * C'est ici que se joue CA1/CA2 : en période scolaire, cantine et périscolaire
+   * n'ouvrent que les jours d'école ; pendant les vacances ils n'ouvrent pas du
+   * tout, tandis que l'ALSH, lui, ouvre. Le web ne connaît aucune de ces règles :
+   * il demande, pour SON service, si le jour est ouvert.
+   */
   const joursPeriode = useMemo<string[]>(
-    () => joursDuMois(mois).filter(estDansPeriode),
-    [mois, estDansPeriode],
+    () =>
+      joursDuMois(mois).filter(
+        (iso) => estDansPeriode(iso) && ouverture.serviceOuvert(iso, mode),
+      ),
+    [mois, estDansPeriode, ouverture, mode],
   );
 
   const couleurs = useMemo(
@@ -226,11 +247,17 @@ export function CalendrierAbcm({
         );
         return;
       }
+      // CA3 : jour fermé pour CE service → refus AVEC son motif.
+      const motif = ouverture.motifFermeture(iso, mode);
+      if (motif !== null) {
+        annoncer(`Ce jour n’est pas ouvert pour ce service : ${motif}.`);
+        return;
+      }
       setPortee('mois');
       setChoixAjustement(effectifJour(ctx, iso));
       setDateAjustement(iso);
     },
-    [mode, annoncer, estDansPeriode, ctx, setPortee],
+    [mode, annoncer, estDansPeriode, ouverture, ctx, setPortee],
   );
 
   const confirmerAjustement = useCallback(() => {
@@ -319,6 +346,13 @@ export function CalendrierAbcm({
         );
         return;
       }
+      const motif = ouverture.motifFermeture(iso, 'ALSH');
+      if (motif !== null) {
+        annoncer(
+          `L’accueil de loisirs n’est pas ouvert ce jour-là : ${motif}.`,
+        );
+        return;
+      }
       // Prérempli depuis l'état EFFECTIF (explicite > exception > récurrence).
       const eff = alshEffectifDe(ctx, iso);
       setPortee('mois');
@@ -329,7 +363,7 @@ export function CalendrierAbcm({
       );
       setDateAlsh(iso);
     },
-    [mode, mois, annoncer, estDansPeriode, ctx, setPortee],
+    [mode, mois, annoncer, estDansPeriode, ouverture, ctx, setPortee],
   );
 
   const handleDateClick = useCallback(
