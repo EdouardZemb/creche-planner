@@ -71,7 +71,7 @@ servent à rien.
 ## Ce qui n'est PAS faisable hors du réseau local
 
 - **Déploiement et vérification prod** : le serveur n'est joignable qu'en LAN
-  (`ssh edouard@<ip-lan>`), et les clés sops+age vivent sur le serveur. Aucun
+  (`ssh <utilisateur>@<ip-lan>`), et les clés sops+age vivent sur le serveur. Aucun
   `deploy.mjs`, aucun rejeu de projection depuis une session distante.
 - **Stack Docker locale** : seed, `e2e-stack` et `web:e2e-visuel` supposent la
   pile compose locale. Les vérifications visuelles se font sur le poste ou en CI.

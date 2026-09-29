@@ -10,7 +10,7 @@
 #     → node scripts/staging-poll.mjs        (sonde GHCR + deploy.mjs si nouveau)
 #
 # Topologie pull-based préservée : tout est SORTANT, rien n'est exposé en entrant.
-# Le clone de staging est SÉPARÉ de celui de la prod (ex. /home/edouard/
+# Le clone de staging est SÉPARÉ de celui de la prod (ex. ~/
 # creche-planner-staging) pour qu'un `git pull` du poller ne touche jamais l'arbre
 # de travail de la prod. Cf. scripts/systemd/README.md.
 #

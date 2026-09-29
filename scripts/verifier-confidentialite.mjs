@@ -51,8 +51,8 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
-/** Compte mesuré le 2026-09-29. Ne peut que baisser ; cible : 0. */
-const PLAFOND_CIBLES_SSH = 11;
+/** 11 le 2026-09-29 à la pose, 0 le même jour après retouche des scripts : désormais une interdiction. */
+const PLAFOND_CIBLES_SSH = 0;
 
 const PREFIXE_INTERDIT = '.claude/memory/';
 

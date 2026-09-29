@@ -39,7 +39,7 @@
 
 .PARAMETER Environment
     « production » (défaut) ou « staging » (Phase 8). En staging : clone séparé
-    (/home/edouard/creche-planner-staging), env-file .env.staging (qui porte
+    (creche-planner-staging), env-file .env.staging (qui porte
     DEPLOY_COMPOSE_FILES/DEPLOY_UP_SERVICES/DEPLOY_ENVIRONMENT=staging/ROLLBACK=0),
     verrou flock dédié, et le tag rolling « main » est ACCEPTÉ sans -AllowMain.
     Routine : le poller systemd auto-déploie le staging ; ce déclencheur sert au
@@ -52,10 +52,11 @@
     de l'image gateway tirée — ne pas le forcer pour un déploiement de version.
 
 .PARAMETER Server
-    Cible SSH (utilisateur@hôte). Défaut : edouard@192.168.1.129.
+    Cible SSH (utilisateur@hôte). Défaut : variable d'environnement CRECHE_SSH_TARGET (hors dépôt).
 
 .PARAMETER RepoPath
-    Chemin du clone de déploiement sur le serveur. Défaut : /home/edouard/creche-planner.
+    Chemin du clone de déploiement sur le serveur. Défaut : creche-planner, relatif au répertoire
+    personnel de l’utilisateur SSH (le script distant commence par un `cd`).
 
 .PARAMETER Yes
     Saute la confirmation interactive (pour scripts/CI). Sans ce flag, le go/no-go
@@ -107,7 +108,7 @@ param(
 
     [string]$DeployRef = '',
 
-    [string]$Server = 'edouard@192.168.1.129',
+    [string]$Server = $env:CRECHE_SSH_TARGET,
 
     # Vide => défaut dérivé de -Environment (prod : creche-planner ; staging :
     # creche-planner-staging — clone SÉPARÉ pour ne pas mêler les arbres de travail).
@@ -131,12 +132,12 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 if ($Environment -eq 'staging') {
     if ($ImageTag -eq '') { $ImageTag = 'main' }
-    if ($RepoPath -eq '') { $RepoPath = '/home/edouard/creche-planner-staging' }
+    if ($RepoPath -eq '') { $RepoPath = 'creche-planner-staging' }
     $EnvFile = '.env.staging'
     $LockFile = '/tmp/creche-staging-deploy.lock'
 }
 else {
-    if ($RepoPath -eq '') { $RepoPath = '/home/edouard/creche-planner' }
+    if ($RepoPath -eq '') { $RepoPath = 'creche-planner' }
     $EnvFile = '.env.server'
     $LockFile = '/tmp/creche-deploy.lock'
 }
@@ -162,6 +163,16 @@ if ($DeployRef -ne '' -and $DeployRef -notmatch $SafeRef) {
 }
 if ($RepoPath -notmatch "^[A-Za-z0-9._/-]+$") {
     Write-Error "RepoPath invalide : '$RepoPath'."
+    exit 2
+}
+# La cible SSH n'est jamais écrite dans le dépôt (public) : -Server, ou la
+# variable d'environnement CRECHE_SSH_TARGET du poste.
+if ([string]::IsNullOrWhiteSpace($Server)) {
+    Write-Error "Cible SSH absente : passer -Server <utilisateur>@<hote>, ou definir CRECHE_SSH_TARGET sur ce poste."
+    exit 2
+}
+if ($Server -notmatch '^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$') {
+    Write-Error "Cible SSH invalide (attendu : <utilisateur>@<hote>)."
     exit 2
 }
 
