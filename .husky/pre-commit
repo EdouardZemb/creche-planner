@@ -1,1 +1,4 @@
 pnpm exec lint-staged
+# Refuse un commit qui suivrait .claude/memory/ (même via `git add -f`) ou
+# ajouterait une cible SSH littérale — dépôt public (cf. scripts/verifier-confidentialite.mjs).
+node scripts/verifier-confidentialite.mjs
