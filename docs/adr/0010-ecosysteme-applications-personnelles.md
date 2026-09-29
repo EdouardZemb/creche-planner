@@ -11,6 +11,10 @@
 - **Déclencheur** : décision PO du 2026-09-29, prise en envisageant d'ajouter des applications à
   côté des deux qui existent, puis précisée par un cas d'usage arrivé après coup : une **veille de
   compétences**.
+- **Amendement** : 2026-09-29, arbitrages PO sur la première version — e-mail jamais identifiant
+  validé, avec sa **dette** côté Martha (`AM-125`) ; démonstration **liée à l'environnement de
+  qualification** (§3, avec un [point ouvert](#point-ouvert--quel-environnement-de-qualification))
+  ; gates limités au module ajouté à une application existante (§4).
 
 ## Contexte
 
@@ -141,6 +145,21 @@ fixé par cet ADR : un export de fichier versionné suffit tant qu'il n'y a qu'u
 - **L'adresse e-mail n'est jamais une clé.** Elle est un moyen d'authentification. Si elle
   servait de clé, elle deviendrait l'annuaire central de fait — sans contrat, et en portant une
   donnée personnelle dans chaque table.
+- **Martha enfreint cette règle aujourd'hui, et c'est une dette inscrite, pas une règle pour
+  plus tard** ([`AM-125`](../34-registre-ameliorations.md)). L'e-mail validé par Cloudflare Access
+  y sert de clé d'identité de bout en bout, alors qu'un `parent` porte déjà un identifiant opaque :
+  - la passerelle résout les foyers autorisés **par e-mail**
+    ([`appartenance.guard.ts`](../../apps/api-gateway/src/security/appartenance.guard.ts)), par
+    un appel `GET /api/foyers?parentEmail=…` — l'adresse voyage **dans l'URL** ;
+  - l'assertion d'identité propagée aux services porte l'**e-mail**
+    ([`contexte-assertion.ts`](../../apps/api-gateway/src/security/contexte-assertion.ts)) ;
+  - le rôle d'administrateur est une **liste d'e-mails** (`ADMIN_EMAILS`).
+
+  Conséquence concrète : un parent qui change d'adresse **perd l'accès** à son foyer, et une
+  adresse réaffectée hérite de celui de son ancien titulaire. La sortie est de résoudre l'e-mail
+  en identifiant **une seule fois**, à la passerelle, puis de ne plus faire circuler que
+  l'identifiant.
+
 - Le cloisonnement du second utilisateur est un **filtre par propriétaire à l'intérieur de la
   veille**, pas un service.
 - Le jour où deux applications doivent reconnaître la même personne, on remplace
@@ -151,9 +170,15 @@ fixé par cet ADR : un export de fichier versionné suffit tant qu'il n'y a qu'u
 
 - Toute application de l'écosystème doit pouvoir tourner **entièrement** sur un jeu de données
   **factice**, versionné avec son code.
-- La démonstration est une **instance séparée**, sans accès aux bases réelles — pas un filtre
-  posé sur les données réelles. Un filtre n'est qu'à un bug de la fuite ; une instance sans
-  accès ne l'est pas.
+- La démonstration est **liée à l'environnement de qualification** que le propriétaire est en
+  train de monter — pas une instance isolée de plus. Elle en partage le **chemin** : mêmes images,
+  même déploiement, mêmes portes que ce qui part en production, pour que ce qu'on montre soit
+  exactement ce qui est livré, et qu'une démonstration ne puisse pas vieillir à part.
+- Elle n'en partage **pas les données**. Elle tourne dans son **propre silo** (bases et volumes
+  distincts), sur le jeu factice, **sans accès** à aucune base réelle — pas un filtre posé sur des
+  données réelles. Un filtre n'est qu'à un bug de la fuite ; un silo sans accès ne l'est pas.
+- Quel environnement, et dans quel état : **non tranché** — voir le
+  [point ouvert](#point-ouvert--quel-environnement-de-qualification).
 - Les données du second utilisateur n'apparaissent dans **aucune** démonstration, jamais. Aucun
   mécanisme d'« anonymisation » de données réelles ne sert de source à la démonstration : le jeu
   factice est **écrit**, pas dérivé. La leçon vient de ce dépôt même, dont la publication a exigé
@@ -166,7 +191,8 @@ en ADR, CI qui **refuse** de passer, tests du domaine avec **mutation testing**,
 secrets, aucune donnée réelle dans le dépôt. La norme porte sur les **familles** de garde-fous,
 pas sur l'outillage exact : une application plus petite n'a pas à reproduire la pile Nx.
 
-Pour une application existante, la règle s'applique **au module qu'on y ajoute** : la veille de
+Pour une application existante, la règle s'applique **au module qu'on y ajoute**, et pas
+rétroactivement à toute l'application (arbitrage PO du 2026-09-29) : la veille de
 compétences, dans la veille emploi, entre sous ces gates — en particulier le mutation testing de
 l'extraction, là où la classe de bug du §Contexte s'est déjà produite quatre fois.
 
@@ -218,6 +244,28 @@ alors la demande sans le dire.
 supprimer ; deux annonces rédigées différemment pour le même poste peuvent être classées
 différemment. L'indicateur est une **tendance** sur un même corpus, pas une vérité sur le marché.
 
+## Point ouvert — quel environnement de qualification
+
+Le §3 lie la démonstration à « l'environnement de qualification en cours de montage ». Cet ADR
+**ne sait pas** de quel environnement il s'agit ni où il en est, et ne l'invente pas. Deux
+candidats existent dans ce dépôt, et un troisième peut exister hors de lui :
+
+- le **staging** de Martha, livré en phase 8 de la
+  [roadmap CI/CD](../exploitation/28-roadmap-ameliorations-cicd.md) : pile isolée sur le serveur,
+  joignable en boucle locale seulement, qui déploie et fume chaque `:main` avant promotion ;
+- l'**environnement de recette** de la SFD 39 (validée v1.0, **non fusionnée** — PR #358), dont la
+  remise en état de ce même staging est le lot 0 ;
+- un environnement propre à la veille emploi, dont ce dépôt ne dit rien.
+
+**Une tension à trancher avant de construire quoi que ce soit.** La SFD 39 v1.0 abandonne la
+règle « données synthétiques seulement » pour la recette : elle y prévoit une **copie consentie
+des données réelles du foyer**, cantonnée à staging. Si la démonstration était liée à cet
+environnement **par ses données**, elle montrerait des données réelles — dont celles du second
+utilisateur, membre du foyer — ce que le §3 interdit sans exception. La lecture compatible avec
+les deux décisions est celle du §3 : même chemin de livraison, **silo de données distinct**, jeu
+factice seul. Tant que la question n'est pas tranchée, la règle par défaut s'applique : **aucune
+démonstration ne tourne sur un environnement qui contient des données réelles.**
+
 ## Conséquences
 
 **Ce que la décision rend vrai :**
@@ -238,12 +286,16 @@ différemment. L'indicateur est une **tendance** sur un même corpus, pas une v�
   le référentiel lie la veille et une application future, pas les deux applications qui existent.
   Ce que Martha partage avec l'écosystème, à ce jour, c'est la discipline — pas des données.
 - **Martha cloisonne par foyer, pas par personne.** La règle du §2 parle d'un « propriétaire
-  opaque » précisément pour cela : chez Martha, le propriétaire d'une donnée est le foyer, et
-  l'identification passe par l'e-mail que valide Cloudflare Access. Le jour où une identité
-  commune arrive, ce sera la première application à adapter, et l'adaptation portera sur la
-  traduction e-mail → identifiant, pas sur ses tables.
+  opaque » précisément pour cela : chez Martha, le propriétaire d'une donnée est le foyer.
+- **Martha porte une dette dès aujourd'hui, pas le jour d'une identité commune** (`AM-125`) : son
+  identité circule par e-mail de la passerelle jusqu'aux services (§2). Son schéma n'est pas en
+  cause — `parent` a déjà un identifiant opaque — mais la passerelle, l'assertion propagée et le
+  rôle d'administrateur sont à reprendre, par un lot à part.
 - **Deux fournisseurs d'authentification coexistent** (Cloudflare Access, identité du tailnet).
   L'interface étroite les cache ; elle ne les réconcilie pas.
+- **Lier la démonstration à la qualification la rend dépendante de cet environnement** : une
+  qualification en panne est une démonstration impossible, et c'est un silo de données de plus à
+  tenir sur une machine déjà partagée.
 - **Maintenir un jeu de données factice a un coût permanent** : chaque évolution de schéma doit
   le faire évoluer, faute de quoi la démonstration casse — et une démonstration cassée pousse à
   « juste montrer les vraies données une fois ».
@@ -255,14 +307,18 @@ différemment. L'indicateur est une **tendance** sur un même corpus, pas une v�
 
 **Ce qu'elle ne change pas :**
 
-- Aucune application existante n'est modifiée par cet ADR. Martha garde son modèle d'identité
-  ([ADR-0006](0006-preferences-notification-et-desabonnement.md)) et son cloisonnement par foyer.
+- Aucune application existante n'est modifiée **par ce document**. Martha garde son cloisonnement
+  par foyer ; son modèle d'identité ([ADR-0006](0006-preferences-notification-et-desabonnement.md))
+  évoluera par le lot qui soldera `AM-125`, pas par cet ADR.
 - L'exemption domestique de l'[ADR-0007](0007-exemption-domestique-et-demarche-volontaire.md)
   est une décision **de Martha** ; elle ne s'étend pas d'office aux autres applications.
 
 ## Révision
 
 Cet ADR **doit être rouvert** si l'un de ces seuils est franchi :
+
+- **Le [point ouvert](#point-ouvert--quel-environnement-de-qualification) est tranché** :
+  l'environnement de qualification est nommé et le §3 est amendé en conséquence, par écrit.
 
 - **Deux applications doivent reconnaître la même personne** pour un besoin réel (pas
   anticipé) : l'interface du §2 reçoit une implémentation commune, et le choix de cette
