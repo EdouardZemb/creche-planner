@@ -74,19 +74,22 @@ mapfile -t FICHIERS < <(git diff --name-only --diff-filter=AM "$MB" "$TETE" -- "
 echo "fichiers modifiés : ${FICHIERS[*]:-aucun}"
 
 if [ "${#FICHIERS[@]}" -gt 0 ]; then
-  ARGS=(); for f in "${FICHIERS[@]}"; do ARGS+=(--mutate "$f"); done
-  chrono fichiers-modifies npx stryker run "${ARGS[@]}" --reporters json,clear-text
+  # `--mutate` prend UNE liste séparée par des virgules : répéter le drapeau ne
+  # garde que le dernier (erreur de la première version de cette mesure).
+  LISTE=$(IFS=,; echo "${FICHIERS[*]}")
+  chrono fichiers-modifies npx stryker run --mutate "$LISTE" --reporters json,clear-text
 
   # Lignes modifiées : plages côté « nouveau » de chaque hunk (git diff -U0).
-  ARGS=()
+  PLAGES=()
   for f in "${FICHIERS[@]}"; do
-    while read -r plage; do ARGS+=(--mutate "${f}:${plage}"); done < <(
+    while read -r plage; do PLAGES+=("${f}:${plage}"); done < <(
       git diff -U0 "$MB" "$TETE" -- "${LIB}/${f}" | grep -E '^@@' \
         | sed -E 's/^@@ -[0-9,]+ \+([0-9]+)(,([0-9]+))? @@.*/\1 \3/' \
         | awk '{ n = ($2 == "") ? 1 : $2; if (n > 0) print $1 "-" ($1 + n - 1) }')
   done
-  echo "plages : ${ARGS[*]:-aucune}"
-  if [ "${#ARGS[@]}" -gt 0 ]; then
-    chrono lignes-modifiees npx stryker run "${ARGS[@]}" --reporters json,clear-text
+  echo "plages : ${PLAGES[*]:-aucune}"
+  if [ "${#PLAGES[@]}" -gt 0 ]; then
+    LISTE=$(IFS=,; echo "${PLAGES[*]}")
+    chrono lignes-modifiees npx stryker run --mutate "$LISTE" --reporters json,clear-text
   fi
 fi
