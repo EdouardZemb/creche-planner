@@ -77,8 +77,9 @@ livrés en continu :
 L'état d'avancement détaillé (**source de vérité**) vit en
 [doc 06](docs/06-etat-davancement.md) ; le plan initial en
 [doc 05](docs/05-plan-de-developpement.md) (document historique). Le découpage du
-chantier courant vit dans [`.claude/plans/`](.claude/plans/), et les faits durables
-(état de prod, pièges tranchés) dans [`.claude/memory/`](.claude/memory/).
+chantier courant vit dans [`.claude/plans/`](.claude/plans/), et les pistes, leçons
+et empêchements tirés de chaque lot dans le
+[registre d'améliorations](docs/34-registre-ameliorations.md).
 
 ## Documentation de pilotage
 
@@ -279,7 +280,12 @@ régression silencieuse :
 - **dérive de contrats** : `pact-drift`, `pact-can-i-deploy`, types OpenAPI du
   front régénérés et comparés à l'octet ;
 - **E2E** web mocké, smoke stack et E2E stack réelle sur les images affectées ;
-- **sécurité** : Trivy (image + fs), CodeQL, Semgrep, scan de secrets, plus deux
+- **sécurité** : Trivy (image + fs), CodeQL, Semgrep, scan de secrets,
+  `pnpm confidentialite` (le dépôt public ne suit rien sous `.claude/memory/`, et
+  n'accueille ni cible SSH, ni adresse e-mail hors domaine réservé, ni chemin
+  nommant un compte, ni valeur d'une liste privée tenue hors dépôt — des
+  **renseignements** qu'aucun scanner de secrets ne voit ; jugé aussi sur les
+  messages de commit et le texte des PR, en pre-commit comme en CI), plus deux
   veilles **quotidiennes** — les alertes ouvertes (CodeQL/Dependabot), et un
   **re-scan CVE des images déjà déployées** qui dit, pour chaque vulnérabilité,
   si le correctif est **déjà en source** (un redéploiement suffit) ou reste à

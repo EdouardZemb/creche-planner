@@ -39,7 +39,7 @@ by one person.
 | Unit & integration test files                            | **240**                                                                                   |
 | End-to-end specs (Playwright, mocked **and** real stack) | **17**                                                                                    |
 | Consumer-driven contracts (Pact), drift-checked every PR | **5**                                                                                     |
-| Executable **quality gates** blocking every pull request | **18**, each deriving its own expectation from the source                                 |
+| Executable **quality gates** blocking every pull request | **19**, each deriving its own expectation from the source                                 |
 | Nx projects (7 applications + 14 libraries)              | **21**                                                                                    |
 | Architecture Decision Records                            | **9**                                                                                     |
 
@@ -158,7 +158,7 @@ Three choices worth naming, because they are the ones a test lead would ask abou
 ## Quality gates
 
 `main` is protected: one branch per topic, one pull request, one green `ci` check.
-Beyond `nx affected` (lint, type-check, test, build), the pipeline runs **18 bespoke
+Beyond `nx affected` (lint, type-check, test, build), the pipeline runs **19 bespoke
 gates**. They share a design rule that matters more than the list itself:
 
 > **A gate never stores its expected value — it derives it from the source.** A
@@ -166,18 +166,19 @@ gates**. They share a design rule that matters more than the list itself:
 > it does not cover**, and ships a **negative probe** (`--autotest`) that deliberately
 > damages its own input to prove the gate still bites.
 
-| Gate                                     | What it confronts                                                                                                                                                                |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm frontieres`                        | Nx tags against the declared `depConstraints` — hexagonal layering and context isolation                                                                                         |
-| `pnpm liens` · `pnpm faits`              | Internal links and anchors; and every value quoted in the documentation against its real source                                                                                  |
-| `pnpm readme`                            | The freshness of _this file_ — gates wired in CI, ADRs present, delivered work packages, `docs/` subfolders                                                                      |
-| `pnpm statuts` · `pnpm tracabilite`      | A dated status on every document; requirement ↔ test traceability, both directions                                                                                               |
-| `pnpm registre` · `pnpm empechements`    | The improvement register's form, evidence and counters; and that an inherited trap cannot be listed without a remedy entering the queue                                          |
-| `pnpm retentions` · `pnpm portabilite`   | A declared retention period names a column, and that column exists; every table is classified, and a table claimed as exported really is read                                    |
-| `pnpm acteur` · `pnpm problemes`         | Every mutating route is classified and an audited route names an action really recorded; every business error code is registered (RFC 9457)                                      |
-| `pnpm environnement` · `pnpm conteneurs` | No `process.env` read outside configuration and no inert Compose setting; every container runs `no-new-privileges` + `cap_drop: [ALL]`, read-only root unless justified          |
-| `pnpm abonnements` · `pnpm quarantaine`  | Each context publishes its event inventory and each durable JetStream consumer is bounded to the subjects it projects; the npm publication cooldown is declared where it is read |
-| `pnpm wcag` · `pnpm pieges`              | The nine WCAG 2.2 criteria adjudicated and every cited guard real; dead traps not copied forward into plans                                                                      |
+| Gate                                     | What it confronts                                                                                                                                                                                                                                                          |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm frontieres`                        | Nx tags against the declared `depConstraints` — hexagonal layering and context isolation                                                                                                                                                                                   |
+| `pnpm liens` · `pnpm faits`              | Internal links and anchors; and every value quoted in the documentation against its real source                                                                                                                                                                            |
+| `pnpm readme`                            | The freshness of _this file_ — gates wired in CI, ADRs present, delivered work packages, `docs/` subfolders                                                                                                                                                                |
+| `pnpm statuts` · `pnpm tracabilite`      | A dated status on every document; requirement ↔ test traceability, both directions                                                                                                                                                                                         |
+| `pnpm registre` · `pnpm empechements`    | The improvement register's form, evidence and counters; and that an inherited trap cannot be listed without a remedy entering the queue                                                                                                                                    |
+| `pnpm retentions` · `pnpm portabilite`   | A declared retention period names a column, and that column exists; every table is classified, and a table claimed as exported really is read                                                                                                                              |
+| `pnpm acteur` · `pnpm problemes`         | Every mutating route is classified and an audited route names an action really recorded; every business error code is registered (RFC 9457)                                                                                                                                |
+| `pnpm environnement` · `pnpm conteneurs` | No `process.env` read outside configuration and no inert Compose setting; every container runs `no-new-privileges` + `cap_drop: [ALL]`, read-only root unless justified                                                                                                    |
+| `pnpm abonnements` · `pnpm quarantaine`  | Each context publishes its event inventory and each durable JetStream consumer is bounded to the subjects it projects; the npm publication cooldown is declared where it is read                                                                                           |
+| `pnpm wcag` · `pnpm pieges`              | The nine WCAG 2.2 criteria adjudicated and every cited guard real; dead traps not copied forward into plans                                                                                                                                                                |
+| `pnpm confidentialite`                   | The repository is public: nothing tracked under `.claude/memory/`, no literal SSH target, no e-mail outside reserved domains, no path naming an account, no value from a private list kept outside the repository — judged on files, commit messages and pull-request text |
 
 Alongside them: ESLint warnings frozen against a baseline (a ratchet — no additions
 accepted), DORA metrics derived from deployment history, and the weekly mutation run.
