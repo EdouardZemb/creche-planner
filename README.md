@@ -70,8 +70,9 @@ livrés en continu :
 L'état d'avancement détaillé (**source de vérité**) vit en
 [doc 06](docs/06-etat-davancement.md) ; le plan initial en
 [doc 05](docs/05-plan-de-developpement.md) (document historique). Le découpage du
-chantier courant vit dans [`.claude/plans/`](.claude/plans/), et les faits durables
-(état de prod, pièges tranchés) dans [`.claude/memory/`](.claude/memory/).
+chantier courant vit dans [`.claude/plans/`](.claude/plans/), et les pistes, leçons
+et empêchements tirés de chaque lot dans le
+[registre d'améliorations](docs/34-registre-ameliorations.md).
 
 ## Documentation de pilotage
 

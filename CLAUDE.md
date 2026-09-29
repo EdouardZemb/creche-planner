@@ -45,10 +45,6 @@ Ce dépôt embarque son propre contexte de travail, pour qu'une session lancée
 ailleurs que sur le poste de l'auteur (Claude Code sur le web, autre machine)
 reparte avec le même historique de décisions.
 
-- **`.claude/memory/MEMORY.md`** — index de la mémoire projet : un fichier par
-  sujet (chantiers livrés, pièges connus, faits de prod). **À lire en début de
-  session** ; les fiches `piege-*.md` évitent de re-diagnostiquer des faux
-  positifs déjà tranchés.
 - **`.claude/plans/`** — plans de chantier détaillés (lots, décisions, critères
   d'acceptation). Le plan est la source de vérité du découpage en lots.
 - **`.claude/commands/`** — commandes slash du projet : `/executer-lot` (le
@@ -57,20 +53,20 @@ reparte avec le même historique de décisions.
   fonctionnalité).
 - **`docs/06-etat-davancement.md`** — journal d'avancement fonctionnel.
 
-Si une session distante apprend un fait durable (piège, décision, état de
-prod), l'écrire dans `.claude/memory/` et l'indexer dans `MEMORY.md` : c'est
-la seule voie pour qu'il revienne sur le poste principal. **L'entrée d'index
-fait 2 lignes maximum** — le journal détaillé vit dans la fiche, jamais dans
-l'index, qui est lu à chaque début de session.
+⚠️ **La mémoire de travail n'est jamais versionnée ici.** Ce dépôt est
+**public**. `.claude/memory/` (fiches de chantier, pièges, faits de prod) vit
+**sur le poste principal uniquement** : il est dans `.gitignore`, et la porte
+`pnpm confidentialite` (CI + pre-commit) refuse tout fichier suivi sous ce
+chemin, `git add -f` compris. Il a été versionné du 2026-08-02 au 2026-09-29
+et a publié l'accès au serveur de production : la règle précédente, qui ne
+proscrivait que certaines **fiches**, s'est révélée intenable sans outil.
 
-⚠️ **Ce qui n'est jamais versionné ici.** Ce dépôt est **public**. Les fiches
-de mémoire décrivant l'accès au serveur ou la posture de sécurité — politique
-`sudo`, chemins de configuration système, autres services hébergés sur la
-machine, identifiants sous quelque forme que ce soit — restent **hors du
-dépôt**, sur le poste principal uniquement. Le miroir `.claude/memory/` est
-donc volontairement **incomplet** : ne pas chercher à le « resynchroniser »
-intégralement depuis une source locale. Une session distante ne peut de toute
-façon pas joindre le serveur, ces détails ne lui servent à rien.
+Si une session distante apprend un fait durable (piège, décision, état de
+prod), il passe par ce qui est versionné et relu : une ligne du **registre**
+(`/consigner`, doc 34) ou la **description de la PR**. Jamais d'identifiant,
+de cible SSH, de chemin système ni de posture de sécurité, sous aucune forme :
+une session distante ne peut pas joindre le serveur, ces détails ne lui
+servent à rien.
 
 ## Ce qui n'est PAS faisable hors du réseau local
 
