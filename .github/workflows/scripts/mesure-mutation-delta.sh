@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # MESURE — coût réel d'un mutation testing limité au code modifié, rejoué sur une
 # PR historique (SHA de base et de tête figés). Annexe de la proposition
-# `docs/proposition-ci-mutation-delta.md` : ce script MESURE, il ne juge rien et
+# `docs/exploitation/proposition-ci-mutation-delta.md` : ce script MESURE, il ne juge rien et
 # n'est pas un gate. À retirer avant toute fusion de la proposition.
 #
 # Usage : mesure-mutation-delta.sh <etiquette> <sha-base> <sha-tete> <projet-nx> <dossier-lib>
