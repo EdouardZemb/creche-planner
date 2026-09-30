@@ -27,6 +27,8 @@
  * 3. **e-mail** : toute adresse est sur un domaine **réservé** (RFC 2606/6761 :
  *    `example.com|org|net`, `*.example`, `*.test`, `*.invalid`, `*.localhost`)
  *    ou dans `EXCEPTIONS_EMAIL` — minimale et motivée ligne à ligne ;
+ *    seule exception limitée à un contexte : la signature de Dependabot, admise
+ *    dans un message de commit, sur sa ligne exacte (`SIGNATURE_DEPENDABOT`) ;
  * 4. **chemin personnel** : aucun `/home/<nom>/` ni `C:\Users\<nom>\` hors
  *    comptes génériques (`runner`, `node`…) et formes `<…>` ;
  * 5. **valeurs privées** : aucune des valeurs de la liste **privée** (IP du
@@ -95,6 +97,32 @@ const EXCEPTIONS_EMAIL = [
       'adresse personnelle du propriétaire, expéditeur/destinataire des alertes (alertmanager, veille CVE) — sa propre donnée, déjà publique dans ses commits',
   },
 ];
+
+/**
+ * Exception ÉTROITE — décision du propriétaire du 2026-09-30. Chaque commit de
+ * Dependabot se termine par `Signed-off-by: dependabot[bot] <…@github.com>`,
+ * l'adresse de support générique de GitHub : sans elle, toute PR Dependabot est
+ * rouge depuis l'arrivée de cette porte. Elle n'est admise QUE :
+ *   - dans un MESSAGE DE COMMIT (`--message`, `--commits`) — jamais dans un
+ *     fichier suivi, ni dans un titre ou une description de PR ;
+ *   - sur une ligne qui est EXACTEMENT ce trailer, au nom `dependabot[bot]`.
+ * Partout ailleurs, la même adresse reste refusée : c'est ce que les sondes
+ * « exception Dependabot » de l'autotest vérifient. L'adresse n'est pas écrite
+ * ici (empreinte SHA-256, en minuscules) : ce fichier est lui-même jugé.
+ */
+const SIGNATURE_DEPENDABOT = {
+  ligne: /^Signed-off-by: dependabot\[bot\] <([^<>\s]+)>$/,
+  empreinte: '1c939d069387dc23bf4d3c19babd3b32cc05e079801ce2d8e2417a839b77e8ce',
+};
+
+/** La ligne est-elle exactement le trailer de signature de Dependabot ? */
+function estSignatureDependabot(/** @type {string} */ ligne) {
+  const m = SIGNATURE_DEPENDABOT.ligne.exec(ligne.trimEnd());
+  return (
+    m !== null &&
+    sha256((m[1] ?? '').toLowerCase()) === SIGNATURE_DEPENDABOT.empreinte
+  );
+}
 
 /** IPv4 privées (RFC 1918) et plage CGNAT des tailnets (100.64.0.0/10). */
 const IP_PRIVEE = String.raw`(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2\d|3[01])|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7]))\.\d{1,3}\.\d{1,3}`;
@@ -169,9 +197,15 @@ function versRegex(/** @type {string} */ motif) {
  *
  * @param {string} ou  désignation (fichier, « message de commit »…)
  * @param {string} texte
- * @param {{ emails: boolean, motifsPrives: string[] }} options
+ * @param {{ emails: boolean, motifsPrives: string[], signatureDependabot?: boolean }} options
+ *   `signatureDependabot` : vrai pour un MESSAGE DE COMMIT seulement (cf.
+ *   `SIGNATURE_DEPENDABOT`) — jamais pour un fichier ni un texte de PR.
  */
-export function jugerTexte(ou, texte, { emails, motifsPrives }) {
+export function jugerTexte(
+  ou,
+  texte,
+  { emails, motifsPrives, signatureDependabot = false },
+) {
   /** @type {string[]} */
   const constats = [];
   const regexPrivees = motifsPrives.map(versRegex);
@@ -185,7 +219,7 @@ export function jugerTexte(ou, texte, { emails, motifsPrives }) {
         `${lieu} : cible SSH littérale — écrire \`<utilisateur>@<ip-lan>\`, ou lire la cible dans \`CRECHE_SSH_TARGET\`.`,
       );
     }
-    if (emails) {
+    if (emails && !(signatureDependabot && estSignatureDependabot(ligne))) {
       for (const m of ligne.matchAll(RE_EMAIL)) {
         const domaine = m[1] ?? '';
         if (PSEUDO_DOMAINE.test(domaine) || emailAdmise(m[0], domaine))
@@ -376,6 +410,65 @@ function autotest() {
     );
     echecs++;
   }
+
+  // Exception Dependabot : admise sur SA ligne, dans un message de commit, et
+  // nulle part ailleurs. Les sondes négatives font rougir l'autotest si
+  // l'exception s'élargit — c'est ce qui la distingue d'un trou.
+  const adresseDependabot = at('support', 'github.com');
+  const signature = `Signed-off-by: dependabot[bot] <${adresseDependabot}>`;
+  const commit = { emails: true, motifsPrives: [], signatureDependabot: true };
+  const temoinSignature = jugerTexte(
+    'témoin',
+    `chore(deps): bump x\n\n${signature}`,
+    commit,
+  );
+  if (temoinSignature.length > 0) {
+    console.error(
+      '✖ témoin : la signature Dependabot d’un message de commit est jugée rouge — l’exception ne joue pas.',
+    );
+    echecs++;
+  }
+  /** @type {[string, boolean][]} nom, la porte a-t-elle mordu ? */
+  const sondesSignature = [
+    [
+      'exception Dependabot : même ligne dans un FICHIER suivi',
+      verifier([{ chemin: 'docs/x.md', texte: signature }], []).length > 0,
+    ],
+    [
+      'exception Dependabot : même ligne dans un TEXTE DE PR',
+      jugerTexte('PR_CORPS', signature, { emails: true, motifsPrives: [] })
+        .length > 0,
+    ],
+    [
+      'exception Dependabot : même adresse ailleurs dans le message',
+      jugerTexte('commit', `contact : ${adresseDependabot}`, commit).length > 0,
+    ],
+    [
+      'exception Dependabot : autre signataire, même adresse',
+      jugerTexte(
+        'commit',
+        `Signed-off-by: quelqu-un <${adresseDependabot}>`,
+        commit,
+      ).length > 0,
+    ],
+    [
+      'exception Dependabot : dependabot[bot], autre adresse',
+      jugerTexte(
+        'commit',
+        `Signed-off-by: dependabot[bot] <${at('autre', 'github.com')}>`,
+        commit,
+      ).length > 0,
+    ],
+    [
+      'exception Dependabot : texte ajouté après le trailer',
+      jugerTexte('commit', `${signature} ${at('x', 'reel.fr')}`, commit)
+        .length > 0,
+    ],
+  ];
+  for (const [nom, mord] of sondesSignature) {
+    console.log(`${mord ? '✔' : '✖'} sonde « ${nom} »`);
+    if (!mord) echecs++;
+  }
   process.exit(echecs > 0 ? 1 : 0);
 }
 
@@ -398,7 +491,7 @@ if (pos('--message') >= 0) {
   constats = jugerTexte(
     'message de commit',
     readFileSync(fichier, 'utf8').replace(/^#.*$/gm, ''),
-    { emails: true, motifsPrives },
+    { emails: true, motifsPrives, signatureDependabot: true },
   );
   objet = 'message de commit';
 } else if (pos('--commits') >= 0) {
@@ -413,6 +506,7 @@ if (pos('--message') >= 0) {
       ...jugerTexte(`commit ${(h ?? '').trim()}`, corps ?? '', {
         emails: true,
         motifsPrives,
+        signatureDependabot: true,
       }),
     );
   }
