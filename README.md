@@ -39,7 +39,7 @@ by one person.
 | Unit & integration test files                            | **293** — 215 `*.spec.ts`, 26 `*.test.ts`, 52 React component `*.test.tsx`                |
 | End-to-end specs (Playwright, mocked **and** real stack) | **17**, plus 3 API end-to-end specs                                                       |
 | Consumer-driven contracts (Pact), drift-checked every PR | **5**                                                                                     |
-| Executable **quality gates** blocking every pull request | **19**, each deriving its own expectation from the source                                 |
+| Executable **quality gates** blocking every pull request | **20**, each deriving its own expectation from the source                                 |
 | Nx projects (7 applications + 14 libraries)              | **21**                                                                                    |
 | Architecture Decision Records                            | **10**                                                                                    |
 
@@ -158,7 +158,7 @@ Three choices worth naming, because they are the ones a test lead would ask abou
 ## Quality gates
 
 `main` is protected: one branch per topic, one pull request, one green `ci` check.
-Beyond `nx affected` (lint, type-check, test, build), the pipeline runs **19 bespoke
+Beyond `nx affected` (lint, type-check, test, build), the pipeline runs **20 bespoke
 gates**. They share a design rule that matters more than the list itself:
 
 > **A gate never stores its expected value — it derives it from the source.** A
