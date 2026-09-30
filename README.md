@@ -36,8 +36,8 @@ by one person.
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | **Mutation score** on the pricing core                   | **96.1 %** (Stryker) — 87–96 % across all four domain libraries; the run fails below 80 % |
 | **Coverage** of the four pure-domain libraries           | **100 %** statements, branches, functions, lines — enforced                               |
-| Unit & integration test files                            | **240**                                                                                   |
-| End-to-end specs (Playwright, mocked **and** real stack) | **17**                                                                                    |
+| Unit & integration test files                            | **293** — 215 `*.spec.ts`, 26 `*.test.ts`, 52 React component `*.test.tsx`                |
+| End-to-end specs (Playwright, mocked **and** real stack) | **17**, plus 3 API end-to-end specs                                                       |
 | Consumer-driven contracts (Pact), drift-checked every PR | **5**                                                                                     |
 | Executable **quality gates** blocking every pull request | **19**, each deriving its own expectation from the source                                 |
 | Nx projects (7 applications + 14 libraries)              | **21**                                                                                    |
