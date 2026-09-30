@@ -1,0 +1,158 @@
+# REJEU HISTORIQUE du gate `mutation-delta` (annexe TEMPORAIRE, pas un gate).
+#
+# Remplace la période d'observation : avant d'activer le gate, on le rejoue sur
+# CHAQUE PR de `main` depuis l'arrivée de Stryker (un commit first-parent = une
+# PR), avec EXACTEMENT le script du gate de cette branche. Résultat : combien de
+# PR auraient été bloquées, et par quels survivants. À RETIRER avant de sortir la
+# PR du brouillon — les résultats vivent dans la doc de la proposition (§9).
+name: Rejeu mutation delta
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/rejeu-mutation-delta.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  liste:
+    name: Plan de chaque PR historique
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      commits: ${{ steps.plan.outputs.commits }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Plan seul, commit par commit (aucun Stryker)
+        id: plan
+        run: |
+          set -euo pipefail
+          cp -r .github/workflows/scripts/mutation-delta "$RUNNER_TEMP/gate"
+          DEBUT=4f36e3e0fb5aabda0ce3bef1ef646296971ce9c8
+          : > "$RUNNER_TEMP/retenus.txt"
+          for C in $(git rev-list --first-parent --reverse "$DEBUT..origin/main"); do
+            git checkout -q --force "$C"
+            if PLAN=$(MUTATION_BASE="$C^1" MUTATION_PLAN_SEUL=1 node "$RUNNER_TEMP/gate/mutation-delta.mjs" 2>/dev/null); then
+              if echo "$PLAN" | node -e 'const p=JSON.parse(require("fs").readFileSync(0,"utf8")).plan;process.exit(Object.values(p).some(x=>x.mode!=="rien")?0:1)'; then
+                echo "$C" >> "$RUNNER_TEMP/retenus.txt"
+              fi
+            else
+              echo "$C" >> "$RUNNER_TEMP/retenus.txt" # plan impossible : on rejoue quand même, le rejeu dira pourquoi
+            fi
+          done
+          echo "Commits retenus : $(wc -l < "$RUNNER_TEMP/retenus.txt")"
+          echo "commits=$(node -e 'const l=require("fs").readFileSync(process.argv[1],"utf8").trim().split("\n").filter(Boolean);console.log(JSON.stringify(l))' "$RUNNER_TEMP/retenus.txt")" >> "$GITHUB_OUTPUT"
+
+  rejeu:
+    name: Rejeu ${{ matrix.commit }}
+    needs: liste
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        commit: ${{ fromJSON(needs.liste.outputs.commits) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Figer le gate de cette branche, puis se placer sur le commit historique
+        env:
+          COMMIT: ${{ matrix.commit }}
+        run: |
+          cp -r .github/workflows/scripts/mutation-delta "$RUNNER_TEMP/gate"
+          git checkout -q --force "$COMMIT"
+          git log -1 --format='%h %s' > "$RUNNER_TEMP/sujet.txt"
+
+      # pnpm et Node de l'ÉPOQUE du commit (packageManager et .nvmrc historiques).
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Gate, tel quel
+        env:
+          COMMIT: ${{ matrix.commit }}
+        run: |
+          set +e
+          MUTATION_BASE="$COMMIT^1" node "$RUNNER_TEMP/gate/mutation-delta.mjs" > "$RUNNER_TEMP/sortie.txt" 2>&1
+          CODE=$?
+          set -e
+          mkdir -p resultat
+          node -e '
+            const fs = require("fs");
+            let r = {};
+            try { r = JSON.parse(fs.readFileSync("mutation-delta-resultat.json", "utf8")); } catch { r = { erreur: "résultat absent" }; }
+            r.commit = process.argv[1];
+            r.sujet = fs.readFileSync(process.argv[2], "utf8").trim();
+            r.code = Number(process.argv[3]);
+            r.node = process.version;
+            fs.writeFileSync("resultat/resultat.json", JSON.stringify(r, null, 1));
+          ' "$COMMIT" "$RUNNER_TEMP/sujet.txt" "$CODE"
+          cp "$RUNNER_TEMP/sortie.txt" resultat/sortie.txt
+          cp -r mutation-delta-rapports resultat/ 2>/dev/null || true
+          tail -40 "$RUNNER_TEMP/sortie.txt"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: rejeu-${{ matrix.commit }}
+          path: resultat/
+          retention-days: 30
+
+  synthese:
+    name: Synthèse du rejeu
+    needs: rejeu
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: rejeu-*
+          path: tous
+
+      - name: Tableau
+        run: |
+          node -e '
+            const fs = require("fs"), path = require("path");
+            const lignes = [];
+            for (const d of fs.readdirSync("tous")) {
+              const f = path.join("tous", d, "resultat.json");
+              if (!fs.existsSync(f)) { lignes.push({ commit: d.replace("rejeu-", ""), sujet: "?", etat: "ARTEFACT ABSENT" }); continue; }
+              const r = JSON.parse(fs.readFileSync(f, "utf8"));
+              const libs = Object.entries(r.libs ?? {}).filter(([, v]) => v.mode !== "rien");
+              const etat = r.erreur ? "ERREUR" : libs.some(([, v]) => v.etat === "erreur") ? "ERREUR" : libs.some(([, v]) => v.etat === "echoue") ? "BLOQUÉE" : "passe";
+              lignes.push({ commit: r.commit.slice(0, 10), sujet: r.sujet, etat,
+                detail: libs.map(([k, v]) => `${k.split("/")[1]}:${v.mode}:${v.etat}${v.score != null ? ":" + v.score.toFixed(1) : ""}:${v.nonDetectes ?? 0}surv`).join(" ") });
+            }
+            lignes.sort((a, b) => a.sujet.localeCompare(b.sujet));
+            const md = ["| Commit | PR | État | Détail |", "| --- | --- | --- | --- |",
+              ...lignes.map((l) => `| ${l.commit} | ${String(l.sujet).replace(/\|/g, "/").slice(0, 90)} | ${l.etat} | ${l.detail ?? ""} |`)].join("\n");
+            const compte = (e) => lignes.filter((l) => l.etat === e).length;
+            const tete = `### Rejeu : ${lignes.length} PR — ${compte("BLOQUÉE")} bloquée(s), ${compte("passe")} passée(s), ${compte("ERREUR") + compte("ARTEFACT ABSENT")} en erreur\n\n`;
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, tete + md + "\n");
+            fs.writeFileSync("synthese.json", JSON.stringify(lignes, null, 1));
+          '
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rejeu-synthese
+          path: synthese.json
+          retention-days: 30
