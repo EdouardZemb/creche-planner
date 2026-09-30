@@ -24,10 +24,16 @@ packages:
 #     même quand le lockfile épingle une version publiée le jour même. La
 #     re-vérification des entrées du lockfile (`trustLockfile`) est une nouveauté
 #     de pnpm 11 ;
-#   - il n'ÉCHOUE jamais : `minimumReleaseAgeStrict` n'existe qu'en pnpm 11.
-#     Quand aucune version de la plage ne satisfait le délai, pnpm retombe
-#     silencieusement sur la plus récente. C'est donc une mesure d'HYGIÈNE, pas
-#     une garde : elle déplace une résolution, elle n'en refuse aucune.
+#   - il n'est PAS une garde : `minimumReleaseAgeStrict` n'existe qu'en pnpm 11,
+#     et le délai ne s'applique qu'aux résolutions nouvelles (cf. ci-dessus).
+#     C'est une mesure d'HYGIÈNE : elle déplace une résolution.
+#   - ⚠️ il PEUT pourtant faire échouer un `pnpm install` : sur une dépendance
+#     DIRECTE dont aucune version de la plage n'a l'âge requis, pnpm 10.34.2
+#     s'arrête sur `ERR_PNPM_NO_MATURE_MATCHING_VERSION` au lieu de retomber sur
+#     une version plus ancienne (mesuré le 2026-09-30 : `nodemailer: ^10.0.11`,
+#     10.0.11 publiée 2 j 22 h plus tôt). Remède sans exemption : viser la
+#     dernière version MÛRE de la plage (`^10.0.10`), et laisser Dependabot
+#     proposer la suivante après son propre cooldown.
 #
 # IMPACT SUR DEPENDABOT (instruit avant de poser, `AM-50`) : depuis le
 # 2026-07-14, Dependabot applique de lui-même un délai de 3 jours à ses PR de
