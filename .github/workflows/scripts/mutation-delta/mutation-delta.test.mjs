@@ -127,6 +127,15 @@ test('le gate modifié se juge sur tout', () => {
   );
 });
 
+test('un changement de ci.yml seul ne déclenche pas de run complet', () => {
+  assert.equal(plan(['M	.github/workflows/ci.yml']).mode, 'rien');
+  const p = plan(
+    ['M	.github/workflows/ci.yml', 'M	libs/tarif/domain/src/lib/calcul.ts'],
+    P(['libs/tarif/domain/src/lib/calcul.ts', [[3, 4]]]),
+  );
+  assert.equal(p.mode, 'delta');
+});
+
 test('renommage pur : aucune ligne à juger, le code ancien ne revient pas', () => {
   // git -M : `R100` sans hunk → aucune plage ; le fichier déplacé n'est pas « ajouté ».
   const p = plan(

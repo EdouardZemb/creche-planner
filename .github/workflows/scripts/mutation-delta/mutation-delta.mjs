@@ -43,7 +43,6 @@ import {
 import { juger } from './verdict.mjs';
 
 const RACINE = process.cwd();
-const WIN = process.platform === 'win32';
 
 /** @param {string[]} args */
 function git(args) {
@@ -60,14 +59,31 @@ function git(args) {
  * @param {string[]} args
  * @param {string} cwd
  */
-function lancer(commande, args, cwd) {
-  const r = spawnSync(commande, args, {
+function lancer(script, args, cwd) {
+  // JAMAIS de shell : `args` contient des chemins venus de la PR (liste
+  // `--mutate`). On exécute le point d'entrée JS avec Node, directement.
+  const r = spawnSync(process.execPath, [script, ...args], {
     cwd,
     encoding: 'utf8',
-    shell: WIN,
+    shell: false,
     maxBuffer: 256 * 1024 * 1024,
   });
   return { code: r.status ?? 1, sortie: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+}
+
+/**
+ * Point d'entrée JS d'un binaire, lu dans le champ `bin` de son paquet : tient
+ * aussi pour les versions historiques rejouées.
+ *
+ * @param {string} paquet
+ * @param {string} nom
+ */
+function binaire(paquet, nom) {
+  const dossier = join(RACINE, 'node_modules', paquet);
+  const bin = JSON.parse(
+    readFileSync(join(dossier, 'package.json'), 'utf8'),
+  ).bin;
+  return join(dossier, typeof bin === 'string' ? bin : bin[nom]);
 }
 
 /** Texte de code rendu en code span sûr (ni Markdown, ni rupture de tableau). */
@@ -179,8 +195,8 @@ for (const lib of libs) {
     continue;
   }
   const build = lancer(
-    'pnpm',
-    ['nx', 'run', `${lib.projet}:build`, '--outputStyle=static'],
+    binaire('nx', 'nx'),
+    ['run', `${lib.projet}:build`, '--outputStyle=static'],
     RACINE,
   );
   let verdict;
@@ -192,9 +208,13 @@ for (const lib of libs) {
   } else {
     const cheminRapport = join(RACINE, lib.dossier, lib.rapport);
     rmSync(cheminRapport, { force: true });
-    const args = ['stryker', 'run', '--reporters', 'json,clear-text'];
+    const args = ['run', '--reporters', 'json,clear-text'];
     if (p.mode === 'delta') args.push('--mutate', p.mutate.join(','));
-    const run = lancer('npx', args, join(RACINE, lib.dossier));
+    const run = lancer(
+      binaire('@stryker-mutator/core', 'stryker'),
+      args,
+      join(RACINE, lib.dossier),
+    );
     journal = run.sortie;
     const brut = existsSync(cheminRapport)
       ? readFileSync(cheminRapport, 'utf8')

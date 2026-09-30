@@ -14,7 +14,7 @@
  *                   2. configuration de test ou de mutation modifiée ;
  *                   3. seuls des fichiers de test changent (le delta de source
  *                      est vide alors que les tests ont pu être affaiblis) ;
- *                   4. le gate lui-même est modifié (il se juge en entier).
+ *                   4. le code du gate lui-même est modifié (il se juge en entier).
  *
  * Les renommages sont détectés par git (`-M`) : un fichier déplacé ne contribue
  * que ses lignes réellement modifiées, jamais son code ancien.
@@ -44,8 +44,14 @@ const CONFIG_RACINE = [
   /^vitest\.workspace\.[cm]?[jt]s$/,
 ];
 
-/** Le gate lui-même : le modifier le fait se juger sur tout. */
-const GATE = /^\.github\/workflows\/(scripts\/mutation-delta\/|ci\.yml$)/;
+/**
+ * Le gate lui-même : modifier son code le fait se juger sur tout. Volontairement
+ * PAS `ci.yml` : le rejeu historique a montré qu'un changement de `ci.yml` sans
+ * rapport avec la mutation (48 PR sur 66) masquait le delta sous un run complet —
+ * trois PR qui touchaient aussi du code de domaine n'avaient pas été jugées sur
+ * leurs lignes. Les tests du gate tournent de toute façon en tête du job.
+ */
+const GATE = /^\.github\/workflows\/scripts\/mutation-delta\//;
 
 const EST_TEST = /\.(spec|test)\.[cm]?[jt]sx?$/;
 
