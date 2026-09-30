@@ -224,7 +224,7 @@ critères d'acceptation + pièges), en substituant : `svc-facturation`, port **3
 **`FACTURATION`**, sujet `facturation.>`, base `postgres-facturation`, tags
 `type:app,context:facturation`. Elle couvre : main/app.module/config/tracing, compose ×3
 (healthcheck node A6, `mem_limit`/`cpus`), `services.json`, prometheus, `e2e-stack.mjs`,
-smoke-stack, `.env.server.example`, **les 4 scripts de backup** (cf. §Exploitation), gateway
+`.env.server.example`, **les 4 scripts de backup** (cf. §Exploitation), gateway
 `facturationUrl`, depConstraints. Détail exploitation : §Exploitation ci-dessous. S'y ajoute
 le métier :
 
@@ -295,7 +295,7 @@ Livrable séparément, APRÈS l'incrément v1 (saisie manuelle). Ne bloque ni B,
   ordre de grandeur quelques centimes/facture sur opus-5 — plafonner par un compteur mensuel
   (variable d'env `OCR_FACTURE_BUDGET_MENSUEL`, refus au-delà).
 - **Stub CI/e2e obligatoire** : flag `OCR_FACTURE_STUB=1` → le service renvoie un brouillon
-  déterministe sans appel réseau (e2e-stack et smoke-stack n'ont pas d'accès Internet garanti,
+  déterministe sans appel réseau (e2e-stack, smokes compris, n'a pas d'accès Internet garanti,
   et on ne facture pas l'API à chaque CI).
 - **Critère d'acceptation manuel (hors CI, stub désactivé)** : `POST /api/v1/factures/ocr`
   avec un **PDF de facture réel** (`ANTHROPIC_API_KEY` réelle, en local ou staging) → vérifier
@@ -494,7 +494,7 @@ et spécifiques :
 - `docker/prometheus.yml` (⚠️ pas `docker/prometheus/`) : cible blackbox
   `http://svc-facturation:3003/api/health/live` + cible `postgres-exporter-facturation:9187`
   label `base: facturation`.
-- CI : liste en dur `smoke-stack` de `ci.yml` + constante `SERVICES` de `scripts/e2e-stack.mjs`
+- CI : constante `SERVICES` de `scripts/e2e-stack.mjs` (la liste en dur de `smoke-stack` n'existe plus : `smoke-stack` fusionné dans `e2e-stack` le 2026-09-30)
   (la matrix `build-images` est automatique) ; commentaires de topologie « N Postgres /
   N services » à rafraîchir.
 - **Sauvegardes — CRITIQUE** : ajouter `postgres-facturation facturation facturation` au
@@ -579,7 +579,7 @@ tarification-domain` (100 % couverture ; crédit d'impôt : <6/≥6, cantine/rep
    assumé), `nx run web:generate-types` sans drift, pacts consumer+provider verts,
    `pact-can-i-deploy` vert avec `services.json` à jour, gate de couverture non dégradée.
 4. **Services** : stack complète (`docker compose up --wait` incluant svc-facturation +
-   postgres-facturation — smoke-stack et e2e-stack listes complétées) ;
+   postgres-facturation — constante `SERVICES` d'`e2e-stack` complétée) ;
    - `POST /api/v1/factures` (saisie) → persistance + événement publié + projection visible
      dans le read model tarification ; rejouer le MÊME POST → **409** (dédup) ;
    - `DELETE /api/v1/factures/:id` → la facture disparaît de `GET /api/v1/couts/annuel` ;

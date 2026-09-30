@@ -11,6 +11,7 @@
     "check": "nx run-many -t lint typecheck test build",
     "preflight": "node scripts/preflight.mjs",
     "frontieres": "node scripts/verifier-frontieres.mjs",
+    "budget-ci": "node scripts/verifier-budget-ci.mjs",
     "confidentialite": "node scripts/verifier-confidentialite.mjs",
     "pieges": "node scripts/verifier-pieges-doc.mjs",
     "registre": "node scripts/verifier-registre.mjs",

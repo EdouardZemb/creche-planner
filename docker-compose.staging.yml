@@ -28,7 +28,7 @@
 # double PAS l'observabilité lourde (Prometheus/Grafana/Alertmanager/blackbox) :
 # la prod la porte déjà, et le but du staging est de valider que `:main` boote et
 # passe les smokes — pas d'exploiter un 2e SOC. Le sous-ensemble `up` est le MÊME
-# que celui éprouvé par le job CI `smoke-stack` (.github/workflows/ci.yml).
+# que celui éprouvé par le job CI `e2e-stack` (constante SERVICES de scripts/e2e-stack.mjs).
 #
 # SECRETS : aucun. Staging garde les mots de passe Postgres PAR DÉFAUT du profil
 # de base (referentiel/foyer/… — données jetables, pile non exposée) : les

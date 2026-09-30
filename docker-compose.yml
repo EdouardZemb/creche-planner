@@ -7,8 +7,8 @@ name: creche-planner
 #
 # Posé ICI, dans le fichier de BASE, et non dans l'override de production : les
 # trois piles (dev/CI, staging, prod) fusionnent ce fichier, donc la posture est
-# la même partout ET elle est réellement éprouvée — `smoke-stack` et `e2e-stack`
-# lèvent la pile durcie à chaque PR. Un durcissement qui ne vivrait que dans
+# la même partout ET elle est réellement éprouvée — `e2e-stack` (qui porte aussi
+# les smokes) lève la pile durcie à chaque PR. Un durcissement qui ne vivrait que dans
 # `docker-compose.server.yml` ne serait jamais exercé avant le déploiement.
 # Corollaire du merge Compose : `security_opt`, `cap_drop` et `cap_add` sont des
 # SÉQUENCES, donc concaténées — un override peut ajouter une capacité, jamais
@@ -400,7 +400,7 @@ services:
       #
       # Posé ICI, dans le compose de BASE, et non dans celui de production seul :
       # la pile locale est la SEULE que quiconque lève avec Grafana —
-      # `smoke-stack` et `e2e-stack` excluent délibérément les sidecars
+      # `e2e-stack` exclut délibérément les sidecars
       # d'observabilité. Un réglage qui ne vit qu'en production ne se constate
       # qu'en déployant (même raisonnement qu'`AM-48` au lot 8).
       #
