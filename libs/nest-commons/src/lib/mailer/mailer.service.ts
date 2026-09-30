@@ -1,6 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { metrics } from '@opentelemetry/api';
-import { createTransport } from 'nodemailer';
+import {
+  createTransport,
+  type SMTPSentMessageInfo,
+  type Transporter,
+} from 'nodemailer';
 import { OPTIONS_MAILER, type OptionsMailer } from './mailer.options.js';
 
 /**
@@ -23,12 +27,14 @@ const compteurEchecsEnvoi = meterMailer.createCounter(
 );
 
 /**
- * Transport SMTP concret renvoyé par `createTransport({host,...})`. On dérive le
- * type via `ReturnType` plutôt que `Transporter` nu : ce dernier vaut
- * `Transporter<any>` dans `@types/nodemailer` (qui déclare `SentMessageInfo =
- * any`), ce qui re-propagerait des `any` jusqu'à `messageId`.
+ * Transport SMTP concret renvoyé par `createTransport({host,...})`, typé
+ * EXPLICITEMENT sur le résultat SMTP. Ni `Transporter` nu (son `SentMessageInfo`
+ * par défaut re-propagerait des `any` jusqu'à `messageId`), ni
+ * `ReturnType<typeof createTransport>` : sur une fonction surchargée, `ReturnType`
+ * lit la DERNIÈRE surcharge — `Mail<any>` depuis que nodemailer 10 embarque ses
+ * propres types —, donc le typage dépendait de l'ordre des déclarations amont.
  */
-type TransportMail = ReturnType<typeof createTransport>;
+type TransportMail = Transporter<SMTPSentMessageInfo>;
 
 /** Message à émettre. `html` et `text` sont optionnels (au moins l'un fourni). */
 export interface MessageMail {
