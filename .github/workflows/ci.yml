@@ -552,9 +552,17 @@ jobs:
       - name: Auto-test du gate (plan, replis, verdict, NaN)
         run: node --test '.github/workflows/scripts/mutation-delta/*.test.mjs'
 
+      # CALIBRATION (rejeu historique, 21 PR, docs/exploitation/proposition-ci-mutation-delta.md §9) :
+      # les littéraux de chaîne ne sont PAS jugés en PR. Avec eux, le gate aurait
+      # bloqué #247 à tort (7 libellés de messages d'erreur + 2 équivalents) ; sur
+      # tout l'historique, les 21 survivants StringLiteral en delta sont 16 messages
+      # d'erreur, 4 discriminants que TypeScript refuse et 1 équivalent — aucune
+      # lacune de comportement. Le run complet quotidien (mutation.yml) les juge
+      # toujours. Retirer cette ligne rétablit le jugement complet en PR.
       - name: Mutation des lignes modifiées (bloquant sous 80 % du delta)
         env:
           MUTATION_BASE: origin/${{ github.base_ref }}
+          MUTATION_MUTATEURS_EXCLUS: StringLiteral
         run: node .github/workflows/scripts/mutation-delta/mutation-delta.mjs
 
       - name: Publier les rapports de mutation

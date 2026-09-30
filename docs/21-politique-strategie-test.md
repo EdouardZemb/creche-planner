@@ -113,7 +113,9 @@ Rapports HTML/JSON dans `test-output/stryker/` (gitignoré).
 
 - **À chaque PR, bloquant** — job `mutation-delta` de `ci.yml` : seules les **lignes ajoutées ou
   modifiées** du code muté sont jugées, au seuil `break: 80` de la config, en parallèle de `ci`
-  (5 à 20 s de Stryker mesurés). Une PR n'échoue jamais pour du code ancien. Replis sur le run
+  (5 à 20 s de Stryker mesurés). Une PR n'échoue jamais pour du code ancien. Les littéraux de chaîne
+  (messages d'erreur, pour l'essentiel) n'y sont pas jugés : le rejeu historique a montré qu'ils
+  bloquaient à tort sans jamais signaler de lacune de comportement. Replis sur le run
   complet de la lib : base introuvable, config de test ou de mutation modifiée, tests seuls
   modifiés, gate modifié. « Rien à juger » est un passage explicite.
 - **Chaque jour, complet** — workflow `mutation.yml` sur `main` (2,6 min au plus, mesuré ; l'ancienne

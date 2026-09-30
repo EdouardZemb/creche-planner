@@ -94,15 +94,15 @@ renumérotés — trop de liens existants en dépendent.
 
 ## Exploitation ([`exploitation/`](exploitation/))
 
-| Doc                                                                                                 | Contenu                                                                                                           |
-| --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| [24 — Plan de déploiement serveur (CT-QDO)](exploitation/24-plan-deploiement-serveur-ct-qdo.md)     | Production LAN : portes de déploiement, topologie pull-based, DORA                                                |
-| [Runbook de déploiement](exploitation/runbook-deploiement.md)                                       | Procédures pas-à-pas (local + renvoi prod doc 24)                                                                 |
-| [Proposition — mutation testing sur le code modifié](exploitation/proposition-ci-mutation-delta.md) | **Proposition non décidée** : durées de CI mesurées, coût réel de la mutation incrémentale, rééquilibrage proposé |
-| [Observabilité](exploitation/observabilite.md)                                                      | Prometheus/Grafana/Tempo/Loki, alerting, dashboards                                                               |
-| [Sauvegardes PostgreSQL](exploitation/sauvegardes.md)                                               | Sauvegarde/restauration des bases, cron, rétention                                                                |
-| [28 — Roadmap améliorations CI/CD & obs](exploitation/28-roadmap-ameliorations-cicd.md)             | Phases 5→13 (staging, rollback auto, pollers…) — **close**                                                        |
-| [29 — Chiffrement & rotation des secrets](exploitation/29-rotation-secrets.md)                      | sops + age, runbook de rotation par secret                                                                        |
+| Doc                                                                                              | Contenu                                                                                                                                       |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| [24 — Plan de déploiement serveur (CT-QDO)](exploitation/24-plan-deploiement-serveur-ct-qdo.md)  | Production LAN : portes de déploiement, topologie pull-based, DORA                                                                            |
+| [Runbook de déploiement](exploitation/runbook-deploiement.md)                                    | Procédures pas-à-pas (local + renvoi prod doc 24)                                                                                             |
+| [Décision — mutation testing sur le code modifié](exploitation/proposition-ci-mutation-delta.md) | Durées de CI mesurées, mutation des lignes modifiées à chaque PR (rejeu historique, calibration), run complet quotidien, budget de temps tenu |
+| [Observabilité](exploitation/observabilite.md)                                                   | Prometheus/Grafana/Tempo/Loki, alerting, dashboards                                                                                           |
+| [Sauvegardes PostgreSQL](exploitation/sauvegardes.md)                                            | Sauvegarde/restauration des bases, cron, rétention                                                                                            |
+| [28 — Roadmap améliorations CI/CD & obs](exploitation/28-roadmap-ameliorations-cicd.md)          | Phases 5→13 (staging, rollback auto, pollers…) — **close**                                                                                    |
+| [29 — Chiffrement & rotation des secrets](exploitation/29-rotation-secrets.md)                   | sops + age, runbook de rotation par secret                                                                                                    |
 
 ## Audits & plans de remédiation
 
