@@ -36,12 +36,12 @@ by one person.
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | **Mutation score** on the pricing core                   | **96.1 %** (Stryker) — 87–96 % across all four domain libraries; the run fails below 80 % |
 | **Coverage** of the four pure-domain libraries           | **100 %** statements, branches, functions, lines — enforced                               |
-| Unit & integration test files                            | **240**                                                                                   |
-| End-to-end specs (Playwright, mocked **and** real stack) | **17**                                                                                    |
+| Unit & integration test files                            | **293** — 215 `*.spec.ts`, 26 `*.test.ts`, 52 React component `*.test.tsx`                |
+| End-to-end specs (Playwright, mocked **and** real stack) | **17**, plus 3 API end-to-end specs                                                       |
 | Consumer-driven contracts (Pact), drift-checked every PR | **5**                                                                                     |
 | Executable **quality gates** blocking every pull request | **19**, each deriving its own expectation from the source                                 |
 | Nx projects (7 applications + 14 libraries)              | **21**                                                                                    |
-| Architecture Decision Records                            | **9**                                                                                     |
+| Architecture Decision Records                            | **10**                                                                                    |
 
 The distinguishing item is the first one. **Mutation testing** — deliberately
 breaking the production code to prove the tests notice — is rarely practised in
@@ -188,21 +188,22 @@ Working conventions: [CONTRIBUTING.md](CONTRIBUTING.md) ·
 
 ## Architecture decisions
 
-Nine ADRs record the choices that were genuinely contested — each with its context,
+Ten ADRs record the choices that were genuinely contested — each with its context,
 the alternatives weighed, and the consequences accepted, including the uncomfortable
 ones.
 
-| ADR                                                                       | The decision, in one line                                                                                           |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| [0001](docs/adr/0001-architecture-microservices.md)                       | Strict microservices for a single-household tool — a deliberate engineering exercise, with its cost stated up front |
-| [0002](docs/adr/0002-grain-services-et-politiques-tarifaires.md)          | Service granularity, and multi-regime pricing as interchangeable `PolitiqueTarifaire` strategies                    |
-| [0003](docs/adr/0003-decisions-de-toolchain.md)                           | Toolchain: Nx monorepo, pnpm, the TS-solution setup — and what it forces on the rest                                |
-| [0004](docs/adr/0004-decentralisation-des-contrats.md)                    | Contracts decentralised **per bounded context**, rather than one shared schema library                              |
-| [0005](docs/adr/0005-registre-de-contrats.md)                             | Contract registry as committed Pact files plus a `can-i-deploy` gate, instead of a hosted broker                    |
-| [0006](docs/adr/0006-preferences-notification-et-desabonnement.md)        | Notification preferences owned by `svc-foyer`, with one-click unsubscribe (RFC 8058)                                |
-| [0007](docs/adr/0007-exemption-domestique-et-demarche-volontaire.md)      | The GDPR household exemption applies — yet data-protection duties are implemented voluntarily                       |
-| [0008](docs/adr/0008-ecarts-semantique-http-pagination-et-concurrence.md) | Accepted deviations from HTTP semantics on pagination and optimistic concurrency — named, not hidden                |
-| [0009](docs/adr/0009-nom-du-produit-martha.md)                            | The product is renamed _Martha_ at **display level only**; the technical identity stays `creche-planner`            |
+| ADR                                                                       | The decision, in one line                                                                                                  |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [0001](docs/adr/0001-architecture-microservices.md)                       | Strict microservices for a single-household tool — a deliberate engineering exercise, with its cost stated up front        |
+| [0002](docs/adr/0002-grain-services-et-politiques-tarifaires.md)          | Service granularity, and multi-regime pricing as interchangeable `PolitiqueTarifaire` strategies                           |
+| [0003](docs/adr/0003-decisions-de-toolchain.md)                           | Toolchain: Nx monorepo, pnpm, the TS-solution setup — and what it forces on the rest                                       |
+| [0004](docs/adr/0004-decentralisation-des-contrats.md)                    | Contracts decentralised **per bounded context**, rather than one shared schema library                                     |
+| [0005](docs/adr/0005-registre-de-contrats.md)                             | Contract registry as committed Pact files plus a `can-i-deploy` gate, instead of a hosted broker                           |
+| [0006](docs/adr/0006-preferences-notification-et-desabonnement.md)        | Notification preferences owned by `svc-foyer`, with one-click unsubscribe (RFC 8058)                                       |
+| [0007](docs/adr/0007-exemption-domestique-et-demarche-volontaire.md)      | The GDPR household exemption applies — yet data-protection duties are implemented voluntarily                              |
+| [0008](docs/adr/0008-ecarts-semantique-http-pagination-et-concurrence.md) | Accepted deviations from HTTP semantics on pagination and optimistic concurrency — named, not hidden                       |
+| [0009](docs/adr/0009-nom-du-produit-martha.md)                            | The product is renamed _Martha_ at **display level only**; the technical identity stays `creche-planner`                   |
+| [0010](docs/adr/0010-ecosysteme-applications-personnelles.md)             | Personal-apps ecosystem: a shared **skills registry** comes first; a common identity is deferred behind a narrow interface |
 
 Index with abstracts: [`docs/adr/`](docs/adr/).
 
@@ -302,16 +303,16 @@ Around forty numbered documents carry the specifications, the test strategy and 
 operational runbooks, indexed in [`docs/README.md`](docs/README.md). The ones worth
 opening first:
 
-| Document                                                                                                       | Contents                                                                                                                                                                                      |
-| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [01 — Functional specification](docs/01-spec-fonctionnelle.md)                                                 | Product scope, personas, user journeys                                                                                                                                                        |
-| [02 — Cost model](docs/02-modele-de-cout.md)                                                                   | The PSU/CNAF and ABCM arithmetic, down to the minute                                                                                                                                          |
-| [04 — Architecture & technology](docs/04-architecture-et-technos.md)                                           | Contexts, contracts, deployment topology                                                                                                                                                      |
-| [20 — Test plan](docs/20-plan-de-test.md) · [21 — Test policy & strategy](docs/21-politique-strategie-test.md) | Levels, entry and exit criteria, risk-based depth                                                                                                                                             |
-| [18 — Test-management audit](docs/18-audit-gestion-tests-ctal-tm-tmmi.md)                                      | Self-assessment against ISTQB CTAL-TM / TMMi                                                                                                                                                  |
-| [34 — Improvement register](docs/34-registre-ameliorations.md)                                                 | Open leads, lessons, recurring patterns — and the map of every gate, with what each one fails to cover                                                                                        |
-| [ADR](docs/adr/)                                                                                               | 0001 → 0009 : microservices · service granularity · toolchain · decentralised contracts · contract registry · notification preferences · household exemption · HTTP deviations · product name |
-| [Industry standards & GDPR programme](.claude/plans/plan-standards-industriels.md) (lots 0 → 9)                | Data-subject rights, retention, audit trail, WCAG 2.2 AA, container hardening                                                                                                                 |
+| Document                                                                                                       | Contents                                                                                                                                                                                                                |
+| -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [01 — Functional specification](docs/01-spec-fonctionnelle.md)                                                 | Product scope, personas, user journeys                                                                                                                                                                                  |
+| [02 — Cost model](docs/02-modele-de-cout.md)                                                                   | The PSU/CNAF and ABCM arithmetic, down to the minute                                                                                                                                                                    |
+| [04 — Architecture & technology](docs/04-architecture-et-technos.md)                                           | Contexts, contracts, deployment topology                                                                                                                                                                                |
+| [20 — Test plan](docs/20-plan-de-test.md) · [21 — Test policy & strategy](docs/21-politique-strategie-test.md) | Levels, entry and exit criteria, risk-based depth                                                                                                                                                                       |
+| [18 — Test-management audit](docs/18-audit-gestion-tests-ctal-tm-tmmi.md)                                      | Self-assessment against ISTQB CTAL-TM / TMMi                                                                                                                                                                            |
+| [34 — Improvement register](docs/34-registre-ameliorations.md)                                                 | Open leads, lessons, recurring patterns — and the map of every gate, with what each one fails to cover                                                                                                                  |
+| [ADR](docs/adr/)                                                                                               | 0001 → 0010 : microservices · service granularity · toolchain · decentralised contracts · contract registry · notification preferences · household exemption · HTTP deviations · product name · personal-apps ecosystem |
+| [Industry standards & GDPR programme](.claude/plans/plan-standards-industriels.md) (lots 0 → 9)                | Data-subject rights, retention, audit trail, WCAG 2.2 AA, container hardening                                                                                                                                           |
 
 ## Status
 

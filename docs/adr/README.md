@@ -12,17 +12,18 @@ jamais renuméroté (les renvois croisés en dépendent). Un ADR ne se réécrit
 **remplace** par un ADR suivant qui le supersède. La porte `pnpm readme` refuse qu'un
 ADR existe sans être annoncé en page d'accueil, avec son intitulé.
 
-| ADR                                                              | Décision                                                                                                              | Statut  | Date       |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------- | ---------- |
-| [0001](0001-architecture-microservices.md)                       | **Architecture microservices** pour un outil mono-foyer — exercice d'ingénierie assumé, avec son coût énoncé d'entrée | Accepté | 2026-06-02 |
-| [0002](0002-grain-services-et-politiques-tarifaires.md)          | **Grain des services** et tarification multi-modes par stratégies `PolitiqueTarifaire` interchangeables               | Accepté | 2026-06-02 |
-| [0003](0003-decisions-de-toolchain.md)                           | **Toolchain** : monorepo Nx, pnpm, setup « TS solution » — et ce qu'il impose au reste                                | Accepté | 2026-06-02 |
-| [0004](0004-decentralisation-des-contrats.md)                    | **Contrats décentralisés par contexte** plutôt qu'une bibliothèque de schémas partagée                                | Accepté | 2026-06-04 |
-| [0005](0005-registre-de-contrats.md)                             | **Registre de contrats** en pacts fichiers committés + garde `can-i-deploy`, au lieu d'un broker hébergé              | Accepté | 2026-06-04 |
-| [0006](0006-preferences-notification-et-desabonnement.md)        | **Préférences de notification** portées par `svc-foyer` + désabonnement one-click (RFC 8058)                          | Accepté | 2026-07-01 |
-| [0007](0007-exemption-domestique-et-demarche-volontaire.md)      | **Exemption domestique RGPD** assumée, et devoirs de protection des données outillés quand même                       | Accepté | 2026-08-11 |
-| [0008](0008-ecarts-semantique-http-pagination-et-concurrence.md) | **Écarts de sémantique HTTP** sur la pagination et la concurrence optimiste — nommés, pas dissimulés                  | Accepté | 2026-08-14 |
-| [0009](0009-nom-du-produit-martha.md)                            | **Le produit s'appelle « Martha »**, renommage d'**affichage seul** : l'identité technique reste `creche-planner`     | Accepté | 2026-08-17 |
+| ADR                                                              | Décision                                                                                                                                                   | Statut  | Date       |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------- |
+| [0001](0001-architecture-microservices.md)                       | **Architecture microservices** pour un outil mono-foyer — exercice d'ingénierie assumé, avec son coût énoncé d'entrée                                      | Accepté | 2026-06-02 |
+| [0002](0002-grain-services-et-politiques-tarifaires.md)          | **Grain des services** et tarification multi-modes par stratégies `PolitiqueTarifaire` interchangeables                                                    | Accepté | 2026-06-02 |
+| [0003](0003-decisions-de-toolchain.md)                           | **Toolchain** : monorepo Nx, pnpm, setup « TS solution » — et ce qu'il impose au reste                                                                     | Accepté | 2026-06-02 |
+| [0004](0004-decentralisation-des-contrats.md)                    | **Contrats décentralisés par contexte** plutôt qu'une bibliothèque de schémas partagée                                                                     | Accepté | 2026-06-04 |
+| [0005](0005-registre-de-contrats.md)                             | **Registre de contrats** en pacts fichiers committés + garde `can-i-deploy`, au lieu d'un broker hébergé                                                   | Accepté | 2026-06-04 |
+| [0006](0006-preferences-notification-et-desabonnement.md)        | **Préférences de notification** portées par `svc-foyer` + désabonnement one-click (RFC 8058)                                                               | Accepté | 2026-07-01 |
+| [0007](0007-exemption-domestique-et-demarche-volontaire.md)      | **Exemption domestique RGPD** assumée, et devoirs de protection des données outillés quand même                                                            | Accepté | 2026-08-11 |
+| [0008](0008-ecarts-semantique-http-pagination-et-concurrence.md) | **Écarts de sémantique HTTP** sur la pagination et la concurrence optimiste — nommés, pas dissimulés                                                       | Accepté | 2026-08-14 |
+| [0009](0009-nom-du-produit-martha.md)                            | **Le produit s'appelle « Martha »**, renommage d'**affichage seul** : l'identité technique reste `creche-planner`                                          | Accepté | 2026-08-17 |
+| [0010](0010-ecosysteme-applications-personnelles.md)             | **Écosystème d'applications personnelles** : un **référentiel de compétences** partagé d'abord, l'identité commune différée derrière une interface étroite | Accepté | 2026-09-29 |
 
 ## Par où entrer
 
@@ -37,6 +38,9 @@ ADR existe sans être annoncé en page d'accueil, avec son intitulé.
   anomalie.
 - **Comprendre pourquoi deux noms coexistent à l'écran** :
   [0009](0009-nom-du-produit-martha.md).
+- **Ajouter une application à côté de Martha** :
+  [0010](0010-ecosysteme-applications-personnelles.md) — ce qui se partage, et ce qui ne
+  se partage pas encore.
 
 Cadre amont : [doc 04 — architecture & technologies](../04-architecture-et-technos.md)
 et [doc 09 — découplage microservices](../09-spec-decouplage-microservices.md). La
