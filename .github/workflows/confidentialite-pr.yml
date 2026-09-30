@@ -4,9 +4,16 @@ name: Confidentialité PR
 # chaque push. Une description MODIFIÉE ensuite ne relance pas `ci` (trop
 # coûteux pour une retouche de texte) : ce workflow minimal la rejuge seul.
 # Dépôt public — cf. scripts/verifier-confidentialite.mjs.
+#
+# Il tourne aussi à l'ouverture et à chaque push, et pas seulement sur
+# `edited` : un contrôle qui n'existe que sur les PR éditées ne peut pas être
+# rendu REQUIS (une PR jamais éditée l'attendrait pour toujours). Tant qu'il
+# n'est pas requis dans la protection de `main`, un rouge après édition se voit
+# mais ne bloque pas la fusion. Coût : un checkout et un `node`, quelques
+# secondes. Aucune boucle : le job n'écrit rien sur la PR.
 on:
   pull_request:
-    types: [edited]
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
