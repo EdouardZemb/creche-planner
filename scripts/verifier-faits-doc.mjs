@@ -3,6 +3,7 @@
 /**
  * Confronte les FAITS que la documentation énonce aux sources qui les
  * produisent : version coupée, projets Nx, ports publiés par la pile locale,
+ * tableau de métriques de la page d’accueil (tests, E2E, Pact, portes, ADR),
  * versions de la chaîne d'outils.
  *
  * ## Pourquoi ce script existe
@@ -50,6 +51,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const RACINE = path.resolve(import.meta.dirname, '..');
 
@@ -675,8 +677,340 @@ function verifierVersionsTechno(documents) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Fait 5 — le tableau de métriques du README compte ce que le dépôt contient.
+//
+// Le 2026-09-30, ce tableau annonçait 240 fichiers de test pour 292 réels : le
+// compte omettait les 52 tests de composants `*.test.tsx`. Aucune porte ne le
+// voyait — ni ce chiffre, ni les cinq autres du même tableau (portes, projets
+// Nx, ADR, contrats Pact, specs E2E), vérifiés un par un par mutation : le
+// document énonçait plus de faits que la porte qui le garde (`LE-51`).
+// ---------------------------------------------------------------------------
+
 /**
- * Joue les quatre vérifications. Réentrant : constats et faits confrontés sont
+ * Fichiers SUIVIS par git sous `apps/` et `libs/`. Le suivi, et non le disque :
+ * un run de mutation dépose des copies des specs dans `.stryker-tmp/`
+ * (gitignoré), qu’un balayage du disque compterait.
+ *
+ * @type {() => string[] | null}
+ */
+const suivis = () => {
+  try {
+    return execFileSync('git', ['ls-files', '-z', '--', 'apps', 'libs'], {
+      cwd: RACINE,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    })
+      .split('\0')
+      .filter((f) => f.length > 0);
+  } catch {
+    return null;
+  }
+};
+
+const E2E = /\.e2e\.spec\.ts$/;
+const SUFFIXES_UNITAIRES = ['.spec.ts', '.test.ts', '.test.tsx'];
+
+/** Nombres qu'une phrase du README écrit en toutes lettres (anglais). */
+const NOMBRES_EN_LETTRES = [
+  'zero',
+  'one',
+  'two',
+  'three',
+  'four',
+  'five',
+  'six',
+  'seven',
+  'eight',
+  'nine',
+  'ten',
+  'eleven',
+  'twelve',
+  'thirteen',
+  'fourteen',
+  'fifteen',
+  'sixteen',
+  'seventeen',
+  'eighteen',
+  'nineteen',
+  'twenty',
+];
+
+/**
+ * Les comptes réels. Chaque attendu est lu dans sa source : l'index git, les
+ * `testDir` des configs Playwright, `pacts/`, `docs/adr/`, `ci.yml`.
+ */
+function metriquesReelles() {
+  const fichiers = suivis();
+  if (fichiers === null || fichiers.length === 0) {
+    erreur(
+      'git ls-files',
+      'index git illisible ou vide — impossible de compter les tests (la porte se lance depuis un clone git).',
+    );
+    return null;
+  }
+
+  /** @type {Record<string, number>} */
+  const parSuffixe = {};
+  for (const suffixe of SUFFIXES_UNITAIRES) parSuffixe[suffixe] = 0;
+  let unitaires = 0;
+  for (const fichier of fichiers) {
+    if (E2E.test(fichier)) continue;
+    const suffixe = SUFFIXES_UNITAIRES.find((s) => fichier.endsWith(s));
+    if (suffixe === undefined) continue;
+    parSuffixe[suffixe] = (parSuffixe[suffixe] ?? 0) + 1;
+    unitaires += 1;
+  }
+
+  // Les répertoires que Playwright parcourt : le `testDir` de chaque config.
+  /** @type {Set<string>} */
+  const repertoires = new Set();
+  const configs = fichiers.filter((f) =>
+    /^apps\/[^/]+\/playwright[^/]*\.config\.ts$/.test(f),
+  );
+  for (const config of configs) {
+    const texte = lireTexte(config);
+    const testDir = texte === null ? null : /testDir:\s*'([^']+)'/.exec(texte);
+    if (testDir === null || testDir[1] === undefined) {
+      erreur(
+        config,
+        'aucun `testDir` lu — impossible de savoir quelles specs Playwright joue.',
+      );
+      return null;
+    }
+    repertoires.add(
+      `${path.posix.join(path.posix.dirname(config), testDir[1])}/`,
+    );
+  }
+  const e2e = fichiers.filter((f) => E2E.test(f));
+  const playwright = e2e.filter((f) =>
+    [...repertoires].some((r) => f.startsWith(r)),
+  ).length;
+
+  const ci = lireTexte('.github/workflows/ci.yml');
+  if (ci === null) {
+    erreur(
+      '.github/workflows/ci.yml',
+      'workflow illisible — impossible de compter les portes.',
+    );
+    return null;
+  }
+  const portes = new Set(
+    [...ci.matchAll(/node\s+(scripts\/verifier-[a-z0-9-]+\.mjs)/g)].map(
+      (m) => m[1],
+    ),
+  ).size;
+
+  const projets = projetsReels();
+  return {
+    unitaires,
+    parSuffixe,
+    playwright,
+    e2eApi: e2e.length - playwright,
+    pacts: lister('pacts', (nom) => nom.endsWith('.json')).length,
+    adr: lister('docs/adr', (nom) => /^\d{4}-.*\.md$/.test(nom)).length,
+    portes,
+    applications: projets.filter((p) => p.startsWith('apps/')).length,
+    bibliotheques: projets.filter((p) => p.startsWith('libs/')).length,
+  };
+}
+
+/**
+ * La cellule « valeur » de la ligne du tableau dont la première cellule
+ * correspond. Une ligne absente est une ERREUR : un fait qui disparaît du
+ * document est indiscernable d'un fait juste.
+ *
+ * @returns {string | null}
+ */
+function celluleMetrique(readme, libelle) {
+  for (const ligne of readme.split('\n')) {
+    const cellules = ligne.split('|');
+    if (cellules.length < 4) continue;
+    if (libelle.test(cellules[1] ?? '')) return cellules[2] ?? '';
+  }
+  erreur(
+    'README.md',
+    `ligne de métrique introuvable (${libelle.source}) — le fait a disparu du tableau.`,
+    'la porte compare ce chiffre au dépôt ; sans la ligne, elle ne garde rien.',
+  );
+  return null;
+}
+
+/** @param {string} portee @param {number} cite @param {number} reel @param {string} remede */
+function comparer(portee, cite, reel, remede) {
+  if (cite === reel) return;
+  erreur('README.md', `${portee} : ${cite} cité, ${reel} réel.`, remede);
+}
+
+/** Premier nombre en gras d'une cellule (`**292**`), ou null. */
+function nombreEnGras(cellule) {
+  const trouve = /\*\*(\d+)\*\*/.exec(cellule);
+  return trouve === null ? null : Number(trouve[1]);
+}
+
+function verifierMetriques() {
+  const readme = lireTexte('README.md');
+  if (readme === null) return;
+  const reel = metriquesReelles();
+  if (reel === null) return;
+  faitsVerifies.add('metriques-readme');
+
+  /** @type {{ libelle: RegExp, portee: string, attendu: number, remede: string }[]} */
+  const lignes = [
+    {
+      libelle: /Unit & integration test files/,
+      portee: 'fichiers de tests unitaires et d’intégration',
+      attendu: reel.unitaires,
+      remede:
+        'compte : fichiers suivis `*.spec.ts`, `*.test.ts`, `*.test.tsx` sous apps/ et libs/, hors `*.e2e.spec.ts`.',
+    },
+    {
+      libelle: /End-to-end specs/,
+      portee: 'specs E2E Playwright',
+      attendu: reel.playwright,
+      remede:
+        'compte : `*.e2e.spec.ts` suivis sous le `testDir` d’une config `playwright*.config.ts`.',
+    },
+    {
+      libelle: /Consumer-driven contracts/,
+      portee: 'contrats Pact',
+      attendu: reel.pacts,
+      remede: 'compte : `pacts/*.json`.',
+    },
+    {
+      libelle: /quality gates/,
+      portee: 'portes bloquantes',
+      attendu: reel.portes,
+      remede:
+        'compte : scripts `scripts/verifier-*.mjs` distincts joués par `ci.yml`.',
+    },
+    {
+      libelle: /Nx projects/,
+      portee: 'projets Nx',
+      attendu: reel.applications + reel.bibliotheques,
+      remede:
+        'compte : répertoires de apps/ et libs/ portant un `package.json`.',
+    },
+    {
+      libelle: /Architecture Decision Records/,
+      portee: 'ADR',
+      attendu: reel.adr,
+      remede: 'compte : `docs/adr/NNNN-*.md`.',
+    },
+  ];
+  /** @type {Map<string, string>} */
+  const cellules = new Map();
+  for (const { libelle, portee, attendu, remede } of lignes) {
+    const cellule = celluleMetrique(readme, libelle);
+    if (cellule === null) continue;
+    cellules.set(portee, cellule);
+    const cite = nombreEnGras(cellule);
+    if (cite === null) {
+      erreur('README.md', `${portee} : aucun nombre en gras dans la cellule.`);
+      continue;
+    }
+    comparer(portee, cite, attendu, remede);
+  }
+
+  // Le détail par suffixe, s'il est écrit (« 214 `*.spec.ts` »).
+  const tests = cellules.get('fichiers de tests unitaires et d’intégration');
+  if (tests !== undefined) {
+    for (const suffixe of SUFFIXES_UNITAIRES) {
+      const motif = new RegExp(
+        `(\\d+) [^\\d|]*?\`\\*${suffixe.replaceAll('.', '\\.')}\``,
+      );
+      const cite = motif.exec(tests);
+      if (cite !== null) {
+        comparer(
+          `fichiers \`*${suffixe}\``,
+          Number(cite[1]),
+          reel.parSuffixe[suffixe] ?? 0,
+          'détail par suffixe du tableau de métriques.',
+        );
+      }
+    }
+  }
+
+  // Les specs E2E d'API, écrites dans la même cellule que Playwright.
+  const e2e = cellules.get('specs E2E Playwright');
+  if (e2e !== undefined) {
+    const api = /(\d+) API end-to-end spec/.exec(e2e);
+    if (api === null) {
+      erreur(
+        'README.md',
+        'specs E2E d’API : le compte a disparu de la cellule E2E.',
+        `écrire « plus ${reel.e2eApi} API end-to-end specs » — les \`*.e2e.spec.ts\` hors Playwright.`,
+      );
+    } else {
+      comparer(
+        'specs E2E d’API',
+        Number(api[1]),
+        reel.e2eApi,
+        'compte : `*.e2e.spec.ts` suivis hors des `testDir` Playwright.',
+      );
+    }
+  }
+
+  const nx = /Nx projects \((\d+) applications \+ (\d+) libraries\)/.exec(
+    readme,
+  );
+  if (nx === null) {
+    erreur(
+      'README.md',
+      'projets Nx : le détail « (N applications + N libraries) » a disparu.',
+    );
+  } else {
+    comparer(
+      'applications Nx',
+      Number(nx[1]),
+      reel.applications,
+      'répertoires de apps/ portant un `package.json`.',
+    );
+    comparer(
+      'bibliothèques Nx',
+      Number(nx[2]),
+      reel.bibliotheques,
+      'répertoires de libs/ portant un `package.json`.',
+    );
+  }
+
+  // Les reprises en prose du même chiffre, qui dérivent séparément du tableau.
+  const prosePortes = /runs \*\*(\d+) bespoke/.exec(readme);
+  if (prosePortes === null) {
+    erreur(
+      'README.md',
+      'portes : la phrase « the pipeline runs **N bespoke gates** » a disparu.',
+    );
+  } else {
+    comparer(
+      'portes (prose de « Quality gates »)',
+      Number(prosePortes[1]),
+      reel.portes,
+      'même compte que le tableau.',
+    );
+  }
+  const proseAdr = /^([A-Z][a-z]+) ADRs record/m.exec(readme);
+  const adrEnLettres =
+    proseAdr === null
+      ? -1
+      : NOMBRES_EN_LETTRES.indexOf((proseAdr[1] ?? '').toLowerCase());
+  if (adrEnLettres === -1) {
+    erreur(
+      'README.md',
+      'ADR : la phrase « N ADRs record … » (nombre en toutes lettres) a disparu ou est illisible.',
+    );
+  } else {
+    comparer(
+      'ADR (prose de « Architecture decisions »)',
+      adrEnLettres,
+      reel.adr,
+      'nombre écrit en toutes lettres, en anglais.',
+    );
+  }
+}
+
+/**
+ * Joue les cinq vérifications. Réentrant : constats et faits confrontés sont
  * remis à zéro à chaque appel, sans quoi `--autotest` cumulerait ceux d'une
  * sonde sur l'autre et conclurait juste par accident.
  */
@@ -699,6 +1033,7 @@ function executer() {
     verifierProjetsNx();
     verifierPorts();
     verifierVersionsTechno(documents);
+    verifierMetriques();
   }
 
   const ATTENDUS = [
@@ -706,6 +1041,7 @@ function executer() {
     'projets-nx',
     'ports-locaux',
     'versions-techno',
+    'metriques-readme',
   ];
   for (const fait of ATTENDUS) {
     if (!faitsVerifies.has(fait)) {
@@ -741,7 +1077,7 @@ function conclure({ documents, attendus }) {
 }
 
 /**
- * Les sondes : un fait par sonde, parce qu'une porte à quatre faits peut mordre
+ * Les sondes : un fait par sonde, parce qu'une porte à cinq faits peut mordre
  * sur l'un et être aveugle sur les trois autres. Deux d'entre elles ont
  * d'ailleurs trouvé un angle mort réel à leur premier passage (LE-18, LE-19).
  *
@@ -774,6 +1110,95 @@ const SONDES = [
     fichier: 'README.md',
     abimer: (texte) => texte.replace('React 19 + Vite 8', 'React 18 + Vite 8'),
     attendu: /« React 18 »/i,
+  },
+  // Fait 5 — une sonde par chiffre du tableau de métriques : chacun a été, un
+  // jour, le seul chiffre faux d'un tableau par ailleurs juste.
+  {
+    nom: 'compte de tests périmé',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace(
+        /(Unit & integration test files +\| )\*\*\d+\*\*/,
+        '$1**240**',
+      ),
+    attendu: /fichiers de tests unitaires et d’intégration : 240 cité/,
+  },
+  {
+    nom: 'détail par suffixe périmé',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace(/\d+ React component/, '1 React component'),
+    attendu: /fichiers `\*\.test\.tsx` : 1 cité/,
+  },
+  {
+    nom: 'specs Playwright périmées',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace(/(real stack\) \| )\*\*\d+\*\*/, '$1**20**'),
+    attendu: /specs E2E Playwright : 20 cité/,
+  },
+  {
+    nom: 'specs E2E d’API disparues',
+    fichier: 'README.md',
+    abimer: (texte) => texte.replace(/, plus \d+ API end-to-end specs/, ''),
+    attendu: /specs E2E d’API : le compte a disparu/,
+  },
+  {
+    nom: 'contrats Pact périmés',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace(/(drift-checked every PR \| )\*\*\d+\*\*/, '$1**4**'),
+    attendu: /contrats Pact : 4 cité/,
+  },
+  {
+    nom: 'portes périmées (tableau)',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace(/(every pull request \| )\*\*\d+\*\*/, '$1**18**'),
+    attendu: /portes bloquantes : 18 cité/,
+  },
+  {
+    nom: 'portes périmées (prose)',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace(/runs \*\*\d+ bespoke/, 'runs **18 bespoke'),
+    attendu: /portes \(prose de « Quality gates »\) : 18 cité/,
+  },
+  {
+    nom: 'projets Nx périmés',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace(
+        /\((\d+) applications \+ \d+ libraries\)/,
+        '($1 applications + 13 libraries)',
+      ),
+    attendu: /bibliothèques Nx : 13 cité/,
+  },
+  {
+    nom: 'ADR périmés (tableau)',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace(
+        /(Architecture Decision Records +\| )\*\*\d+\*\*/,
+        '$1**8**',
+      ),
+    attendu: /ADR : 8 cité/,
+  },
+  {
+    nom: 'ADR périmés (prose en toutes lettres)',
+    fichier: 'README.md',
+    abimer: (texte) =>
+      texte.replace(/^[A-Z][a-z]+ ADRs record/m, 'Eight ADRs record'),
+    attendu: /ADR \(prose de « Architecture decisions »\) : 8 cité/,
+  },
+  {
+    nom: 'ligne de métrique disparue',
+    fichier: 'README.md',
+    // `[^\n]*` et non `.*` : en CRLF, `.` n'avale pas le `\r` et la sonde
+    // perdrait sa cible sur un poste Windows.
+    abimer: (texte) =>
+      texte.replace(/^\| Consumer-driven contracts[^\n]*\n/m, ''),
+    attendu: /ligne de métrique introuvable \(Consumer-driven contracts\)/,
   },
 ];
 
