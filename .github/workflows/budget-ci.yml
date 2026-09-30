@@ -1,0 +1,41 @@
+# MESURE DU BUDGET DE TEMPS DE LA CI DE PR (décidé le 2026-09-30).
+#
+# La règle a deux moitiés : la STRUCTURE (aucun job ajouté derrière `ci`) est tenue
+# à chaque PR par la porte `pnpm budget-ci` du job `ci` ; la DURÉE est mesurée ici,
+# chaque semaine, sur les runs réels : p90 de la durée murale des PR sur 14 jours,
+# contre les plafonds (7 min sans images, 20 min avec). Dépassé = run ROUGE, qui
+# remonte dans l'issue de situation comme tout workflow en échec sur `main`.
+#
+# Source : docs/exploitation/proposition-ci-mutation-delta.md §6.
+# Lecture seule. Actions épinglées par SHA (AUD-02), Node figé (.nvmrc, AUD-10).
+name: Budget CI
+
+on:
+  schedule:
+    - cron: '30 6 * * 1' # lundi 06:30 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  mesure:
+    name: p90 des PR contre les plafonds
+    if: github.repository == 'EdouardZemb/creche-planner'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # checkout du script
+      actions: read # runs et jobs de ci.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Mesurer
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node .github/workflows/scripts/budget-ci.mjs

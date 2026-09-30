@@ -101,7 +101,7 @@ describe('SuiviEnvoisService.lire', () => {
       foyerId: FOYER_ID,
       semaineIso: SEMAINE,
       statut: 'ENVOYE',
-      destinataires: ['a@ex.org', 'b@ex.org'],
+      destinataires: ['a@ex.example', 'b@ex.example'],
       messageId: '<recap@test>',
       erreur: null,
       envoyeLe: new Date('2026-06-23T06:00:00.000Z'),
@@ -114,7 +114,7 @@ describe('SuiviEnvoisService.lire', () => {
       semaineIso: SEMAINE,
       parentId: PARENT_2,
       statut: 'ECHEC',
-      email: 'zoe@ex.org',
+      email: 'zoe@ex.example',
       essais: 3,
       messageId: null,
       erreur: 'SMTP 550',
@@ -127,7 +127,7 @@ describe('SuiviEnvoisService.lire', () => {
       semaineIso: SEMAINE,
       parentId: PARENT_1,
       statut: 'ENVOYE',
-      email: 'ada@ex.org',
+      email: 'ada@ex.example',
       essais: 0,
       messageId: '<p1@test>',
       erreur: null,
@@ -141,7 +141,7 @@ describe('SuiviEnvoisService.lire', () => {
       foyerId: FOYER_ID,
       semaineIso: SEMAINE,
       etablissementId: ETAB_B,
-      destinataire: 'b-creche@ex.org',
+      destinataire: 'b-creche@ex.example',
       sujet: 'Sujet',
       corps: '<p>b</p>',
       statut: 'ECHEC',
@@ -155,7 +155,7 @@ describe('SuiviEnvoisService.lire', () => {
       foyerId: FOYER_ID,
       semaineIso: SEMAINE,
       etablissementId: ETAB_A,
-      destinataire: 'a-creche@ex.org',
+      destinataire: 'a-creche@ex.example',
       sujet: 'Sujet',
       corps: '<p>a</p>',
       statut: 'DRY_RUN',
@@ -177,8 +177,8 @@ describe('SuiviEnvoisService.lire', () => {
     expect(vue.rappel?.envoyeLe).toBe('2026-06-23T06:00:00.000Z');
     // Parents triés par e-mail : ada avant zoe.
     expect(vue.rappel?.parents.map((p) => p.email)).toEqual([
-      'ada@ex.org',
-      'zoe@ex.org',
+      'ada@ex.example',
+      'zoe@ex.example',
     ]);
     expect(vue.rappel?.parents[0]?.statut).toBe('ENVOYE');
     expect(vue.rappel?.parents[0]?.essais).toBe(0);
@@ -191,7 +191,7 @@ describe('SuiviEnvoisService.lire', () => {
       ETAB_B,
     ]);
     expect(vue.etablissements[0]?.statut).toBe('DRY_RUN');
-    expect(vue.etablissements[0]?.destinataire).toBe('a-creche@ex.org');
+    expect(vue.etablissements[0]?.destinataire).toBe('a-creche@ex.example');
     expect(vue.etablissements[0]?.envoyeLe).toBe('2026-06-23T06:05:00.000Z');
     expect(vue.etablissements[1]?.statut).toBe('ECHEC');
     expect(vue.etablissements[1]?.erreur).toBe('transport indisponible');
@@ -248,7 +248,7 @@ describe('SuiviEnvoisService.moisCommuniques', () => {
       foyerId: FOYER_ID,
       semaineIso,
       etablissementId,
-      destinataire: 'creche@ex.org',
+      destinataire: 'creche@ex.example',
       sujet: 'Sujet',
       corps: '<p>x</p>',
       statut,

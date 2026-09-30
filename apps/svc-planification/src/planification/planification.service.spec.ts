@@ -2157,7 +2157,7 @@ describe('PlanificationService — cohérence des heures annuelles', () => {
   };
   const DTO_RENTREE = {
     ...DTO_CRECHE_BASE,
-    enfant: 'Lisa',
+    enfant: 'Jade',
     valideDu: '2026-09-01',
     valideAu: '2027-07-23',
     nbMensualites: 12,

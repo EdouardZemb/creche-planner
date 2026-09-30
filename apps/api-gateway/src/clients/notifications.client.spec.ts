@@ -155,7 +155,7 @@ describe('NotificationsClient (gateway→svc-notifications)', () => {
         erreur: null,
         parents: [
           {
-            email: 'parent@ex.org',
+            email: 'parent@ex.example',
             statut: 'ENVOYE',
             envoyeLe: '2026-01-13T08:00:00.000Z',
             essais: 0,
@@ -168,7 +168,7 @@ describe('NotificationsClient (gateway→svc-notifications)', () => {
           statut: 'DRY_RUN',
           envoyeLe: '2026-01-13T08:05:00.000Z',
           erreur: null,
-          destinataire: 'creche@ex.org',
+          destinataire: 'creche@ex.example',
         },
       ],
     };

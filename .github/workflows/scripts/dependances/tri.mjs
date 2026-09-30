@@ -90,6 +90,10 @@ export const CONTROLES_ATTENDUS = [
   'secret-scan',
   'sast-semgrep',
   'Analyse CodeQL (javascript-typescript)',
+  // Requis sur main depuis #388 (ratchet ESLint sorti du job `ci`, mutation des
+  // lignes modifiées) : sans eux ici, le tri fusionnerait avant leur verdict.
+  'lint-ratchet',
+  'mutation-delta',
 ];
 
 /** Conclusions de contrôle acceptées comme « vert ». Liste fermée. */

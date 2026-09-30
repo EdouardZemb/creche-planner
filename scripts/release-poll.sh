@@ -13,7 +13,7 @@
 #         (déchiffre .env.server.enc en RAM → sonde Releases + deploy.mjs si nouvelle version)
 #
 # Topologie pull-based préservée : tout est SORTANT, rien n'est exposé en entrant.
-# Ce wrapper vise le clone de PROD (/home/edouard/creche-planner) — le MÊME que
+# Ce wrapper vise le clone de PROD (~/creche-planner) — le MÊME que
 # remote-deploy : le verrou commun garantit qu'un poll et un déclenchement manuel
 # ne s'entrelacent jamais sur la pile de prod. Cf. scripts/systemd/README.md.
 #

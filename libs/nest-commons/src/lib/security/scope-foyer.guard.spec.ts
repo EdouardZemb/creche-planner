@@ -171,8 +171,8 @@ describe('ScopeFoyerGuard', () => {
         comparer: 'email',
       });
       const req = requete({
-        body: { createurEmail: 'Alex@Exemple.FR' },
-        assertion: parent('alex@exemple.fr', []),
+        body: { createurEmail: 'Alex@Exemple.EXAMPLE' },
+        assertion: parent('alex@exemple.example', []),
       });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
     });
@@ -183,8 +183,8 @@ describe('ScopeFoyerGuard', () => {
         comparer: 'email',
       });
       const req = requete({
-        query: { parentEmail: 'autre@exemple.fr' },
-        assertion: parent('alex@exemple.fr', []),
+        query: { parentEmail: 'autre@exemple.example' },
+        assertion: parent('alex@exemple.example', []),
       });
       await expect(guard.canActivate(fakeContext(req))).rejects.toBeInstanceOf(
         ForbiddenException,
@@ -246,7 +246,7 @@ describe('ScopeFoyerGuard', () => {
       const resolveur = fakeResolveur({
         [`parent:${parentId}`]: {
           type: 'proprietaire',
-          email: 'ALEX@exemple.fr',
+          email: 'ALEX@exemple.example',
         },
       });
       const guard = guardAvec(
@@ -256,7 +256,7 @@ describe('ScopeFoyerGuard', () => {
       );
       const req = requete({
         query: { parent: parentId },
-        assertion: parent('alex@exemple.fr', [FOYER_A]),
+        assertion: parent('alex@exemple.example', [FOYER_A]),
       });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
     });
@@ -266,7 +266,7 @@ describe('ScopeFoyerGuard', () => {
       const resolveur = fakeResolveur({
         [`parent:${parentId}`]: {
           type: 'proprietaire',
-          email: 'autre@exemple.fr',
+          email: 'autre@exemple.example',
         },
       });
       const guard = guardAvec(
@@ -276,7 +276,7 @@ describe('ScopeFoyerGuard', () => {
       );
       const req = requete({
         query: { parent: parentId },
-        assertion: parent('alex@exemple.fr', [FOYER_A]),
+        assertion: parent('alex@exemple.example', [FOYER_A]),
       });
       await expect(guard.canActivate(fakeContext(req))).rejects.toBeInstanceOf(
         ForbiddenException,

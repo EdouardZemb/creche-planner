@@ -32,7 +32,7 @@ Le chantier a ensuite été **étendu** (demande commanditaire) à un troisième
 **communication au service** — trois points concrets remontés en usage :
 
 - **(c) Lien du mail de rappel cassé.** Le _chemin_ du lien est correct (corrigé en #180,
-  déployé), mais l'**URL de base** émise pointe sur l'**IP LAN du serveur** (`192.168.1.129`,
+  déployé), mais l'**URL de base** émise pointe sur l'**IP LAN du serveur** (`<ip-lan>`,
   certificat non fiable → `ERR_CERT_AUTHORITY_INVALID`, et injoignable hors réseau local) au
   lieu du **domaine public** à certificat valide. Cause = **configuration** (`SERVER_ORIGIN`
   → `NOTIF_APP_URL`/`NOTIF_PUBLIC_API_URL`), pas le code.
@@ -61,7 +61,7 @@ le même palier « prototype → produit pro » que les écrans.
   unique du corps (il **journalise et envoie ce que le client fournit**, après validation +
   échappement), tout en gardant les invariants de sécurité (destinataire **résolu serveur**,
   routabilité, dry-run, allowlist, idempotence).
-- **Lien de rappel (L7)** : symptôme confirmé = erreur **TLS** sur `192.168.1.129`. C'est un
+- **Lien de rappel (L7)** : symptôme confirmé = erreur **TLS** sur `<ip-lan>`. C'est un
   problème de **config/déploiement** (URL de base = IP LAN), pas un bug de code. Correctif =
   **action ops** (pointer sur le domaine public à cert valide) **+** un **garde-fou au boot**
   qui rend cette mauvaise config **bruyante** (échec démarrage en prod).
@@ -863,7 +863,7 @@ observabilité, tests avec horloge.
 ## Lot 7 — Lien du mail de rappel : garde-fou au boot + URL publique (config)
 
 **Objectif (parent).** _Avant_ : le lien « valider mon planning » du mail du mardi ouvre
-`https://192.168.1.129/...` → le navigateur bloque (`ERR_CERT_AUTHORITY_INVALID`, certificat
+`https://<ip-lan>/...` → le navigateur bloque (`ERR_CERT_AUTHORITY_INVALID`, certificat
 non fiable) et, hors du réseau local, l'IP est de toute façon **injoignable** → le parent ne
 peut pas valider depuis le mail. _Après_ : le lien pointe vers le **domaine public à
 certificat valide** (joignable partout), et une **mauvaise configuration ne peut plus repartir
@@ -913,7 +913,7 @@ en silence** (le service refuse de démarrer).
 3. **Portée prod-only.** En dev/test (`NODE_ENV` ≠ production), le garde-fou est **inactif**
    (le défaut `http://localhost:4200` et les stacks e2e restent valides).
 4. **Limite connue, documentée.** Le garde-fou attrape l'IP/http/localhost (dont le cas
-   **actuel** `192.168.1.129`), mais **pas** un domaine interne non public (`creche.lan`
+   **actuel** `<ip-lan>`), mais **pas** un domaine interne non public (`creche.lan`
    passerait) : c'est l'**action ops** (point 1) qui garantit le bon domaine. Le garde-fou est
    le filet, pas le correctif.
 
@@ -923,7 +923,7 @@ Helper **pur et testé**. Logger structuré avant le throw. Ne pas modifier la f
 
 **Critères d'acceptation.**
 
-- [ ] `NODE_ENV=production` + `NOTIF_APP_URL=https://192.168.1.129` → le service **refuse de
+- [ ] `NODE_ENV=production` + `NOTIF_APP_URL=https://<ip-lan>` → le service **refuse de
       démarrer** avec le message explicite ; idem `NOTIF_PUBLIC_API_URL`.
 - [ ] `NODE_ENV=production` + `NOTIF_APP_URL=https://creche.testlens.dev` → démarre.
 - [ ] `NODE_ENV=test`/dev + `http://localhost:4200` → démarre (garde-fou inactif).

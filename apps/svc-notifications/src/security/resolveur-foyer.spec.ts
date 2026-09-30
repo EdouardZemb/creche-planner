@@ -27,11 +27,11 @@ describe('ResolveurFoyerNotifications', () => {
 
   it('parent existant → portée propriétaire (e-mail)', async () => {
     const r = new ResolveurFoyerNotifications(
-      fakeDb([{ email: 'Alex@Exemple.FR' }]),
+      fakeDb([{ email: 'Alex@Exemple.EXAMPLE' }]),
     );
     await expect(r.resoudre('parent', ID)).resolves.toEqual({
       type: 'proprietaire',
-      email: 'Alex@Exemple.FR',
+      email: 'Alex@Exemple.EXAMPLE',
     });
   });
 

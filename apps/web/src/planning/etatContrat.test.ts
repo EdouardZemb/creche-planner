@@ -23,8 +23,8 @@ function contrat(
   return {
     id,
     foyerId: 'foyer-1',
-    enfant: 'Lisa',
-    enfantId: 'enfant-lisa',
+    enfant: 'Jade',
+    enfantId: 'enfant-jade',
     mode,
     ...periode,
   } as ContratLocal;

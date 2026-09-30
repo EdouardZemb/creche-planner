@@ -41,7 +41,7 @@ const FOYER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const AUTRE_FOYER = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const CONTRAT = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const PARENT = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
-const EMAIL_PARENT = 'alex@exemple.fr';
+const EMAIL_PARENT = 'alex@exemple.example';
 
 function fakeResolveur(
   portees: Record<string, PorteeRessource | null>,
@@ -110,7 +110,7 @@ describe('svc-notifications · scoping enforce', () => {
       const req = requete({
         method: 'POST',
         params: { contratId: CONTRAT, semaineIso: '2026-W27' },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(ValidationController, VC.valider, req)),
@@ -121,7 +121,7 @@ describe('svc-notifications · scoping enforce', () => {
       const req = requete({
         method: 'POST',
         params: { contratId: CONTRAT, semaineIso: '2026-W27' },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(
         chaine(ctx(ValidationController, VC.valider, req)),
@@ -153,7 +153,10 @@ describe('svc-notifications · scoping enforce', () => {
             VC.valider,
             requete({
               ...base,
-              headers: entete({ email: 'p@x.fr', foyers: [FOYER] }, expiree),
+              headers: entete(
+                { email: 'p@x.example', foyers: [FOYER] },
+                expiree,
+              ),
             }),
           ),
         ),
@@ -167,7 +170,7 @@ describe('svc-notifications · scoping enforce', () => {
           contratId: '99999999-9999-4999-8999-999999999999',
           semaineIso: '2026-W27',
         },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(ValidationController, VC.valider, req)),
@@ -179,7 +182,7 @@ describe('svc-notifications · scoping enforce', () => {
     it('foyer étranger → 403', async () => {
       const req = requete({
         query: { foyer: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(
         chaine(ctx(ValidationController, VC.aValider, req)),
@@ -192,7 +195,7 @@ describe('svc-notifications · scoping enforce', () => {
       const req = requete({
         originalUrl: `/api/foyers/${FOYER}/export`,
         params: { foyerId: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(PortabiliteController, XC.exporter, req)),
@@ -203,7 +206,7 @@ describe('svc-notifications · scoping enforce', () => {
       const req = requete({
         originalUrl: `/api/foyers/${FOYER}/export`,
         params: { foyerId: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(
         chaine(ctx(PortabiliteController, XC.exporter, req)),
@@ -231,7 +234,7 @@ describe('svc-notifications · scoping enforce', () => {
           semaineIso: '2026-W27',
           etablissementId: ETAB(),
         },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(EnvoiController, NC.brouillon, req)),
@@ -243,7 +246,7 @@ describe('svc-notifications · scoping enforce', () => {
         method: 'POST',
         originalUrl: '/api/envois/etablissement',
         body: { foyerId: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(
         chaine(ctx(EnvoiController, NC.envoyer, req)),
@@ -256,7 +259,7 @@ describe('svc-notifications · scoping enforce', () => {
       const req = requete({
         originalUrl: '/api/moi/notifications',
         query: { parent: PARENT },
-        headers: entete({ email: 'ALEX@Exemple.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'ALEX@Exemple.example', foyers: [FOYER] }),
       });
       await expect(chaine(ctx(InboxController, IC.lister, req))).resolves.toBe(
         true,
@@ -269,7 +272,7 @@ describe('svc-notifications · scoping enforce', () => {
         originalUrl: '/api/moi/notifications/n1/lu',
         params: { id: 'n1' },
         query: { parent: PARENT },
-        headers: entete({ email: 'coparent@exemple.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'coparent@exemple.example', foyers: [FOYER] }),
       });
       await expect(
         chaine(ctx(InboxController, IC.marquerLu, req)),

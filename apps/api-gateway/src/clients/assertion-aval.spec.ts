@@ -40,10 +40,10 @@ describe('entetesAval', () => {
   it('dans un contexte parent → assertion parent { email, foyers, admin }', () => {
     process.env['ASSERTION_IDENTITE_SECRET'] = SECRET;
     const charge = executerAvecContexteAssertion(
-      { email: 'parent@test.fr', foyers: ['f-1', 'f-2'], admin: false },
+      { email: 'parent@test.example', foyers: ['f-1', 'f-2'], admin: false },
       () => decoder(entetesAval()),
     );
-    expect(charge?.email).toBe('parent@test.fr');
+    expect(charge?.email).toBe('parent@test.example');
     expect(charge?.foyers).toEqual(['f-1', 'f-2']);
     expect(charge?.admin).toBe(false);
     expect(charge?.machine).toBeUndefined();
@@ -52,10 +52,10 @@ describe('entetesAval', () => {
   it('contexte parent sans foyers (route non scopée) → assertion parent sans foyers', () => {
     process.env['ASSERTION_IDENTITE_SECRET'] = SECRET;
     const charge = executerAvecContexteAssertion(
-      { email: 'parent@test.fr' },
+      { email: 'parent@test.example' },
       () => decoder(entetesAval()),
     );
-    expect(charge?.email).toBe('parent@test.fr');
+    expect(charge?.email).toBe('parent@test.example');
     expect(charge).not.toHaveProperty('foyers');
     expect(charge).not.toHaveProperty('admin');
   });

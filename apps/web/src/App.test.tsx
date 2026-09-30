@@ -482,7 +482,7 @@ describe('App — coquille de navigation', () => {
 
   it('La cloche de notifications vit dans l’en-tête, HORS de la navigation principale', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: [FOYER_ID],
     });
@@ -578,7 +578,7 @@ describe('App — mode borné par identité (PR6)', () => {
 
   it('identité + 1 foyer autorisé : ouvre directement son tableau de bord (sans découverte)', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: [FOYER_ID],
     });
@@ -591,7 +591,7 @@ describe('App — mode borné par identité (PR6)', () => {
 
   it('identité + 0 foyer : écran « créer mon foyer » (self-service, P5)', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'inconnu@test.fr',
+      email: 'inconnu@test.example',
       admin: false,
       foyers: [],
     });
@@ -609,7 +609,7 @@ describe('App — mode borné par identité (PR6)', () => {
 
   it('identité + N foyers : le sélecteur nomme chaque famille par ses enfants', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: [FOYER_ID, 'f2'],
     });
@@ -644,7 +644,7 @@ describe('App — mode borné par identité (PR6)', () => {
 
   it('N foyers sans enfant : le libellé retombe sur le parent principal (nom, puis e-mail)', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: [FOYER_ID, 'f2'],
     });
@@ -657,7 +657,7 @@ describe('App — mode borné par identité (PR6)', () => {
               {
                 prenom: 'Marie',
                 nom: 'Curie',
-                email: 'marie@test.fr',
+                email: 'marie@test.example',
                 principal: true,
               },
             ],
@@ -669,7 +669,7 @@ describe('App — mode borné par identité (PR6)', () => {
               {
                 prenom: null,
                 nom: null,
-                email: 'jean@test.fr',
+                email: 'jean@test.example',
                 principal: true,
               },
             ],
@@ -681,15 +681,14 @@ describe('App — mode borné par identité (PR6)', () => {
       await screen.findByRole('link', { name: 'Famille Marie Curie' }),
     ).toHaveAttribute('href', `/foyers/${FOYER_ID}/dashboard`);
     // Parent sans prénom/nom : repli sur l'e-mail, jamais un ordinal.
-    expect(screen.getByRole('link', { name: 'jean@test.fr' })).toHaveAttribute(
-      'href',
-      '/foyers/f2/dashboard',
-    );
+    expect(
+      screen.getByRole('link', { name: 'jean@test.example' }),
+    ).toHaveAttribute('href', '/foyers/f2/dashboard');
   });
 
   it('N foyers : un dossier en échec dégrade sa seule carte sans masquer les autres', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: [FOYER_ID, 'f2'],
     });
@@ -716,7 +715,7 @@ describe('App — mode borné par identité (PR6)', () => {
 
   it('N foyers : tous les dossiers en échec → EtatVide « Réessayer »', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: [FOYER_ID, 'f2'],
     });
@@ -738,7 +737,7 @@ describe('App — mode borné par identité (PR6)', () => {
   it('cache localStorage hors ensemble autorisé : ignoré (plus une source de vérité)', async () => {
     localStorage.setItem('creche:foyerId', 'foyer-non-autorise');
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: [FOYER_ID],
     });
@@ -760,7 +759,7 @@ describe('App — mode borné par identité (PR6)', () => {
 
   it('non-admin : le lien « Nouveau foyer » disparaît de l’en-tête', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: [FOYER_ID],
     });
@@ -774,7 +773,7 @@ describe('App — mode borné par identité (PR6)', () => {
 
   it('admin : le lien « Nouveau foyer » reste présent', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'admin@test.fr',
+      email: 'admin@test.example',
       admin: true,
       foyers: [FOYER_ID],
     });
@@ -788,7 +787,7 @@ describe('App — mode borné par identité (PR6)', () => {
 
   it('P5 : non-admin SANS foyer garde « Nouveau foyer » (1ʳᵉ création self-service)', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: [],
     });
@@ -803,7 +802,7 @@ describe('App — mode borné par identité (PR6)', () => {
 
   it('P5 : hors contexte foyer, la nav se cale sur le foyer autorisé et « Ma famille » mène à son édition', async () => {
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: [FOYER_ID],
     });
@@ -835,7 +834,7 @@ describe('App — mode borné par identité (PR6)', () => {
     // jamais élargir la portée — on retombe sur l'ensemble autorisé par le BFF.
     localStorage.setItem('creche:foyerId', 'foyer-interdit');
     mockedApi.moi.mockResolvedValue({
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       admin: false,
       foyers: [FOYER_ID],
     });
@@ -883,7 +882,11 @@ describe('App — mode borné par identité (PR6)', () => {
     // … et surtout aucune requête scopée sur le foyer d'autrui.
     expect(mockedApi.listerAValider).not.toHaveBeenCalled();
 
-    resoudreMoi({ email: 'parent@test.fr', admin: false, foyers: [FOYER_ID] });
+    resoudreMoi({
+      email: 'parent@test.example',
+      admin: false,
+      foyers: [FOYER_ID],
+    });
 
     // À la résolution, la barre se cale sur le foyer réellement autorisé.
     // Le lien et l'appel scopé sont deux effets **indépendants** : attendre le

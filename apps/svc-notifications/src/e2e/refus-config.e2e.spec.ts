@@ -76,12 +76,12 @@ describe('E2E · refus de démarrage sur configuration invalide (AM-44)', () => 
     const { code, stderr } = await demarrer({
       NODE_ENV: 'production',
       ...AMONTS,
-      NOTIF_APP_URL: 'https://192.168.1.129',
+      NOTIF_APP_URL: 'https://192.168.0.10',
       NOTIF_PUBLIC_API_URL: 'https://creche.testlens.dev',
     });
 
     expect(code).not.toBe(0);
-    expect(stderr).toContain('NOTIF_APP_URL=https://192.168.1.129');
+    expect(stderr).toContain('NOTIF_APP_URL=https://192.168.0.10');
     expect(stderr).toContain('URL https à nom de domaine public');
   }, 40000);
 

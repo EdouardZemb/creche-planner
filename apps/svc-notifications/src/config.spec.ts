@@ -156,12 +156,12 @@ describe('loadConfig (svc-notifications)', () => {
 
 /**
  * Lot 7 — le lien du mail de rappel doit pointer vers une URL de base publique
- * (https + domaine), jamais l'IP LAN du serveur (`192.168.1.129`, certificat non
+ * (https + domaine), jamais l'IP LAN du serveur (`192.168.0.10`, certificat non
  * fiable, injoignable hors-LAN) ni `localhost`. `estUrlEmailPublique` est le
  * critère **pur** ; la règle de production `REGLE_URLS_LIENS_EMAIL` en fait un
  * garde-fou de démarrage.
  *
- * ⚠️ Ce critère est **métier** : un `z.url()` accepterait `https://192.168.1.129`
+ * ⚠️ Ce critère est **métier** : un `z.url()` accepterait `https://192.168.0.10`
  * sans broncher. Le lot 5 l'a donc gardé comme règle explicite au lieu de le
  * dissoudre dans la validation de forme.
  */
@@ -175,8 +175,8 @@ describe('estUrlEmailPublique (svc-notifications — URL des liens e-mail)', () 
   });
 
   it('refuse une IP littérale (IPv4, dont l’IP LAN du serveur, ou IPv6)', () => {
-    expect(estUrlEmailPublique('https://192.168.1.129')).toBe(false);
-    expect(estUrlEmailPublique('https://192.168.1.129/foyers/1')).toBe(false);
+    expect(estUrlEmailPublique('https://192.168.0.10')).toBe(false);
+    expect(estUrlEmailPublique('https://192.168.0.10/foyers/1')).toBe(false);
     expect(estUrlEmailPublique('https://10.0.0.1')).toBe(false);
     expect(estUrlEmailPublique('https://[2001:db8::1]')).toBe(false);
   });
@@ -197,14 +197,14 @@ describe('estUrlEmailPublique (svc-notifications — URL des liens e-mail)', () 
 describe('loadConfig — URL des liens e-mail en production', () => {
   it('refuse de démarrer en production sur une IP LAN (NOTIF_APP_URL)', () => {
     expect(() =>
-      loadConfig({ ...PROD, NOTIF_APP_URL: 'https://192.168.1.129' }),
-    ).toThrow(/NOTIF_APP_URL=https:\/\/192\.168\.1\.129/u);
+      loadConfig({ ...PROD, NOTIF_APP_URL: 'https://192.168.0.10' }),
+    ).toThrow(/NOTIF_APP_URL=https:\/\/192\.168\.0\.10/u);
   });
 
   it('refuse de démarrer en production sur une IP LAN (NOTIF_PUBLIC_API_URL)', () => {
     expect(() =>
-      loadConfig({ ...PROD, NOTIF_PUBLIC_API_URL: 'https://192.168.1.129' }),
-    ).toThrow(/NOTIF_PUBLIC_API_URL=https:\/\/192\.168\.1\.129/u);
+      loadConfig({ ...PROD, NOTIF_PUBLIC_API_URL: 'https://192.168.0.10' }),
+    ).toThrow(/NOTIF_PUBLIC_API_URL=https:\/\/192\.168\.0\.10/u);
   });
 
   it('refuse aussi le repli http://localhost en production', () => {

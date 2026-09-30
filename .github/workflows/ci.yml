@@ -135,14 +135,40 @@ jobs:
       - name: Lint · type-check · test · build (affected)
         run: pnpm nx affected -t lint typecheck test build --parallel=3
 
-      # Lot D3 — RATCHET ESLint. Le lint `affected` ci-dessus est vert tant qu'il
-      # n'y a pas d'ERREUR ; les 28 règles laissées en `warn` (dette assumée)
-      # n'étaient donc comptées par personne, et pouvaient remonter indéfiniment.
-      # Ce step lint le dépôt ENTIER et refuse tout dépassement de la baseline
-      # versionnée. Volontairement hors `affected` : un total ne se compare que
-      # s'il porte sur le même périmètre à chaque run.
-      - name: Ratchet ESLint — warnings vs baseline (bloquant si remontée)
-        run: node .github/workflows/scripts/lint-warnings.mjs
+      # Le RATCHET ESLint (lot D3) ne tourne plus ici : il relintait tout le dépôt
+      # APRÈS le lint `affected`, 70 s sur le chemin critique de chaque PR. Même
+      # script, même blocage, dans le job parallèle `lint-ratchet`.
+
+      # BUDGET DE TEMPS (2026-09-30) — un job ajouté tourne en parallèle de `ci`,
+      # jamais derrière lui. Refuse tout allongement non déclaré du chemin critique
+      # et le retour de `lint-ratchet` / `mutation-delta` sur la chaîne.
+      - name: Budget de temps — aucun job ajouté derrière `ci` (bloquant)
+        run: node scripts/verifier-budget-ci.mjs
+
+      # CONFIDENTIALITÉ du dépôt PUBLIC. Du 2026-08-02 au 2026-09-29, `.claude/memory/`
+      # a été versionné et a publié l'accès au serveur de prod (cible SSH, chemins,
+      # posture). gitleaks (job `secret-scan`) ne pouvait pas le voir : il cherche des
+      # SECRETS (entropie, formes de jetons), pas des RENSEIGNEMENTS. Ce step refuse
+      # tout fichier suivi sous `.claude/memory/` et toute cible SSH littérale
+      # nouvelle (cliquet, plafond qui ne peut que baisser). Sondes : `--autotest`.
+      # Fichiers, mais aussi les MESSAGES DE COMMIT de la plage et le TITRE +
+      # DESCRIPTION de la PR : une session sans hook (clone distant sans
+      # `pnpm install`, `--no-verify`) n'échappe pas ici. La liste privée (IP,
+      # prénoms réels, identifiants de prod) vient du secret — absente (PR
+      # Dependabot), la règle est annoncée « non jouée », pas réputée verte.
+      # Les textes passent par `env`, jamais interpolés dans le script.
+      - name: Confidentialité — fichiers, commits, titre et description de PR (bloquant)
+        env:
+          CRECHE_MOTIFS_INTERDITS: ${{ secrets.CRECHE_MOTIFS_INTERDITS }}
+          PR_TITRE: ${{ github.event.pull_request.title }}
+          PR_CORPS: ${{ github.event.pull_request.body }}
+        run: |
+          node scripts/verifier-confidentialite.mjs --autotest
+          node scripts/verifier-confidentialite.mjs
+          node scripts/verifier-confidentialite.mjs --commits "$NX_BASE..$NX_HEAD"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            node scripts/verifier-confidentialite.mjs --texte-env PR_TITRE PR_CORPS
+          fi
 
       # Lot D4 — FRONTIÈRES. Le lint ci-dessus n'applique `enforce-module-boundaries`
       # qu'aux tags ENREGISTRÉS en `depConstraints` : un contexte oublié n'est pas
@@ -464,6 +490,92 @@ jobs:
           path: coverage-baseline/coverage-baseline.json
           retention-days: 90
 
+  # Lot D3 — RATCHET ESLint, sorti du job `ci` le 2026-09-30 (P3 du rééquilibrage,
+  # docs/exploitation/proposition-ci-mutation-delta.md) : même script, même
+  # blocage, mais EN PARALLÈLE — il ne rallonge plus le chemin critique.
+  # Le lint `affected` de `ci` est vert tant qu'il n'y a pas d'ERREUR ; les règles
+  # laissées en `warn` (dette assumée) n'étaient comptées par personne. Ce job lint
+  # le dépôt ENTIER et refuse tout dépassement de la baseline versionnée.
+  # Volontairement hors `affected` : un total ne se compare que sur le même
+  # périmètre. Aucun build requis (vérifié : même verdict sur un arbre sans dist).
+  lint-ratchet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Ratchet ESLint — warnings vs baseline (bloquant si remontée)
+        run: node .github/workflows/scripts/lint-warnings.mjs
+
+  # MUTATION SUR LE CODE MODIFIÉ (P1 du rééquilibrage, décidé le 2026-09-30).
+  # Juge les SEULES lignes ajoutées ou modifiées du code muté (libs dotées d'un
+  # `stryker.config.mjs`), au seuil `thresholds.break` de leur config (80 %) :
+  # une PR n'échoue jamais pour du code ancien qu'elle ne touche pas, et le code
+  # neuf mal testé ne se dilue plus dans le score global. Base : `git merge-base`
+  # avec la cible de la PR (aucun cache). Replis sur le run COMPLET de la lib :
+  # base introuvable, config de test/mutation modifiée, tests seuls modifiés,
+  # gate modifié. « Rien à juger » est un passage explicite, jamais un `NaN`.
+  # Le run complet reste quotidien sur `main` (mutation.yml). Rejeu historique
+  # avant activation : docs/exploitation/proposition-ci-mutation-delta.md §9.
+  # Sur `push`, le job est ignoré (skipped) : la base serait le commit lui-même.
+  mutation-delta:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # la base est calculée par `git merge-base`
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Un gate cassé ne juge personne : ses propres tests d'abord.
+      - name: Auto-test du gate (plan, replis, verdict, NaN)
+        run: node --test '.github/workflows/scripts/mutation-delta/*.test.mjs'
+
+      # CALIBRATION (rejeu historique, 21 PR, docs/exploitation/proposition-ci-mutation-delta.md §9) :
+      # les littéraux de chaîne ne sont PAS jugés en PR. Avec eux, le gate aurait
+      # bloqué #247 à tort (7 libellés de messages d'erreur + 2 équivalents) ; sur
+      # tout l'historique, les 21 survivants StringLiteral en delta sont 16 messages
+      # d'erreur, 4 discriminants que TypeScript refuse et 1 équivalent — aucune
+      # lacune de comportement. Le run complet quotidien (mutation.yml) les juge
+      # toujours. Retirer cette ligne rétablit le jugement complet en PR.
+      - name: Mutation des lignes modifiées (bloquant sous 80 % du delta)
+        env:
+          MUTATION_BASE: origin/${{ github.base_ref }}
+          MUTATION_MUTATEURS_EXCLUS: StringLiteral
+        run: node .github/workflows/scripts/mutation-delta/mutation-delta.mjs
+
+      - name: Publier les rapports de mutation
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-delta
+          path: |
+            mutation-delta-resultat.json
+            mutation-delta-rapports/
+          if-no-files-found: ignore
+          retention-days: 30
+
   # P1-6 (doc 18 §8) — chaîne SÉCURITÉ minimale (SCA). La gateway est HTTP publique :
   # on BLOQUE sur toute vulnérabilité high/critical des dépendances de PRODUCTION
   # (surface d'attaque réelle du runtime). On exécute aussi un audit de l'arbre
@@ -646,124 +758,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
-  # Phase 15 / DoD-2 — SMOKE STACK RÉELLE. Le CI construisait les images
-  # (`build-images`, push:false load:true) sans JAMAIS les démarrer : un crash au
-  # boot (ex. dépendance non embarquée par `prune-lockfile`) passait inaperçu. Ce
-  # job MONTE toute la pile (`docker compose up -d --build --wait`) et PROUVE
-  # qu'elle RÉPOND (santé gateway + appel fonctionnel `/api/v1/couts`). Bloquant.
-  #
-  # PARTAGE D'IMAGES — On NE dépend PAS de `build-images` : ses images chargées
-  # (`load: true`) restent LOCALES à son runner et seraient invisibles ici (autre
-  # runner). Ce job (re)construit donc la pile lui-même via `compose up --build`,
-  # avec le cache buildx GHA implicite. On dépend de `ci` (lint/test/build verts)
-  # et de `pact-can-i-deploy` (garde contrats) avant de monter la pile.
-  #
-  # TEMPS CI (§8 / P2-7 doc 18) — La pile est lourde (4 Postgres + NATS + OTel + 4
-  # services + gateway + web). On NE la monte QUE si un projet DÉPLOYABLE est affecté
-  # (service/gateway/web), via la sortie `has_projects` de `affected-images` : un diff
-  # purement docs/libs ne déclenche plus la pile. `timeout-minutes` borne un hang.
-  # AJOUT (lot 8) : la pile est AUSSI montée quand le diff touche la pile elle-même
-  # (`config-changes.outputs.pile` — composes, docker/**, Dockerfile). Sans cela, une
-  # PR purement compose — celle qui change la pile — ne la bootait JAMAIS.
-  smoke-stack:
-    needs: [ci, pact-can-i-deploy, affected-images, config-changes]
-    if: needs.affected-images.outputs.has_projects == 'true' || needs.config-changes.outputs.pile == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      # Monte les services APPLICATIFS et attend leurs healthchecks (leurs
-      # depends_on tirent l'infra : 4 Postgres, NATS, otel-collector→tempo).
-      # On EXCLUT les sidecars d'observabilité (prometheus, grafana, nats-exporter) :
-      # `--wait` échoue si UN conteneur sort, or nats-exporter peut sortir (code 2)
-      # au démarrage à froid — un défaut d'observabilité ne doit pas faire échouer
-      # le smoke. `--build` reflète le code local ; un crash au boot d'un service
-      # applicatif fait toujours échouer ce step (c'est le but de DoD-2).
-      - name: Démarrage de la pile (docker compose up --build --wait)
-        run: >-
-          docker compose up -d --build --wait
-          web api-gateway svc-referentiel svc-foyer svc-planification svc-tarification
-          svc-notifications
-
-      # SMOKE 1 — santé gateway. La gateway a un préfixe global `api`
-      # (app.config.ts) → la santé est exposée en /api/health ; /health renvoie 404
-      # (et curl --retry ne réessaie pas un 404). Cf. AUD-01 (doc 25).
-      # `--wait` garantit déjà la gateway HEALTHY (healthcheck liveness ajouté à
-      # api-gateway dans docker-compose.yml). On ajoute `--retry-all-errors` pour
-      # que curl réessaie aussi un « (52) Empty reply » transitoire (que `--retry`
-      # seul n'inclut pas), au cas où la readiness se cale juste après le `--wait`.
-      # Depuis le lot B3 cette readiness agrège celle des 5 amonts (base +
-      # migrations + NATS de chacun) : elle vaut donc désormais garde de chaîne
-      # complète — d'où une fenêtre de patience élargie (20 × 3 s ≈ 60 s), le
-      # temps que les migrations Drizzle du démarrage à froid s'appliquent.
-      - name: Santé gateway
-        run: curl --fail --retry 20 --retry-delay 3 --retry-connrefused --retry-all-errors http://localhost:3000/api/health
-
-      # SMOKE 2 — appel fonctionnel réel. `/api/v1/couts` exige un `foyer` : on
-      # amorce l'état (seed SANS --verify suffit à créer le foyer), puis on lit
-      # le `foyerId` écrit dans scripts/.seed-demo-state.json et on interroge les
-      # coûts. Prouve que gateway → services → projection répondent bout en bout.
-      - name: Amorçage (seed de référence, sans garde des coûts)
-        run: node scripts/seed-demo.mjs
-
-      # `--retry-all-errors` (comme le smoke de santé ci-dessus) : le seed écrit dans
-      # svc-foyer, et le coût se lit dans le READ MODEL de svc-tarification, alimenté
-      # par `FoyerMisAJour.v3` via l'outbox et NATS. Entre les deux il y a une
-      # cohérence à retardement, que ce `curl` interrogeait à la milliseconde près.
-      # Depuis le lot 1 (`AM-55`), un foyer non encore projeté ne rend plus un montant
-      # plausible mais un **422** — et `--retry` seul ne rejoue PAS un 4xx : la course
-      # est devenue un rouge franc, observé une fois sur deux. Dix essais espacés de
-      # 3 s tolèrent le retard sans rien masquer : un 422 réel échoue toujours, trente
-      # secondes plus tard.
-      - name: Appel fonctionnel (GET /api/v1/couts)
-        run: |
-          FOYER=$(node -e "process.stdout.write(require('./scripts/.seed-demo-state.json').foyerId)")
-          echo "Foyer amorcé : $FOYER"
-          curl --fail --retry 10 --retry-delay 3 --retry-all-errors "http://localhost:3000/api/v1/couts?foyer=$FOYER&mois=2026-03"
-
-      # P2-6 (doc 18 §8 / doc 23) — SMOKE PERF. La pile est déjà montée et amorcée :
-      # on mesure la latence de l'agrégation annuelle (route la plus coûteuse, 12 mois)
-      # et on BLOQUE sur une régression multi-secondes (la classe du bug doc 06 §19.7,
-      # ~7 s / 502). SLO produit p95 ≈ 0,93 s ; plafond CI tolérant à la variance des
-      # runners partagés (PERF_SLO_P95_MS). Résumé publié dans GITHUB_STEP_SUMMARY.
-      - name: Smoke performance (GET /api/v1/couts/annuel)
-        run: node scripts/perf-smoke.mjs
-
-      # Diagnostic : en cas d'échec, on dump les logs de la pile (services qui
-      # crashent au boot, dépendances manquantes…).
-      - name: Logs de la pile (si échec)
-        if: failure()
-        run: docker compose logs --no-color | tail -n 200
-
-      # Teardown systématique (-v : volumes éphémères) pour ne rien laisser debout.
-      - name: Arrêt de la pile
-        if: always()
-        run: docker compose down -v
-
   # Phase 15 / DoD-3 — E2E STACK RÉELLE. Monte la pile, amorce le seed (avec
   # --verify : garde les montants de coûts) et joue les parcours Playwright
   # contre la VRAIE UI servie par le conteneur web (aucun mock réseau, contrairement
   # à `e2e-web` qu'on conserve pour le feedback rapide). Bloquant avant merge.
   #
-  # PARTAGE D'IMAGES / TEMPS CI — mêmes choix que `smoke-stack` : on (re)construit
-  # la pile localement (pas de dépendance à `build-images`) et on dépend de `ci` +
-  # `pact-can-i-deploy`. Comme `smoke-stack` (P2-7), on ne joue ce job que si un
-  # projet déployable est affecté (`affected-images.has_projects`). `pnpm e2e:stack`
-  # orchestre up --build --wait + seed --verify + Playwright stack + down -v.
-  # Comme `smoke-stack` : un diff qui touche la pile elle-même (composes, docker/**,
-  # Dockerfile) la déclenche aussi, via `config-changes.outputs.pile` (lot 8).
+  # PARTAGE D'IMAGES / TEMPS CI — on (re)construit la pile localement (pas de
+  # dépendance à `build-images`) et on dépend de `ci` + `pact-can-i-deploy`. Le job
+  # ne joue que si un projet déployable est affecté (`affected-images.has_projects`,
+  # P2-7) ou si le diff touche la pile elle-même (composes, docker/**, Dockerfile)
+  # via `config-changes.outputs.pile` (lot 8).
+  #
+  # FUSION DE `smoke-stack` (P4 du rééquilibrage, 2026-09-30) : les deux jobs
+  # montaient la MÊME pile, avec la même condition, en parallèle. La pile n'est plus
+  # montée qu'une fois : `pnpm e2e:stack` la garde debout (KEEP_STACK), puis les
+  # trois smokes de l'ancien job (santé, appel des coûts, performance) tournent
+  # dessus, même si Playwright a échoué — deux signaux distincts, comme avant.
   e2e-stack:
     needs: [ci, pact-can-i-deploy, affected-images, config-changes]
     if: needs.affected-images.outputs.has_projects == 'true' || needs.config-changes.outputs.pile == 'true'
@@ -794,7 +804,42 @@ jobs:
       # Orchestration complète : up --build --wait → seed --verify → Playwright
       # stack → down -v (teardown dans le `finally` du script, sauf KEEP_STACK).
       - name: E2E stack réelle (pile + seed + Playwright)
+        id: e2e
+        env:
+          KEEP_STACK: '1' # la pile reste debout pour les smokes ci-dessous
         run: pnpm e2e:stack
+
+      # SMOKES (ex-job `smoke-stack`). `!cancelled()` : ils jouent même si
+      # Playwright a échoué, pour que « la pile boote et répond » reste un signal
+      # distinct de « les parcours passent ». Si la pile n'a pas démarré, ils
+      # échouent aussi — c'est vrai.
+      #
+      # SMOKE 1 — santé gateway. Préfixe global `api` (app.config.ts) → /api/health
+      # (/health rend 404, AUD-01). `--retry-all-errors` : réessaie aussi un « (52)
+      # Empty reply » transitoire. La readiness agrège celle des 5 amonts (lot B3) :
+      # fenêtre élargie (20 × 3 s) le temps des migrations Drizzle à froid.
+      - name: Santé gateway
+        if: ${{ !cancelled() }}
+        run: curl --fail --retry 20 --retry-delay 3 --retry-connrefused --retry-all-errors http://localhost:3000/api/health
+
+      # SMOKE 2 — appel fonctionnel réel, sur le foyer amorcé par `seed --verify`
+      # (même état `scripts/.seed-demo-state.json` que l'ancien seed sans --verify,
+      # qui en était un sous-ensemble). Cohérence à retardement : le coût se lit dans
+      # le read model de svc-tarification (outbox + NATS) ; depuis `AM-55` un foyer
+      # non projeté rend un 422, que `--retry` seul ne rejoue pas — dix essais
+      # espacés de 3 s tolèrent le retard sans rien masquer.
+      - name: Appel fonctionnel (GET /api/v1/couts)
+        if: ${{ !cancelled() }}
+        run: |
+          FOYER=$(node -e "process.stdout.write(require('./scripts/.seed-demo-state.json').foyerId)")
+          echo "Foyer amorcé : $FOYER"
+          curl --fail --retry 10 --retry-delay 3 --retry-all-errors "http://localhost:3000/api/v1/couts?foyer=$FOYER&mois=2026-03"
+
+      # SMOKE 3 — performance (P2-6, doc 23) : latence de l'agrégation annuelle,
+      # BLOQUANT sur une régression multi-secondes (PERF_SLO_P95_MS).
+      - name: Smoke performance (GET /api/v1/couts/annuel)
+        if: ${{ !cancelled() }}
+        run: node scripts/perf-smoke.mjs
 
       # AQ-06 (doc 27) — même relevé de flakiness que e2e-web, sur le rapport stack
       # (dossier distinct playwright-stack, cf. playwright.stack.config.ts).
@@ -811,12 +856,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
-      # Diagnostic : si `e2e:stack` échoue, sa pile peut déjà être démolie
-      # (down -v en finally). On tente quand même un dump — sans échouer le job
-      # si la pile n'est plus là (`|| true`).
+      # Diagnostic : la pile est encore debout (KEEP_STACK) ; `|| true` si elle n'a
+      # jamais démarré.
       - name: Logs de la pile (si échec)
         if: failure()
         run: docker compose logs --no-color | tail -n 200 || true
+
+      # Teardown systématique (-v : volumes éphémères) : KEEP_STACK l'a différé ici.
+      - name: Arrêt de la pile
+        if: always()
+        run: docker compose down -v
 
   # AQ-02 (doc 27) — GARDE ANTI-DÉRIVE DES PACTS COMMITÉS. Les pacts
   # (`pacts/*.json`) sont GÉNÉRÉS par les tests consumer du gateway puis COMMITÉS ;
@@ -1109,7 +1158,7 @@ jobs:
   # Phase 5 (roadmap CI/CD) — DÉTECTION DE CHANGEMENT DE CONFIG INFRA/OBSERVABILITÉ.
   # Le reste du pipeline raisonne sur le graphe nx (code applicatif) : une PR qui ne
   # touche QUE docker/** ou un compose laisse `affected-images.has_projects=false`,
-  # donc smoke-stack / e2e-stack / build-images sont SKIP et la pile Compose n'est
+  # donc e2e-stack / build-images sont SKIP et la pile Compose n'est
   # JAMAIS bootée. Des bugs de config sont ainsi passés en prod sans être vus en CI
   # (otel-collector :8888 bindé localhost → scrape DOWN ; Infinity allowedHosts
   # manquant). Ce job calcule si la config a changé pour DÉCLENCHER `config-validation`
@@ -1142,7 +1191,7 @@ jobs:
               - 'docker-compose*.yml'
               - '.github/workflows/**'
             # Sous-ensemble qui décrit la PILE elle-même (lot 8 des standards). Il
-            # DÉCLENCHE smoke-stack et e2e-stack, que `affected-images` seul
+            # DÉCLENCHE e2e-stack (et ses smokes), que `affected-images` seul
             # laissait skipper sur un diff purement compose — c'est-à-dire
             # exactement sur les PR qui changent la pile. Le durcissement CIS
             # (AM-48) vit dans docker-compose.yml : sans cette entrée, rien

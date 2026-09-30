@@ -65,7 +65,7 @@
  * ## Ce que la porte NE garantit **pas**
  *
  *  - Elle ne prouve pas que la pile **démarre** ainsi durcie : seuls les jobs
- *    `smoke-stack` et `e2e-stack` le montrent, et eux ne lèvent que la pile
+ *    `e2e-stack` le montre (smokes compris), et il ne lève que la pile
  *    dev/CI. Un service que seule la prod porte (`caddy`, `cloudflared`) n'est
  *    éprouvé que sur le poste, à la main (`EM-14`).
  *  - Elle ne prouve pas qu'une pile durcie **redémarre** : la distinction est
@@ -126,8 +126,7 @@ const BASE = 'docker-compose.yml';
 /**
  * Les trois piles réellement levées, chacune avec les composes que Compose
  * fusionne, **dans l'ordre**. L'override de développement est chargé
- * automatiquement quand aucun `-f` n'est passé (dev local, `smoke-stack`,
- * `e2e-stack`) ; la production et le staging nomment le leur explicitement.
+ * automatiquement quand aucun `-f` n'est passé (dev local, `e2e-stack`) ; la production et le staging nomment le leur explicitement.
  */
 const PILES = [
   { nom: 'dev/CI', composes: [BASE, 'docker-compose.override.yml'] },

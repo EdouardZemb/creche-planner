@@ -46,12 +46,12 @@ sert ici. Ce qui n'est pas dans ce tableau n'est pas une référence du dépôt.
 Les quatre natures ne se mélangent pas dans un même fichier — mélanger, c'est ce
 qui rend un document impossible à tenir à jour :
 
-| Quadrant        | Ce que c'est                   | Ici                                                                 |
-| --------------- | ------------------------------ | ------------------------------------------------------------------- |
-| **Référence**   | L'état des choses, consultable | README, docs 02 (formules), OpenAPI/AsyncAPI, docs 20/21            |
-| **How-to**      | Une tâche, une procédure       | `docs/exploitation/` (runbooks), CONTRIBUTING                       |
-| **Explication** | Pourquoi c'est ainsi           | [ADR](adr/), docs 04 et 09                                          |
-| **Journal**     | Ce qui s'est passé, daté       | [doc 06](06-etat-davancement.md), `.claude/memory/`, `CHANGELOG.md` |
+| Quadrant        | Ce que c'est                   | Ici                                                                                   |
+| --------------- | ------------------------------ | ------------------------------------------------------------------------------------- |
+| **Référence**   | L'état des choses, consultable | README, docs 02 (formules), OpenAPI/AsyncAPI, docs 20/21                              |
+| **How-to**      | Une tâche, une procédure       | `docs/exploitation/` (runbooks), CONTRIBUTING                                         |
+| **Explication** | Pourquoi c'est ainsi           | [ADR](adr/), docs 04 et 09                                                            |
+| **Journal**     | Ce qui s'est passé, daté       | [doc 06](06-etat-davancement.md), `CHANGELOG.md` (+ mémoire du poste, **hors dépôt**) |
 
 Le journal n'est pas un quadrant Diátaxis : c'est un ajout assumé, parce que ce
 dépôt en produit beaucoup (relevés d'incident, plans clos). Il a une propriété
@@ -132,7 +132,8 @@ dirait — c'est le travail de la revue.
 croire couvert : le dépôt sait quelle version a été **coupée** par `nx release`,
 pas laquelle est **promue en production**, ni à quelle date, ni le rang du train.
 Le serveur n'est joignable qu'en LAN. Le rang et la date de promotion restent
-donc des **faits humains**, tenus par les fiches de `.claude/memory/`. La porte
+donc des **faits humains**, tenus hors dépôt sur le poste principal (le dépôt est
+public et ne porte pas la mémoire de travail — `pnpm confidentialite`). La porte
 garantit une chose précise : la version citée est bien une version coupée, et les
 7 services applicatifs sont alignés dessus.
 

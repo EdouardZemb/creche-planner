@@ -26,10 +26,10 @@
 #
 # Options :
 #   --environment <env>  « production » (défaut) ou « staging » (Phase 8). En staging :
-#                        clone /home/edouard/creche-planner-staging, env-file
+#                        clone creche-planner-staging, env-file
 #                        .env.staging, verrou dédié, IMAGE_TAG défaut « main » accepté.
 #   --deploy-ref <ref>   Ref consigné sur le GitHub Deployment (rollback SHA brut).
-#   --server <u@host>    Cible SSH (défaut : edouard@192.168.1.129).
+#   --server <u@host>    Cible SSH (défaut : $CRECHE_SSH_TARGET, hors dépôt).
 #   --repo-path <path>   Clone serveur (défaut dérivé de --environment).
 #   -y, --yes            Saute la confirmation interactive.
 #   --allow-main         Autorise le tag MUTABLE main/latest en PRODUCTION (déconseillé).
@@ -45,7 +45,7 @@ set -euo pipefail
 IMAGE_TAG=""
 DEPLOY_REF=""
 ENVIRONMENT="production"
-SERVER="edouard@192.168.1.129"
+SERVER="${CRECHE_SSH_TARGET:-}"
 REPO_PATH=""
 ASSUME_YES=0
 ALLOW_MAIN=0
@@ -73,13 +73,13 @@ done
 # --- Résolution selon l'environnement (production | staging, cf. Phase 8) ----
 case "$ENVIRONMENT" in
   production)
-    [ -n "$REPO_PATH" ] || REPO_PATH="/home/edouard/creche-planner"
+    [ -n "$REPO_PATH" ] || REPO_PATH="creche-planner"
     ENV_FILE=".env.server"
     LOCK_FILE="/tmp/creche-deploy.lock"
     ;;
   staging)
     [ -n "$IMAGE_TAG" ] || IMAGE_TAG="main"   # staging SUIT le tag rolling
-    [ -n "$REPO_PATH" ] || REPO_PATH="/home/edouard/creche-planner-staging"
+    [ -n "$REPO_PATH" ] || REPO_PATH="creche-planner-staging"
     ENV_FILE=".env.staging"
     LOCK_FILE="/tmp/creche-staging-deploy.lock"
     ;;
@@ -94,6 +94,10 @@ if [ -n "$DEPLOY_REF" ]; then
   [[ "$DEPLOY_REF" =~ $SAFE ]] || die "DEPLOY_REF invalide : '$DEPLOY_REF'."
 fi
 [[ "$REPO_PATH" =~ ^[A-Za-z0-9._/-]+$ ]] || die "repo-path invalide : '$REPO_PATH'."
+# La cible SSH n'est jamais écrite dans le dépôt (public) : --server, ou la
+# variable d'environnement CRECHE_SSH_TARGET du poste.
+[ -n "$SERVER" ] || die "cible SSH absente : passer --server <utilisateur>@<hôte>, ou exporter CRECHE_SSH_TARGET."
+[[ "$SERVER" =~ ^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$ ]] || die "cible SSH invalide (attendu : <utilisateur>@<hôte>)."
 
 # Refus du tag mutable en PRODUCTION uniquement ; en staging « main » est attendu.
 if [ "$ENVIRONMENT" = "production" ] && { [ "$IMAGE_TAG" = "main" ] || [ "$IMAGE_TAG" = "latest" ]; } && [ "$ALLOW_MAIN" -eq 0 ]; then

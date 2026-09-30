@@ -512,7 +512,9 @@ test('client : le jeton ne part jamais hors de l’API GitHub', async () => {
   for (const hostile of [
     'https://api.github.com.evil.example/x',
     'https://api.github.com@evil.example/x',
-    'https://user:pw@api.github.com/x',
+    // Identifiants dans l'URL (utilisateur ET mot de passe) : le « ! » final évite que
+    // `pnpm confidentialite` ne lise « …@api.github.com » comme une adresse e-mail.
+    'https://u:p!@api.github.com/x',
     'http://api.github.com/x',
     'https://evil.example/https://api.github.com/x',
     'javascript:alert(1)',

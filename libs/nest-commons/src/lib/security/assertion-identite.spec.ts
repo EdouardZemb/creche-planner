@@ -21,14 +21,14 @@ function a(secondes: number): Date {
 describe('signerAssertion / verifierAssertion', () => {
   it('signe et vérifie une assertion parent (nominal)', () => {
     const jeton = signerAssertion(
-      { email: 'parent@test.fr', foyers: ['f-1', 'f-2'], admin: false },
+      { email: 'parent@test.example', foyers: ['f-1', 'f-2'], admin: false },
       SECRET,
       T0,
     );
     const charge = verifierAssertion(jeton, SECRET, a(5));
     expect(charge).not.toBeNull();
     expect(charge?.v).toBe(VERSION_ASSERTION);
-    expect(charge?.email).toBe('parent@test.fr');
+    expect(charge?.email).toBe('parent@test.example');
     expect(charge?.foyers).toEqual(['f-1', 'f-2']);
     expect(charge?.admin).toBe(false);
     expect(charge?.machine).toBeUndefined();
@@ -44,9 +44,9 @@ describe('signerAssertion / verifierAssertion', () => {
   });
 
   it('omet foyers/admin absents d’une assertion parent', () => {
-    const jeton = signerAssertion({ email: 'p@test.fr' }, SECRET, T0);
+    const jeton = signerAssertion({ email: 'p@test.example' }, SECRET, T0);
     const charge = verifierAssertion(jeton, SECRET, a(1));
-    expect(charge?.email).toBe('p@test.fr');
+    expect(charge?.email).toBe('p@test.example');
     expect(charge).not.toHaveProperty('foyers');
     expect(charge).not.toHaveProperty('admin');
   });
@@ -90,12 +90,12 @@ describe('signerAssertion / verifierAssertion', () => {
   });
 
   it('rejette une signature falsifiée (secret différent)', () => {
-    const jeton = signerAssertion({ email: 'p@test.fr' }, SECRET, T0);
+    const jeton = signerAssertion({ email: 'p@test.example' }, SECRET, T0);
     expect(verifierAssertion(jeton, 'autre-secret', a(1))).toBeNull();
   });
 
   it('rejette un jeton dont le payload a été altéré (signature invalide)', () => {
-    const jeton = signerAssertion({ email: 'p@test.fr' }, SECRET, T0);
+    const jeton = signerAssertion({ email: 'p@test.example' }, SECRET, T0);
     const [, sig] = jeton.split('.');
     const forge = Buffer.from(
       JSON.stringify({ v: 1, machine: 'intrus', iat: 0, exp: 9_999_999_999 }),
@@ -116,7 +116,7 @@ describe('signerAssertion / verifierAssertion', () => {
     const payload = Buffer.from(
       JSON.stringify({
         v: 1,
-        email: 'p@test.fr',
+        email: 'p@test.example',
         machine: 'api-gateway',
         iat,
         exp: iat + 60,

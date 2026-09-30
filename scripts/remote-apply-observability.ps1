@@ -30,10 +30,11 @@
     (conteneurs, regles Prometheus, Alertmanager decouvert, datasource Infinity).
 
 .PARAMETER Server
-    Cible SSH (utilisateur@hote). Defaut : edouard@192.168.1.129.
+    Cible SSH (utilisateur@hote). Defaut : variable d'environnement CRECHE_SSH_TARGET (hors depot).
 
 .PARAMETER RepoPath
-    Clone de deploiement sur le serveur. Defaut : /home/edouard/creche-planner.
+    Clone de deploiement sur le serveur. Defaut : creche-planner, relatif au repertoire
+    personnel de l utilisateur SSH (le script distant commence par un `cd`).
 
 .PARAMETER Services
     Sous-ensemble de services d'obs a recreer (OBS_SERVICES). Vide = pile d'obs
@@ -65,8 +66,8 @@
 [CmdletBinding()]
 param(
     [switch]$VerifyOnly,
-    [string]$Server = 'edouard@192.168.1.129',
-    [string]$RepoPath = '/home/edouard/creche-planner',
+    [string]$Server = $env:CRECHE_SSH_TARGET,
+    [string]$RepoPath = 'creche-planner',
     [string]$Services = '',
     [switch]$Yes,
     [switch]$SkipPull
@@ -78,6 +79,16 @@ $ErrorActionPreference = 'Stop'
 # Validation des entrees (anti-injection : interpolees dans un script bash distant).
 if ($RepoPath -notmatch '^[A-Za-z0-9._/-]+$') {
     Write-Error "RepoPath invalide : '$RepoPath'."
+    exit 2
+}
+# La cible SSH n'est jamais ecrite dans le depot (public) : -Server, ou la
+# variable d'environnement CRECHE_SSH_TARGET du poste.
+if ([string]::IsNullOrWhiteSpace($Server)) {
+    Write-Error "Cible SSH absente : passer -Server <utilisateur>@<hote>, ou definir CRECHE_SSH_TARGET sur ce poste."
+    exit 2
+}
+if ($Server -notmatch '^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$') {
+    Write-Error "Cible SSH invalide (attendu : <utilisateur>@<hote>)."
     exit 2
 }
 if ($Services -ne '' -and $Services -notmatch '^[A-Za-z0-9 _-]+$') {

@@ -176,9 +176,9 @@ describe('lireEnv — formes de variables', () => {
     const champs = { ADMINS: champEnv.allowlist() } as const;
     expect(
       lireEnv('sonde', champs, {
-        env: { ADMINS: 'B@x.fr, a@x.fr ,b@X.fr' },
+        env: { ADMINS: 'B@x.example, a@x.example ,b@X.example' },
       }).ADMINS,
-    ).toEqual(['b@x.fr', 'a@x.fr']);
+    ).toEqual(['b@x.example', 'a@x.example']);
   });
 
   it('urlService borne le protocole (l’oubli du « http:// » ne passe pas)', () => {

@@ -36,7 +36,10 @@ function message(deps) {
     ]),
     '...',
     '',
-    'Signed-off-by: dependabot[bot] <support@github.com>',
+    // Le tri ne lit pas ce trailer (il juge `verification.verified`) : décor seul,
+    // sur un domaine réservé — l'adresse réelle n'est admise que dans un message de
+    // commit (exception étroite de `pnpm confidentialite`), jamais dans un fichier.
+    'Signed-off-by: dependabot[bot] <dependabot@example.com>',
   ].join('\n');
 }
 

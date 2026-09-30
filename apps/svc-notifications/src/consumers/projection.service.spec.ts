@@ -166,7 +166,7 @@ function evenementParent(type: string, id: string): unknown {
     payload: {
       foyerId: FOYER_ID,
       parentId: PARENT_ID,
-      email: 'maman@test.fr',
+      email: 'maman@test.example',
       principal: true,
       actif: true,
     },
@@ -218,7 +218,7 @@ function evenementEtablissement(type: string, id: string): unknown {
       etablissementId: ETAB_ID,
       foyerId: FOYER_ID,
       nom: 'Crèche du centre',
-      emailService: 'creche@test.fr',
+      emailService: 'creche@test.example',
       preavisRegle: { type: 'JOURS_OUVRES', valeur: 2 },
       types: ['CRECHE_PSU'],
       actif: true,

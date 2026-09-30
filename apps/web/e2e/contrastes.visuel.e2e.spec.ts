@@ -68,7 +68,7 @@ const dossier = {
     {
       id: 'parent-a11y',
       foyerId: FOYER_ID,
-      email: 'parent@test.fr',
+      email: 'parent@test.example',
       prenom: 'Camille',
       nom: 'Martin',
       principal: true,
@@ -137,12 +137,12 @@ const semaineBesoinsVide = {
   contrats: [],
 };
 
-const MOI = { email: 'parent@test.fr', admin: false, foyers: [FOYER_ID] };
+const MOI = { email: 'parent@test.example', admin: false, foyers: [FOYER_ID] };
 
 const MON_PROFIL = {
   parentId: 'parent-a11y',
   foyerId: FOYER_ID,
-  email: 'parent@test.fr',
+  email: 'parent@test.example',
   prenom: 'Camille',
   nom: 'Martin',
   principal: true,
@@ -185,7 +185,7 @@ const ETABLISSEMENTS = [
     foyerId: FOYER_ID,
     nom: 'Crèche des Lilas',
     type: 'CRECHE',
-    email: 'creche@test.fr',
+    email: 'creche@test.example',
     archive: false,
   },
   {
@@ -193,7 +193,7 @@ const ETABLISSEMENTS = [
     foyerId: FOYER_ID,
     nom: 'École Papin (archivée)',
     type: 'ECOLE',
-    email: 'ecole@test.fr',
+    email: 'ecole@test.example',
     archive: true,
   },
 ];

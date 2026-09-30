@@ -79,7 +79,7 @@ doit être un chiffre vrai).
 - Toujours `corepack pnpm@10.34.2 …` (jamais le pnpm global 8.x). Exemples :
   `corepack pnpm@10.34.2 install`, `corepack pnpm@10.34.2 nx run-many -t lint typecheck test -p web`.
 - **Travailler dans le clone principal**
-  `C:\Users\edoua\Documents\Claude\Projects\Documents courtier\creche-planner-public`.
+  `C:\Users\<poste>\Documents\Claude\Projects\Documents courtier\creche-planner-public`.
 - Environnement de travail : `pnpm preflight` en début de session — cf.
   [CONTRIBUTING.md § Pièges](../../CONTRIBUTING.md), source unique sur la boucle de dev.
 

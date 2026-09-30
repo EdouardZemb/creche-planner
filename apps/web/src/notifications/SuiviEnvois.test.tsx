@@ -43,13 +43,13 @@ describe('SuiviEnvois', () => {
           erreur: null,
           parents: [
             {
-              email: 'a@ex.org',
+              email: 'a@ex.example',
               statut: 'ENVOYE',
               envoyeLe: '2026-06-23T06:00:00.000Z',
               essais: 0,
             },
             {
-              email: 'b@ex.org',
+              email: 'b@ex.example',
               statut: 'ENVOYE',
               envoyeLe: '2026-06-23T06:00:00.000Z',
               essais: 0,
@@ -110,28 +110,28 @@ describe('SuiviEnvois', () => {
             statut: 'ENVOYE',
             envoyeLe: '2026-06-23T06:05:00.000Z',
             erreur: null,
-            destinataire: 'creche@ex.org',
+            destinataire: 'creche@ex.example',
           },
           {
             etablissementId: '99999999-9999-4999-8999-999999999992',
             statut: 'ECHEC',
             envoyeLe: null,
             erreur: 'transport indisponible',
-            destinataire: 'ecole@ex.org',
+            destinataire: 'ecole@ex.example',
           },
           {
             etablissementId: '99999999-9999-4999-8999-999999999993',
             statut: 'DRY_RUN',
             envoyeLe: '2026-06-23T06:06:00.000Z',
             erreur: null,
-            destinataire: 'test@ex.org',
+            destinataire: 'test@ex.example',
           },
           {
             etablissementId: '99999999-9999-4999-8999-999999999994',
             statut: 'EN_COURS',
             envoyeLe: null,
             erreur: null,
-            destinataire: 'encours@ex.org',
+            destinataire: 'encours@ex.example',
           },
         ],
       }),
@@ -139,7 +139,7 @@ describe('SuiviEnvois', () => {
     rendre();
     expect(
       await screen.findByText(
-        'Récapitulatif envoyé à creche@ex.org le 23/06/2026 à 06:05.',
+        'Récapitulatif envoyé à creche@ex.example le 23/06/2026 à 06:05.',
       ),
     ).toBeInTheDocument();
     expect(

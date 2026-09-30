@@ -89,7 +89,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
       fakePlanification(async () => ({ foyerId: 'f-1' })),
     );
     const req = requete({
-      identite: { email: 'p@test.fr' },
+      identite: { email: 'p@test.example' },
       query: { foyer: 'f-1' },
     });
     await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
@@ -109,7 +109,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
   });
 
   it('admin (∈ ADMIN_EMAILS) → bypass, ne résout pas l’appartenance', async () => {
-    process.env['ADMIN_EMAILS'] = 'admin@test.fr';
+    process.env['ADMIN_EMAILS'] = 'admin@test.example';
     process.env['FOYER_AUTHZ_ENFORCE'] = '1';
     const foyers = fakeFoyers(async () => []);
     const guard = new AppartenanceGuard(
@@ -118,7 +118,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
       fakePlanification(async () => ({ foyerId: 'x' })),
     );
     const req = requete({
-      identite: { email: 'Admin@Test.fr' },
+      identite: { email: 'Admin@Test.example' },
       params: { id: 'f-autre' },
     });
     await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
@@ -135,7 +135,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
       foyers,
       fakePlanification(async () => ({ foyerId: 'f-1' })),
     );
-    const req = requete({ identite: { email: 'p@test.fr' } });
+    const req = requete({ identite: { email: 'p@test.example' } });
     await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
     expect(foyers.foyersParEmail).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledOnce();
@@ -150,25 +150,25 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         foyers,
         fakePlanification(async () => ({ foyerId: 'x' })),
       );
-      const req = requete({ identite: { email: 'p@test.fr' } });
+      const req = requete({ identite: { email: 'p@test.example' } });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
       // C'est le but de la source : l'interceptor de propagation reprend cette
       // liste pour que l'assertion parent porte les foyers (refus fantômes A5).
       expect(req.foyersAutorises).toEqual(['f-1', 'f-2']);
-      expect(foyers.foyersParEmail).toHaveBeenCalledWith('p@test.fr');
+      expect(foyers.foyersParEmail).toHaveBeenCalledWith('p@test.example');
       expect(warn).not.toHaveBeenCalled();
       expect(addRefus).not.toHaveBeenCalled();
     });
 
     it('admin → bypass sans résolution (l’assertion admin bypasse le scoping aval)', async () => {
-      process.env['ADMIN_EMAILS'] = 'admin@test.fr';
+      process.env['ADMIN_EMAILS'] = 'admin@test.example';
       const foyers = fakeFoyers(async () => []);
       const guard = new AppartenanceGuard(
         fakeReflector('identite'),
         foyers,
         fakePlanification(async () => ({ foyerId: 'x' })),
       );
-      const req = requete({ identite: { email: 'admin@test.fr' } });
+      const req = requete({ identite: { email: 'admin@test.example' } });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
       expect(foyers.foyersParEmail).not.toHaveBeenCalled();
       expect(req.estAdmin).toBe(true);
@@ -183,7 +183,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         }),
         fakePlanification(async () => ({ foyerId: 'x' })),
       );
-      const req = requete({ identite: { email: 'p@test.fr' } });
+      const req = requete({ identite: { email: 'p@test.example' } });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
       expect(req.foyersAutorises).toBeUndefined();
       expect(warn).toHaveBeenCalledOnce();
@@ -202,7 +202,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         }),
         fakePlanification(async () => ({ foyerId: 'x' })),
       );
-      const req = requete({ identite: { email: 'p@test.fr' } });
+      const req = requete({ identite: { email: 'p@test.example' } });
       await expect(guard.canActivate(fakeContext(req))).rejects.toThrow(
         ForbiddenException,
       );
@@ -222,7 +222,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         fakePlanification(async () => ({ foyerId: 'f-1' })),
       );
       const req = requete({
-        identite: { email: 'p@test.fr' },
+        identite: { email: 'p@test.example' },
         query: { foyer: 'f-1' },
       });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
@@ -240,7 +240,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         fakePlanification(async () => ({ foyerId: 'x' })),
       );
       const req = requete({
-        identite: { email: 'intrus@test.fr' },
+        identite: { email: 'intrus@test.example' },
         params: { id: 'f-1' },
       });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
@@ -263,7 +263,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         fakePlanification(async () => ({ foyerId: 'f-1' })),
       );
       const req = requete({
-        identite: { email: 'p@test.fr' },
+        identite: { email: 'p@test.example' },
         query: { foyer: 'f-1' },
       });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
@@ -288,7 +288,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         fakePlanification(async () => ({ foyerId: 'f-1' })),
       );
       const req = requete({
-        identite: { email: 'p@test.fr' },
+        identite: { email: 'p@test.example' },
         query: { foyer: 'f-1' },
       });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
@@ -301,7 +301,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         fakePlanification(async () => ({ foyerId: 'x' })),
       );
       const req = requete({
-        identite: { email: 'intrus@test.fr' },
+        identite: { email: 'intrus@test.example' },
         params: { id: 'f-1' },
       });
       await expect(guard.canActivate(fakeContext(req))).rejects.toThrow(
@@ -323,7 +323,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         fakePlanification(async () => ({ foyerId: 'f-1' })),
       );
       const req = requete({
-        identite: { email: 'p@test.fr' },
+        identite: { email: 'p@test.example' },
         query: { foyer: 'f-1' },
       });
       await expect(guard.canActivate(fakeContext(req))).rejects.toThrow(
@@ -344,7 +344,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         planification,
       );
       const req = requete({
-        identite: { email: 'p@test.fr' },
+        identite: { email: 'p@test.example' },
         params: { id: 'c-9' },
       });
       await expect(guard.canActivate(fakeContext(req))).resolves.toBe(true);
@@ -358,7 +358,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         fakePlanification(async () => ({ foyerId: 'f-1' })),
       );
       const req = requete({
-        identite: { email: 'intrus@test.fr' },
+        identite: { email: 'intrus@test.example' },
         params: { id: 'c-9' },
       });
       await expect(guard.canActivate(fakeContext(req))).rejects.toThrow(
@@ -375,7 +375,7 @@ describe('AppartenanceGuard (PR7, autorisation par foyer)', () => {
         }),
       );
       const req = requete({
-        identite: { email: 'p@test.fr' },
+        identite: { email: 'p@test.example' },
         params: { id: 'c-inconnu' },
       });
       await expect(guard.canActivate(fakeContext(req))).rejects.toThrow(

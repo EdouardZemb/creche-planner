@@ -87,7 +87,7 @@ describe('svc-foyer · scoping enforce', () => {
     it('foyer du parent → passe (200)', async () => {
       const req = requete({
         params: { id: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }),
       });
       await expect(chaine(ctx(P.obtenir, req))).resolves.toBe(true);
     });
@@ -95,7 +95,7 @@ describe('svc-foyer · scoping enforce', () => {
     it('foyer étranger → 403', async () => {
       const req = requete({
         params: { id: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [AUTRE_FOYER] }),
+        headers: entete({ email: 'p@x.example', foyers: [AUTRE_FOYER] }),
       });
       await expect(chaine(ctx(P.obtenir, req))).rejects.toBeInstanceOf(
         ForbiddenException,
@@ -121,7 +121,7 @@ describe('svc-foyer · scoping enforce', () => {
       const expiree = new Date(Date.now() - 200_000); // exp = iat+60s, hors tolérance ±30s
       const req = requete({
         params: { id: FOYER },
-        headers: entete({ email: 'p@x.fr', foyers: [FOYER] }, expiree),
+        headers: entete({ email: 'p@x.example', foyers: [FOYER] }, expiree),
       });
       await expect(chaine(ctx(P.obtenir, req))).rejects.toBeInstanceOf(
         UnauthorizedException,
@@ -132,7 +132,7 @@ describe('svc-foyer · scoping enforce', () => {
       const req = requete({
         params: { id: FOYER },
         headers: entete({
-          email: 'admin@x.fr',
+          email: 'admin@x.example',
           foyers: [AUTRE_FOYER],
           admin: true,
         }),
@@ -145,8 +145,8 @@ describe('svc-foyer · scoping enforce', () => {
     it('créateur = identité (insensible à la casse) → passe', async () => {
       const req = requete({
         method: 'POST',
-        body: { createurEmail: 'Alex@Exemple.FR' },
-        headers: entete({ email: 'alex@exemple.fr' }),
+        body: { createurEmail: 'Alex@Exemple.EXAMPLE' },
+        headers: entete({ email: 'alex@exemple.example' }),
       });
       await expect(chaine(ctx(P.creer, req))).resolves.toBe(true);
     });
@@ -154,8 +154,8 @@ describe('svc-foyer · scoping enforce', () => {
     it('créateur ≠ identité → 403', async () => {
       const req = requete({
         method: 'POST',
-        body: { createurEmail: 'autre@exemple.fr' },
-        headers: entete({ email: 'alex@exemple.fr' }),
+        body: { createurEmail: 'autre@exemple.example' },
+        headers: entete({ email: 'alex@exemple.example' }),
       });
       await expect(chaine(ctx(P.creer, req))).rejects.toBeInstanceOf(
         ForbiddenException,
@@ -166,16 +166,16 @@ describe('svc-foyer · scoping enforce', () => {
   describe('GET /foyers?parentEmail= (résolution par e-mail direct)', () => {
     it('parentEmail = identité → passe', async () => {
       const req = requete({
-        query: { parentEmail: 'alex@exemple.fr' },
-        headers: entete({ email: 'alex@exemple.fr' }),
+        query: { parentEmail: 'alex@exemple.example' },
+        headers: entete({ email: 'alex@exemple.example' }),
       });
       await expect(chaine(ctx(P.lister, req))).resolves.toBe(true);
     });
 
     it('parentEmail ≠ identité → 403', async () => {
       const req = requete({
-        query: { parentEmail: 'victime@exemple.fr' },
-        headers: entete({ email: 'alex@exemple.fr' }),
+        query: { parentEmail: 'victime@exemple.example' },
+        headers: entete({ email: 'alex@exemple.example' }),
       });
       await expect(chaine(ctx(P.lister, req))).rejects.toBeInstanceOf(
         ForbiddenException,
