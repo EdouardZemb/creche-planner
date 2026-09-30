@@ -428,7 +428,7 @@ services:
     # 2026-07-29) pour une pile reproductible — même politique que les images
     # d'observabilité (P2-8). Mise à jour délibérée : re-résoudre le tag
     # (`docker buildx imagetools inspect caddy:2-alpine`) et remplacer le digest.
-    image: caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    image: caddy@sha256:0c994536bddb66445885237f1a5dcc1916bccea922661c76b4e9fc24061f9b52
     # Durcissement (AM-48) : Caddy tourne root pour se lier à 80/443 — c'est la
     # SEULE capacité qu'il reprend. Racine en lecture seule : `/data` (certificats
     # ACME) et `/config` (état autosave) sont des volumes nommés, /tmp un tmpfs.
@@ -498,7 +498,7 @@ services:
   # Épinglé par digest de liste (= 2026.7.3, image en marche prod 2026-07-29),
   # cf. caddy ci-dessus pour la procédure de mise à jour délibérée.
   cloudflared:
-    image: cloudflare/cloudflared@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
+    image: cloudflare/cloudflared@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c
     # Durcissement (AM-48) : client purement SORTANT (aucun port écouté, aucun
     # fichier écrit — le jeton du tunnel vient de l'environnement), donc zéro
     # capacité et racine en lecture seule.
