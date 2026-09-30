@@ -53,7 +53,7 @@ jobs:
           echo "commits=$(node -e 'const l=require("fs").readFileSync(process.argv[1],"utf8").trim().split("\n").filter(Boolean);console.log(JSON.stringify(l))' "$RUNNER_TEMP/retenus.txt")" >> "$GITHUB_OUTPUT"
 
   rejeu:
-    name: Rejeu ${{ matrix.commit }}
+    name: Rejeu ${{ matrix.commit }} ${{ matrix.exclus }}
     needs: liste
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -62,6 +62,9 @@ jobs:
       max-parallel: 20
       matrix:
         commit: ${{ fromJSON(needs.liste.outputs.commits) }}
+        # Deux calibrations mesurées côte à côte : le gate approuvé (défaut) et une
+        # variante qui ne juge pas les littéraux de chaîne (messages d'erreur).
+        exclus: ['', 'StringLiteral']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -89,6 +92,7 @@ jobs:
       - name: Gate, tel quel
         env:
           COMMIT: ${{ matrix.commit }}
+          MUTATION_MUTATEURS_EXCLUS: ${{ matrix.exclus }}
         run: |
           set +e
           MUTATION_BASE="$COMMIT^1" node "$RUNNER_TEMP/gate/mutation-delta.mjs" > "$RUNNER_TEMP/sortie.txt" 2>&1
@@ -103,6 +107,7 @@ jobs:
             r.sujet = fs.readFileSync(process.argv[2], "utf8").trim();
             r.code = Number(process.argv[3]);
             r.node = process.version;
+            r.variante = process.env.MUTATION_MUTATEURS_EXCLUS || "défaut";
             fs.writeFileSync("resultat/resultat.json", JSON.stringify(r, null, 1));
           ' "$COMMIT" "$RUNNER_TEMP/sujet.txt" "$CODE"
           cp "$RUNNER_TEMP/sortie.txt" resultat/sortie.txt
@@ -112,7 +117,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: rejeu-${{ matrix.commit }}
+          name: rejeu-${{ matrix.commit }}-${{ matrix.exclus || 'defaut' }}
           path: resultat/
           retention-days: 30
 
@@ -139,14 +144,17 @@ jobs:
               const r = JSON.parse(fs.readFileSync(f, "utf8"));
               const libs = Object.entries(r.libs ?? {}).filter(([, v]) => v.mode !== "rien");
               const etat = r.erreur ? "ERREUR" : libs.some(([, v]) => v.etat === "erreur") ? "ERREUR" : libs.some(([, v]) => v.etat === "echoue") ? "BLOQUÉE" : "passe";
-              lignes.push({ commit: r.commit.slice(0, 10), sujet: r.sujet, etat,
+              lignes.push({ commit: r.commit.slice(0, 10), variante: r.variante, sujet: r.sujet, etat,
                 detail: libs.map(([k, v]) => `${k.split("/")[1]}:${v.mode}:${v.etat}${v.score != null ? ":" + v.score.toFixed(1) : ""}:${v.nonDetectes ?? 0}surv`).join(" ") });
             }
-            lignes.sort((a, b) => a.sujet.localeCompare(b.sujet));
-            const md = ["| Commit | PR | État | Détail |", "| --- | --- | --- | --- |",
-              ...lignes.map((l) => `| ${l.commit} | ${String(l.sujet).replace(/\|/g, "/").slice(0, 90)} | ${l.etat} | ${l.detail ?? ""} |`)].join("\n");
-            const compte = (e) => lignes.filter((l) => l.etat === e).length;
-            const tete = `### Rejeu : ${lignes.length} PR — ${compte("BLOQUÉE")} bloquée(s), ${compte("passe")} passée(s), ${compte("ERREUR") + compte("ARTEFACT ABSENT")} en erreur\n\n`;
+            lignes.sort((a, b) => a.sujet.localeCompare(b.sujet) || String(a.variante).localeCompare(String(b.variante)));
+            const md = ["| Commit | Variante | PR | État | Détail |", "| --- | --- | --- | --- | --- |",
+              ...lignes.map((l) => `| ${l.commit} | ${l.variante} | ${String(l.sujet).replace(/\|/g, "/").slice(0, 90)} | ${l.etat} | ${l.detail ?? ""} |`)].join("\n");
+            const tete = ["défaut", "StringLiteral"].map((v) => {
+              const l = lignes.filter((x) => x.variante === v);
+              const c = (e) => l.filter((x) => x.etat === e).length;
+              return `**${v}** : ${l.length} PR — ${c("BLOQUÉE")} bloquée(s), ${c("passe")} passée(s), ${c("ERREUR") + c("ARTEFACT ABSENT")} en erreur`;
+            }).join(" · ") + "\n\n";
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, tete + md + "\n");
             fs.writeFileSync("synthese.json", JSON.stringify(lignes, null, 1));
           '

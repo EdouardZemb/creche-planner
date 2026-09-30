@@ -16,6 +16,10 @@
  *   MUTATION_BASE       référence de comparaison (défaut `origin/main`) ; la base
  *                       effective est `git merge-base MUTATION_BASE HEAD`
  *   MUTATION_PLAN_SEUL  `1` : écrit le plan et s'arrête (aucun Stryker)
+ *   MUTATION_MUTATEURS_EXCLUS  mutateurs Stryker exclus du jugement, séparés par
+ *                       des virgules (vide par défaut). Sert à MESURER une variante
+ *                       de calibration sur le rejeu historique ; la config des libs,
+ *                       et donc le run complet quotidien, n'est pas touchée.
  *
  * Sorties : résumé Markdown (GITHUB_STEP_SUMMARY ou stdout),
  * `mutation-delta-resultat.json`, rapports copiés dans `mutation-delta-rapports/`.
@@ -180,7 +184,12 @@ if (process.env.MUTATION_PLAN_SEUL === '1') {
 const rapports = join(RACINE, 'mutation-delta-rapports');
 mkdirSync(rapports, { recursive: true });
 /** @type {Record<string, any>} */
-const resultat = { base, baseSha: baseSha || null, libs: {} };
+const resultat = {
+  base,
+  baseSha: baseSha || null,
+  mutateursExclus: process.env.MUTATION_MUTATEURS_EXCLUS ?? '',
+  libs: {},
+};
 const sections = [];
 let echec = false;
 
@@ -208,7 +217,24 @@ for (const lib of libs) {
   } else {
     const cheminRapport = join(RACINE, lib.dossier, lib.rapport);
     rmSync(cheminRapport, { force: true });
+    const exclus = (process.env.MUTATION_MUTATEURS_EXCLUS ?? '')
+      .split(',')
+      .map((m) => m.trim())
+      .filter((m) => /^[A-Za-z]+$/.test(m));
     const args = ['run', '--reporters', 'json,clear-text'];
+    let configTemporaire = null;
+    if (exclus.length > 0) {
+      // Aucune option CLI n'exclut un mutateur : config temporaire qui ÉTEND
+      // celle de la lib, retirée juste après le run.
+      configTemporaire = join(RACINE, lib.dossier, 'stryker.gate.config.mjs');
+      writeFileSync(
+        configTemporaire,
+        `import base from './stryker.config.mjs';
+export default { ...base, mutator: { ...(base.mutator ?? {}), excludedMutations: [...(base.mutator?.excludedMutations ?? []), ...${JSON.stringify(exclus)}] } };
+`,
+      );
+      args.push('stryker.gate.config.mjs');
+    }
     if (p.mode === 'delta') args.push('--mutate', p.mutate.join(','));
     const run = lancer(
       binaire('@stryker-mutator/core', 'stryker'),
@@ -216,6 +242,7 @@ for (const lib of libs) {
       join(RACINE, lib.dossier),
     );
     journal = run.sortie;
+    if (configTemporaire !== null) rmSync(configTemporaire, { force: true });
     const brut = existsSync(cheminRapport)
       ? readFileSync(cheminRapport, 'utf8')
       : null;
