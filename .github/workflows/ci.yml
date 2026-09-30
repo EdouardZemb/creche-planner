@@ -1656,3 +1656,26 @@ jobs:
           echo "$SORTIE" | grep -qF 'lockfile source illisible' \
             || echec "la cécité doit être NOMMÉE dans le rapport"
           echo "✅ Un lockfile illisible reste un doute."
+
+  # Automatisation Dependabot (fusion + récapitulatif) — jeu d'essai HOSTILE du tri
+  # (`.github/workflows/scripts/dependances/*.test.mjs`) : usurpation d'auteur, commit
+  # ajouté à la main, notes de version menteuses, avis illisibles, gate non requis
+  # rouge, noms de paquets piégés… Chaque cas est une façon de fusionner à tort ou
+  # de notifier n'importe qui. Aussi : cohérence du groupe `outillage-portes` de
+  # dependabot.yml avec la liste du tri. Pas de filtre de chemins : sans install,
+  # il coûte quelques secondes, et un tri qui dérive doit se voir sur TOUTE PR.
+  dependances-autotest:
+    name: Auto-test automatisation dépendances
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Tri, fusion et récapitulatif contre un faux GitHub
+        run: node --test '.github/workflows/scripts/dependances/*.test.mjs'

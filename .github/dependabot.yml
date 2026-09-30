@@ -1,15 +1,36 @@
 # Dependabot — surveillance des dépendances (doc 18 §8, action P1-6).
-# Complète l'audit SCA bloquant en CI (`pnpm audit --prod`) par des PR de mise à
-# jour automatiques. pnpm est géré via l'écosystème `npm` (lecture de pnpm-lock.yaml).
+#
+# Politique de fusion (runbook `docs/exploitation/runbook-automatisation-dependances.md`) :
+#   - correctifs et mineures npm → fusion AUTOMATIQUE si TOUS les gates sont verts
+#     (workflow `dependabot-fusion.yml`, logique dans `scripts/dependances/tri.mjs`) ;
+#   - mises à jour de SÉCURITÉ → JAMAIS fusionnées automatiquement, remontées en
+#     priorité dans l'issue unique de `situation.yml` ;
+#   - majeures, actions GitHub, images Docker, outillage des gates → à la main.
+#
+# Les GROUPES ci-dessous servent deux buts : peu de PR par semaine, et des PR
+# HOMOGÈNES au regard de cette politique — un groupe qui mélangerait un paquet
+# fusionnable et un outil de gate serait tout entier bloqué par le second.
+# Le tri ne FAIT PAS confiance aux groupes pour autant : il réexamine chaque
+# dépendance de chaque PR (un paquet égaré dans le mauvais groupe reste bloqué).
+#
+# Ordre des groupes : Dependabot range une dépendance dans le PREMIER groupe qui
+# la reconnaît. Les familles (Nx, FullCalendar, NestJS, OpenTelemetry) passent
+# donc avant les groupes génériques.
+#
+# Cadence : hebdomadaire, le lundi tôt, pour que les PR soient triées par la
+# CI avant la journée et apparaissent dans le récapitulatif du matin.
 version: 2
 updates:
-  # Dépendances applicatives (monorepo à la racine).
+  # Dépendances applicatives (espace de travail pnpm à la racine : un seul
+  # lockfile, tous les `package.json` de apps/ et libs/ y sont rattachés).
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:
       interval: 'weekly'
       day: 'monday'
-    open-pull-requests-limit: 10
+      time: '04:00'
+      timezone: 'Europe/Paris'
+    open-pull-requests-limit: 6
     # Quarantaine des publications npm (AM-50, lot 8 des standards) : Dependabot
     # ne propose une version qu'après ce délai. La plateforme applique 3 jours
     # par défaut depuis le 2026-07-14 ; on l'écrit en clair pour que la valeur
@@ -20,9 +41,13 @@ updates:
     # jour de SÉCURITÉ ignorent ce délai, par conception de Dependabot.
     cooldown:
       default-days: 3
+    # L'ancienne étiquette `security` était posée sur TOUTES les PR npm : elle
+    # mentait dès qu'une montée n'avait rien à voir avec une faille. Qu'une PR
+    # soit une mise à jour de sécurité est désormais établi par le tri (avis de
+    # la base GitHub Advisory sur la version de départ), pas par une étiquette.
     labels:
       - 'dependencies'
-      - 'security'
+      - 'npm'
     commit-message:
       prefix: 'chore'
       include: 'scope'
@@ -33,23 +58,92 @@ updates:
       # (PR #92/#93/#95/#96/#97, mergées séparément) a laissé le monorepo
       # incohérent et cassé ci/pact-drift/openapi-types-drift. Ce groupe rend le
       # signal visible en UNE PR, à FERMER puis à rejouer via le runbook
-      # `docs/runbook-nx-migrate.md` — jamais à merger telle quelle.
+      # `docs/runbook-nx-migrate.md` — jamais à merger telle quelle (le tri la
+      # classe « outillage d'un gate », donc jamais fusionnée automatiquement).
       nx-toolchain:
         patterns:
           - 'nx'
           - '@nx/*'
-      # Regroupe les patchs/minors pour limiter le bruit de PR.
-      dependances-mineures:
+      # Familles de paquets à versions couplées : elles montent ensemble, y
+      # compris en majeure. FullCalendar : `apps/web` épingle les cinq paquets
+      # sur la même version, et les PR séparées #306/#310 (core/react seuls)
+      # auraient rompu la compatibilité si on les avait fusionnées.
+      fullcalendar:
+        patterns:
+          - '@fullcalendar/*'
+      nestjs:
+        patterns:
+          - '@nestjs/*'
+      # OpenTelemetry publie ses SDK en 0.x : chaque « mineure » y est une
+      # rupture permise par SemVer, que le tri traite comme une majeure. Isolés
+      # ici, ils ne bloquent pas le groupe de production qui les contiendrait.
+      opentelemetry:
+        patterns:
+          - '@opentelemetry/*'
+      # Outillage qui EXÉCUTE ou DÉFINIT un gate. Liste recopiée TELLE QUELLE de
+      # `OUTILLAGE_PORTES` (`.github/workflows/scripts/dependances/tri.mjs`) —
+      # le test `tri.test.mjs` refuse tout écart entre les deux.
+      outillage-portes:
         update-types:
           - 'minor'
           - 'patch'
+        patterns:
+          - 'nx'
+          - '@nx/*'
+          - 'eslint'
+          - 'eslint-*'
+          - '@eslint/*'
+          - 'typescript-eslint'
+          - '@typescript-eslint/*'
+          - 'jsonc-eslint-parser'
+          - 'prettier'
+          - 'prettier-*'
+          - '@commitlint/*'
+          - 'husky'
+          - 'lint-staged'
+          - 'typescript'
+          - 'vitest'
+          - '@vitest/*'
+          - '@stryker-mutator/*'
+          - '@pact-foundation/*'
+          - 'playwright'
+          - '@playwright/*'
+          - '@axe-core/*'
+          - '@testing-library/*'
+          - 'fast-check'
+          - 'openapi-typescript'
+      # Le reste, séparé production / développement : une montée d'un paquet
+      # livré en production ne doit pas attendre derrière un outil de dev, ni
+      # l'inverse. Les majeures n'entrent dans aucun de ces deux groupes : elles
+      # arrivent une par une, parce que chacune demande une lecture.
+      production-mineures:
+        dependency-type: 'production'
+        update-types:
+          - 'minor'
+          - 'patch'
+      developpement-mineures:
+        dependency-type: 'development'
+        update-types:
+          - 'minor'
+          - 'patch'
+      # Mises à jour de SÉCURITÉ (actives seulement si « Dependabot security
+      # updates » est allumé dans Settings) : regroupées en une PR, jamais
+      # fusionnées automatiquement.
+      securite:
+        applies-to: 'security-updates'
+        patterns:
+          - '*'
 
-  # Actions GitHub épinglées dans les workflows.
+  # Actions GitHub épinglées dans les workflows. Toujours à la main : une action
+  # met à jour un workflow, c'est-à-dire un gate — ou ce workflow de fusion.
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
       interval: 'weekly'
       day: 'monday'
+      time: '04:00'
+      timezone: 'Europe/Paris'
+    open-pull-requests-limit: 3
     labels:
       - 'dependencies'
       - 'ci'
@@ -68,3 +162,59 @@ updates:
       codeql-action:
         patterns:
           - 'github/codeql-action*'
+      # Toutes les autres actions en une PR hebdomadaire (au lieu d'une par
+      # action : #376, #378, #379 la même semaine). Les majeures restent seules.
+      actions-mineures:
+        update-types:
+          - 'minor'
+          - 'patch'
+        patterns:
+          - '*'
+
+  # Images de base des Dockerfile (services Node et front). À la main : une
+  # image embarque des correctifs de sécurité que rien ne permet de tracer
+  # depuis la PR, et la politique refuse de fusionner une correction de faille
+  # sans lecture.
+  - package-ecosystem: 'docker'
+    directories:
+      - '/'
+      - '/apps/web'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '04:00'
+      timezone: 'Europe/Paris'
+    open-pull-requests-limit: 2
+    labels:
+      - 'dependencies'
+      - 'docker'
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
+    groups:
+      images-dockerfile:
+        patterns:
+          - '*'
+
+  # Images tierces des fichiers Compose (Postgres, NATS…). Limite connue : une
+  # image épinglée par digest SEUL (`image@sha256:…`, sans étiquette) n'est pas
+  # suivie — Dependabot a besoin d'une étiquette pour trouver une version plus
+  # récente. C'est le cas de la pile d'observabilité, suivie par `image-scan.yml`.
+  - package-ecosystem: 'docker-compose'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '04:00'
+      timezone: 'Europe/Paris'
+    open-pull-requests-limit: 2
+    labels:
+      - 'dependencies'
+      - 'docker'
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
+    groups:
+      images-compose:
+        patterns:
+          - '*'

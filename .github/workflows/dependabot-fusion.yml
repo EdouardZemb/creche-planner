@@ -1,0 +1,74 @@
+# FUSION AUTOMATIQUE des PR Dependabot — correctifs et mineures npm, gates verts.
+#
+# Politique et coupure : `docs/exploitation/runbook-automatisation-dependances.md`.
+# Logique : `.github/workflows/scripts/dependances/` (tri pur + tests hostiles,
+# rejoués par le job `dependances-autotest` de ci.yml).
+#
+# ── POURQUOI CE WORKFLOW EST ÉCRIT COMME DU CODE DE SÉCURITÉ ─────────────────
+# Il a le droit d'écrire dans `main`. Ce qui le protège :
+#
+#   - DÉCLENCHEURS : `schedule` et `workflow_dispatch` SEULEMENT. Jamais
+#     `pull_request_target` ni `workflow_run` : aucun code, aucun workflow,
+#     aucune donnée d'une PR n'est exécuté. Le script lit les PR par l'API, en
+#     données ; il ne les checkout pas.
+#   - RÉFÉRENCE : le job refuse de tourner ailleurs que sur `main` (garde
+#     `github.ref`), pour qu'un `workflow_dispatch` lancé depuis une branche ne
+#     puisse pas exécuter une version modifiée du script avec ce jeton.
+#   - JETON : `GITHUB_TOKEN` seul, `contents: write` (fusion) et lectures. Aucun
+#     PAT, aucun secret, aucune administration : la protection de branche
+#     s'applique à lui comme à tout le monde et reste l'arbitre final.
+#   - INTERRUPTEUR : rien n'est fusionné tant que la variable de dépôt
+#     `FUSION_AUTO_DEPENDABOT` ne vaut pas exactement `active`.
+#   - COURSE : la fusion transmet le SHA évalué ; GitHub la refuse si la branche
+#     a bougé entre l'évaluation et la fusion.
+#
+# ── LIMITE CONNUE, ASSUMÉE ─────────────────────────────────────────────────────
+# Une fusion faite avec `GITHUB_TOKEN` NE DÉCLENCHE PAS les workflows `push`
+# (règle de la plateforme contre les boucles). Les gates ont tourné sur la PR,
+# sur l'arbre exact fusionné (branche à jour exigée) ; ce qui manque, ce sont les
+# effets de `main` seul : publication des images GHCR signées et référence de
+# couverture. Ils rattrapent au push suivant (nx-set-shas repart du dernier run
+# vert de main). Lever cette limite demanderait un jeton d'application ou un PAT
+# capable d'écrire dans `main` — une élévation de privilège volontairement NON
+# faite ici, à décider par le propriétaire (runbook §5).
+#
+# Actions épinglées par SHA (AUD-02), Node figé via .nvmrc (AUD-10), timeout
+# borné (AUD-03), concurrence (AUD-14).
+name: Fusion Dependabot
+
+on:
+  schedule:
+    - cron: '23 * * * *' # toutes les heures : une fusion au plus par passage
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: fusion-dependabot
+  cancel-in-progress: false
+
+jobs:
+  fusion:
+    name: Fusion automatique (correctif/mineure, gates verts)
+    if: github.repository == 'EdouardZemb/creche-planner' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # fusionner une PR (et lire le script)
+      pull-requests: read # lire les PR, leurs commits et leurs fichiers
+      checks: read # lire les check runs du commit de tête
+      statuses: read # lire les statuts de commit
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Trier et fusionner au plus une PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FUSION_AUTO_DEPENDABOT: ${{ vars.FUSION_AUTO_DEPENDABOT }}
+        run: node .github/workflows/scripts/dependances/fusion.mjs

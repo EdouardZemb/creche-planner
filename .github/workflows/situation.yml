@@ -1,0 +1,60 @@
+# SITUATION DU DÉPÔT — un point unique au lieu de notifications éparses.
+#
+# Réécrit chaque matin UNE issue (étiquette `situation-depot`, créée par
+# github-actions) : workflows en échec sur main, alertes de sécurité ouvertes
+# par gravité, PR Dependabot avec la raison exacte de leur blocage.
+# Une édition d'issue ne notifie personne ; un commentaire (avec mention) n'est
+# posté que si un élément prioritaire NOUVEAU apparaît.
+#
+# Logique : `.github/workflows/scripts/dependances/situation.mjs`.
+# Runbook : `docs/exploitation/runbook-automatisation-dependances.md`.
+#
+# Lecture seule sur le code, écriture sur les issues uniquement. Aucune PR
+# n'est checkout, aucune donnée distante n'est exécutée ; tout ce qui vient de
+# l'API est assaini avant d'être écrit (mentions, renvois, liens, Markdown).
+#
+# `ALERTS_TOKEN` (déjà utilisé par veille-alertes.yml) est nécessaire pour lire
+# les alertes Dependabot et de secrets : le jeton d'un workflow n'y a pas
+# accès. Absent ou insuffisant, l'issue l'affiche en POINT MORT — jamais en 0.
+name: Situation du dépôt
+
+on:
+  schedule:
+    - cron: '10 6 * * *' # chaque jour 06:10 UTC, après image-scan (05:17) et veille-alertes (05:40)
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: situation-depot
+  cancel-in-progress: true
+
+jobs:
+  situation:
+    name: Récapitulatif unique
+    if: github.repository == 'EdouardZemb/creche-planner' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # checkout du script, commits de main
+      actions: read # workflows et runs
+      checks: read # contrôles des PR Dependabot
+      statuses: read
+      pull-requests: read
+      security-events: read # alertes CodeQL
+      issues: write # l'issue unique, son étiquette, le commentaire de nouveauté
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Rassembler et publier
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALERTS_TOKEN: ${{ secrets.ALERTS_TOKEN }}
+          FUSION_AUTO_DEPENDABOT: ${{ vars.FUSION_AUTO_DEPENDABOT }}
+        run: node .github/workflows/scripts/dependances/situation.mjs
