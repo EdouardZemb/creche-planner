@@ -158,8 +158,9 @@ describe('MailerService — contrat SMTP avec le vrai nodemailer', () => {
     );
     // Le messageId rendu est celui de l'en-tête réellement émis.
     expect(resultat.dryRun).toBe(false);
-    expect(resultat.messageId).toMatch(/^<.+@.+>$/);
-    expect(session?.donnees).toContain(`Message-ID: ${resultat.messageId}`);
+    const messageId = resultat.messageId ?? 'absent';
+    expect(messageId).toMatch(/^<.+@.+>$/);
+    expect(session?.donnees).toContain(`Message-ID: ${messageId}`);
   });
 
   it('un refus permanent du serveur remonte à l’appelant (le scheduler retentera)', async () => {
