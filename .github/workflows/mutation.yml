@@ -1,16 +1,19 @@
-# AQ-13 (doc 27) — mutation testing Stryker sur les libs domaine, HORS CI
-# bloquante (coûteux : chaque mutant relance la suite vitest qui le couvre).
-# Déclenchement : manuel (workflow_dispatch) ou hebdomadaire. Un score < 80 %
-# (seuil `break` des stryker.config.mjs) met ce run en échec — signal à trier,
-# sans bloquer aucune PR. Rapports HTML/JSON archivés 90 j (série temporelle,
+# AQ-13 (doc 27) — mutation testing Stryker COMPLET sur les libs domaine, sur `main`.
+# Depuis le 2026-09-30 (P2 du rééquilibrage, docs/exploitation/proposition-ci-mutation-delta.md) :
+# QUOTIDIEN au lieu d'hebdomadaire — le run complet coûte 2,6 min au plus (mesuré),
+# et la dérive de fond se voit en un jour au lieu de sept. Les PR, elles, sont
+# jugées sur leurs lignes modifiées par le job `mutation-delta` de ci.yml ; ce run
+# complet couvre ce que le delta ne voit pas (tests affaiblis dans une PR qui
+# touche aussi du code). Un score < 80 % (seuil `break` des stryker.config.mjs)
+# met ce run en échec — il remonte dans l'issue de situation. Rapports HTML/JSON archivés 90 j (série temporelle,
 # même logique que AQ-06).
 name: Mutation testing
 
 on:
   workflow_dispatch:
   schedule:
-    # Lundi 05:00 UTC — avant la journée de travail, hors des heures de pointe.
-    - cron: '0 5 * * 1'
+    # Chaque jour 05:00 UTC — avant la journée de travail, hors des heures de pointe.
+    - cron: '0 5 * * *'
 
 permissions:
   contents: read
