@@ -50,10 +50,11 @@ l'usage réel — d'où ce smoke (risque **RT-05** du [registre de risque](19-re
 
 ## 4. Intégration CI
 
-Branché dans le job **`smoke-stack`** ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) :
-la pile y est **déjà montée et amorcée** (seed), donc le smoke perf **réutilise** cet état (pas de
-second démarrage de pile). Comme `smoke-stack` (P2-7), il ne s'exécute que si un projet **déployable**
-est affecté.
+Branché dans le job **`e2e-stack`** ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)),
+qui a absorbé l'ancien job `smoke-stack` le 2026-09-30 : la pile y est **déjà montée et amorcée**
+(seed `--verify`), donc le smoke perf **réutilise** cet état (pas de second démarrage de pile), et
+tourne même si les parcours Playwright ont échoué. Il ne s'exécute que si un projet **déployable**
+est affecté (P2-7) ou si le diff touche la pile.
 
 ## 5. Exécution locale
 

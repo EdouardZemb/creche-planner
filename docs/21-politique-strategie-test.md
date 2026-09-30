@@ -71,11 +71,11 @@ l'**oracle** (qui dit vrai), le **critère de couverture** et la **porte CI**.
 | **Intégration / adapter** | Conformité des adapters aux ports (LSP)        | Tout nouvel adapter (repo SQL…)                      | Suite de contrat de port partagée (mémoire ET SQL)             | Tous les ports                                                  | `ci` (test, Postgres éphémères)                                |
 | **Contrat (Pact)**        | Compatibilité gateway ↔ services               | Toute interaction inter-services modifiée            | Pact consumer (attentes) vérifié côté provider réel + Postgres | Toutes les paires consommateur/fournisseur                      | `ci` (provider) + `pact-can-i-deploy`                          |
 | **E2E web mocké**         | Feedback rapide de parcours UI (offline)       | Tout parcours UI                                     | `page.route` (BFF mocké)                                       | Parcours critiques                                              | `e2e-web`                                                      |
-| **E2E stack réelle**      | Anti-régression d'intégration de bout en bout  | **Toute évolution touchant un parcours utilisateur** | Pile dockerisée réelle (aucun mock réseau) + seed `--verify`   | Parcours critiques contre services réels                        | `smoke-stack` + `e2e-stack`                                    |
+| **E2E stack réelle**      | Anti-régression d'intégration de bout en bout  | **Toute évolution touchant un parcours utilisateur** | Pile dockerisée réelle (aucun mock réseau) + seed `--verify`   | Parcours critiques contre services réels                        | `e2e-stack` (smokes compris)                                   |
 | **Accessibilité (a11y)**  | Conformité WCAG 2.1 AA                         | Toute route servie                                   | `@axe-core/playwright` (0 violation)                           | Toutes les routes                                               | `e2e-stack` (axe)                                              |
 | **Performance (smoke)**   | Tenue du SLO p95 sur l'agrégation annuelle     | Modif du chemin `/couts/annuel`                      | SLO p95 documenté ([doc 23](23-smoke-performance.md))          | Route `/api/v1/couts/annuel`                                    | `perf-smoke` (cf. P2-6)                                        |
 | **Sécurité (SCA)**        | Pas de vulnérabilité connue haute/critique     | Toute modif de dépendances                           | `pnpm audit --audit-level=high` + Dependabot + CodeQL          | Arbre de dépendances + code applicatif                          | `security` (cf. P1-6)                                          |
-| **Mutation (Stryker)**    | Prouver que les assertions **mordent**         | Hebdo + manuel (jamais en porte de PR)               | Mutants tués par la suite vitest (§2.4)                        | Score ≥ 80 % par lib domaine (seuil `break`)                    | `mutation.yml` (hors CI bloquante, cf. AQ-13)                  |
+| **Mutation (Stryker)**    | Prouver que les assertions **mordent**         | **Chaque PR** (lignes modifiées) + quotidien complet | Mutants tués par la suite vitest (§2.4)                        | Score ≥ 80 % par lib domaine (seuil `break`)                    | `mutation.yml` (hors CI bloquante, cf. AQ-13)                  |
 
 ### 2.1 Forme de la pyramide
 
@@ -108,9 +108,17 @@ mesure la part des mutants (altérations délibérées du code) que la suite tue
 n'hoiste pas dans les libs et le glob par défaut ne scanne que le `node_modules` local).
 Rapports HTML/JSON dans `test-output/stryker/` (gitignoré).
 
-**Porte.** Hors CI bloquante (coûteux : ~3-6 min/lib) : workflow `mutation.yml` hebdomadaire
-(lundi 05:00 UTC) + `workflow_dispatch`, rapports en artefacts 90 j. Le seuil `break: 80` met le
-run hebdo en échec sous 80 % — signal à trier, aucune PR bloquée.
+**Porte (depuis le 2026-09-30).** Deux étages, décidés sur mesures
+([proposition](exploitation/proposition-ci-mutation-delta.md)) :
+
+- **À chaque PR, bloquant** — job `mutation-delta` de `ci.yml` : seules les **lignes ajoutées ou
+  modifiées** du code muté sont jugées, au seuil `break: 80` de la config, en parallèle de `ci`
+  (5 à 20 s de Stryker mesurés). Une PR n'échoue jamais pour du code ancien. Replis sur le run
+  complet de la lib : base introuvable, config de test ou de mutation modifiée, tests seuls
+  modifiés, gate modifié. « Rien à juger » est un passage explicite.
+- **Chaque jour, complet** — workflow `mutation.yml` sur `main` (2,6 min au plus, mesuré ; l'ancienne
+  estimation de 3 à 6 min par lib était fausse). Il couvre ce que le delta ne voit pas : des tests
+  affaiblis dans une PR qui touche aussi du code.
 
 **Référence (2026-06-12, session H).** Avant triage : tarification 86,94 %, planification
 86,73 % (les deux > 80 % du premier coup). Après renforcement des tests :

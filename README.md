@@ -126,20 +126,20 @@ against **ISTQB CTAL-TM / TMMi** in
 A guided tour, with the reasoning behind each level, is in **[TESTING.md](TESTING.md)**.
 The pyramid in brief:
 
-| Level                   | Tooling                                      | What it actually guarantees                                                                                                        | Runs               |
-| ----------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| **Mutation testing**    | Stryker                                      | That the unit tests _detect_ defects rather than merely execute lines. **96.1 %** on `tarification/domain`; `break` threshold 80 % | Weekly + on demand |
-| **Unit / domain**       | Vitest                                       | Pure pricing, planning and versioning logic. **100 %** statements, branches, functions, lines — enforced, not aspirational         | Every PR           |
-| **Model-based**         | Vitest + explicit state models               | State-machine coverage of the schedule-adjustment logic ([doc 17](docs/17-tests-model-based-ct-mbt.md))                            | Every PR           |
-| **Contract**            | Pact (consumer-driven)                       | The BFF and its 5 providers cannot drift apart. Pacts are **regenerated from scratch** and diffed; `can-i-deploy` gates release    | Every PR           |
-| **Schema / type drift** | OpenAPI → generated TypeScript               | Front-end types regenerated from the contract and compared byte-for-byte — a silent API break fails the build                      | Every PR           |
-| **Integration**         | Vitest + real Postgres & NATS                | Transactional outbox, idempotent durable consumers, projections                                                                    | Every PR           |
-| **E2E (mocked BFF)**    | Playwright                                   | Full user journeys against a mocked backend — fast and deterministic                                                               | Every PR           |
-| **E2E (real stack)**    | Playwright + Docker Compose                  | The same journeys against the **entire 27-container stack**, seeded                                                                | Every PR           |
-| **Smoke & performance** | Node probes                                  | Gateway readiness, a functional cost call, and an annual-cost latency budget                                                       | Every PR           |
-| **Accessibility**       | axe-core + Playwright                        | **WCAG 2.2 AA** target; the nine criteria new to 2.2 are individually adjudicated ([doc 11](docs/11-spec-accessibilite-ct-ut.md))  | Every PR           |
-| **Visual regression**   | Playwright screenshots                       | A CSS refactor must prove pixel-equivalence before it lands                                                                        | On demand          |
-| **Security**            | Trivy · CodeQL · Semgrep · gitleaks · cosign | SCA, SAST, secret scanning, signed images, plus a **daily re-scan of already-deployed images**                                     | Every PR + daily   |
+| Level                   | Tooling                                      | What it actually guarantees                                                                                                        | Runs                                      |
+| ----------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| **Mutation testing**    | Stryker                                      | That the unit tests _detect_ defects rather than merely execute lines. **96.1 %** on `tarification/domain`; `break` threshold 80 % | Every PR (changed lines) + daily full run |
+| **Unit / domain**       | Vitest                                       | Pure pricing, planning and versioning logic. **100 %** statements, branches, functions, lines — enforced, not aspirational         | Every PR                                  |
+| **Model-based**         | Vitest + explicit state models               | State-machine coverage of the schedule-adjustment logic ([doc 17](docs/17-tests-model-based-ct-mbt.md))                            | Every PR                                  |
+| **Contract**            | Pact (consumer-driven)                       | The BFF and its 5 providers cannot drift apart. Pacts are **regenerated from scratch** and diffed; `can-i-deploy` gates release    | Every PR                                  |
+| **Schema / type drift** | OpenAPI → generated TypeScript               | Front-end types regenerated from the contract and compared byte-for-byte — a silent API break fails the build                      | Every PR                                  |
+| **Integration**         | Vitest + real Postgres & NATS                | Transactional outbox, idempotent durable consumers, projections                                                                    | Every PR                                  |
+| **E2E (mocked BFF)**    | Playwright                                   | Full user journeys against a mocked backend — fast and deterministic                                                               | Every PR                                  |
+| **E2E (real stack)**    | Playwright + Docker Compose                  | The same journeys against the **entire 27-container stack**, seeded                                                                | Every PR                                  |
+| **Smoke & performance** | Node probes                                  | Gateway readiness, a functional cost call, and an annual-cost latency budget                                                       | Every PR                                  |
+| **Accessibility**       | axe-core + Playwright                        | **WCAG 2.2 AA** target; the nine criteria new to 2.2 are individually adjudicated ([doc 11](docs/11-spec-accessibilite-ct-ut.md))  | Every PR                                  |
+| **Visual regression**   | Playwright screenshots                       | A CSS refactor must prove pixel-equivalence before it lands                                                                        | On demand                                 |
+| **Security**            | Trivy · CodeQL · Semgrep · gitleaks · cosign | SCA, SAST, secret scanning, signed images, plus a **daily re-scan of already-deployed images**                                     | Every PR + daily                          |
 
 Three choices worth naming, because they are the ones a test lead would ask about:
 
@@ -179,9 +179,11 @@ gates**. They share a design rule that matters more than the list itself:
 | `pnpm abonnements` · `pnpm quarantaine`  | Each context publishes its event inventory and each durable JetStream consumer is bounded to the subjects it projects; the npm publication cooldown is declared where it is read                                                                                           |
 | `pnpm wcag` · `pnpm pieges`              | The nine WCAG 2.2 criteria adjudicated and every cited guard real; dead traps not copied forward into plans                                                                                                                                                                |
 | `pnpm confidentialite`                   | The repository is public: nothing tracked under `.claude/memory/`, no literal SSH target, no e-mail outside reserved domains, no path naming an account, no value from a private list kept outside the repository — judged on files, commit messages and pull-request text |
+| `pnpm budget-ci`                         | The pull-request CI time budget: no job may be added behind `ci` on the critical path, and the ESLint ratchet and the changed-lines mutation gate must stay parallel (durations measured weekly against the ceilings)                                                      |
 
 Alongside them: ESLint warnings frozen against a baseline (a ratchet — no additions
-accepted), DORA metrics derived from deployment history, and the weekly mutation run.
+accepted), DORA metrics derived from deployment history, mutation testing on every
+pull request's changed lines plus a daily full run, and a CI time budget.
 
 Working conventions: [CONTRIBUTING.md](CONTRIBUTING.md) ·
 [CONVENTIONS.md](CONVENTIONS.md) · [SECURITY.md](SECURITY.md).

@@ -80,6 +80,13 @@ Scope: the four pure-domain libraries. Configuration
 ([`libs/*/domain/stryker.config.mjs`](libs/tarification/domain/stryker.config.mjs))
 sets `thresholds: { high: 90, low: 80, break: 80 }` — under 80 % the run fails.
 
+It runs at two levels. On **every pull request**, the `mutation-delta` job mutates only the
+lines the change adds or modifies, and blocks under 80 % of _that delta_ — so a change never
+fails because of old code it does not touch, and newly written code can no longer hide its weak
+tests inside a comfortable global score. **Every day**, a full run on `main` watches the
+background drift. The decision and its measurements:
+[proposition](docs/exploitation/proposition-ci-mutation-delta.md).
+
 Measured scores, all four libraries, run 2026-09-27:
 
 | Library                                                 | Mutation score | Against a `break` threshold of |
