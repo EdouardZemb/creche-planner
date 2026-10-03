@@ -39,9 +39,9 @@ by one person.
 | Unit & integration test files                            | **293** — 215 `*.spec.ts`, 26 `*.test.ts`, 52 React component `*.test.tsx`                |
 | End-to-end specs (Playwright, mocked **and** real stack) | **17**, plus 3 API end-to-end specs                                                       |
 | Consumer-driven contracts (Pact), drift-checked every PR | **5**                                                                                     |
-| Executable **quality gates** blocking every pull request | **20**, each deriving its own expectation from the source                                 |
+| Executable **quality gates** blocking every pull request | **21**, each deriving its own expectation from the source                                 |
 | Nx projects (7 applications + 14 libraries)              | **21**                                                                                    |
-| Architecture Decision Records                            | **10**                                                                                    |
+| Architecture Decision Records                            | **11**                                                                                    |
 
 The distinguishing item is the first one. **Mutation testing** — deliberately
 breaking the production code to prove the tests notice — is rarely practised in
@@ -158,7 +158,7 @@ Three choices worth naming, because they are the ones a test lead would ask abou
 ## Quality gates
 
 `main` is protected: one branch per topic, one pull request, one green `ci` check.
-Beyond `nx affected` (lint, type-check, test, build), the pipeline runs **20 bespoke
+Beyond `nx affected` (lint, type-check, test, build), the pipeline runs **21 bespoke
 gates**. They share a design rule that matters more than the list itself:
 
 > **A gate never stores its expected value — it derives it from the source.** A
@@ -179,6 +179,7 @@ gates**. They share a design rule that matters more than the list itself:
 | `pnpm abonnements` · `pnpm quarantaine`  | Each context publishes its event inventory and each durable JetStream consumer is bounded to the subjects it projects; the npm publication cooldown is declared where it is read                                                                                           |
 | `pnpm wcag` · `pnpm pieges`              | The nine WCAG 2.2 criteria adjudicated and every cited guard real; dead traps not copied forward into plans                                                                                                                                                                |
 | `pnpm confidentialite`                   | The repository is public: nothing tracked under `.claude/memory/`, no literal SSH target, no e-mail outside reserved domains, no path naming an account, no value from a private list kept outside the repository — judged on files, commit messages and pull-request text |
+| `pnpm exceptions`                        | Every accepted CVE in `.trivyignore` carries `exp:YYYY-MM-DD` — Trivy's own syntax, so the exception stops suppressing on its own — plus a written justification; the gate fails on a missing, unreadable or passed date and warns 14 days ahead ([ADR-0012](docs/adr/0012-peremption-visible.md))                                            |
 | `pnpm budget-ci`                         | The pull-request CI time budget: no job may be added behind `ci` on the critical path, and the ESLint ratchet and the changed-lines mutation gate must stay parallel (durations measured weekly against the ceilings)                                                      |
 
 Alongside them: ESLint warnings frozen against a baseline (a ratchet — no additions
@@ -190,7 +191,7 @@ Working conventions: [CONTRIBUTING.md](CONTRIBUTING.md) ·
 
 ## Architecture decisions
 
-Ten ADRs record the choices that were genuinely contested — each with its context,
+Eleven ADRs record the choices that were genuinely contested — each with its context,
 the alternatives weighed, and the consequences accepted, including the uncomfortable
 ones.
 
@@ -206,6 +207,7 @@ ones.
 | [0008](docs/adr/0008-ecarts-semantique-http-pagination-et-concurrence.md) | Accepted deviations from HTTP semantics on pagination and optimistic concurrency — named, not hidden                       |
 | [0009](docs/adr/0009-nom-du-produit-martha.md)                            | The product is renamed _Martha_ at **display level only**; the technical identity stays `creche-planner`                   |
 | [0010](docs/adr/0010-ecosysteme-applications-personnelles.md)             | Personal-apps ecosystem: a shared **skills registry** comes first; a common identity is deferred behind a narrow interface |
+| [0012](docs/adr/0012-peremption-visible.md)                              | Making expiry visible: a stateless differential watch, and security exceptions that expire by Trivy's own syntax           |
 
 Index with abstracts: [`docs/adr/`](docs/adr/).
 
@@ -313,7 +315,7 @@ opening first:
 | [20 — Test plan](docs/20-plan-de-test.md) · [21 — Test policy & strategy](docs/21-politique-strategie-test.md) | Levels, entry and exit criteria, risk-based depth                                                                                                                                                                       |
 | [18 — Test-management audit](docs/18-audit-gestion-tests-ctal-tm-tmmi.md)                                      | Self-assessment against ISTQB CTAL-TM / TMMi                                                                                                                                                                            |
 | [34 — Improvement register](docs/34-registre-ameliorations.md)                                                 | Open leads, lessons, recurring patterns — and the map of every gate, with what each one fails to cover                                                                                                                  |
-| [ADR](docs/adr/)                                                                                               | 0001 → 0010 : microservices · service granularity · toolchain · decentralised contracts · contract registry · notification preferences · household exemption · HTTP deviations · product name · personal-apps ecosystem |
+| [ADR](docs/adr/)                                                                                               | 0001 → 0010 · 0012 : microservices · service granularity · toolchain · decentralised contracts · contract registry · notification preferences · household exemption · HTTP deviations · product name · personal-apps ecosystem · visible expiry |
 | [Industry standards & GDPR programme](.claude/plans/plan-standards-industriels.md) (lots 0 → 9)                | Data-subject rights, retention, audit trail, WCAG 2.2 AA, container hardening                                                                                                                                           |
 
 ## Status
