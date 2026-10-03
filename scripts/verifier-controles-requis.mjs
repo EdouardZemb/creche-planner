@@ -102,7 +102,7 @@ let lecteur = (relatif) => {
   }
 };
 
-let aujourdhui = () => new Date();
+const aujourdhui = () => new Date();
 
 function jourValide(texte) {
   if (typeof texte !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(texte)) {
@@ -338,10 +338,13 @@ async function relever() {
   let jeton = process.env.GITHUB_TOKEN ?? '';
   if (jeton === '') {
     try {
-      const { execFileSync } = await import('node:child_process');
-      jeton = execFileSync('gh', ['auth', 'token'], {
-        encoding: 'utf8',
-      }).trim();
+      // Import gardé LIÉ à son module (pas de déstructuration) : la règle
+      // `@typescript-eslint/unbound-method` compterait sinon un warning de
+      // plus, et le ratchet ESLint est exactement à son plafond.
+      const enfant = await import('node:child_process');
+      jeton = enfant
+        .execFileSync('gh', ['auth', 'token'], { encoding: 'utf8' })
+        .trim();
     } catch {
       jeton = '';
     }
