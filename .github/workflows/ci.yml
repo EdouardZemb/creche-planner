@@ -343,7 +343,6 @@ jobs:
           node scripts/verifier-empechements.mjs --autotest
           node scripts/verifier-empechements.mjs
 
-<<<<<<< HEAD
       # Contrôles requis — le fait ENGENDRÉ (ADR-0013). Le 2026-10-03, CLAUDE.md
       # annonçait deux contrôles requis ; il y en avait cinq depuis le
       # 2026-09-30. La phrase était vraie le jour où elle a été écrite, et c'est

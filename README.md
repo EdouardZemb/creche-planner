@@ -39,9 +39,9 @@ by one person.
 | Unit & integration test files                            | **293** — 215 `*.spec.ts`, 26 `*.test.ts`, 52 React component `*.test.tsx`                |
 | End-to-end specs (Playwright, mocked **and** real stack) | **17**, plus 3 API end-to-end specs                                                       |
 | Consumer-driven contracts (Pact), drift-checked every PR | **5**                                                                                     |
-| Executable **quality gates** blocking every pull request | **21**, each deriving its own expectation from the source                                 |
+| Executable **quality gates** blocking every pull request | **22**, each deriving its own expectation from the source                                 |
 | Nx projects (7 applications + 14 libraries)              | **21**                                                                                    |
-| Architecture Decision Records                            | **11**                                                                                    |
+| Architecture Decision Records                            | **12**                                                                                    |
 
 The distinguishing item is the first one. **Mutation testing** — deliberately
 breaking the production code to prove the tests notice — is rarely practised in
@@ -158,7 +158,7 @@ Three choices worth naming, because they are the ones a test lead would ask abou
 ## Quality gates
 
 `main` is protected: one branch per topic, one pull request, one green `ci` check.
-Beyond `nx affected` (lint, type-check, test, build), the pipeline runs **21 bespoke
+Beyond `nx affected` (lint, type-check, test, build), the pipeline runs **22 bespoke
 gates**. They share a design rule that matters more than the list itself:
 
 > **A gate never stores its expected value — it derives it from the source.** A
@@ -180,7 +180,7 @@ gates**. They share a design rule that matters more than the list itself:
 | `pnpm wcag` · `pnpm pieges`              | The nine WCAG 2.2 criteria adjudicated and every cited guard real; dead traps not copied forward into plans                                                                                                                                                                                              |
 | `pnpm confidentialite`                   | The repository is public: nothing tracked under `.claude/memory/`, no literal SSH target, no e-mail outside reserved domains, no path naming an account, no value from a private list kept outside the repository — judged on files, commit messages and pull-request text                               |
 | `pnpm controles`                         | That the required-check list in `CLAUDE.md` is **generated**, never hand-written: the versioned block must match, character for character, what the committed survey renders — offline, so the gate can never fail for a permissions reason ([ADR-0013](docs/adr/0013-faits-documentaires-engendres.md)) |
-| `pnpm exceptions`                        | Every accepted CVE in `.trivyignore` carries `exp:YYYY-MM-DD` — Trivy's own syntax, so the exception stops suppressing on its own — plus a written justification; the gate fails on a missing, unreadable or passed date and warns 14 days ahead ([ADR-0012](docs/adr/0012-peremption-visible.md)) |
+| `pnpm exceptions`                        | Every accepted CVE in `.trivyignore` carries `exp:YYYY-MM-DD` — Trivy's own syntax, so the exception stops suppressing on its own — plus a written justification; the gate fails on a missing, unreadable or passed date and warns 14 days ahead ([ADR-0012](docs/adr/0012-peremption-visible.md))       |
 | `pnpm budget-ci`                         | The pull-request CI time budget: no job may be added behind `ci` on the critical path, and the ESLint ratchet and the changed-lines mutation gate must stay parallel (durations measured weekly against the ceilings)                                                                                    |
 
 Alongside them: ESLint warnings frozen against a baseline (a ratchet — no additions
@@ -192,7 +192,7 @@ Working conventions: [CONTRIBUTING.md](CONTRIBUTING.md) ·
 
 ## Architecture decisions
 
-Eleven ADRs record the choices that were genuinely contested — each with its context,
+Twelve ADRs record the choices that were genuinely contested — each with its context,
 the alternatives weighed, and the consequences accepted, including the uncomfortable
 ones.
 
@@ -309,16 +309,16 @@ Around forty numbered documents carry the specifications, the test strategy and 
 operational runbooks, indexed in [`docs/README.md`](docs/README.md). The ones worth
 opening first:
 
-| Document                                                                                                       | Contents                                                                                                                                                                                                                                                        |
-| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [01 — Functional specification](docs/01-spec-fonctionnelle.md)                                                 | Product scope, personas, user journeys                                                                                                                                                                                                                          |
-| [02 — Cost model](docs/02-modele-de-cout.md)                                                                   | The PSU/CNAF and ABCM arithmetic, down to the minute                                                                                                                                                                                                            |
-| [04 — Architecture & technology](docs/04-architecture-et-technos.md)                                           | Contexts, contracts, deployment topology                                                                                                                                                                                                                        |
-| [20 — Test plan](docs/20-plan-de-test.md) · [21 — Test policy & strategy](docs/21-politique-strategie-test.md) | Levels, entry and exit criteria, risk-based depth                                                                                                                                                                                                               |
-| [18 — Test-management audit](docs/18-audit-gestion-tests-ctal-tm-tmmi.md)                                      | Self-assessment against ISTQB CTAL-TM / TMMi                                                                                                                                                                                                                    |
-| [34 — Improvement register](docs/34-registre-ameliorations.md)                                                 | Open leads, lessons, recurring patterns — and the map of every gate, with what each one fails to cover                                                                                                                                                          |
+| Document                                                                                                       | Contents                                                                                                                                                                                                                                                                                |
+| -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [01 — Functional specification](docs/01-spec-fonctionnelle.md)                                                 | Product scope, personas, user journeys                                                                                                                                                                                                                                                  |
+| [02 — Cost model](docs/02-modele-de-cout.md)                                                                   | The PSU/CNAF and ABCM arithmetic, down to the minute                                                                                                                                                                                                                                    |
+| [04 — Architecture & technology](docs/04-architecture-et-technos.md)                                           | Contexts, contracts, deployment topology                                                                                                                                                                                                                                                |
+| [20 — Test plan](docs/20-plan-de-test.md) · [21 — Test policy & strategy](docs/21-politique-strategie-test.md) | Levels, entry and exit criteria, risk-based depth                                                                                                                                                                                                                                       |
+| [18 — Test-management audit](docs/18-audit-gestion-tests-ctal-tm-tmmi.md)                                      | Self-assessment against ISTQB CTAL-TM / TMMi                                                                                                                                                                                                                                            |
+| [34 — Improvement register](docs/34-registre-ameliorations.md)                                                 | Open leads, lessons, recurring patterns — and the map of every gate, with what each one fails to cover                                                                                                                                                                                  |
 | [ADR](docs/adr/)                                                                                               | 0001 → 0010 · 0012 · 0013 : microservices · service granularity · toolchain · decentralised contracts · contract registry · notification preferences · household exemption · HTTP deviations · product name · personal-apps ecosystem · visible expiry · generated required-check facts |
-| [Industry standards & GDPR programme](.claude/plans/plan-standards-industriels.md) (lots 0 → 9)                | Data-subject rights, retention, audit trail, WCAG 2.2 AA, container hardening                                                                                                                                                                                   |
+| [Industry standards & GDPR programme](.claude/plans/plan-standards-industriels.md) (lots 0 → 9)                | Data-subject rights, retention, audit trail, WCAG 2.2 AA, container hardening                                                                                                                                                                                                           |
 
 ## Status
 
