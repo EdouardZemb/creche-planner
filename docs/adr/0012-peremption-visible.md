@@ -69,10 +69,10 @@ rougit pour être vu.
 
 Le choix du format a été **vérifié, pas supposé**. La documentation Trivy donne deux voies :
 
-| Voie                | Expiration    | Chargement                                       | Verdict                                        |
-| ------------------- | ------------- | ------------------------------------------------ | ---------------------------------------------- |
-| `.trivyignore`      | `exp:AAAA-MM-JJ` | automatique, par toutes les invocations du dépôt | **retenue**                                    |
-| `.trivyignore.yaml` | `expired_at`  | **EXPERIMENTAL**, exige `--ignorefile` explicite  | écartée : surface instable, et un drapeau à poser dans quatre workflows |
+| Voie                | Expiration       | Chargement                                       | Verdict                                                                 |
+| ------------------- | ---------------- | ------------------------------------------------ | ----------------------------------------------------------------------- |
+| `.trivyignore`      | `exp:AAAA-MM-JJ` | automatique, par toutes les invocations du dépôt | **retenue**                                                             |
+| `.trivyignore.yaml` | `expired_at`     | **EXPERIMENTAL**, exige `--ignorefile` explicite | écartée : surface instable, et un drapeau à poser dans quatre workflows |
 
 La voie retenue a une propriété que la porte seule n'aurait pas : la date **agit deux
 fois**. Trivy cesse de supprimer la CVE une fois l'échéance passée — l'exception s'éteint
@@ -110,10 +110,10 @@ Les dates manquantes ont été posées par la PR qui crée la porte, et le disen
 
 ## Alternatives écartées
 
-| Option                                                    | Pourquoi non                                                                                              |
-| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Étendre `veille-alertes.yml`                              | objet différent (une différence, pas un inventaire) ; le mélange brouillerait son contrat « vert digne de confiance » |
-| Stocker un instantané quotidien (cache Actions, artefact) | un instantané est une affirmation de plus qui peut périmer — le défaut qu'on traite                           |
-| `.trivyignore.yaml` + `expired_at`                        | fonctionnalité déclarée EXPERIMENTAL par Trivy, et exige `--ignorefile` dans quatre workflows                 |
-| Une date d'expiration en commentaire, lue par la porte seule | l'exception continuerait de supprimer la CVE après son échéance ; seule la porte rougirait                    |
-| Un rappel d'agenda hors dépôt                             | ne survit pas à la personne qui l'a posé, et ne se relit pas en revue de PR                                   |
+| Option                                                       | Pourquoi non                                                                                                          |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Étendre `veille-alertes.yml`                                 | objet différent (une différence, pas un inventaire) ; le mélange brouillerait son contrat « vert digne de confiance » |
+| Stocker un instantané quotidien (cache Actions, artefact)    | un instantané est une affirmation de plus qui peut périmer — le défaut qu'on traite                                   |
+| `.trivyignore.yaml` + `expired_at`                           | fonctionnalité déclarée EXPERIMENTAL par Trivy, et exige `--ignorefile` dans quatre workflows                         |
+| Une date d'expiration en commentaire, lue par la porte seule | l'exception continuerait de supprimer la CVE après son échéance ; seule la porte rougirait                            |
+| Un rappel d'agenda hors dépôt                                | ne survit pas à la personne qui l'a posé, et ne se relit pas en revue de PR                                           |

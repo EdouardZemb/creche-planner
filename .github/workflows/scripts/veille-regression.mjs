@@ -179,9 +179,7 @@ function confronterTrivy(parNom) {
   if (DRY_RUN === 'trivy') {
     // Jeu d'essai : la base a avancé depuis le dernier `security` vert.
     rapport = {
-      Results: [
-        { Vulnerabilities: [{ VulnerabilityID: 'CVE-2026-000001' }] },
-      ],
+      Results: [{ Vulnerabilities: [{ VulnerabilityID: 'CVE-2026-000001' }] }],
     };
     return evaluerTrivy(rapport, parNom);
   }
@@ -284,7 +282,8 @@ async function principal() {
   try {
     if (DRY_RUN !== '') {
       runs = jeuDessai(DRY_RUN);
-      if (runs === null) throw new Error('jeu d’essai « point-mort » : API muette.');
+      if (runs === null)
+        throw new Error('jeu d’essai « point-mort » : API muette.');
     } else {
       const { corps } = await appeler(`/repos/${REPO}/commits/${REF}`);
       sha = typeof corps?.sha === 'string' ? corps.sha : '';
@@ -312,7 +311,9 @@ async function principal() {
   const trivy = confronterTrivy(parNom);
 
   dire('');
-  dire(`Commit observé : \`${sha}\` — ${parNom.size} contrôle(s) distinct(s), ${runs.length} exécution(s) au total sur ce même commit.`);
+  dire(
+    `Commit observé : \`${sha}\` — ${parNom.size} contrôle(s) distinct(s), ${runs.length} exécution(s) au total sur ce même commit.`,
+  );
 
   if (retablissements.length > 0) {
     dire('');

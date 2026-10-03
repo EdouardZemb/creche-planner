@@ -169,7 +169,11 @@ function executer() {
     // `IDENT exp:AAAA-MM-JJ` éventuellement suivi d'un commentaire de fin de ligne.
     const forme = /^(\S+)(?:\s+exp:(\S+))?\s*(?:#.*)?$/.exec(brut);
     if (forme === null || forme[1] === undefined) {
-      erreur(portee, `ligne illisible : \`${brut}\`.`, 'forme attendue : `IDENTIFIANT exp:AAAA-MM-JJ`.');
+      erreur(
+        portee,
+        `ligne illisible : \`${brut}\`.`,
+        'forme attendue : `IDENTIFIANT exp:AAAA-MM-JJ`.',
+      );
       continue;
     }
     const [, identifiant, expiration] = forme;
@@ -211,7 +215,9 @@ function executer() {
     }
     datees += 1;
 
-    const reste = Math.floor((echeance.getTime() - jour.getTime()) / 86_400_000);
+    const reste = Math.floor(
+      (echeance.getTime() - jour.getTime()) / 86_400_000,
+    );
     if (reste < 0) {
       erreur(
         portee,
@@ -294,7 +300,8 @@ const SONDES = [
   },
   {
     nom: 'exception sans justification',
-    abimer: (texte) => `${texte.replace(/\s*$/, '')}\n\nCVE-2026-999999 exp:2027-01-01\n`,
+    abimer: (texte) =>
+      `${texte.replace(/\s*$/, '')}\n\nCVE-2026-999999 exp:2027-01-01\n`,
     attendu: /sans justification écrite/,
   },
   {
