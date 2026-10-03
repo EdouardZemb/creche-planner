@@ -61,9 +61,19 @@ renvoie aux documents qui font foi : ce fichier ne les remplace pas, il dit où 
   sans `node_modules`, en moins d'une seconde : les jouer en local plutôt qu'attendre la CI. Leur
   liste est dans le tableau _Gates_ du [README](README.md) ; ce que chacune **ne couvre pas** et sa
   **sonde négative**, dans la [doc 34](docs/34-registre-ameliorations.md) §5.
-- Contrôles **requis** par la protection de `main` : `ci` et `config-validation`. Les autres
-  (`security`, `pact-drift`, `e2e-stack`…) bloquent autant en pratique : un rouge se lit et se
-  traite, il ne s'attend pas.
+
+<!-- FAITS:controles-requis -->
+
+- Contrôles **requis** par la protection de `main` — 5 au
+  2026-10-03 : `ci`, `config-validation`, `texte-pr`, `lint-ratchet`, `mutation-delta`.
+  Protection : branche à jour exigée avant fusion, aucune revue requise, administrateurs NON soumis à la protection.
+  Cette liste est **engendrée** (`pnpm controles --ecrire`) depuis le relevé
+  `scripts/controles-requis.json` : ne pas la rédiger à la main.
+
+<!-- /FAITS:controles-requis -->
+
+- Les autres contrôles (`security`, `pact-drift`, `e2e-stack`…) bloquent autant en pratique :
+  un rouge se lit et se traite, il ne s'attend pas.
 - Tests : couverture qui ne baisse pas de plus de 0,5 pt ; mutation Stryker sur les quatre libs
   de domaine, seuil 80 % ([TESTING.md](TESTING.md)) ; avertissements ESLint gelés par un ratchet.
 - **Ne jamais contourner une porte** (`--no-verify`, exception ajoutée « pour passer », seuil

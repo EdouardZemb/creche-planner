@@ -343,6 +343,20 @@ jobs:
           node scripts/verifier-empechements.mjs --autotest
           node scripts/verifier-empechements.mjs
 
+      # Contrôles requis — le fait ENGENDRÉ (ADR-0013). Le 2026-10-03, CLAUDE.md
+      # annonçait deux contrôles requis ; il y en avait cinq depuis le
+      # 2026-09-30. La phrase était vraie le jour où elle a été écrite, et c'est
+      # la première que lit quiconque arrive sur le dépôt. Extension directe de
+      # `pnpm faits` : la liste n'est plus rédigée, elle est rendue depuis
+      # `scripts/controles-requis.json`, et ce step refuse que le bloc versionné
+      # diverge de ce rendu — HORS LIGNE, donc sans jamais échouer pour une
+      # raison de droits. Le relevé, lui, se rejoue à la main
+      # (`pnpm controles --relever`). `--autotest` rejoue ses 6 sondes.
+      - name: Contrôles requis — la doc vs le relevé engendré (bloquant)
+        run: |
+          node scripts/verifier-controles-requis.mjs --autotest
+          node scripts/verifier-controles-requis.mjs
+
       # Idempotence du jeu de référence (`AM-108`, `LE-90`). Le seed était
       # idempotent pour ce qu'il CRÉAIT, jamais pour ce qu'il DÉCLARAIT : sur un
       # foyer réutilisé, la date d'effet des ressources restait celle du PREMIER
@@ -1679,3 +1693,48 @@ jobs:
 
       - name: Tri, fusion et récapitulatif contre un faux GitHub
         run: node --test '.github/workflows/scripts/dependances/*.test.mjs'
+
+  # SONDE DE DROITS, jamais une porte (ADR-0013). La question « le jeton par
+  # défaut peut-il lire la protection de branche ? » décide si `pnpm controles`
+  # pourra un jour devenir un vrai différentiel contre GitHub, ou devra rester
+  # un relevé humain. Elle se répondait jusqu'ici par une supposition ; ce job
+  # la MESURE, et l'écrit dans le résumé du run.
+  #
+  # Il ne peut pas échouer, par construction : un job qui rougirait pour une
+  # raison de droits serait désactivé en une semaine, et c'est exactement le
+  # travers que l'ADR refuse. Son `permissions:` est local et en lecture seule.
+  controles-requis-droits:
+    name: Sonde — le jeton peut-il lire la protection de branche ?
+    needs: config-changes
+    if: needs.config-changes.outputs.config == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      administration: read # la permission dont dépend la lecture de la protection
+    steps:
+      - name: Mesurer, sans jamais bloquer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPOT: ${{ github.repository }}
+        run: |
+          set +e
+          CODE=$(curl -s -o reponse.json -w '%{http_code}' \
+            -H "accept: application/vnd.github+json" \
+            -H "authorization: Bearer $GH_TOKEN" \
+            -H "x-github-api-version: 2022-11-28" \
+            "https://api.github.com/repos/$DEPOT/branches/main/protection")
+          {
+            echo "## Sonde de droits — lecture de la protection de \`main\`"
+            echo
+            echo "HTTP \`$CODE\` avec le jeton par défaut du run et \`administration: read\`."
+            echo
+            if [ "$CODE" = "200" ]; then
+              echo "✅ **Lisible.** \`pnpm controles\` pourrait donc confronter le relevé versionné à GitHub depuis la CI, et devenir un différentiel plutôt qu'un simple contrôle de cohérence interne. À arbitrer : voir ADR-0013."
+            else
+              echo "ℹ️ **Non lisible.** Le découpage retenu par ADR-0013 reste le bon : le relevé se rejoue à la main (\`pnpm controles --relever\`), la CI ne vérifie que la cohérence interne, et aucune porte ne dépend d'un droit."
+            fi
+            echo
+            echo "Ce job ne bloque rien, par construction."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
