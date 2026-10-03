@@ -520,7 +520,8 @@ function autotest() {
         echecs += 1;
         continue;
       }
-      lecteur = (relatif) => (relatif === LOCKFILE ? abime : surDisque(relatif));
+      lecteur = (relatif) =>
+        relatif === LOCKFILE ? abime : surDisque(relatif);
     }
     if (sonde.jour !== undefined) {
       const fige = new Date(`${sonde.jour}T00:00:00Z`);

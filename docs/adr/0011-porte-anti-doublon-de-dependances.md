@@ -108,9 +108,9 @@ proposition, et se redatent avec une raison.
 
 ## Alternatives écartées
 
-| Option                                | Pourquoi non                                                                                              |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Échouer sur **tout** doublon          | 193 paquets concernés aujourd'hui : porte rouge en permanence, donc porte retirée                          |
-| Cliquet sur le nombre total           | bouge à chaque montée de dépendance ; le réflexe deviendrait « relever le plafond »                         |
-| `pnpm dedupe --check`                 | autre question, et verdict dépendant du registre à l'instant du run — non reproductible pour un même commit |
-| `pnpm why` en post-contrôle manuel    | humain, donc oublié ; et ne laisse aucune trace dans la CI                                                  |
+| Option                             | Pourquoi non                                                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Échouer sur **tout** doublon       | 193 paquets concernés aujourd'hui : porte rouge en permanence, donc porte retirée                           |
+| Cliquet sur le nombre total        | bouge à chaque montée de dépendance ; le réflexe deviendrait « relever le plafond »                         |
+| `pnpm dedupe --check`              | autre question, et verdict dépendant du registre à l'instant du run — non reproductible pour un même commit |
+| `pnpm why` en post-contrôle manuel | humain, donc oublié ; et ne laisse aucune trace dans la CI                                                  |
