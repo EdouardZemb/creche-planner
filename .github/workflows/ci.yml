@@ -343,6 +343,20 @@ jobs:
           node scripts/verifier-empechements.mjs --autotest
           node scripts/verifier-empechements.mjs
 
+      # Identité des dépendances (ADR-0011). Le 2026-10-02, un lockfile
+      # régénéré a fait entrer un SECOND `@nestjs/common` : deux `class` pour
+      # TypeScript, deux jeux de jetons pour l'injection NestJS, passerelle qui
+      # ne compile plus — sans qu'une ligne de code change, et sans qu'aucune
+      # porte bronche. Ce step refuse qu'un paquet NOMMÉ à identité unique se
+      # résolve en plusieurs versions dans `pnpm-lock.yaml`. Il ne juge PAS les
+      # 193 doublons légitimes du monorepo : une porte qui crie tout le temps
+      # finit désactivée. Lecture du lockfile seule — aucun réseau, donc le même
+      # commit rend toujours le même verdict. `--autotest` rejoue ses 5 sondes.
+      - name: Identité des dépendances — pas de double version (bloquant)
+        run: |
+          node scripts/verifier-doublons.mjs --autotest
+          node scripts/verifier-doublons.mjs
+
       # Idempotence du jeu de référence (`AM-108`, `LE-90`). Le seed était
       # idempotent pour ce qu'il CRÉAIT, jamais pour ce qu'il DÉCLARAIT : sur un
       # foyer réutilisé, la date d'effet des ressources restait celle du PREMIER
