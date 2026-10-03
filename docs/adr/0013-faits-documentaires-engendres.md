@@ -53,11 +53,21 @@ caractère. Une seule fonction, `rendre()`, sait écrire la phrase — si deux e
 l'écrire, ils divergeraient, ce qui est le défaut même qu'on traite.
 
 **Une sonde mesure ce qu'on ne savait pas.** Le job non bloquant
-`controles-requis-droits` de `ci.yml` tente la lecture avec le jeton par défaut et
-`administration: read`, et écrit le code HTTP dans le résumé du run. Il ne peut pas
-échouer, par construction. Si la réponse est `200`, `pnpm controles` pourra devenir un vrai
-différentiel contre GitHub et ce choix sera à rouvrir ; tant qu'elle ne l'est pas, le
-découpage ci-dessus est le bon. **La question est mesurée plutôt que supposée.**
+`controles-requis-droits` de `ci.yml` tente la lecture avec le jeton par défaut et écrit le
+code HTTP dans le résumé du run. Il ne peut pas échouer, par construction.
+
+La première version de ce job déclarait `permissions: administration: read`, en supposant
+que ce droit s'accordait comme les autres. **Il ne s'accorde pas** : `administration` n'est
+pas une permission qu'un workflow peut donner au `GITHUB_TOKEN`, et l'écrire a rendu
+`ci.yml` entier invalide — run « workflow file issue », 0 s, aucune porte jouée (run
+`37124898593`, 2026-10-03). La supposition a donc coûté un run, et elle a rendu la réponse
+plus nette qu'espéré : **la lecture de la protection de branche est hors d'atteinte du
+jeton par défaut, quelles que soient les permissions déclarées.** Elle exigerait un PAT
+dédié, c'est-à-dire exactement la dépendance à un secret que cet ADR refuse d'installer
+dans une porte.
+
+La sonde reste en place pour ce qu'elle mesure encore : si GitHub rendait un jour cet
+endpoint lisible au jeton par défaut, le résumé le dirait et la décision serait à rouvrir.
 
 ## Conséquences
 

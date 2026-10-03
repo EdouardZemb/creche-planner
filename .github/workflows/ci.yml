@@ -1711,7 +1711,12 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      administration: read # la permission dont dépend la lecture de la protection
+      # PAS de `administration: read` : ce n'est pas une permission qu'un
+      # workflow peut accorder au `GITHUB_TOKEN`. L'avoir écrite a rendu TOUT
+      # `ci.yml` invalide — run « workflow file issue », 0 s, aucune porte
+      # jouée (constaté sur le run 37124898593 du 2026-10-03). C'est la réponse
+      # empirique à la question posée par l'ADR-0013, et elle est plus nette
+      # qu'espéré : le jeton par défaut n'a aucun moyen d'obtenir ce droit.
     steps:
       - name: Mesurer, sans jamais bloquer
         env:
@@ -1727,12 +1732,12 @@ jobs:
           {
             echo "## Sonde de droits — lecture de la protection de \`main\`"
             echo
-            echo "HTTP \`$CODE\` avec le jeton par défaut du run et \`administration: read\`."
+            echo "HTTP \`$CODE\` avec le jeton par défaut du run."
             echo
             if [ "$CODE" = "200" ]; then
-              echo "✅ **Lisible.** \`pnpm controles\` pourrait donc confronter le relevé versionné à GitHub depuis la CI, et devenir un différentiel plutôt qu'un simple contrôle de cohérence interne. À arbitrer : voir ADR-0013."
+              echo "✅ **Lisible** avec le jeton par défaut, sans permission supplémentaire. \`pnpm controles\` pourrait donc devenir un différentiel contre GitHub plutôt qu'un contrôle de cohérence interne : voir ADR-0013, décision à rouvrir."
             else
-              echo "ℹ️ **Non lisible.** Le découpage retenu par ADR-0013 reste le bon : le relevé se rejoue à la main (\`pnpm controles --relever\`), la CI ne vérifie que la cohérence interne, et aucune porte ne dépend d'un droit."
+              echo "ℹ️ **Non lisible**, et il n'existe aucune permission de workflow qui le rendrait lisible (\`administration\` n'en est pas une — l'écrire invalide le fichier entier). Le découpage retenu par ADR-0013 est donc le bon : le relevé se rejoue à la main, et aucune porte ne dépend d'un droit."
             fi
             echo
             echo "Ce job ne bloque rien, par construction."
