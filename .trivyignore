@@ -1,54 +1,79 @@
-# Allowlist Trivy — faux positifs / CVE assumées (AUD-06, doc 25).
+# Allowlist Trivy — faux positifs / CVE assumées (AUD-06, doc 25, ADR-0012).
 #
-# Le job `build-images` (.github/workflows/ci.yml) scanne chaque image publiée et
-# ÉCHOUE sur toute CVE HIGH/CRITICAL CORRIGIBLE (`ignore-unfixed: true`). Pour
-# accepter sciemment une CVE (faux positif, non exploitable dans notre contexte,
-# pas encore de correctif amont), ajouter son identifiant ici, UNE PAR LIGNE,
-# avec un commentaire justificatif daté. Réviser à chaque montée d'image de base.
+# Le job `build-images` (.github/workflows/ci.yml) scanne chaque image publiée, le job
+# `security` scanne `pnpm-lock.yaml`, et tous deux ÉCHOUENT sur toute CVE HIGH/CRITICAL
+# CORRIGIBLE (`ignore-unfixed: true`). Pour accepter sciemment une CVE (faux positif,
+# non exploitable dans notre contexte, pas encore de correctif amont), ajouter son
+# identifiant ici.
 #
-# Format : un identifiant par ligne, ex.
-#   CVE-2024-XXXXX  # raison + date + lien advisory
+# ── FORME OBLIGATOIRE ───────────────────────────────────────────────────────────
+#
+#   <IDENTIFIANT> exp:AAAA-MM-JJ   # une entrée par ligne, précédée de sa justification
+#
+# `exp:` est la syntaxe NATIVE de Trivy : passée cette date, Trivy cesse de supprimer
+# la CVE et la porte redevient rouge d'elle-même. La porte `pnpm exceptions`
+# (`scripts/verifier-exceptions-securite.mjs`, step bloquant du job `ci`) exige en plus
+# que la date soit PRÉSENTE et NON PASSÉE, et avertit à J-14.
+#
+# Pourquoi cette contrainte : une exception sans date n'est pas une décision, c'est un
+# oubli qui se déguise en décision (`AM-45`, `LE-45`). Le 2026-08-13, une entrée
+# `brace-expansion` posée « jusqu'à ce qu'un correctif 2.x existe » est restée en place
+# après la publication de ce correctif, sans que rien ne le signale — c'est le motif
+# exact que cette règle tue.
+#
+# Prolonger une exception, c'est REDATER la ligne en écrivant pourquoi. Ce n'est pas
+# interdit ; il est seulement interdit de le faire sans le dire.
 
-# CVE-2026-14257 (brace-expansion) — RETIRÉE de l'allowlist le 2026-08-13.
-# Elle avait été ajoutée le 2026-07-28 au motif « aucun correctif 2.x publié,
-# seul correctif amont = 5.0.8 avec rupture d'API ». Ce motif est FAUX depuis le
-# 2026-08-05 : les overrides pnpm de la PR #289 (^1.1.18 / ^2.1.4 / ^5.0.9, posés
-# pour CVE-2026-69152, qui contournait justement la mitigation de celle-ci) ont
-# amené un correctif 2.x dans l'arbre. L'entrée demandait elle-même sa révision
-# « dès qu'un correctif 2.x existe » — c'est le cas, elle n'a plus d'objet.
-# Une allowlist qu'on ne périme pas finit par masquer une vraie récurrence.
-
-# react-router 7.18.1 : CSRF limité au mode RSC (React Server Components),
-# non utilisé ici (SPA mode data, aucun usage RSC/@react-router/dev dans le
-# repo). Correctif = 8.3.0 (majeure) : migration v8 à planifier séparément.
-# Ajouté 2026-07-28 — retirer à la migration react-router v8.
+# ── react-router, dépendance applicative ─────────────────────────────────────────
+#
+# CSRF limité au mode RSC (React Server Components), non utilisé ici (SPA mode data,
+# aucun usage RSC/@react-router/dev dans le dépôt). Correctif = 8.3.0 (majeure) :
+# migration v8 à planifier séparément.
+# Ajoutée 2026-07-28 — l'entrée n'avait pas de date ; `exp:` posée le 2026-10-03 par la
+# PR qui crée la porte, à l'horizon de la migration react-router v8. À redater ou à
+# retirer selon le calendrier réel de cette migration.
 # https://github.com/advisories/GHSA-qwww-vcr4-c8h2
-GHSA-qwww-vcr4-c8h2
+GHSA-qwww-vcr4-c8h2 exp:2026-12-31
 
-# ── util-linux, image de base `nginxinc/nginx-unprivileged:alpine` ───────────
+# ── util-linux, image de base `nginxinc/nginx-unprivileged:alpine` ───────────────
 #
-# Sept CVE HIGH apparues dans la base de Trivy entre le 2026-09-02 et le
-# 2026-09-05. ORIGINE : le paquet `util-linux` de l'image de base du service
-# `web`, PAS notre code ni nos dépendances — la même image se construisait en
-# vert le 2026-09-02 (`eed2f90`, `09068bb`) sans qu'aucun commit ne touche
-# `apps/web/Dockerfile`, `package.json` ni le lockfile. C'est le motif `MO-4` :
-# un rouge de CI sans diff correspondant vient de l'extérieur.
+# Sept CVE HIGH apparues dans la base de Trivy entre le 2026-09-02 et le 2026-09-05.
+# ORIGINE : le paquet `util-linux` de l'image de base du service `web`, PAS notre code
+# ni nos dépendances — la même image se construisait en vert le 2026-09-02 (`eed2f90`,
+# `09068bb`) sans qu'aucun commit ne touche `apps/web/Dockerfile`, `package.json` ni le
+# lockfile. C'est le motif `MO-4` : un rouge de CI sans diff correspondant vient de
+# l'extérieur.
 #
-# POURQUOI UNE ALLOWLIST ET PAS LE VRAI CORRECTIF : le correctif est un bump de
-# l'image de base, qui change l'image de PRODUCTION. Le faire à l'intérieur d'un
-# lot fonctionnel mêlerait deux risques sans rapport, et il faut revalider le
-# durcissement (`read_only`, `cap_drop`) que `LE-58` a déjà fait tomber une fois.
-# Reporté à une PR d'infra dédiée : **`AM-120`**.
+# POURQUOI UNE ALLOWLIST ET PAS LE VRAI CORRECTIF : le correctif est un bump de l'image
+# de base, qui change l'image de PRODUCTION. Le faire à l'intérieur d'un lot fonctionnel
+# mêlerait deux risques sans rapport, et il faut revalider le durcissement (`read_only`,
+# `cap_drop`) que `LE-58` a déjà fait tomber une fois. Reporté à une PR d'infra
+# dédiée : **`AM-120`**.
 #
-# Ajouté le 2026-09-05 — ⚠️ **DATE DE REVUE : 2026-10-05**.
-# Une entrée d'allowlist ne se périme pas toute seule (`AM-45`, `LE-45`) : à
-# cette date, soit `AM-120` est livrée et ces sept lignes partent avec, soit on
-# réexamine et on redate. Ne pas laisser filer sans décision.
+# Ajoutée le 2026-09-05 avec une « DATE DE REVUE : 2026-10-05 » écrite en prose, que
+# rien n'appliquait. Elle est désormais la date d'expiration réelle : au 2026-10-05,
+# soit `AM-120` est livrée et ces sept lignes partent avec, soit on redate en écrivant
+# pourquoi. ⚠️ Passé cette date, Trivy les signale de nouveau — c'est voulu.
 # https://avd.aquasec.com/nvd/cve-2026-53612 (et suivantes)
-CVE-2026-53612
-CVE-2026-53613
-CVE-2026-53614
-CVE-2026-76642
-CVE-2026-78408
-CVE-2026-78409
-CVE-2026-78410
+CVE-2026-53612 exp:2026-10-05
+CVE-2026-53613 exp:2026-10-05
+CVE-2026-53614 exp:2026-10-05
+CVE-2026-76642 exp:2026-10-05
+CVE-2026-78408 exp:2026-10-05
+CVE-2026-78409 exp:2026-10-05
+CVE-2026-78410 exp:2026-10-05
+
+# ── pcre2, image de base du service `web` ────────────────────────────────────────
+#
+# Constatée le 2026-10-03 : `build-images (web)` est rouge sur TOUTES les branches,
+# pour une CVE du paquet `pcre2` de l'image de base — même origine que le bloc
+# util-linux ci-dessus, même motif `MO-4` (aucun diff correspondant). Exposition
+# d'image de base, acceptée ; le correctif est le même bump d'image, donc la même PR
+# d'infra `AM-120`.
+#
+# ⚠️ Cette entrée rend `build-images (web)` vert à nouveau. C'est le propos d'une
+# allowlist — mais c'est une décision, pas un effet de bord : la retirer d'une ligne
+# ramène le rouge. Date posée le 2026-10-03 à un mois, pour forcer la revue en même
+# temps que le reste du bloc image de base.
+# https://avd.aquasec.com/nvd/cve-2026-103111
+CVE-2026-103111 exp:2026-11-02
