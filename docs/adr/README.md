@@ -24,6 +24,7 @@ ADR existe sans être annoncé en page d'accueil, avec son intitulé.
 | [0008](0008-ecarts-semantique-http-pagination-et-concurrence.md) | **Écarts de sémantique HTTP** sur la pagination et la concurrence optimiste — nommés, pas dissimulés                                                       | Accepté | 2026-08-14 |
 | [0009](0009-nom-du-produit-martha.md)                            | **Le produit s'appelle « Martha »**, renommage d'**affichage seul** : l'identité technique reste `creche-planner`                                          | Accepté | 2026-08-17 |
 | [0010](0010-ecosysteme-applications-personnelles.md)             | **Écosystème d'applications personnelles** : un **référentiel de compétences** partagé d'abord, l'identité commune différée derrière une interface étroite | Accepté | 2026-09-29 |
+| [0011](0011-porte-anti-doublon-de-dependances.md)                | **Porte anti-doublon de dépendances** : une liste nommée d'identités uniques avec tolérances datées, plutôt que « zéro doublon » ou `pnpm dedupe --check`   | Accepté | 2026-10-03 |
 | [0013](0013-faits-documentaires-engendres.md)                    | **Les contrôles requis sont engendrés**, pas rédigés — et le relevé reste un geste humain, pour qu'aucune porte ne dépende d'un droit                      | Accepté | 2026-10-03 |
 
 ## Par où entrer
