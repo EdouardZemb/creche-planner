@@ -24,6 +24,7 @@
     "abonnements": "node scripts/verifier-abonnements.mjs",
     "quarantaine": "node scripts/verifier-quarantaine.mjs",
     "empechements": "node scripts/verifier-empechements.mjs",
+    "controles": "node scripts/verifier-controles-requis.mjs",
     "liens": "node scripts/verifier-liens-doc.mjs",
     "faits": "node scripts/verifier-faits-doc.mjs",
     "readme": "node scripts/verifier-readme.mjs",
