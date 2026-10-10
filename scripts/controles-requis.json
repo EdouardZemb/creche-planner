@@ -1,0 +1,17 @@
+{
+  "_lisezMoi": "Relevé ENGENDRÉ par `pnpm controles --relever` depuis l'API GitHub (GET /repos/{depot}/branches/{branche}/protection). Ne pas éditer à la main : la porte `pnpm controles` confronte le bloc de CLAUDE.md à ce fichier, et ce fichier à sa propre forme. Voir docs/adr/0013-faits-documentaires-engendres.md.",
+  "depot": "EdouardZemb/creche-planner",
+  "branche": "main",
+  "source": "GET /repos/{depot}/branches/{branche}/protection",
+  "releveLe": "2026-10-03",
+  "controles": [
+    "ci",
+    "config-validation",
+    "texte-pr",
+    "lint-ratchet",
+    "mutation-delta"
+  ],
+  "strict": true,
+  "revuesRequises": 0,
+  "administrateursSoumis": false
+}
