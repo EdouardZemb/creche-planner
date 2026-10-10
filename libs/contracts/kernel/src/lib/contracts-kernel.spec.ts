@@ -30,7 +30,13 @@ describe('contracts-kernel (enveloppe + transverses)', () => {
       occurredAt: '2026-09-01T00:00:00.000Z',
       traceId: 'x',
     };
-    void traceId;
+    // `traceId` est extrait pour le RETIRER de l'objet jugé : c'est l'absence
+    // qui est testée. Il était jusqu'ici écarté par un `void`, qui n'écarte
+    // aucune valeur de retour sur un identifiant — `no-meaningless-void-operator`
+    // le refuse depuis la montée de `typescript-eslint`. L'assertion ci-dessous
+    // dit la même intention, en vérifiant au passage que l'extraction a bien eu
+    // lieu : si `traceId` était `undefined`, le cas de test serait vide.
+    expect(traceId).toBe('x');
     expect(integrationEventEnvelopeSchema.safeParse(sansTrace).success).toBe(
       false,
     );
