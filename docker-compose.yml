@@ -69,7 +69,7 @@ services:
       # Socket Unix et fichier de verrou : les seules écritures hors volume.
       - /var/run/postgresql
       - /tmp
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: referentiel
       POSTGRES_PASSWORD: referentiel
@@ -97,7 +97,7 @@ services:
       # Socket Unix et fichier de verrou : les seules écritures hors volume.
       - /var/run/postgresql
       - /tmp
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: foyer
       POSTGRES_PASSWORD: foyer
@@ -125,7 +125,7 @@ services:
       # Socket Unix et fichier de verrou : les seules écritures hors volume.
       - /var/run/postgresql
       - /tmp
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: planification
       POSTGRES_PASSWORD: planification
@@ -153,7 +153,7 @@ services:
       # Socket Unix et fichier de verrou : les seules écritures hors volume.
       - /var/run/postgresql
       - /tmp
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: tarification
       POSTGRES_PASSWORD: tarification
@@ -181,7 +181,7 @@ services:
       # Socket Unix et fichier de verrou : les seules écritures hors volume.
       - /var/run/postgresql
       - /tmp
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: notifications
       POSTGRES_PASSWORD: notifications
@@ -196,7 +196,7 @@ services:
 
   nats:
     <<: *durcissement
-    image: nats:2.10-alpine
+    image: nats:2.15-alpine
     # `-sd` (store_dir) désigne le magasin JetStream. SANS lui, il atterrit dans
     # `/tmp/nats`, c'est-à-dire dans la COUCHE du conteneur : les flux de
     # l'outbox étaient donc perdus à chaque recréation, donc à chaque
@@ -216,7 +216,7 @@ services:
   otel-collector:
     <<: *durcissement
     # P2-8 (doc 18) — épinglé par digest (= v0.153.0) pour une pile reproductible.
-    image: otel/opentelemetry-collector-contrib@sha256:93aad750175cbf1a973ae1c5886c3371f4d800f61be25cdd26870b8441ffe9fa
+    image: otel/opentelemetry-collector-contrib@sha256:fd328de2552466ad78385e1b1289c3f2402b1c45f265b252aab1955b42845ac1
     command: ['--config=/etc/otel/config.yaml']
     volumes:
       - ./docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro
@@ -226,7 +226,7 @@ services:
   tempo:
     <<: *durcissement
     # P2-8 — épinglé par digest (= tempo v3.0.0) pour une pile reproductible.
-    image: grafana/tempo@sha256:a5b8cc916da6cd934ac12c0569e2cc743b2886243ead6a41e06437ce8c480a8d
+    image: grafana/tempo@sha256:1ce31d6d7ffab62189685e8c47881d4a561c5d38bd0dbd66e40ca83cef07923d
     command: ['-config.file=/etc/tempo/tempo.yaml']
     volumes:
       - ./docker/tempo.yaml:/etc/tempo/tempo.yaml:ro
@@ -235,7 +235,7 @@ services:
   prometheus:
     <<: *durcissement
     # P2-8 — épinglé par digest (= v3.12.0) pour une pile reproductible.
-    image: prom/prometheus@sha256:69f5241418838263316593f7274a304b095c40bcf22e57272865da91bd60a8ac
+    image: prom/prometheus@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
     # Command par défaut de l'image + `--web.enable-remote-write-receiver` (Phase 13a) :
     # Tempo (metrics_generator) POUSSE les métriques RED dérivées des traces via
     # remote_write vers cette cible — l'endpoint /api/v1/write est désactivé par défaut.
@@ -276,7 +276,7 @@ services:
     # elle, ne tient pas à `read_only` : c'est le volume nommé ci-dessous.
     <<: *durcissement-inscriptible
     # Épinglé par digest (= v0.32.2) pour une pile reproductible (cf. P2-8).
-    image: prom/alertmanager@sha256:b85533a2eb45865835315810315f6951331b2dbc8c93a6cf9a51e156a006a706
+    image: prom/alertmanager@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
     command: ['--config.file=/etc/alertmanager/alertmanager.yml']
     volumes:
       - ./docker/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
@@ -295,7 +295,7 @@ services:
   nats-exporter:
     <<: *durcissement
     # P2-8 — épinglé par digest (= v0.20.1) pour une pile reproductible.
-    image: natsio/prometheus-nats-exporter@sha256:4fbf6dacb84780a45a1c3af9b1080c69451a288d20902deae671b80717bb8f61
+    image: natsio/prometheus-nats-exporter@sha256:c623b608e148e31e1c1c878673a197f1828e58ce90de4f01d22f1baa84c8fee9
     command:
       - '-connz'
       - '-varz'
@@ -313,7 +313,7 @@ services:
   blackbox-exporter:
     <<: *durcissement
     # Épinglé par digest (= v0.27.0) pour une pile reproductible (cf. P2-8).
-    image: prom/blackbox-exporter@sha256:a50c4c0eda297baa1678cd4dc4712a67fdea713b832d43ce7fcc5f9bea05094d
+    image: prom/blackbox-exporter@sha256:e753ff9f3fc458d02cca5eddab5a77e1c175eee484a8925ac7d524f04366c2fc
     command: ['--config.file=/etc/blackbox/blackbox.yml']
     volumes:
       - ./docker/blackbox.yml:/etc/blackbox/blackbox.yml:ro
@@ -326,7 +326,7 @@ services:
   postgres-exporter-referentiel:
     <<: *durcissement
     # Épinglé par digest (= v0.17.1) pour une pile reproductible (cf. P2-8).
-    image: quay.io/prometheuscommunity/postgres-exporter@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    image: quay.io/prometheuscommunity/postgres-exporter@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
     environment:
       DATA_SOURCE_NAME: postgresql://referentiel:referentiel@postgres-referentiel:5432/referentiel?sslmode=disable
     depends_on:
@@ -335,7 +335,7 @@ services:
 
   postgres-exporter-foyer:
     <<: *durcissement
-    image: quay.io/prometheuscommunity/postgres-exporter@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    image: quay.io/prometheuscommunity/postgres-exporter@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
     environment:
       DATA_SOURCE_NAME: postgresql://foyer:foyer@postgres-foyer:5432/foyer?sslmode=disable
     depends_on:
@@ -344,7 +344,7 @@ services:
 
   postgres-exporter-planification:
     <<: *durcissement
-    image: quay.io/prometheuscommunity/postgres-exporter@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    image: quay.io/prometheuscommunity/postgres-exporter@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
     environment:
       DATA_SOURCE_NAME: postgresql://planification:planification@postgres-planification:5432/planification?sslmode=disable
     depends_on:
@@ -353,7 +353,7 @@ services:
 
   postgres-exporter-tarification:
     <<: *durcissement
-    image: quay.io/prometheuscommunity/postgres-exporter@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    image: quay.io/prometheuscommunity/postgres-exporter@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
     environment:
       DATA_SOURCE_NAME: postgresql://tarification:tarification@postgres-tarification:5432/tarification?sslmode=disable
     depends_on:
@@ -362,7 +362,7 @@ services:
 
   postgres-exporter-notifications:
     <<: *durcissement
-    image: quay.io/prometheuscommunity/postgres-exporter@sha256:38606faa38c54787525fb0ff2fd6b41b4cfb75d455c1df294927c5f611699b17
+    image: quay.io/prometheuscommunity/postgres-exporter@sha256:ac5ec343104fae0e2d84a27bb8d69b38430a11910c5382cad85d478d2bab713e
     environment:
       DATA_SOURCE_NAME: postgresql://notifications:notifications@postgres-notifications:5432/notifications?sslmode=disable
     depends_on:
@@ -379,7 +379,7 @@ services:
       # jamais installés, et l'initialisation du backend elasticsearch échoue.
       - /tmp
     # P2-8 — épinglé par digest (= v13.0.2) pour une pile reproductible.
-    image: grafana/grafana@sha256:5dad0df181cb644a14e13617b913b261a54f7d4fd4510721dba420929f35bea2
+    image: grafana/grafana@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: 'true'
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
@@ -430,7 +430,7 @@ services:
   loki:
     <<: *durcissement
     # Épinglé par digest (= v3.4.2) pour une pile reproductible (cf. P2-8).
-    image: grafana/loki@sha256:58a6c186ce78ba04d58bfe2a927eff296ba733a430df09645d56cdc158f3ba08
+    image: grafana/loki@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
     command: ['-config.file=/etc/loki/loki-config.yaml']
     volumes:
       - ./docker/loki-config.yaml:/etc/loki/loki-config.yaml:ro
@@ -448,7 +448,7 @@ services:
   promtail:
     <<: *durcissement
     # Épinglé par digest (= v3.4.2) pour une pile reproductible (cf. P2-8).
-    image: grafana/promtail@sha256:c6e9a987ca086cbfef945b8ebd708eb09f98b5e78bfb659e4e5a8b3bd604d11b
+    image: grafana/promtail@sha256:6cfa64ec432b24a912d640e2edb940eeae2666f61861a66c121d763dd7241381
     command: ['-config.file=/etc/promtail/promtail-config.yaml']
     volumes:
       - ./docker/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
