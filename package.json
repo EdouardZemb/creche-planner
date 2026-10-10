@@ -89,6 +89,7 @@
   "pnpm": {
     "overrides": {
       "@grpc/grpc-js": "^1.14.5",
+      "@nestjs/common": "^11.2.7",
       "@opentelemetry/propagator-jaeger@2.8.0": "2.9.0",
       "axios": "^1.18.1",
       "brace-expansion@1": "^1.1.21",
