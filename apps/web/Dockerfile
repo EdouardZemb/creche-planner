@@ -3,7 +3,7 @@
 # Étape runtime : nginx:alpine sert les assets et proxifie /api vers la gateway.
 # (Le Dockerfile générique racine cible les services NestJS `node main.js` ; une
 # SPA statique a besoin d'une image distincte.)
-FROM --platform=linux/amd64 node:24-slim AS build
+FROM --platform=linux/amd64 node:25-slim AS build
 WORKDIR /app
 RUN corepack enable
 COPY . .
