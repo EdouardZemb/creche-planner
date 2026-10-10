@@ -175,6 +175,12 @@ describe('openapi-types — types générés depuis le contrat gateway', () => {
     // est refusée. Si les types cessaient de refléter le contrat, l'erreur
     // attendue disparaîtrait et `tsc` signalerait un `@ts-expect-error` inutile,
     // faisant échouer `web:typecheck`.
+    //
+    // Chaque valeur est ensuite CONSOMMÉE par une assertion, et non écartée par
+    // un `void`. Un `void` sur autre chose qu'un appel n'écarte aucune valeur de
+    // retour : il ne servait qu'à taire `no-unused-vars`, et depuis la montée de
+    // `typescript-eslint` la règle `no-meaningless-void-operator` le refuse — à
+    // raison. L'assertion dit la même chose en le disant vraiment.
 
     // @ts-expect-error — `tranche` requis (required du schema) : objet incomplet refusé
     const sansTranche: FoyerVue = {
@@ -186,7 +192,7 @@ describe('openapi-types — types générés depuis le contrat gateway', () => {
       nbEnfantsACharge: 1,
       nbParts: 1,
     };
-    void sansTranche;
+    expect(sansTranche.nbParts).toBe(1);
 
     const ligneInvalide: Ligne = {
       libelle: 'x',
@@ -194,11 +200,11 @@ describe('openapi-types — types générés depuis le contrat gateway', () => {
       sens: 'INCONNU',
       montantCentimes: 1,
     };
-    void ligneInvalide;
+    expect(ligneInvalide.libelle).toBe('x');
 
     // @ts-expect-error — `mois` (CoutMoisVue) doit être un objet contrat, pas un number
     const moisInvalide: CoutMoisVue = 42;
-    void moisInvalide;
+    expect(moisInvalide).toBe(42);
 
     // @ts-expect-error — `enfants` requis dans le requestBody de création de foyer
     const creerSansEnfants: CreerDossierFoyer = {
@@ -207,8 +213,6 @@ describe('openapi-types — types générés depuis le contrat gateway', () => {
       nbEnfantsACharge: 1,
       nbParts: 1,
     };
-    void creerSansEnfants;
-
-    expect(true).toBe(true);
+    expect(creerSansEnfants.nbParts).toBe(1);
   });
 });
