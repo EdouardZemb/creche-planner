@@ -1,0 +1,81 @@
+# VEILLE DE RÉGRESSION À COMMIT CONSTANT (ADR-0012).
+#
+# Le 2026-10-03, un audit conclut « `main` est verte » à 15h00 ; à 17h28, la MÊME
+# branche au MÊME commit échoue la porte `security` — la base de vulnérabilités de
+# Trivy avait avancé. Les veilles existantes savent dire « il y a N alertes »
+# (veille-alertes.yml) et « voici les CVE des images en ligne » (image-scan.yml).
+# Aucune ne formule la DIFFÉRENCE, qui est la seule information utile un matin :
+# **qu'est-ce qui a changé de verdict sans que le dépôt change ?**
+#
+# AUCUN ÉTAT STOCKÉ — GitHub conserve tous les check runs d'un même commit, datés.
+# La chronologie est donc déjà là : sur un seul sha, un `success` suivi d'un
+# `failure` est la régression cherchée, et elle ne peut pas venir d'un diff. Un
+# instantané rangé dans un cache serait une affirmation de plus qui peut périmer.
+#
+# LE REJEU — si rien ne re-joue un contrôle, aucune conclusion nouvelle n'apparaît
+# et la régression reste invisible. Pour la porte dont la vérité vit hors du dépôt
+# (l'analyse SCA du lockfile), ce workflow la rejoue lui-même, avec les réglages de
+# `ci.yml`, et compare au dernier `security` du même sha.
+#
+# NON BLOQUANT — aucun build ne dépend de ce workflow, il n'est pas un contrôle
+# requis. Il rougit pour être VU, pas pour barrer la route. Un run ROUGE distingue
+# toujours `RÉGRESSION` de `POINT MORT` : un appel qui échoue n'est jamais lu comme
+# « rien à signaler ».
+#
+# Actions épinglées par SHA (AUD-02), Node figé via .nvmrc (AUD-10), timeout borné
+# (AUD-03), concurrence (AUD-14), permissions au plus juste.
+name: Veille régression (commit constant)
+
+on:
+  schedule:
+    - cron: '10 6 * * *' # chaque jour 06:10 UTC, après la veille alertes (05:40)
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branche surveillée (défaut main)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read # checkout + lecture du sha de tête
+  checks: read # chronologie des check runs du commit
+
+concurrency:
+  group: veille-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    name: Verdicts qui ont changé sans diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # Rejeu de la porte `security` de ci.yml, aux MÊMES réglages (severity,
+      # ignore-unfixed, `.trivyignore` racine). `exit-code: 0` : ici on ne bloque
+      # pas, on COMPARE — c'est le script qui juge l'écart avec la conclusion
+      # qu'avait rendue `security` sur ce même commit.
+      - name: Rejeu SCA du lockfile (informatif)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: pnpm-lock.yaml
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '0'
+          format: json
+          output: rejeu-sca.json
+
+      - name: Comparer les verdicts à commit constant
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          REGRESSION_REF: ${{ github.event.inputs.ref || 'main' }}
+          REGRESSION_TRIVY: rejeu-sca.json
+        run: node .github/workflows/scripts/veille-regression.mjs

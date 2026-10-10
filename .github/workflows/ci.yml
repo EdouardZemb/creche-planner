@@ -357,6 +357,21 @@ jobs:
           node scripts/verifier-controles-requis.mjs --autotest
           node scripts/verifier-controles-requis.mjs
 
+      # Exceptions de sécurité à date d'expiration (ADR-0012). Une entrée
+      # d'allowlist se pose dans un moment de lucidité et se relit six mois plus
+      # tard comme un fait établi : le 2026-08-13, une entrée `brace-expansion`
+      # posée « jusqu'à ce qu'un correctif 2.x existe » est restée après la
+      # publication de ce correctif, et le bloc `util-linux` porte une « DATE DE
+      # REVUE » en prose que rien n'applique. Ce step exige que chaque
+      # identifiant de `.trivyignore` porte `exp:AAAA-MM-JJ` — syntaxe NATIVE de
+      # Trivy, donc la date agit deux fois : Trivy cesse de supprimer la CVE une
+      # fois passée, et la porte rougit AVANT pour que l'échéance se voie venir.
+      # Avertissement à J-14. `--autotest` rejoue ses 6 sondes.
+      - name: Exceptions de sécurité — datées et non périmées (bloquant)
+        run: |
+          node scripts/verifier-exceptions-securite.mjs --autotest
+          node scripts/verifier-exceptions-securite.mjs
+
       # Idempotence du jeu de référence (`AM-108`, `LE-90`). Le seed était
       # idempotent pour ce qu'il CRÉAIT, jamais pour ce qu'il DÉCLARAIT : sur un
       # foyer réutilisé, la date d'effet des ressources restait celle du PREMIER
@@ -1743,3 +1758,65 @@ jobs:
             echo "Ce job ne bloque rien, par construction."
           } >> "$GITHUB_STEP_SUMMARY"
           exit 0
+
+  # Veille de régression à commit constant (ADR-0012) — ses quatre jeux d'essai.
+  # Le verdict de cette veille repose entièrement sur une distinction : « rien
+  # n'a changé » et « je n'ai pas pu regarder » ne doivent JAMAIS rendre la même
+  # chose. C'est précisément l'erreur qui a coûté la veille ORANGE du 2026-08-03,
+  # et elle ne se voit pas en lisant le code. Ces quatre cas la rejouent sans
+  # réseau : rien à signaler (VERT), régression de chronologie (ROUGE), rejeu
+  # Trivy divergent au même commit (ROUGE), API muette (ROUGE, et NOMMÉ).
+  veille-regression-autotest:
+    name: Auto-test veille régression
+    needs: config-changes
+    if: needs.config-changes.outputs.config == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Les quatre verdicts, dont le point mort
+        run: |
+          set +e
+          set -uo pipefail
+          echec() { echo "::error::$1"; echo "--- sortie obtenue ---"; echo "$2"; exit 1; }
+
+          jouer() {
+            SORTIE=$(REGRESSION_DRY_RUN="$1" node .github/workflows/scripts/veille-regression.mjs)
+            CODE=$?
+          }
+
+          # 1) Rien à signaler ⇒ VERT. Sans ce cas, une veille toujours rouge
+          #    passerait pour vigilante.
+          jouer vert
+          [ "$CODE" -eq 0 ] || echec "« rien à signaler » doit sortir VERT, obtenu $CODE" "$SORTIE"
+
+          # 2) Vert puis rouge au même commit ⇒ ROUGE, et la phrase doit le dire.
+          jouer 1
+          [ "$CODE" -eq 1 ] || echec "une régression à commit constant doit sortir ROUGE" "$SORTIE"
+          echo "$SORTIE" | grep -qF 'RÉGRESSION' \
+            || echec "la régression doit être NOMMÉE dans le résumé" "$SORTIE"
+
+          # 3) Chronologie verte, mais le rejeu SCA du jour trouve une CVE : c'est
+          #    l'épisode du 2026-10-03, celui qu'aucune veille ne savait formuler.
+          jouer trivy
+          [ "$CODE" -eq 1 ] || echec "un rejeu SCA divergent doit sortir ROUGE" "$SORTIE"
+          echo "$SORTIE" | grep -qF 'la base de vulnérabilités qui a avancé' \
+            || echec "la cause hors dépôt doit être nommée" "$SORTIE"
+
+          # 4) RÈGLE CARDINALE — ne pas pouvoir regarder n'est pas « rien à signaler ».
+          jouer point-mort
+          [ "$CODE" -eq 1 ] || echec "un point mort doit sortir ROUGE, pas vert" "$SORTIE"
+          echo "$SORTIE" | grep -qF 'POINT MORT' \
+            || echec "le point mort doit être NOMMÉ, pas confondu avec un vert" "$SORTIE"
+          if echo "$SORTIE" | grep -qF 'Aucun changement de verdict'; then
+            echec "un point mort lu comme « aucun changement » — le faux vert est de retour" "$SORTIE"
+          fi
+
+          echo "✅ Les quatre verdicts tiennent, point mort compris."
