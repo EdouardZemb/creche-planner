@@ -31,9 +31,19 @@ FROM --platform=linux/amd64 nginxinc/nginx-unprivileged:alpine AS runtime
 # 2026-07-14 : curl/libcurl 8.20.0-r0 corrige CVE-2026-5773 (mauvais transfert
 # de fichier via réutilisation de connexion SMB) et CVE-2026-6276 (fuite de
 # cookie en réutilisation de connexion), tous deux HIGH.
+# 2026-10-10 : pcre2 10.49-r0 corrige CVE-2026-103111 (écriture hors bornes avec
+# données arbitraires via une expression régulière contrôlée par l'attaquant et
+# certains usages de l'API JIT, HIGH). Le `alpine` flottant de
+# `nginxinc/nginx-unprivileged` se résout sur la branche **Alpine v3.23** — relevé
+# le 2026-10-10 sur les tags publiés du registre, où aucun `alpine3.24` n'existe
+# encore — et v3.23/main publie bien 10.49-r0. La couche figée par le jeton du
+# 2026-07-14 servait encore 10.48-r0 : c'est le cache, pas le dépôt amont, qui
+# tenait l'image vulnérable. Réserve restante, et elle est petite : la branche a
+# été établie par lecture des tags du registre et non par lecture de
+# `/etc/alpine-release` dans l'image, le démon Docker du poste n'ayant pas répondu.
 # `apk upgrade` exige root → USER root le temps du patch, puis retour à 101.
 USER root
-ARG OS_PATCH=2026-07-14
+ARG OS_PATCH=2026-10-10
 RUN echo "os-patch ${OS_PATCH}" && apk upgrade --no-cache
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist/apps/web /usr/share/nginx/html
