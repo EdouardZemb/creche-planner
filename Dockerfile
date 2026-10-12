@@ -11,7 +11,7 @@
 #   - database/migrations (assets),
 #   - package.json + pnpm-lock.yaml élagués (deps tierces du seul service),
 #   - workspace_modules/ (libs locales, référencées en file: par le lockfile).
-FROM --platform=linux/amd64 node:24-slim AS build
+FROM --platform=linux/amd64 node:26-slim AS build
 WORKDIR /app
 RUN corepack enable
 COPY . .
@@ -29,7 +29,7 @@ RUN pnpm nx prune "$APP" --skip-nx-cache
 # N'installe QUE les dépendances tierces du service ciblé, à partir du lockfile
 # élagué. `workspace_modules` doit être présent (références file:) ; les libs y
 # sont déjà inlinées dans main.js, mais le lockfile les exige à l'installation.
-FROM --platform=linux/amd64 node:24-slim AS deps
+FROM --platform=linux/amd64 node:26-slim AS deps
 WORKDIR /app
 RUN corepack enable
 # Le package.json élagué (généré par `nx prune`) ne porte PAS le champ
@@ -61,7 +61,7 @@ RUN pnpm install --prod --no-frozen-lockfile
 # --- Stage 3 : runtime minimal ----------------------------------------------
 # Ne copie que le bundle du service + ses node_modules élagués. Aucune trace du
 # reste du workspace (autres services, sources, outillage de build).
-FROM --platform=linux/amd64 node:24-slim AS runtime
+FROM --platform=linux/amd64 node:26-slim AS runtime
 WORKDIR /app
 # Durcissement chaîne d'appro (AUD-06, doc 25) : on applique les correctifs de
 # sécurité des paquets OS du base image (ex. libgnutls30 deb12u6→u7, CVE HIGH/
