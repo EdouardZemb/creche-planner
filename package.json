@@ -93,13 +93,17 @@
       "@nestjs/common": "^11.2.7",
       "@opentelemetry/propagator-jaeger@2.8.0": "2.9.0",
       "axios": "^1.18.1",
+      "body-parser@1": "^1.20.9",
+      "body-parser@2": "^2.4.0",
       "brace-expansion@1": "^1.1.21",
       "brace-expansion@2": "^2.1.7",
       "brace-expansion@5": "^5.0.12",
       "js-yaml@4": "^4.3.1",
-      "multer": "^2.4.0",
+      "multer": "^2.5.0",
+      "proxy-addr": "^2.0.8",
       "qs": "^6.16.0",
-      "shell-quote": "^1.9.0"
+      "shell-quote": "^1.11.0",
+      "systeminformation": "^5.33.16"
     }
   },
   "dependencies": {
