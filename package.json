@@ -110,7 +110,7 @@
     "@nestjs/common": "^11.1.28",
     "@nestjs/config": "^4",
     "@nestjs/core": "^11.1.28",
-    "@nestjs/platform-express": "^11.1.28",
+    "@nestjs/platform-express": "^11.2.8",
     "@nestjs/terminus": "^11",
     "@opentelemetry/auto-instrumentations-node": "^0.79.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
