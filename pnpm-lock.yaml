@@ -62,8 +62,8 @@ importers:
         specifier: ^2.29.3
         version: 2.29.3
       nestjs-pino:
-        specifier: ^4.6.1
-        version: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
+        specifier: ^5.3.1
+        version: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
       pino:
         specifier: ^10.3.1
         version: 10.3.1
@@ -273,8 +273,8 @@ importers:
         specifier: ^6.2.7
         version: 6.2.7
       nestjs-pino:
-        specifier: ^4.6.1
-        version: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
+        specifier: ^5.3.1
+        version: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -355,8 +355,8 @@ importers:
         specifier: ^2.29.3
         version: 2.29.3
       nestjs-pino:
-        specifier: ^4.6.1
-        version: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
+        specifier: ^5.3.1
+        version: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -452,8 +452,8 @@ importers:
         specifier: ^2.29.3
         version: 2.29.3
       nestjs-pino:
-        specifier: ^4.6.1
-        version: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
+        specifier: ^5.3.1
+        version: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -546,8 +546,8 @@ importers:
         specifier: ^2.29.3
         version: 2.29.3
       nestjs-pino:
-        specifier: ^4.6.1
-        version: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
+        specifier: ^5.3.1
+        version: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -631,8 +631,8 @@ importers:
         specifier: ^2.29.3
         version: 2.29.3
       nestjs-pino:
-        specifier: ^4.6.1
-        version: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
+        specifier: ^5.3.1
+        version: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -731,8 +731,8 @@ importers:
         specifier: ^2.29.3
         version: 2.29.3
       nestjs-pino:
-        specifier: ^4.6.1
-        version: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
+        specifier: ^5.3.1
+        version: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
@@ -955,8 +955,8 @@ importers:
         specifier: ^1.43.0
         version: 1.43.0
       nestjs-pino:
-        specifier: ^4.6.1
-        version: 4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
+        specifier: ^5.3.1
+        version: 5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2)
       tslib:
         specifier: ^2.3.0
         version: 2.8.1
@@ -7956,13 +7956,14 @@ packages:
   neo-async@2.6.2:
     resolution: {integrity: sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw==}
 
-  nestjs-pino@4.6.1:
-    resolution: {integrity: sha512-nuARXa0xpdJ1lY2+fgycIQr6H3g0VgqAWNK3xMYjOFcj2DoPETNXj0lV3Y86nRuI7BUfQp5PGiVoZvT4dTWbpQ==}
-    engines: {node: '>= 14'}
+  nestjs-pino@5.3.1:
+    resolution: {integrity: sha512-tL3fFSY38Wuv3VS4dCo+zlHVt1xU7+RSXnlgenyTvfy74GLBLgisqvG+76983ilf2C2uFkPe68qUapXCYnoSoA==}
+    engines: {node: '>=22.12.0'}
     peerDependencies:
       '@nestjs/common': ^11.2.7
-      pino: ^7.5.0 || ^8.0.0 || ^9.0.0 || ^10.0.0
-      pino-http: ^6.4.0 || ^7.0.0 || ^8.0.0 || ^9.0.0 || ^10.0.0 || ^11.0.0
+      '@nestjs/core': ^11.0.8 || ^12.0.2
+      pino: ^10.0.0
+      pino-http: ^11.0.0
       rxjs: ^7.1.0
 
   nkeys.js@1.1.0:
@@ -17889,16 +17890,18 @@ snapshots:
 
   neo-async@2.6.2: {}
 
-  nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2):
+  nestjs-pino@5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2):
     dependencies:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core': 11.1.28(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.2.8)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       pino: 10.3.1
       pino-http: 11.0.0
       rxjs: 7.8.2
 
-  nestjs-pino@4.6.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2):
+  nestjs-pino@5.3.1(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.28)(pino-http@11.0.0)(pino@10.4.0)(rxjs@7.8.2):
     dependencies:
       '@nestjs/common': 11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/core': 11.1.28(@nestjs/common@11.2.7(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/platform-express@11.2.8)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       pino: 10.4.0
       pino-http: 11.0.0
       rxjs: 7.8.2
