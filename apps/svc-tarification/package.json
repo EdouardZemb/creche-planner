@@ -121,7 +121,7 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^11.1.28",
-    "@pact-foundation/pact": "^17.0.1",
-    "drizzle-kit": "^0.31.10"
+    "@pact-foundation/pact": "^17.1.4",
+    "drizzle-kit": "^0.31.11"
   }
 }
