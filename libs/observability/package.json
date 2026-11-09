@@ -23,14 +23,14 @@
     ]
   },
   "dependencies": {
-    "tslib": "^2.3.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.79.0",
-    "@opentelemetry/exporter-metrics-otlp-http": "^0.221.0",
-    "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
+    "tslib": "^2.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.83.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.301.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.301.0",
     "@opentelemetry/resources": "^2.10.0",
     "@opentelemetry/sdk-metrics": "^2.10.0",
-    "@opentelemetry/sdk-node": "^0.221.0",
-    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "@opentelemetry/sdk-node": "^0.301.0",
+    "@opentelemetry/semantic-conventions": "^1.44.0",
     "nestjs-pino": "^4.6.1"
   }
 }
