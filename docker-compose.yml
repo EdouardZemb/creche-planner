@@ -21,7 +21,25 @@ name: creche-planner
 #     Docker accorde par défaut (dont NET_RAW, MKNOD, SETFCAP). Les services qui
 #     en exigent une la REPRENNENT nommément, avec le motif au-dessus ;
 #   - `read_only: true` (CIS 5.12) : système de fichiers racine immuable. Les
-#     écritures légitimes passent par un volume nommé ou un `tmpfs:` déclaré.
+#     écritures légitimes passent par un volume nommé ou un `tmpfs:` déclaré ;
+#   - `tmpfs: [/tmp]` : le corollaire de `read_only`. Un programme tient `/tmp`
+#     pour inscriptible, et une image y écrit sans le dire, dans des chemins que
+#     ni le démarrage ni le healthcheck n'exercent. Loki y copie ses fichiers de
+#     marques quand le compactor applique la rétention, donc seulement une fois
+#     des morceaux expirés, sept jours après sa création : du 2026-08-15 au
+#     2026-11-15, sa rétention n'a jamais été appliquée, `/ready` répondait, et
+#     son journal a rempli le disque du serveur (`LE-105`). Grafana avant lui
+#     (plugins jamais installés), NATS avant eux (magasin dans `/tmp/nats`). Le
+#     démon monte ce tmpfs en `noexec,nosuid,nodev`, et sa mémoire est comptée
+#     dans celle du conteneur. Un service qui écrit son propre `tmpfs:` REMPLACE
+#     celui-ci (clé de fusion YAML) : il doit relister `/tmp`, ce que la porte
+#     exige ;
+#   - `logging` borné (`json-file`, 10 Mo × 3) : sans lui, le journal d'un
+#     conteneur grossit sans fin, et il ne repart à zéro qu'à la recréation. Un
+#     conteneur dont ni l'image ni la configuration ne changent n'est jamais
+#     recréé par un train : celui de loki a atteint 125 Go en trois mois. Promtail
+#     lit ces journaux par l'API Docker et suit la rotation ; Loki en garde sept
+#     jours, la source n'a pas à les garder.
 #
 # Depuis `AM-83` (2026-08-15) il n'y a PLUS aucune exemption : les trois états
 # qui vivaient hors d'un volume — magasin JetStream, base TSDB, silences
@@ -38,6 +56,13 @@ x-durcissement: &durcissement
   cap_drop:
     - ALL
   read_only: true
+  tmpfs:
+    - /tmp
+  logging:
+    driver: json-file
+    options:
+      max-size: '10m'
+      max-file: '3'
 
 # Même posture, racine INSCRIPTIBLE. Une seule exemption, et elle est mécanique :
 # un service qui reçoit un secret Compose de source `environment:` ne peut PAS
@@ -51,6 +76,11 @@ x-durcissement-inscriptible: &durcissement-inscriptible
   cap_drop:
     - ALL
   read_only: false
+  logging:
+    driver: json-file
+    options:
+      max-size: '10m'
+      max-file: '3'
 
 services:
   # --- Infrastructure ------------------------------------------------------
@@ -428,6 +458,13 @@ services:
   # réseau Docker) → pas de conflit avec le port 3100 déjà pris sur le serveur. Le
   # port local est publié par docker-compose.override.yml (dev uniquement).
   loki:
+    # Le `/tmp` de l'ancre porte la rétention : le compactor y copie chaque
+    # fichier de marques (`marker-view-…`) avant de supprimer les morceaux
+    # expirés. Sans lui, `/ready` répond, les requêtes ne voient plus que sept
+    # jours (l'index est réécrit), mais aucun morceau n'est jamais supprimé du
+    # disque, et chaque passage (une fois par minute) journalise un
+    # avertissement par fichier de marques, en nombre croissant (`LE-105` :
+    # 7 372 fichiers, ~7 400 lignes/min au 2026-11-15).
     <<: *durcissement
     # Épinglé par digest (= v3.4.2) pour une pile reproductible (cf. P2-8).
     image: grafana/loki@sha256:58a6c186ce78ba04d58bfe2a927eff296ba733a430df09645d56cdc158f3ba08

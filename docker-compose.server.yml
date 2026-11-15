@@ -35,7 +35,8 @@
 # Durcissement (AM-48) : les 25 services communs le tiennent du fichier de BASE
 # (ancre `x-durcissement`), qui est fusionné ici — rien à redire pour eux. Les
 # ancres YAML ne traversent PAS les fichiers : les deux services que seule la
-# prod lève (caddy, cloudflared) portent donc leur posture en clair ci-dessous.
+# prod lève (caddy, cloudflared) portent donc leur posture en clair ci-dessous,
+# `tmpfs` sur `/tmp` et journal borné compris (`LE-105`).
 services:
   # --- Infrastructure : secrets + redémarrage automatique --------------------
   # Limites : ~25 Mio observés par base (petite volumétrie familiale) ; 512 Mio
@@ -449,6 +450,11 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
     restart: unless-stopped
     mem_limit: 128m
     cpus: 1
@@ -501,12 +507,20 @@ services:
     image: cloudflare/cloudflared@sha256:e39ee8da81ad5e05d77f38d2f51c60ca51bf2a8450ac3abab50c17fdb91d91bf
     # Durcissement (AM-48) : client purement SORTANT (aucun port écouté, aucun
     # fichier écrit — le jeton du tunnel vient de l'environnement), donc zéro
-    # capacité et racine en lecture seule.
+    # capacité et racine en lecture seule. Le `/tmp` n'est pas un besoin mesuré :
+    # c'est le corollaire de `read_only` que la porte exige partout (`LE-105`).
     security_opt:
       - 'no-new-privileges:true'
     cap_drop:
       - ALL
     read_only: true
+    tmpfs:
+      - /tmp
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
     restart: unless-stopped
     mem_limit: 128m
     cpus: 0.5

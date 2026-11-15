@@ -124,7 +124,7 @@ qui met l'exemption domestique en tension
 | **Personnes concernées**  | Parents et agents d'établissement.                                                                                                                                                |
 | **Catégories de données** | Adresses e-mail **en clair** et identifiants de foyer, dans les journaux des gardes d'autorisation et d'identité de la passerelle. Aucune rédaction n'est appliquée à l'émission. |
 | **Où**                    | Journaux applicatifs des 6 services, agrégés par Loki.                                                                                                                            |
-| **Conservation**          | Politique **déjà écrite et déjà appliquée** — voir le renvoi ci-dessous.                                                                                                          |
+| **Conservation**          | Politique **écrite** — voir le renvoi ci-dessous. Sur disque, non appliquée du 2026-08-15 au correctif de `LE-105` : le compactor de Loki n'avait pas de `/tmp`.                  |
 
 La politique des signaux d'exploitation (inventaire des données personnelles par signal,
 durées par magasin, accès, procédure de purge sur demande) vit dans
