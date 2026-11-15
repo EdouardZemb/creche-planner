@@ -84,8 +84,11 @@
  *    des journaux, et ne prouve pas qu'un `/tmp` suffise : une image peut
  *    écrire ailleurs (`/var/run`, `$HOME`). Le `tmpfs` n'a pas de taille : sa
  *    mémoire est comptée dans celle du conteneur, que seule la production
- *    plafonne (`mem_limit`). Un `logging:` écrit en ligne (`{driver: …}`) n'est
- *    pas lu, et la règle 10 le refuse : écrire la forme en bloc.
+ *    plafonne (`mem_limit`) ; loki, le cas d'origine, n'y copie qu'un fichier
+ *    de marques à la fois, 32 Ko au plus (mesuré le 2026-11-15). Deux formes ne
+ *    sont pas lues, et les règles les refusent au lieu de les croire bonnes :
+ *    un `logging:` écrit en ligne (`{driver: …}`) et un `tmpfs` en forme longue
+ *    sous `volumes:` (`type: tmpfs`). Écrire la forme en bloc et `tmpfs:`.
  *  - Elle ne prouve pas que la pile **démarre** ainsi durcie : seuls les jobs
  *    `e2e-stack` le montre (smokes compris), et il ne lève que la pile
  *    dev/CI. Un service que seule la prod porte (`caddy`, `cloudflared`) n'est
@@ -340,16 +343,30 @@ function fusionnerJournal(avant, apres) {
 }
 
 /**
- * Le journal est-il **borné** ? Pilote `json-file` et `max-size` lisible
- * (`10m`, `512k`, `1g`) ; `max-file`, s'il est écrit, est un entier positif.
- * Sans `max-file`, `json-file` garde un seul fichier : borné aussi.
+ * Une taille au sens du démon (`units.RAMInBytes`) est-elle **strictement
+ * positive** ? Il accepte `10m`, `10M`, `10mb`, `10 MiB`, un nombre seul
+ * (octets), et refuse une taille nulle à la création du conteneur : `0m` doit
+ * donc rougir ici plutôt qu'au `up -d --wait`.
+ *
+ * @param {string} taille
+ */
+function taillePositive(taille) {
+  const lue = /^(\d+(?:\.\d+)?) ?(?:[kmgtp]i?b?|b)?$/i.exec(taille);
+  return lue !== null && Number(lue[1]) > 0;
+}
+
+/**
+ * Le journal est-il **borné** ? Pilote `json-file` et `max-size` positif ;
+ * `max-file`, s'il est écrit, est un entier positif. Sans `max-file`,
+ * `json-file` garde un seul fichier : borné aussi. Un autre pilote, même
+ * borné par défaut (`local`), se décide ici, pas dans un compose.
  *
  * @param {Journal | null} journal
  */
 function journalBorne(journal) {
   if (journal === null) return false;
   if (journal.pilote !== 'json-file') return false;
-  if (journal.tailleMax === null || !/^\d+[kmg]$/.test(journal.tailleMax)) {
+  if (journal.tailleMax === null || !taillePositive(journal.tailleMax)) {
     return false;
   }
   return journal.fichiersMax === null || /^[1-9]\d*$/.test(journal.fichiersMax);
@@ -357,17 +374,31 @@ function journalBorne(journal) {
 
 /**
  * Le service a-t-il un `/tmp` inscriptible ? Un montage s'écrit `chemin` ou
- * `chemin:options` ; seul le chemin compte.
+ * `chemin:options` ; un `ro` dans les options le rend inutile ici.
  *
  * @param {string[]} tmpfs
  */
 function aUnTmpInscriptible(tmpfs) {
-  return tmpfs.some((montage) => montage.split(':')[0].trim() === '/tmp');
+  return tmpfs.some((montage) => {
+    const [chemin, options = ''] = montage.split(/:(.*)/s);
+    return (
+      chemin.trim() === '/tmp' &&
+      !options.split(',').some((option) => option.trim() === 'ro')
+    );
+  });
 }
 
-/** @param {string} valeur */
+/**
+ * Valeur scalaire d'une ligne YAML : commentaire de fin de ligne retiré
+ * (`json-file  # rotation`), puis guillemets.
+ *
+ * @param {string} valeur
+ */
 function sansGuillemets(valeur) {
-  return valeur.trim().replace(/^['"]|['"]$/g, '');
+  return valeur
+    .replace(/\s+#.*$/, '')
+    .trim()
+    .replace(/^['"]|['"]$/g, '');
 }
 
 /**
@@ -1226,7 +1257,73 @@ function autotest(contenus) {
     attendu: `service \`${reecrit[1]}\` : racine en lecture seule sans \`/tmp\``,
   });
 
-  let echecs = 0;
+  // (m ter) un `/tmp` monté en lecture seule n'en est pas un : le chemin y
+  // est, l'écriture du compactor échoue toujours.
+  sondes.push({
+    nom: 'ancre partagée avec un /tmp en lecture seule (loki)',
+    constats: verifier(
+      muter(
+        BASE,
+        (t) =>
+          t.replace(/(\n {2}tmpfs:\r?\n {4}- )\/tmp(\r?\n)/, '$1/tmp:ro$2'),
+        'tmpfs en ro',
+      ),
+    ),
+    attendu: 'service `loki` : racine en lecture seule sans `/tmp`',
+  });
+
+  // (l quater) une taille nulle passe une expression régulière naïve, et le
+  // démon la refuse à la création du conteneur : rouge ici, pas au déploiement.
+  sondes.push({
+    nom: 'max-size nul dans l’ancre',
+    constats: verifier(
+      muter(
+        BASE,
+        (t) => t.replace(/(\n {6}max-size: )'10m'/, "$1'0m'"),
+        'max-size nul',
+      ),
+    ),
+    attendu: 'journal Docker non borné',
+  });
+
+  // Témoins POSITIFS : des écritures que le démon accepte, et que la porte ne
+  // doit pas refuser — sans quoi le seul remède serait de réécrire un YAML
+  // valide pour plaire à l'analyseur (`LE-52` : un refus doit avoir un remède).
+  const temoinsPositifs = [
+    {
+      nom: 'unité en majuscule et commentaire de fin de ligne',
+      contenus: muter(
+        BASE,
+        (t) =>
+          t
+            .replace(
+              /(\n {6}max-size: )'10m'/,
+              '$1 10M  # même borne, écrite autrement',
+            )
+            .replace(
+              /(\n {4}driver: json-file)/,
+              '$1  # rotation par le démon',
+            ),
+        'variantes acceptées',
+      ),
+    },
+  ];
+  let echecsPositifs = 0;
+  for (const temoin of temoinsPositifs) {
+    const refus = verifier(temoin.contenus).filter((c) =>
+      c.includes('journal Docker non borné'),
+    );
+    if (refus.length === 0) {
+      console.log(`Témoin « ${temoin.nom} » : la porte l'accepte. ✅`);
+    } else {
+      echecsPositifs += 1;
+      console.error(
+        `Témoin « ${temoin.nom} » : la porte refuse une écriture valide (${refus.length} constat(s)), par exemple : ${refus[0]}`,
+      );
+    }
+  }
+
+  let echecs = echecsPositifs;
   for (const sonde of sondes) {
     const mord = sonde.constats.some((c) => c.includes(sonde.attendu));
     if (mord) {
