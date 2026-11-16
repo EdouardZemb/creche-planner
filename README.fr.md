@@ -265,7 +265,8 @@ régression silencieuse :
   `process.env` hors configuration, aucun réglage de compose inerte),
   `pnpm conteneurs` (chaque service des trois piles Compose tourne en
   `no-new-privileges` + `cap_drop: [ALL]`, racine en lecture seule sauf exemption
-  motivée, chaque capacité reprise nommée, ni mode privilégié ni profil de
+  motivée, avec un `/tmp` en `tmpfs` et un journal Docker borné, chaque capacité
+  reprise nommée, ni mode privilégié ni profil de
   sécurité défait), `pnpm abonnements` (chaque contexte de contrats publie
   l'inventaire des événements qu'il déclare, et chaque consommateur durable
   JetStream est borné aux sujets que sa projection traite — un événement qui ne

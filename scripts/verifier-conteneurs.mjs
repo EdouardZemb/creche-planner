@@ -62,8 +62,33 @@
  *    Retirer ce port ne casse rien en CI, et fait échouer le déploiement
  *    suivant — le repli (`SERVER_ORIGIN`, l'origine LAN) n'existe plus.
  *
+ * Et, depuis `LE-105` (2026-11-15), sur les **deux corollaires** de la racine
+ * immuable, dans les trois piles :
+ *
+ * 10. chaque service borne son journal Docker : pilote `json-file` et
+ *     `max-size` déclarés. Sans borne, le journal ne repart à zéro qu'à la
+ *     recréation du conteneur, et un conteneur dont rien ne change n'est jamais
+ *     recréé : celui de loki a atteint 125 Go en trois mois sur le serveur ;
+ * 11. chaque service à racine en lecture seule a un `/tmp` inscriptible (un
+ *     `tmpfs`). Un programme tient `/tmp` pour acquis, et l'écriture refusée
+ *     peut vivre dans un chemin que ni le démarrage ni le healthcheck
+ *     n'exercent : la rétention de loki n'a tourné qu'à partir du huitième jour,
+ *     et n'a jamais réussi. Un service qui écrit son propre `tmpfs:` remplace
+ *     celui de l'ancre (clé de fusion YAML) : c'est le cas que la règle attrape.
+ *
  * ## Ce que la porte NE garantit **pas**
  *
+ *  - Sur les règles 10 et 11, elle ne juge que le texte : un conteneur en
+ *    marche garde le journal et les montages de sa création, jusqu'à sa
+ *    recréation. Elle ne lit ni le `daemon.json` du serveur ni la taille réelle
+ *    des journaux, et ne prouve pas qu'un `/tmp` suffise : une image peut
+ *    écrire ailleurs (`/var/run`, `$HOME`). Le `tmpfs` n'a pas de taille : sa
+ *    mémoire est comptée dans celle du conteneur, que seule la production
+ *    plafonne (`mem_limit`) ; loki, le cas d'origine, n'y copie qu'un fichier
+ *    de marques à la fois, 32 Ko au plus (mesuré le 2026-11-15). Deux formes ne
+ *    sont pas lues, et les règles les refusent au lieu de les croire bonnes :
+ *    un `logging:` écrit en ligne (`{driver: …}`) et un `tmpfs` en forme longue
+ *    sous `volumes:` (`type: tmpfs`). Écrire la forme en bloc et `tmpfs:`.
  *  - Elle ne prouve pas que la pile **démarre** ainsi durcie : seuls les jobs
  *    `e2e-stack` le montre (smokes compris), et il ne lève que la pile
  *    dev/CI. Un service que seule la prod porte (`caddy`, `cloudflared`) n'est
@@ -258,9 +283,18 @@ function lire(relatif) {
  * @property {string[]} capAdd
  * @property {string[]} secrets  noms des secrets Compose consommés
  * @property {string[]} ports  mappings publiés, tels qu'écrits (`'127.0.0.1:80:80'`)
+ * @property {string[]} tmpfs  montages tmpfs, tels qu'écrits (`/tmp`, `/tmp:size=64m`)
+ * @property {Journal | null} journal  bloc `logging:` déclaré, `null` s'il ne l'est pas
  * @property {boolean | null} readOnly
  * @property {boolean | null} privileged
  * @property {string[]} ancres  ancres reprises par `<<: *nom`
+ */
+
+/**
+ * @typedef {object} Journal
+ * @property {string | null} pilote  `driver:`
+ * @property {string | null} tailleMax  `options.max-size`
+ * @property {string | null} fichiersMax  `options.max-file`
  */
 
 /** @returns {Bloc} */
@@ -271,10 +305,100 @@ function blocVide() {
     capAdd: [],
     secrets: [],
     ports: [],
+    tmpfs: [],
+    journal: null,
     readOnly: null,
     privileged: null,
     ancres: [],
   };
+}
+
+/** @returns {Journal} */
+function journalVide() {
+  return { pilote: null, tailleMax: null, fichiersMax: null };
+}
+
+/**
+ * Fusion de deux blocs `logging:` **entre fichiers** Compose : un pilote
+ * différent remplace tout (les options de l'ancien n'ont plus de sens), un même
+ * pilote — ou un pilote tu — fusionne les options, la dernière l'emportant.
+ *
+ * @param {Journal | null} avant
+ * @param {Journal | null} apres
+ * @returns {Journal | null}
+ */
+function fusionnerJournal(avant, apres) {
+  if (apres === null) return avant;
+  if (
+    avant === null ||
+    (apres.pilote !== null && apres.pilote !== avant.pilote)
+  ) {
+    return { ...apres };
+  }
+  return {
+    pilote: avant.pilote,
+    tailleMax: apres.tailleMax ?? avant.tailleMax,
+    fichiersMax: apres.fichiersMax ?? avant.fichiersMax,
+  };
+}
+
+/**
+ * Une taille au sens du démon (`units.RAMInBytes`) est-elle **strictement
+ * positive** ? Il accepte `10m`, `10M`, `10mb`, `10 MiB`, un nombre seul
+ * (octets), et refuse une taille nulle à la création du conteneur : `0m` doit
+ * donc rougir ici plutôt qu'au `up -d --wait`.
+ *
+ * @param {string} taille
+ */
+function taillePositive(taille) {
+  const lue = /^(\d+(?:\.\d+)?) ?(?:[kmgtp]i?b?|b)?$/i.exec(taille);
+  return lue !== null && Number(lue[1]) > 0;
+}
+
+/**
+ * Le journal est-il **borné** ? Pilote `json-file` et `max-size` positif ;
+ * `max-file`, s'il est écrit, est un entier positif. Sans `max-file`,
+ * `json-file` garde un seul fichier : borné aussi. Un autre pilote, même
+ * borné par défaut (`local`), se décide ici, pas dans un compose.
+ *
+ * @param {Journal | null} journal
+ */
+function journalBorne(journal) {
+  if (journal === null) return false;
+  if (journal.pilote !== 'json-file') return false;
+  if (journal.tailleMax === null || !taillePositive(journal.tailleMax)) {
+    return false;
+  }
+  return journal.fichiersMax === null || /^[1-9]\d*$/.test(journal.fichiersMax);
+}
+
+/**
+ * Le service a-t-il un `/tmp` inscriptible ? Un montage s'écrit `chemin` ou
+ * `chemin:options` ; un `ro` dans les options le rend inutile ici.
+ *
+ * @param {string[]} tmpfs
+ */
+function aUnTmpInscriptible(tmpfs) {
+  return tmpfs.some((montage) => {
+    const [chemin, options = ''] = montage.split(/:(.*)/s);
+    return (
+      chemin.trim() === '/tmp' &&
+      !options.split(',').some((option) => option.trim() === 'ro')
+    );
+  });
+}
+
+/**
+ * Valeur scalaire d'une ligne YAML : commentaire de fin de ligne retiré
+ * (`json-file  # rotation`), puis guillemets.
+ *
+ * @param {string} valeur
+ */
+function sansGuillemets(valeur) {
+  return valeur
+    .replace(/\s+#.*$/, '')
+    .trim()
+    .replace(/^['"]|['"]$/g, '');
 }
 
 /**
@@ -331,8 +455,10 @@ function sequenceEnLigne(enLigne) {
  * services, avec pour chacun la posture déclarée.
  *
  * Analyse ligne à ligne plutôt qu'un parseur YAML (zéro dépendance, cf. les
- * autres portes du dépôt) : on ne cherche que quatre clés, à une indentation
- * connue, et les `<<: *ancre` qui les héritent.
+ * autres portes du dépôt) : on ne cherche qu'une poignée de clés, à une
+ * indentation connue, et les `<<: *ancre` qui les héritent. Seul `logging:` a
+ * des sous-clés lues (`driver`, `options.max-size`, `options.max-file`), et
+ * seulement en forme bloc.
  *
  * @param {string} contenu
  * @returns {{ ancres: Map<string, Bloc>, services: Map<string, Bloc> }}
@@ -345,8 +471,10 @@ function analyser(contenu) {
 
   let courant = /** @type {Bloc | null} */ (null);
   let dansServices = false;
-  /** @type {'securityOpt' | 'capDrop' | 'capAdd' | 'secrets' | 'ports' | null} */
+  /** @type {'securityOpt' | 'capDrop' | 'capAdd' | 'secrets' | 'ports' | 'tmpfs' | null} */
   let sequence = null;
+  /** dans le bloc `logging:` du bloc courant */
+  let dansJournal = false;
   /** indentation des clés du bloc courant (2 pour une ancre, 4 pour un service) */
   let indentation = 2;
 
@@ -359,6 +487,7 @@ function analyser(contenu) {
       ancres.set(ancre[2], courant);
       dansServices = false;
       sequence = null;
+      dansJournal = false;
       indentation = 2;
       continue;
     }
@@ -367,6 +496,7 @@ function analyser(contenu) {
       dansServices = true;
       courant = null;
       sequence = null;
+      dansJournal = false;
       continue;
     }
 
@@ -375,6 +505,7 @@ function analyser(contenu) {
       dansServices = false;
       courant = null;
       sequence = null;
+      dansJournal = false;
       continue;
     }
 
@@ -383,11 +514,38 @@ function analyser(contenu) {
       courant = blocVide();
       services.set(service[1], courant);
       sequence = null;
+      dansJournal = false;
       indentation = 4;
       continue;
     }
 
     if (courant === null) continue;
+
+    if (dansJournal && courant.journal !== null) {
+      const sousCle = new RegExp(
+        `^ {${indentation + 2}}(driver|options):\\s*(.*)$`,
+      ).exec(ligne);
+      if (sousCle !== null) {
+        if (sousCle[1] === 'driver') {
+          courant.journal.pilote = sansGuillemets(sousCle[2]);
+        }
+        continue;
+      }
+      const option = new RegExp(
+        `^ {${indentation + 4}}(max-size|max-file):\\s*(.*)$`,
+      ).exec(ligne);
+      if (option !== null) {
+        if (option[1] === 'max-size') {
+          courant.journal.tailleMax = sansGuillemets(option[2]);
+        } else {
+          courant.journal.fichiersMax = sansGuillemets(option[2]);
+        }
+        continue;
+      }
+      // une autre option du pilote, plus profonde : sans objet ici
+      if (new RegExp(`^ {${indentation + 2},}\\S`).test(ligne)) continue;
+      dansJournal = false;
+    }
 
     const item = new RegExp(`^ {${indentation + 2}}- (.+)$`).exec(ligne);
     if (item !== null && sequence !== null) {
@@ -421,6 +579,22 @@ function analyser(contenu) {
       case 'ports':
         sequence = 'ports';
         courant.ports.push(...sequenceEnLigne(valeur));
+        break;
+      case 'tmpfs':
+        // séquence (bloc ou en ligne), ou chaîne seule : `tmpfs: /tmp`
+        sequence = 'tmpfs';
+        if (valeur.startsWith('[')) {
+          courant.tmpfs.push(...sequenceEnLigne(valeur));
+        } else if (valeur.length > 0) {
+          courant.tmpfs.push(sansGuillemets(valeur));
+        }
+        break;
+      case 'logging':
+        // Déclaré, donc il REMPLACE celui de l'ancre (clé de fusion YAML).
+        // La forme en ligne (`{driver: …}`) n'est pas lue : le journal reste
+        // vide, et la règle 10 le refuse au lieu de le croire borné.
+        courant.journal = journalVide();
+        dansJournal = valeur.length === 0;
         break;
       case 'read_only':
         courant.readOnly = valeur === 'true';
@@ -463,6 +637,8 @@ function resoudre(bloc, ancres) {
     resolu.capAdd.push(...heritee.capAdd);
     resolu.secrets.push(...heritee.secrets);
     resolu.ports.push(...heritee.ports);
+    resolu.tmpfs.push(...heritee.tmpfs);
+    if (heritee.journal !== null) resolu.journal = { ...heritee.journal };
     if (heritee.readOnly !== null) resolu.readOnly = heritee.readOnly;
     if (heritee.privileged !== null) resolu.privileged = heritee.privileged;
   }
@@ -471,6 +647,10 @@ function resoudre(bloc, ancres) {
   if (bloc.capAdd.length > 0) resolu.capAdd = [...bloc.capAdd];
   if (bloc.secrets.length > 0) resolu.secrets = [...bloc.secrets];
   if (bloc.ports.length > 0) resolu.ports = [...bloc.ports];
+  // Un `tmpfs:` écrit par le service REMPLACE celui de l'ancre : c'est
+  // exactement le piège que la règle 11 attrape (`/tmp` oublié en le réécrivant).
+  if (bloc.tmpfs.length > 0) resolu.tmpfs = [...bloc.tmpfs];
+  if (bloc.journal !== null) resolu.journal = { ...bloc.journal };
   if (bloc.readOnly !== null) resolu.readOnly = bloc.readOnly;
   if (bloc.privileged !== null) resolu.privileged = bloc.privileged;
   return resolu;
@@ -502,6 +682,8 @@ function postureDeLaPile(composes, contenus) {
       deja.capAdd.push(...resolu.capAdd);
       deja.secrets.push(...resolu.secrets);
       deja.ports.push(...resolu.ports);
+      deja.tmpfs.push(...resolu.tmpfs);
+      deja.journal = fusionnerJournal(deja.journal, resolu.journal);
       if (resolu.readOnly !== null) deja.readOnly = resolu.readOnly;
       if (resolu.privileged !== null) deja.privileged = resolu.privileged;
     }
@@ -614,6 +796,22 @@ function verifier(contenus, registres = {}) {
       // refus sans issue — ni garder ni retirer l'entrée ne ferait passer la
       // porte (`LE-52` : un refus doit avoir un remède atteignable).
       if (posture.readOnly !== true) inscriptiblesVus.add(service);
+
+      if (!journalBorne(posture.journal)) {
+        const lu =
+          posture.journal === null
+            ? 'aucun `logging:`'
+            : `pilote \`${posture.journal.pilote ?? '—'}\`, max-size \`${posture.journal.tailleMax ?? '—'}\`, max-file \`${posture.journal.fichiersMax ?? '—'}\``;
+        constats.push(
+          `pile ${pile.nom}, service \`${service}\` : journal Docker non borné (${lu}). Sans \`max-size\`, le journal ne repart à zéro qu'à la recréation du conteneur, et un conteneur dont ni l'image ni la configuration ne changent n'est jamais recréé : celui de loki a atteint 125 Go en trois mois (\`LE-105\`). Reprendre l'ancre \`<<: *durcissement\`, ou écrire en bloc \`logging: { driver: json-file, options: { max-size, max-file } }\`.`,
+        );
+      }
+
+      if (posture.readOnly === true && !aUnTmpInscriptible(posture.tmpfs)) {
+        constats.push(
+          `pile ${pile.nom}, service \`${service}\` : racine en lecture seule sans \`/tmp\` inscriptible (tmpfs lus : ${posture.tmpfs.length === 0 ? 'aucun' : posture.tmpfs.map((t) => `\`${t}\``).join(', ')}). Une écriture refusée dans \`/tmp\` peut vivre dans un chemin que ni le démarrage ni le healthcheck n'exercent : la rétention de loki n'a jamais tourné, \`/ready\` répondait (\`LE-105\`). Un \`tmpfs:\` écrit par le service REMPLACE celui de l'ancre : y relister \`/tmp\`.`,
+        );
+      }
     }
 
     if (publiesDeLaPile.size === 0) {
@@ -969,7 +1167,163 @@ function autotest(contenus) {
     attendu: 'aucun port publié lu',
   });
 
-  let echecs = 0;
+  // (l) LE cas de `LE-105`, côté journal : l'ancre partagée perd sa borne.
+  // Tous les services qui la reprennent basculent d'un coup, sans qu'aucune
+  // ligne de service ne change.
+  sondes.push({
+    nom: 'ancre partagée qui cesse de borner le journal',
+    constats: verifier(
+      muter(
+        BASE,
+        (t) => t.replace(/\n {6}max-size: '10m'\r?\n/, '\n'),
+        'ancre sans max-size',
+      ),
+    ),
+    attendu: 'journal Docker non borné',
+  });
+
+  // (l bis) le service que seule la PRODUCTION lève perd sa borne : les piles
+  // dev/CI et staging, elles, resteraient vertes.
+  sondes.push({
+    nom: 'service de production sans borne de journal (caddy)',
+    constats: verifier(
+      muter(
+        'docker-compose.server.yml',
+        (t) =>
+          t.replace(
+            /(\n {2}caddy:\r?\n[\s\S]*?)\n {4}logging:\r?\n {6}driver: json-file\r?\n {6}options:\r?\n {8}max-size: '10m'\r?\n {8}max-file: '3'\r?\n/,
+            '$1\n',
+          ),
+        'caddy sans logging',
+      ),
+    ),
+    attendu: 'service `caddy` : journal Docker non borné',
+  });
+
+  // (l ter) un pilote qui ne borne rien, `max-size` laissé en place.
+  sondes.push({
+    nom: 'pilote de journal changé dans l’ancre',
+    constats: verifier(
+      muter(
+        BASE,
+        (t) =>
+          t.replace(/\n {4}driver: json-file\r?\n/, '\n    driver: journald\n'),
+        'pilote journald',
+      ),
+    ),
+    attendu: 'pilote `journald`',
+  });
+
+  // (m) LE cas de `LE-105`, côté `/tmp` : l'ancre perd son tmpfs, et loki
+  // redevient le conteneur « healthy » dont la rétention ne tourne jamais.
+  sondes.push({
+    nom: 'ancre partagée sans /tmp (loki)',
+    constats: verifier(
+      muter(
+        BASE,
+        (t) => t.replace(/\n {2}tmpfs:\r?\n {4}- \/tmp\r?\n/, '\n'),
+        'ancre sans tmpfs',
+      ),
+    ),
+    attendu: 'service `loki` : racine en lecture seule sans `/tmp`',
+  });
+
+  // (m bis) le piège de la clé de fusion : un service écrit son propre
+  // `tmpfs:` pour un autre chemin, et perd sans le voir le `/tmp` de l'ancre.
+  // Témoin dérivé : le premier service du compose de base qui liste `/tmp`
+  // APRÈS un autre montage.
+  const reecrit =
+    /\n {2}([a-zA-Z0-9_.-]+):\r?\n(?: {4}[^\n]*\r?\n)*? {4}tmpfs:\r?\n(?: {6}#[^\n]*\r?\n)*(?: {6}- (?!\/tmp\b)[^\n]+\r?\n)+ {6}- \/tmp\r?\n/.exec(
+      contenus[BASE],
+    );
+  if (reecrit === null) {
+    console.error(
+      'Sonde impossible : aucun service du compose de base ne liste `/tmp` après un autre montage tmpfs.',
+    );
+    return 1;
+  }
+  sondes.push({
+    nom: `tmpfs réécrit sans /tmp (${reecrit[1]})`,
+    constats: verifier(
+      muter(
+        BASE,
+        (t) =>
+          t.replace(reecrit[0], () =>
+            reecrit[0].replace(/ {6}- \/tmp\r?\n$/, ''),
+          ),
+        'tmpfs réécrit sans /tmp',
+      ),
+    ),
+    attendu: `service \`${reecrit[1]}\` : racine en lecture seule sans \`/tmp\``,
+  });
+
+  // (m ter) un `/tmp` monté en lecture seule n'en est pas un : le chemin y
+  // est, l'écriture du compactor échoue toujours.
+  sondes.push({
+    nom: 'ancre partagée avec un /tmp en lecture seule (loki)',
+    constats: verifier(
+      muter(
+        BASE,
+        (t) =>
+          t.replace(/(\n {2}tmpfs:\r?\n {4}- )\/tmp(\r?\n)/, '$1/tmp:ro$2'),
+        'tmpfs en ro',
+      ),
+    ),
+    attendu: 'service `loki` : racine en lecture seule sans `/tmp`',
+  });
+
+  // (l quater) une taille nulle passe une expression régulière naïve, et le
+  // démon la refuse à la création du conteneur : rouge ici, pas au déploiement.
+  sondes.push({
+    nom: 'max-size nul dans l’ancre',
+    constats: verifier(
+      muter(
+        BASE,
+        (t) => t.replace(/(\n {6}max-size: )'10m'/, "$1'0m'"),
+        'max-size nul',
+      ),
+    ),
+    attendu: 'journal Docker non borné',
+  });
+
+  // Témoins POSITIFS : des écritures que le démon accepte, et que la porte ne
+  // doit pas refuser — sans quoi le seul remède serait de réécrire un YAML
+  // valide pour plaire à l'analyseur (`LE-52` : un refus doit avoir un remède).
+  const temoinsPositifs = [
+    {
+      nom: 'unité en majuscule et commentaire de fin de ligne',
+      contenus: muter(
+        BASE,
+        (t) =>
+          t
+            .replace(
+              /(\n {6}max-size: )'10m'/,
+              '$1 10M  # même borne, écrite autrement',
+            )
+            .replace(
+              /(\n {4}driver: json-file)/,
+              '$1  # rotation par le démon',
+            ),
+        'variantes acceptées',
+      ),
+    },
+  ];
+  let echecsPositifs = 0;
+  for (const temoin of temoinsPositifs) {
+    const refus = verifier(temoin.contenus).filter((c) =>
+      c.includes('journal Docker non borné'),
+    );
+    if (refus.length === 0) {
+      console.log(`Témoin « ${temoin.nom} » : la porte l'accepte. ✅`);
+    } else {
+      echecsPositifs += 1;
+      console.error(
+        `Témoin « ${temoin.nom} » : la porte refuse une écriture valide (${refus.length} constat(s)), par exemple : ${refus[0]}`,
+      );
+    }
+  }
+
+  let echecs = echecsPositifs;
   for (const sonde of sondes) {
     const mord = sonde.constats.some((c) => c.includes(sonde.attendu));
     if (mord) {
@@ -1021,7 +1375,8 @@ function principal() {
   console.log(
     `Durcissement des conteneurs : ${services.size} service(s) sur ${PILES.length} piles, ` +
       `tous en no-new-privileges + cap_drop ALL ; ` +
-      `${services.size - RACINES_INSCRIPTIBLES.length} en racine lecture seule, ` +
+      `tous au journal Docker borné ; ` +
+      `${services.size - RACINES_INSCRIPTIBLES.length} en racine lecture seule, chacun avec un /tmp en tmpfs, ` +
       `${RACINES_INSCRIPTIBLES.length} exemption(s) motivée(s), ` +
       `${CAPACITES_REPRISES.reduce((n, c) => n + c.services.length, 0)} service(s) reprenant une capacité déclarée ; ` +
       `${portsHeberges} port(s) publié(s) sur les piles hébergées, tous bornés à la loopback.`,
